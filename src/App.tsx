@@ -8,6 +8,7 @@ import { AuthModal } from './components/AuthModal';
 import { ToastContainer } from './components/Toast';
 import { Home } from './pages/Home';
 import { Services } from './pages/Services';
+import { ServiceDetail } from './pages/ServiceDetail';
 import { Apply } from './pages/Apply';
 import { Track } from './pages/Track';
 import { Profile } from './pages/Profile';
@@ -49,7 +50,6 @@ function AppContent() {
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
-  const [selectedService, setSelectedService] = useState<Service | null>(null);
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
   const [isServiceBuilderOpen, setIsServiceBuilderOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
@@ -88,6 +88,19 @@ function AppContent() {
     }
   };
 
+  // Sync selectedApp with URL for /track/:applicationId
+  useEffect(() => {
+    const match = location.pathname.match(/\/track\/(ICC-[\d]+)/);
+    if (match) {
+      const appId = match[1];
+      const app = applications.find(a => a.id === appId);
+      if (app && selectedApp?.id !== appId) {
+        setSelectedApp(app);
+      }
+    } else if (selectedApp && location.pathname === '/track') {
+      setSelectedApp(null);
+    }
+  }, [location.pathname, applications, selectedApp]);
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -96,15 +109,6 @@ function AppContent() {
     } catch (error: any) {
       showToast(error.message, 'error');
     }
-  };
-
-  const handleServiceSelect = (service: Service) => {
-    if (!user) {
-      navigate('/login');
-      return;
-    }
-    setSelectedService(service);
-    navigate('/apply');
   };
 
   const handleSaveService = async (service: Service) => {
@@ -124,8 +128,15 @@ function AppContent() {
 
   if (authLoading) {
     return (
-      <div className="h-screen w-screen flex items-center justify-center bg-slate-50">
-        <div className="w-16 h-16 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="h-screen w-screen flex flex-col items-center justify-center bg-white">
+        <img 
+          src="https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png" 
+          alt="Loading..." 
+          className="h-12 mb-6 animate-pulse"
+        />
+        <div className="w-48 h-1 bg-slate-100 rounded-full overflow-hidden">
+          <div className="w-full h-full bg-primary animate-loading-bar" />
+        </div>
       </div>
     );
   }
@@ -155,25 +166,36 @@ function AppContent() {
         onClose={() => setIsAuthModalOpen(false)}
       />
 
-      <main className="pt-[100px] pb-20 px-[5%] max-w-7xl mx-auto">
+      <main className="pt-[100px] pb-20 px-[3%] sm:px-[5%] w-full max-w-[1440px] mx-auto">
         <Routes>
-          <Route path="/" element={<Home onNavigate={(p) => navigate(`/${p === 'home' ? '' : p}`)} services={services} onSelectService={handleServiceSelect} />} />
+          <Route path="/" element={<Home onNavigate={(p) => navigate(`/${p === 'home' ? '' : p}`)} services={services} onSelectService={() => {}} />} />
           <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
           <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
           <Route path="/legal/:type" element={<Legal />} />
-          <Route path="/services" element={<Services services={services} onSelectService={handleServiceSelect} />} />
-          <Route path="/apply" element={
-            selectedService && user ? (
+          <Route path="/services" element={<Services services={services} />} />
+          <Route path="/services/:serviceId" element={<ServiceDetail services={services} />} />
+          <Route path="/services/:serviceId/:subserviceName" element={
+            user ? (
               <Apply 
-                service={selectedService} 
+                services={services} 
                 user={user} 
                 gateways={gateways}
-                onBack={() => navigate('/services')} 
                 onSuccess={() => navigate('/track')}
               />
-            ) : <Navigate to="/services" />
+            ) : <Navigate to="/login" />
           } />
           <Route path="/track" element={
+            user ? (
+              <Track 
+                applications={applications.filter(a => a.uid === user.uid || (user.role === 'operator' && a.assignedTo === user.email))} 
+                user={user}
+                gateways={gateways}
+                onViewDetails={setSelectedApp}
+                onUpdateApp={updateApplication}
+              />
+            ) : <Navigate to="/" />
+          } />
+          <Route path="/track/:applicationId" element={
             user ? (
               <Track 
                 applications={applications.filter(a => a.uid === user.uid || (user.role === 'operator' && a.assignedTo === user.email))} 
@@ -222,7 +244,11 @@ function AppContent() {
           app={selectedApp} 
           onClose={() => {
             setSelectedApp(null);
-            if (window.history.state?.modal) window.history.back();
+            if (location.pathname.includes('/track/')) {
+              navigate('/track');
+            } else if (window.history.state?.modal) {
+              window.history.back();
+            }
           }} 
           currentUser={user}
           operators={users.filter(u => u.role === 'operator')}

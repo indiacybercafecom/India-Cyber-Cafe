@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Service, UserProfile, SubService, Application, PaymentGateway } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
@@ -8,18 +9,41 @@ import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage
 import { sendEmail, emailTemplates } from '../services/emailService';
 
 interface ApplyProps {
-  service: Service;
+  services: Service[];
   user: UserProfile;
   gateways: PaymentGateway[];
-  onBack: () => void;
   onSuccess: () => void;
 }
 
-export function Apply({ service, user, gateways, onBack, onSuccess }: ApplyProps) {
+export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
+  const { serviceId, subserviceName } = useParams<{ serviceId: string; subserviceName: string }>();
+  const navigate = useNavigate();
+  
+  const service = services.find(s => s.id === serviceId);
   const [selectedSubService, setSelectedSubService] = useState<SubService | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [files, setFiles] = useState<Record<string, File>>({});
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (service && subserviceName) {
+      const sub = service.subservices.find(ss => 
+        ss.name.toLowerCase().replace(/\s+/g, '-') === subserviceName
+      );
+      if (sub) {
+        setSelectedSubService(sub);
+      }
+    }
+  }, [service, subserviceName]);
+
+  if (!service) {
+    return (
+      <div className="text-center py-20">
+        <h2 className="text-2xl font-bold text-navy">Service Not Found</h2>
+        <button onClick={() => navigate('/services')} className="btn-primary mt-4">Back to Services</button>
+      </div>
+    );
+  }
 
   const handleInputChange = (label: string, value: any) => {
     setFormData(prev => ({ ...prev, [label]: value }));
@@ -138,7 +162,7 @@ export function Apply({ service, user, gateways, onBack, onSuccess }: ApplyProps
   return (
     <div className="max-w-2xl mx-auto bg-white p-6 sm:p-12 rounded-3xl shadow-xl space-y-6 sm:space-y-8">
       <button 
-        onClick={onBack}
+        onClick={() => navigate(`/services/${service.id}`)}
         className="flex items-center gap-2 text-navy font-bold hover:text-primary transition-all text-sm sm:text-base"
       >
         <IconRenderer name="arrow-left" className="w-4 h-4 sm:w-5 sm:h-5" />

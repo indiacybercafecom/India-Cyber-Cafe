@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Application, UserProfile, Service, PaymentGateway } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
@@ -36,6 +37,7 @@ export function Admin({
   onUpdateGateway,
   onDeleteGateway
 }: AdminProps) {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments'>('apps');
   const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | null>(null);
   const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
@@ -209,7 +211,7 @@ export function Admin({
                     </td>
                     <td className="p-6">
                       <div className="flex gap-2">
-                        <button onClick={() => onViewApp(app)} className="btn-primary py-2 px-4 text-sm">View</button>
+                        <button onClick={() => navigate(`/track/${app.id}`)} className="btn-primary py-2 px-4 text-sm">View</button>
                         <button onClick={() => handleDeleteApp(app.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all">
                           <IconRenderer name="trash" className="w-4 h-4" />
                         </button>
@@ -244,7 +246,7 @@ export function Admin({
                     By: {app.assignedTo || 'Unassigned'}
                   </div>
                   <div className="flex gap-2">
-                    <button onClick={() => onViewApp(app)} className="btn-primary py-2 px-4 text-xs">View</button>
+                    <button onClick={() => navigate(`/track/${app.id}`)} className="btn-primary py-2 px-4 text-xs">View</button>
                     <button onClick={() => handleDeleteApp(app.id)} className="p-2 text-red-500 bg-red-50 rounded-lg">
                       <IconRenderer name="trash" className="w-4 h-4" />
                     </button>

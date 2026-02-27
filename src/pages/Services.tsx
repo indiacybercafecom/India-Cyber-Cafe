@@ -1,13 +1,14 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Service } from '../types';
 import { IconRenderer } from '../components/Icons';
 
 interface ServicesProps {
   services: Service[];
-  onSelectService: (service: Service) => void;
 }
 
-export function Services({ services, onSelectService }: ServicesProps) {
+export function Services({ services }: ServicesProps) {
+  const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredServices = services.filter(s => 
@@ -39,7 +40,7 @@ export function Services({ services, onSelectService }: ServicesProps) {
           <div 
             key={service.id} 
             className="card group cursor-pointer p-6 sm:p-8"
-            onClick={() => onSelectService(service)}
+            onClick={() => navigate(`/services/${service.id}`)}
           >
             <div className="w-14 h-14 sm:w-20 sm:h-20 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 group-hover:rotate-12 transition-all">
               <IconRenderer name={service.icon} className="w-6 h-6 sm:w-10 sm:h-10 text-navy group-hover:text-primary transition-all" />

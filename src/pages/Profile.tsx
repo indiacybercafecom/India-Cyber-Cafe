@@ -3,7 +3,7 @@ import { UserProfile } from '../types';
 import { auth, rtdb, storage } from '../firebase';
 import { ref as dbRef, update } from 'firebase/database';
 import { updatePassword } from 'firebase/auth';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { showToast } from '../components/Toast';
 import { IconRenderer } from '../components/Icons';
 import { sendEmail } from '../services/emailService';
@@ -18,6 +18,7 @@ export function Profile({ user }: ProfileProps) {
   const [oldPass, setOldPass] = useState('');
   const [newPass, setNewPass] = useState('');
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [avatar, setAvatar] = useState(user.avatar);
 
   // Sync avatar state with user prop if it changes externally
@@ -35,30 +36,51 @@ export function Profile({ user }: ProfileProps) {
       return;
     }
 
+    // Limit file size to 2MB
+    if (file.size > 2 * 1024 * 1024) {
+      showToast('File size too large. Please select an image under 2MB.', 'error');
+      return;
+    }
+
     setLoading(true);
+    setUploadProgress(0);
     try {
       const sRef = storageRef(storage, `avatars/${user.uid}`);
-      const snapshot = await uploadBytes(sRef, file);
-      const url = await getDownloadURL(snapshot.ref);
-      
-      await update(dbRef(rtdb, `users/${user.uid}`), { avatar: url });
-      setAvatar(url);
-      showToast('Profile picture updated!');
-      
-      // Send notification email
-      sendEmail(user.email, 'Profile Picture Updated - India Cyber Cafe', `
-        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #FF9933;">Profile Updated</h2>
-          <p>Hello <strong>${user.name}</strong>,</p>
-          <p>Your profile picture has been successfully updated on India Cyber Cafe.</p>
-          <br/>
-          <p>Best Regards,<br/>India Cyber Cafe Team</p>
-        </div>
-      `);
+      const uploadTask = uploadBytesResumable(sRef, file);
+
+      uploadTask.on('state_changed', 
+        (snapshot) => {
+          const progress = (snapshot.bytesTransferred / snapshot.totalBytes) * 100;
+          setUploadProgress(progress);
+        }, 
+        (error) => {
+          console.error("Upload error:", error);
+          showToast(error.message || 'Failed to upload image', 'error');
+          setLoading(false);
+        }, 
+        async () => {
+          const url = await getDownloadURL(uploadTask.snapshot.ref);
+          await update(dbRef(rtdb, `users/${user.uid}`), { avatar: url });
+          setAvatar(url);
+          showToast('Profile picture updated!');
+          setLoading(false);
+          setUploadProgress(0);
+          
+          // Send notification email
+          sendEmail(user.email, 'Profile Picture Updated - India Cyber Cafe', `
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+              <h2 style="color: #FF9933;">Profile Updated</h2>
+              <p>Hello <strong>${user.name}</strong>,</p>
+              <p>Your profile picture has been successfully updated on India Cyber Cafe.</p>
+              <br/>
+              <p>Best Regards,<br/>India Cyber Cafe Team</p>
+            </div>
+          `);
+        }
+      );
     } catch (error: any) {
       console.error("Upload error:", error);
       showToast(error.message || 'Failed to upload image', 'error');
-    } finally {
       setLoading(false);
     }
   };
@@ -107,8 +129,9 @@ export function Profile({ user }: ProfileProps) {
               className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-primary shadow-2xl object-cover transition-opacity ${loading ? 'opacity-50' : 'opacity-100'}`}
             />
             {loading && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 rounded-full">
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mb-1" />
+                {uploadProgress > 0 && <span className="text-[10px] font-bold text-navy">{Math.round(uploadProgress)}%</span>}
               </div>
             )}
           </div>

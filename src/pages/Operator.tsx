@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Application, UserProfile } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
@@ -11,6 +12,7 @@ interface OperatorProps {
 }
 
 export function Operator({ applications, user, onViewApp }: OperatorProps) {
+  const navigate = useNavigate();
   const [tab, setTab] = useState<'assigned' | 'all'>('assigned');
 
   const filteredApps = tab === 'assigned' 
@@ -88,7 +90,7 @@ export function Operator({ applications, user, onViewApp }: OperatorProps) {
                   </span>
                 </td>
                 <td className="p-6">
-                  <button onClick={() => onViewApp(app)} className="btn-primary py-2 px-4 text-sm">View</button>
+                  <button onClick={() => navigate(`/track/${app.id}`)} className="btn-primary py-2 px-4 text-sm">View</button>
                 </td>
               </tr>
             ))}

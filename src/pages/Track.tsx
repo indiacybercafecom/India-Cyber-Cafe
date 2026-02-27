@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { Application, PaymentGateway, UserProfile } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
@@ -13,8 +14,19 @@ interface TrackProps {
 }
 
 export function Track({ applications, user, gateways, onViewDetails, onUpdateApp }: TrackProps) {
+  const { applicationId } = useParams<{ applicationId: string }>();
+  const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+
+  useEffect(() => {
+    if (applicationId && applications.length > 0) {
+      const app = applications.find(a => a.id === applicationId);
+      if (app) {
+        onViewDetails(app);
+      }
+    }
+  }, [applicationId, applications]);
 
   const filteredApps = applications.filter(app => {
     const matchesSearch = 
@@ -172,7 +184,7 @@ export function Track({ applications, user, gateways, onViewDetails, onUpdateApp
                           </button>
                         )}
                         <button 
-                          onClick={() => onViewDetails(app)}
+                          onClick={() => navigate(`/track/${app.id}`)}
                           className="btn-primary py-2 px-4 text-sm"
                         >
                           Details
@@ -221,7 +233,7 @@ export function Track({ applications, user, gateways, onViewDetails, onUpdateApp
                       </button>
                     )}
                     <button 
-                      onClick={() => onViewDetails(app)}
+                      onClick={() => navigate(`/track/${app.id}`)}
                       className="btn-primary py-2 px-6 text-xs"
                     >
                       View Details

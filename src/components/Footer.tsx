@@ -56,15 +56,22 @@ export function Footer() {
           <ul className="space-y-4 text-slate-400 text-sm">
             <li className="flex items-start gap-3">
               <IconRenderer name="envelope" className="w-5 h-5 text-primary shrink-0" />
-              <span>icc@indiacybercafe.com</span>
+              <a href="mailto:icc@indiacybercafe.com" className="hover:text-primary transition-colors">icc@indiacybercafe.com</a>
             </li>
             <li className="flex items-start gap-3">
               <IconRenderer name="phone" className="w-5 h-5 text-primary shrink-0" />
-              <span>+91 9203251821</span>
+              <a href="tel:+919203251821" className="hover:text-primary transition-colors">+91 9203251821</a>
             </li>
             <li className="flex items-start gap-3">
               <IconRenderer name="location-dot" className="w-5 h-5 text-primary shrink-0" />
-              <span>Jobgarh, Singrauli Madhya Pradesh 486886</span>
+              <a 
+                href="https://www.google.com/maps/search/?api=1&query=Jobgarh,+Singrauli+Madhya+Pradesh+486886" 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="hover:text-primary transition-colors"
+              >
+                Jobgarh, Singrauli Madhya Pradesh 486886
+              </a>
             </li>
           </ul>
         </div>
