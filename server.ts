@@ -14,26 +14,32 @@ async function startServer() {
   // Email Configuration
   const transporter = nodemailer.createTransport({
     host: process.env.SMTP_HOST || "mail.indiacybercafe.com",
-    port: parseInt(process.env.SMTP_PORT || "465"),
-    secure: process.env.SMTP_SECURE !== "false", // Default to true for port 465
+    port: parseInt(process.env.SMTP_PORT || "587"),
+    secure: process.env.SMTP_SECURE === "true", // Use STARTTLS for 587
     auth: {
-      user: process.env.SMTP_USER || "icc@indiacybercafe.com",
-      pass: process.env.SMTP_PASS,
+      user: process.env.SMTP_USER || "icc@booking.indiacybercafe.com",
+      pass: process.env.SMTP_PASS || "Ankit9977498131@@@",
     },
+    tls: {
+      rejectUnauthorized: false // Helps with some mail server certificate issues
+    }
   });
 
   // API Route for sending emails
   app.post("/api/send-email", async (req, res) => {
     const { to, subject, text, html } = req.body;
 
-    if (!process.env.SMTP_USER || !process.env.SMTP_PASS) {
+    const smtpUser = process.env.SMTP_USER || "icc@booking.indiacybercafe.com";
+    const smtpPass = process.env.SMTP_PASS || "Ankit9977498131@@@";
+
+    if (!smtpUser || !smtpPass) {
       console.warn("SMTP credentials missing. Email not sent.");
       return res.status(200).json({ success: true, message: "Email simulation: Credentials missing" });
     }
 
     try {
       await transporter.sendMail({
-        from: `"India Cyber Cafe" <${process.env.SMTP_USER}>`,
+        from: `"India Cyber Cafe" <${smtpUser}>`,
         to,
         subject,
         text,

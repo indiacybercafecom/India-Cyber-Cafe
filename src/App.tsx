@@ -12,6 +12,12 @@ import { Apply } from './pages/Apply';
 import { Track } from './pages/Track';
 import { Profile } from './pages/Profile';
 import { Admin } from './pages/Admin';
+import { Operator } from './pages/Operator';
+import { Login } from './pages/Login';
+import { Register } from './pages/Register';
+import { Legal } from './pages/Legal';
+import { Footer } from './components/Footer';
+import { ScrollToTop } from './components/ScrollToTop';
 import { ApplicationDetailsModal } from './components/ApplicationDetailsModal';
 import { ServiceBuilderModal } from './components/ServiceBuilderModal';
 import { UserManageModal } from './components/UserManageModal';
@@ -34,7 +40,11 @@ function AppContent() {
     addService,
     updateService,
     deleteService,
-    deleteApplication
+    deleteApplication,
+    updateApplication,
+    addGateway,
+    updateGateway,
+    deleteGateway
   } = useData();
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -44,6 +54,39 @@ function AppContent() {
   const [isServiceBuilderOpen, setIsServiceBuilderOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+
+  // Back button handling for modals and sidebar
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (isSidebarOpen) {
+        setIsSidebarOpen(false);
+      } else if (selectedApp) {
+        setSelectedApp(null);
+      } else if (isServiceBuilderOpen) {
+        setIsServiceBuilderOpen(false);
+      } else if (selectedUser) {
+        setSelectedUser(null);
+      }
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isSidebarOpen, selectedApp, isServiceBuilderOpen, selectedUser]);
+
+  // Push state when modal opens
+  useEffect(() => {
+    const isAnyModalOpen = isSidebarOpen || !!selectedApp || isServiceBuilderOpen || !!selectedUser;
+    if (isAnyModalOpen) {
+      window.history.pushState({ modal: true }, '');
+    }
+  }, [isSidebarOpen, !!selectedApp, isServiceBuilderOpen, !!selectedUser]);
+
+  const closeSidebar = () => {
+    setIsSidebarOpen(false);
+    if (window.history.state?.modal) {
+      window.history.back();
+    }
+  };
 
   const handleLogout = async () => {
     try {
@@ -57,7 +100,7 @@ function AppContent() {
 
   const handleServiceSelect = (service: Service) => {
     if (!user) {
-      setIsAuthModalOpen(true);
+      navigate('/login');
       return;
     }
     setSelectedService(service);
@@ -89,18 +132,19 @@ function AppContent() {
 
   return (
     <div className="min-h-screen bg-slate-50">
+      <ScrollToTop />
       <ToastContainer />
       
       <Navbar 
         user={user} 
-        onLoginClick={() => setIsAuthModalOpen(true)}
+        onLoginClick={() => navigate('/login')}
         onMenuClick={() => setIsSidebarOpen(true)}
         onLogoClick={() => navigate('/')}
       />
 
       <Sidebar 
         isOpen={isSidebarOpen}
-        onClose={() => setIsSidebarOpen(false)}
+        onClose={closeSidebar}
         user={user}
         onNavigate={(page) => navigate(`/${page === 'home' ? '' : page}`)}
         onLogout={handleLogout}
@@ -114,12 +158,16 @@ function AppContent() {
       <main className="pt-[100px] pb-20 px-[5%] max-w-7xl mx-auto">
         <Routes>
           <Route path="/" element={<Home onNavigate={(p) => navigate(`/${p === 'home' ? '' : p}`)} services={services} onSelectService={handleServiceSelect} />} />
+          <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
+          <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+          <Route path="/legal/:type" element={<Legal />} />
           <Route path="/services" element={<Services services={services} onSelectService={handleServiceSelect} />} />
           <Route path="/apply" element={
             selectedService && user ? (
               <Apply 
                 service={selectedService} 
                 user={user} 
+                gateways={gateways}
                 onBack={() => navigate('/services')} 
                 onSuccess={() => navigate('/track')}
               />
@@ -129,11 +177,23 @@ function AppContent() {
             user ? (
               <Track 
                 applications={applications.filter(a => a.uid === user.uid || (user.role === 'operator' && a.assignedTo === user.email))} 
+                user={user}
+                gateways={gateways}
                 onViewDetails={setSelectedApp}
+                onUpdateApp={updateApplication}
               />
             ) : <Navigate to="/" />
           } />
           <Route path="/profile" element={user ? <Profile user={user} /> : <Navigate to="/" />} />
+          <Route path="/operator" element={
+            user?.role === 'operator' ? (
+              <Operator 
+                applications={applications}
+                user={user}
+                onViewApp={setSelectedApp}
+              />
+            ) : <Navigate to="/" />
+          } />
           <Route path="/admin" element={
             user?.role === 'admin' ? (
               <Admin 
@@ -147,6 +207,9 @@ function AppContent() {
                 onAddService={() => { setEditingService(null); setIsServiceBuilderOpen(true); }}
                 onDeleteService={deleteService}
                 onManageUser={setSelectedUser}
+                onAddGateway={addGateway}
+                onUpdateGateway={updateGateway}
+                onDeleteGateway={deleteGateway}
               />
             ) : <Navigate to="/" />
           } />
@@ -157,7 +220,10 @@ function AppContent() {
       {selectedApp && user && (
         <ApplicationDetailsModal 
           app={selectedApp} 
-          onClose={() => setSelectedApp(null)} 
+          onClose={() => {
+            setSelectedApp(null);
+            if (window.history.state?.modal) window.history.back();
+          }} 
           currentUser={user}
           operators={users.filter(u => u.role === 'operator')}
         />
@@ -166,7 +232,11 @@ function AppContent() {
       {isServiceBuilderOpen && (
         <ServiceBuilderModal 
           service={editingService}
-          onClose={() => { setIsServiceBuilderOpen(false); setEditingService(null); }}
+          onClose={() => { 
+            setIsServiceBuilderOpen(false); 
+            setEditingService(null); 
+            if (window.history.state?.modal) window.history.back();
+          }}
           onSave={handleSaveService}
         />
       )}
@@ -174,27 +244,14 @@ function AppContent() {
       {selectedUser && (
         <UserManageModal 
           user={selectedUser}
-          onClose={() => setSelectedUser(null)}
+          onClose={() => {
+            setSelectedUser(null);
+            if (window.history.state?.modal) window.history.back();
+          }}
         />
       )}
 
-      <footer className="bg-navy text-white py-10 px-[5%] text-center">
-        <div className="max-w-7xl mx-auto space-y-4">
-          <img 
-            src="https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png" 
-            alt="India Cyber Cafe" 
-            className="h-12 mx-auto brightness-0 invert"
-          />
-          <p className="text-slate-400 text-sm">
-            © {new Date().getFullYear()} India Cyber Cafe. All rights reserved.
-          </p>
-          <div className="flex justify-center gap-6 text-slate-400 text-sm">
-            <a href="#" className="hover:text-primary transition-colors">Privacy Policy</a>
-            <a href="#" className="hover:text-primary transition-colors">Terms of Service</a>
-            <a href="#" className="hover:text-primary transition-colors">Contact Us</a>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }

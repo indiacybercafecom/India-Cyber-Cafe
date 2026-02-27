@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { UserProfile, UserRole } from '../types';
 import { IconRenderer } from './Icons';
 import { motion } from 'motion/react';
-import { rtdb } from '../firebase';
+import { auth, rtdb } from '../firebase';
 import { ref, update, remove } from 'firebase/database';
+import { signInWithEmailAndPassword } from 'firebase/auth';
 import { showToast } from './Toast';
 
 interface UserManageModalProps {
@@ -14,7 +15,9 @@ interface UserManageModalProps {
 export function UserManageModal({ user, onClose }: UserManageModalProps) {
   const [name, setName] = useState(user?.name || '');
   const [role, setRole] = useState<UserRole>(user?.role || 'user');
+  const [password, setPassword] = useState(user?.password || '');
   const [loading, setLoading] = useState(false);
+  const [showPass, setShowPass] = useState(false);
 
   if (!user) return null;
 
@@ -22,9 +25,26 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
     e.preventDefault();
     setLoading(true);
     try {
-      await update(ref(rtdb, `users/${user.uid}`), { name, role });
+      await update(ref(rtdb, `users/${user.uid}`), { name, role, password });
       showToast('User updated successfully!');
       onClose();
+    } catch (error: any) {
+      showToast(error.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLoginAsUser = async () => {
+    if (!user.password) {
+      showToast('No password stored for this user. Cannot login as user.', 'error');
+      return;
+    }
+    setLoading(true);
+    try {
+      await signInWithEmailAndPassword(auth, user.email, user.password);
+      showToast(`Logged in as ${user.name}`);
+      window.location.href = '/'; // Force reload to apply new auth state
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -88,6 +108,24 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
                 <option value="admin">Admin</option>
               </select>
             </div>
+            <div className="space-y-1 relative">
+              <label className="text-xs font-bold text-slate-400 uppercase">Password</label>
+              <div className="relative">
+                <input 
+                  type={showPass ? 'text' : 'password'} 
+                  className="input-field py-2 pr-10" 
+                  value={password} 
+                  onChange={e => setPassword(e.target.value)} 
+                />
+                <button 
+                  type="button"
+                  onClick={() => setShowPass(!showPass)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors"
+                >
+                  <IconRenderer name={showPass ? 'eye' : 'eye-slash'} className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
             <button 
               type="submit" 
               disabled={loading}
@@ -97,13 +135,23 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
             </button>
           </form>
 
-          <button 
-            onClick={handleDelete}
-            disabled={loading}
-            className="w-full py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-all"
-          >
-            Delete User
-          </button>
+          <div className="grid grid-cols-2 gap-3">
+            <button 
+              onClick={handleLoginAsUser}
+              disabled={loading}
+              className="py-3 bg-navy text-white font-bold rounded-xl transition-all hover:bg-navy-light flex items-center justify-center gap-2 text-sm"
+            >
+              <IconRenderer name="right-to-bracket" className="w-4 h-4" />
+              Login as User
+            </button>
+            <button 
+              onClick={handleDelete}
+              disabled={loading}
+              className="py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-all border border-red-100 text-sm"
+            >
+              Delete User
+            </button>
+          </div>
         </div>
       </motion.div>
     </div>

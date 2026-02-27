@@ -96,6 +96,19 @@ export function useData() {
     return await remove(ref(rtdb, `services/${id}`));
   };
 
+  const addGateway = async (gateway: PaymentGateway) => {
+    const newRef = push(ref(rtdb, 'gateways'));
+    return await set(newRef, { ...gateway, id: newRef.key });
+  };
+
+  const updateGateway = async (id: string, data: Partial<PaymentGateway>) => {
+    return await update(ref(rtdb, `gateways/${id}`), data);
+  };
+
+  const deleteGateway = async (id: string) => {
+    return await remove(ref(rtdb, `gateways/${id}`));
+  };
+
   return { 
     services, 
     applications, 
@@ -107,6 +120,9 @@ export function useData() {
     deleteApplication,
     addService,
     updateService,
-    deleteService
+    deleteService,
+    addGateway,
+    updateGateway,
+    deleteGateway
   };
 }

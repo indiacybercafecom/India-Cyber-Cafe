@@ -5,6 +5,7 @@ export interface UserProfile {
   name: string;
   email: string;
   phone?: string;
+  password?: string;
   role: UserRole;
   avatar?: string;
   createdAt: number;
@@ -19,7 +20,9 @@ export interface ServiceField {
 export interface SubService {
   name: string;
   charge: number;
-  paymentMethods: string[];
+  paymentMethods: string[]; // e.g., ['cash', 'razorpay', 'pay_after_work', 'free']
+  gatewayIds?: string[]; // IDs of specific PaymentGateway objects
+  fields?: ServiceField[];
 }
 
 export interface Service {

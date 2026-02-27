@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Service, UserProfile, SubService, Application } from '../types';
+import { Service, UserProfile, SubService, Application, PaymentGateway } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
 import { rtdb, storage } from '../firebase';
@@ -10,11 +10,12 @@ import { sendEmail, emailTemplates } from '../services/emailService';
 interface ApplyProps {
   service: Service;
   user: UserProfile;
+  gateways: PaymentGateway[];
   onBack: () => void;
   onSuccess: () => void;
 }
 
-export function Apply({ service, user, onBack, onSuccess }: ApplyProps) {
+export function Apply({ service, user, gateways, onBack, onSuccess }: ApplyProps) {
   const [selectedSubService, setSelectedSubService] = useState<SubService | null>(null);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [files, setFiles] = useState<Record<string, File>>({});
@@ -64,48 +65,68 @@ export function Apply({ service, user, onBack, onSuccess }: ApplyProps) {
         status: 'processing',
         date: now.toISOString(),
         notes: [],
-        paymentStatus: selectedSubService ? 'pending' : 'completed'
+        paymentStatus: (selectedSubService?.paymentMethods.includes('free') || selectedSubService?.paymentMethods.includes('cash')) ? 'completed' : 'pending'
       };
 
-      if (selectedSubService && selectedSubService.paymentMethods.includes('razorpay')) {
-        // Handle Razorpay
-        const options = {
-          key: import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd',
-          amount: (selectedSubService.charge || 0) * 100,
-          currency: 'INR',
-          name: 'India Cyber Cafe',
-          description: `Payment for ${service.name}`,
-          handler: async (response: any) => {
-            application.paymentMethod = 'razorpay';
-            application.paymentStatus = 'completed';
-            application.razorpayPaymentId = response.razorpay_payment_id;
-            const newAppRef = push(dbRef(rtdb, 'applications'));
-            await set(newAppRef, application);
-            
-            // Send Confirmation Email
-            sendEmail(user.email, 'Application Received - India Cyber Cafe', emailTemplates.applicationSubmitted(user.name, service.name, newAppRef.key || ''));
-
-            showToast('Payment Successful & Application Submitted!');
-            onSuccess();
-          },
-          prefill: {
-            name: user.name,
-            email: user.email,
-            contact: user.phone || ''
-          },
-          theme: { color: '#FF9933' }
-        };
-        const rzp = new (window as any).Razorpay(options);
-        rzp.open();
-      } else {
+      const submitApp = async (appData: any) => {
         const newAppRef = push(dbRef(rtdb, 'applications'));
-        await set(newAppRef, application);
-
+        await set(newAppRef, appData);
+        
         // Send Confirmation Email
         sendEmail(user.email, 'Application Received - India Cyber Cafe', emailTemplates.applicationSubmitted(user.name, service.name, newAppRef.key || ''));
 
         showToast('Application Submitted Successfully!');
         onSuccess();
+      };
+
+      if (selectedSubService) {
+        const methods = selectedSubService.paymentMethods;
+        
+        if (methods.includes('razorpay')) {
+          // Handle Razorpay
+          const activeRazorpay = gateways.find(g => g.type === 'razorpay' && g.active);
+          const key = activeRazorpay?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd';
+
+          const options = {
+            key,
+            amount: (selectedSubService.charge || 0) * 100,
+            currency: 'INR',
+            name: 'India Cyber Cafe',
+            description: `Payment for ${service.name}`,
+            handler: async (response: any) => {
+              application.paymentMethod = 'razorpay';
+              application.paymentStatus = 'completed';
+              application.razorpayPaymentId = response.razorpay_payment_id;
+              await submitApp(application);
+            },
+            prefill: {
+              name: user.name,
+              email: user.email,
+              contact: user.phone || ''
+            },
+            theme: { color: '#FF9933' }
+          };
+          const rzp = new (window as any).Razorpay(options);
+          rzp.open();
+        } else if (methods.includes('pay_after_work')) {
+          application.paymentMethod = 'pay_after_work';
+          application.paymentStatus = 'pending';
+          await submitApp(application);
+        } else if (methods.includes('cash')) {
+          application.paymentMethod = 'cash';
+          application.paymentStatus = 'completed';
+          await submitApp(application);
+        } else if (methods.includes('free')) {
+          application.paymentMethod = 'free';
+          application.paymentStatus = 'completed';
+          application.charge = 0;
+          await submitApp(application);
+        } else {
+          // Default to simple submission
+          await submitApp(application);
+        }
+      } else {
+        await submitApp(application);
       }
     } catch (error: any) {
       showToast(error.message, 'error');
@@ -136,7 +157,13 @@ export function Apply({ service, user, onBack, onSuccess }: ApplyProps) {
             <select 
               required
               className="input-field"
-              onChange={(e) => setSelectedSubService(service.subservices[parseInt(e.target.value)])}
+              onChange={(e) => {
+                const sub = service.subservices[parseInt(e.target.value)];
+                setSelectedSubService(sub);
+                // Reset form data when sub-service changes
+                setFormData({});
+                setFiles({});
+              }}
             >
               <option value="">-- Choose a sub-service --</option>
               {service.subservices.map((ss, i) => (
@@ -149,7 +176,9 @@ export function Apply({ service, user, onBack, onSuccess }: ApplyProps) {
           </div>
         )}
 
-        {service.fields.map((field, i) => (
+        {(selectedSubService?.fields && selectedSubService.fields.length > 0 
+          ? selectedSubService.fields 
+          : service.fields).map((field, i) => (
           <div key={i} className="space-y-1 sm:space-y-2">
             <label className="block font-bold text-navy text-sm sm:text-base">{field.label} *</label>
             {field.type === 'file' ? (

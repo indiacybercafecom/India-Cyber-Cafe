@@ -43,5 +43,28 @@ export const emailTemplates = {
       <br/>
       <p>Best Regards,<br/>India Cyber Cafe Team</p>
     </div>
+  `,
+  noteAdded: (name: string, serviceName: string, note: string) => `
+    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+      <h2 style="color: #FF9933;">New Update on Your Application</h2>
+      <p>Hello <strong>${name}</strong>,</p>
+      <p>A new note has been added to your application for <strong>${serviceName}</strong>:</p>
+      <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 10px 0; border-left: 4px solid #FF9933;">
+        ${note}
+      </div>
+      <p>Please log in to your dashboard to see more details.</p>
+      <br/>
+      <p>Best Regards,<br/>India Cyber Cafe Team</p>
+    </div>
+  `,
+  operatorAssigned: (name: string, serviceName: string) => `
+    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+      <h2 style="color: #FF9933;">Operator Assigned</h2>
+      <p>Hello <strong>${name}</strong>,</p>
+      <p>An operator has been assigned to process your application for <strong>${serviceName}</strong>.</p>
+      <p>Your request is now being handled with priority.</p>
+      <br/>
+      <p>Best Regards,<br/>India Cyber Cafe Team</p>
+    </div>
   `
 };

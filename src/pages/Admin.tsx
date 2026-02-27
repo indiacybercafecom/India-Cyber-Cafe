@@ -3,6 +3,7 @@ import { Application, UserProfile, Service, PaymentGateway } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
 import { utils, writeFile } from 'xlsx';
+import { GatewayModal } from '../components/GatewayModal';
 
 interface AdminProps {
   applications: Application[];
@@ -15,6 +16,9 @@ interface AdminProps {
   onAddService: () => void;
   onDeleteService: (id: string) => void;
   onManageUser: (user: UserProfile) => void;
+  onAddGateway: (gateway: PaymentGateway) => void;
+  onUpdateGateway: (id: string, gateway: Partial<PaymentGateway>) => void;
+  onDeleteGateway: (id: string) => void;
 }
 
 export function Admin({ 
@@ -27,27 +31,95 @@ export function Admin({
   onEditService, 
   onAddService,
   onDeleteService,
-  onManageUser
+  onManageUser,
+  onAddGateway,
+  onUpdateGateway,
+  onDeleteGateway
 }: AdminProps) {
   const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments'>('apps');
+  const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | null>(null);
+  const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
 
-  const exportToExcel = () => {
-    const data = applications.map(app => ({
-      ID: app.id,
-      User: app.name,
-      Email: app.email,
-      Service: app.serviceName,
-      SubService: app.subserviceName || 'N/A',
-      Charge: app.charge,
-      Status: app.status,
-      Date: new Date(app.date).toLocaleString(),
-      AssignedTo: app.assignedTo || 'Unassigned'
-    }));
-    const ws = utils.json_to_sheet(data);
+  const handleSaveGateway = async (gateway: PaymentGateway) => {
+    try {
+      if (selectedGateway) {
+        await onUpdateGateway(selectedGateway.id, gateway);
+        showToast('Gateway updated successfully!');
+      } else {
+        await onAddGateway(gateway);
+        showToast('Gateway added successfully!');
+      }
+      setIsGatewayModalOpen(false);
+      setSelectedGateway(null);
+    } catch (error: any) {
+      showToast(error.message, 'error');
+    }
+  };
+
+  const handleDeleteGateway = (id: string) => {
+    if (confirm('Are you sure you want to delete this gateway?')) {
+      onDeleteGateway(id);
+      showToast('Gateway deleted');
+    }
+  };
+
+  const exportToExcel = (type: 'apps' | 'users' | 'services' | 'payments' | 'all' = 'apps') => {
     const wb = utils.book_new();
-    utils.book_append_sheet(wb, ws, "Applications");
-    writeFile(wb, `ICC_Applications_${Date.now()}.xlsx`);
-    showToast('Export successful!');
+
+    if (type === 'apps' || type === 'all') {
+      const data = applications.map(app => ({
+        ID: app.id,
+        User: app.name,
+        Email: app.email,
+        Service: app.serviceName,
+        SubService: app.subserviceName || 'N/A',
+        Charge: app.charge,
+        Status: app.status,
+        Date: new Date(app.date).toLocaleString(),
+        AssignedTo: app.assignedTo || 'Unassigned'
+      }));
+      const ws = utils.json_to_sheet(data);
+      utils.book_append_sheet(wb, ws, "Applications");
+    }
+
+    if (type === 'users' || type === 'all') {
+      const data = users.map(u => ({
+        UID: u.uid,
+        Name: u.name,
+        Email: u.email,
+        Phone: u.phone || 'N/A',
+        Role: u.role,
+        Joined: new Date(u.createdAt).toLocaleString()
+      }));
+      const ws = utils.json_to_sheet(data);
+      utils.book_append_sheet(wb, ws, "Users");
+    }
+
+    if (type === 'services' || type === 'all') {
+      const data = services.map(s => ({
+        ID: s.id,
+        Name: s.name,
+        Description: s.description,
+        SubServices: s.subservices.map(ss => `${ss.name} (₹${ss.charge})`).join(', ')
+      }));
+      const ws = utils.json_to_sheet(data);
+      utils.book_append_sheet(wb, ws, "Services");
+    }
+
+    if (type === 'payments' || type === 'all') {
+      const data = gateways.map(g => ({
+        ID: g.id,
+        Name: g.name,
+        Type: g.type,
+        Active: g.active ? 'Yes' : 'No',
+        Description: g.description
+      }));
+      const ws = utils.json_to_sheet(data);
+      utils.book_append_sheet(wb, ws, "Gateways");
+    }
+
+    writeFile(wb, `ICC_Data_${type}_${Date.now()}.xlsx`);
+    showToast(`Export ${type} successful!`);
   };
 
   const handleDeleteApp = (id: string) => {
@@ -70,10 +142,16 @@ export function Admin({
 
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <h2 className="text-4xl font-bold text-navy">Admin Panel</h2>
-        <button onClick={exportToExcel} className="bg-green-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-600/20">
-          <IconRenderer name="excel" className="w-5 h-5" />
-          Export Excel
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => exportToExcel('all')} className="bg-navy text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-navy-light transition-all shadow-lg">
+            <IconRenderer name="file-export" className="w-5 h-5" />
+            Export All Data
+          </button>
+          <button onClick={() => exportToExcel(tab)} className="bg-green-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-600/20">
+            <IconRenderer name="excel" className="w-5 h-5" />
+            Export {tab.charAt(0).toUpperCase() + tab.slice(1)}
+          </button>
+        </div>
       </div>
 
       <div className="flex flex-wrap gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
@@ -277,7 +355,10 @@ export function Admin({
         <div className="space-y-6">
           <div className="flex justify-between items-center">
             <h3 className="text-2xl font-bold text-navy">Payment Gateways</h3>
-            <button className="btn-primary py-2 px-4 text-sm flex items-center gap-2">
+            <button 
+              onClick={() => { setSelectedGateway(null); setIsGatewayModalOpen(true); }}
+              className="btn-primary py-2 px-4 text-sm flex items-center gap-2"
+            >
               <IconRenderer name="plus" className="w-4 h-4" />
               Add Gateway
             </button>
@@ -292,8 +373,18 @@ export function Admin({
                 <h3 className="text-xl font-bold text-navy mb-2">{g.name}</h3>
                 <p className="text-slate-500 text-sm mb-6 line-clamp-2">{g.description}</p>
                 <div className="flex gap-2">
-                  <button className="btn-outline flex-1 py-2 text-xs">Configure</button>
-                  <button className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"><IconRenderer name="trash" className="w-4 h-4" /></button>
+                  <button 
+                    onClick={() => { setSelectedGateway(g); setIsGatewayModalOpen(true); }}
+                    className="btn-outline flex-1 py-2 text-xs"
+                  >
+                    Configure
+                  </button>
+                  <button 
+                    onClick={() => handleDeleteGateway(g.id)}
+                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                  >
+                    <IconRenderer name="trash" className="w-4 h-4" />
+                  </button>
                 </div>
               </div>
             ))}
@@ -304,6 +395,14 @@ export function Admin({
             )}
           </div>
         </div>
+      )}
+
+      {isGatewayModalOpen && (
+        <GatewayModal 
+          gateway={selectedGateway}
+          onClose={() => { setIsGatewayModalOpen(false); setSelectedGateway(null); }}
+          onSave={handleSaveGateway}
+        />
       )}
     </div>
   );

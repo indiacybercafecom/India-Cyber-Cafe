@@ -45,38 +45,39 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         className="fixed top-0 right-0 w-full max-w-[280px] h-full bg-white z-[2000] shadow-2xl flex flex-col overflow-y-auto"
       >
-        <div className="p-8 bg-linear-to-br from-navy to-navy-light text-white relative flex items-center gap-4 shadow-lg">
+        <div className="p-6 bg-linear-to-br from-navy to-navy-light text-white relative flex items-center gap-3 shadow-lg">
           <img 
             src={user?.avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} 
-            className="w-[55px] h-[55px] rounded-full border-3 border-white shadow-lg"
+            className="w-[48px] h-[48px] rounded-full border-2 border-white/50 shadow-md object-cover shrink-0"
           />
-          <div className="flex-1">
-            <h4 className="font-bold text-lg leading-tight flex items-center gap-2">
+          <div className="flex-1 min-w-0 pr-6">
+            <h4 className="font-bold text-base leading-tight truncate flex items-center gap-1.5">
               {user?.name || 'Guest'}
               {user?.email === 'indiacybercafe.com@gmail.com' && (
-                <IconRenderer name="shield-check" className="w-4 h-4 text-primary" />
+                <IconRenderer name="shield-check" className="w-3.5 h-3.5 text-primary shrink-0" />
               )}
             </h4>
-            <span className="badge bg-white/25 mt-1">
+            <span className="inline-block px-2 py-0.5 bg-white/20 rounded text-[10px] font-bold uppercase tracking-wider mt-1">
               {user?.email === 'indiacybercafe.com@gmail.com' ? 'Super Admin' : (user?.role || 'User')}
             </span>
           </div>
           <button 
             onClick={onClose}
-            className="absolute top-4 right-4 w-8 h-8 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all"
+            className="absolute top-4 right-4 w-8 h-8 bg-white/10 rounded-full flex items-center justify-center hover:bg-white/30 transition-all z-20 border border-white/10"
+            title="Close Sidebar"
           >
-            <IconRenderer name="x" className="w-5 h-5" />
+            <IconRenderer name="x" className="w-4 h-4" />
           </button>
         </div>
 
-        <ul className="flex-1 p-4">
+        <ul className="flex-1 p-3">
           {menuItems.map(item => (
-            <li key={item.id} className="mb-2">
+            <li key={item.id} className="mb-1">
               <button
                 onClick={() => { onNavigate(item.id); onClose(); }}
-                className="w-full flex items-center gap-4 p-3 rounded-xl text-slate-600 font-medium transition-all hover:bg-primary/10 hover:text-primary hover:translate-x-1 border-l-4 border-transparent hover:border-primary"
+                className="w-full flex items-center gap-3 p-3 rounded-xl text-slate-600 font-semibold transition-all hover:bg-primary/10 hover:text-primary hover:translate-x-1 border-l-4 border-transparent hover:border-primary text-sm"
               >
-                <IconRenderer name={item.icon} className="w-5 h-5" />
+                <IconRenderer name={item.icon} className="w-5 h-5 opacity-70" />
                 {item.label}
               </button>
             </li>
@@ -85,7 +86,7 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
           <li className="mt-auto pt-4 border-t border-slate-100">
             <button
               onClick={onLogout}
-              className="w-full flex items-center gap-4 p-3 rounded-xl text-red-500 font-medium transition-all hover:bg-red-50 hover:translate-x-1 border-l-4 border-transparent hover:border-red-500"
+              className="w-full flex items-center gap-3 p-3 rounded-xl text-red-500 font-bold transition-all hover:bg-red-50 hover:translate-x-1 border-l-4 border-transparent hover:border-red-500 text-sm"
             >
               <IconRenderer name="right-from-bracket" className="w-5 h-5" />
               Logout

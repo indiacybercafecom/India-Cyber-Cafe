@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { auth, rtdb } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, sendPasswordResetEmail } from 'firebase/auth';
-import { ref, set } from 'firebase/database';
+import { ref, set, get, query, orderByChild, equalTo } from 'firebase/database';
 import { showToast } from './Toast';
 import { IconRenderer } from './Icons';
 import { motion, AnimatePresence } from 'motion/react';
@@ -25,7 +25,25 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     e.preventDefault();
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      let loginEmail = email;
+      
+      // Check if input is a phone number (simple check: only digits and maybe +)
+      const isPhone = /^\+?[\d\s-]{10,}$/.test(email);
+      
+      if (isPhone) {
+        // Find user with this phone number in RTDB
+        const usersRef = ref(rtdb, 'users');
+        const snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(email)));
+        
+        if (snapshot.exists()) {
+          const userData = Object.values(snapshot.val())[0] as any;
+          loginEmail = userData.email;
+        } else {
+          throw new Error('No account found with this phone number.');
+        }
+      }
+
+      await signInWithEmailAndPassword(auth, loginEmail, password);
       showToast('Login Successful!');
       onClose();
     } catch (error: any) {
@@ -129,8 +147,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             <div className="relative border-b-2 border-slate-100 focus-within:border-primary transition-all">
               <IconRenderer name="envelope" className="absolute left-2 top-3 text-slate-400" />
               <input 
-                type="email" 
-                placeholder="Email" 
+                type="text" 
+                placeholder="Email or Mobile" 
                 required 
                 className="w-full pl-10 pr-4 py-3 outline-none bg-transparent text-sm sm:text-base"
                 value={email}

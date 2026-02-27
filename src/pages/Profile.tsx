@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile } from '../types';
 import { auth, rtdb, storage } from '../firebase';
 import { ref as dbRef, update } from 'firebase/database';
@@ -6,6 +6,7 @@ import { updatePassword } from 'firebase/auth';
 import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { showToast } from '../components/Toast';
 import { IconRenderer } from '../components/Icons';
+import { sendEmail } from '../services/emailService';
 
 interface ProfileProps {
   user: UserProfile;
@@ -19,9 +20,20 @@ export function Profile({ user }: ProfileProps) {
   const [loading, setLoading] = useState(false);
   const [avatar, setAvatar] = useState(user.avatar);
 
+  // Sync avatar state with user prop if it changes externally
+  useEffect(() => {
+    setAvatar(user.avatar);
+  }, [user.avatar]);
+
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+
+    // Basic validation
+    if (!file.type.startsWith('image/')) {
+      showToast('Please select an image file', 'error');
+      return;
+    }
 
     setLoading(true);
     try {
@@ -32,8 +44,20 @@ export function Profile({ user }: ProfileProps) {
       await update(dbRef(rtdb, `users/${user.uid}`), { avatar: url });
       setAvatar(url);
       showToast('Profile picture updated!');
+      
+      // Send notification email
+      sendEmail(user.email, 'Profile Picture Updated - India Cyber Cafe', `
+        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <h2 style="color: #FF9933;">Profile Updated</h2>
+          <p>Hello <strong>${user.name}</strong>,</p>
+          <p>Your profile picture has been successfully updated on India Cyber Cafe.</p>
+          <br/>
+          <p>Best Regards,<br/>India Cyber Cafe Team</p>
+        </div>
+      `);
     } catch (error: any) {
-      showToast(error.message, 'error');
+      console.error("Upload error:", error);
+      showToast(error.message || 'Failed to upload image', 'error');
     } finally {
       setLoading(false);
     }
@@ -55,6 +79,17 @@ export function Profile({ user }: ProfileProps) {
       }
 
       showToast('Profile updated successfully!');
+      
+      // Send notification email
+      sendEmail(user.email, 'Profile Details Updated - India Cyber Cafe', `
+        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+          <h2 style="color: #FF9933;">Profile Updated</h2>
+          <p>Hello <strong>${name}</strong>,</p>
+          <p>Your profile details (Name/Phone) have been successfully updated on India Cyber Cafe.</p>
+          <br/>
+          <p>Best Regards,<br/>India Cyber Cafe Team</p>
+        </div>
+      `);
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -66,13 +101,20 @@ export function Profile({ user }: ProfileProps) {
     <div className="max-w-xl mx-auto bg-white p-6 sm:p-10 rounded-3xl shadow-xl space-y-6 sm:space-y-10">
       <div className="text-center space-y-4 sm:space-y-6">
         <div className="relative inline-block group">
-          <img 
-            src={avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} 
-            className="w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-primary shadow-2xl object-cover"
-          />
+          <div className="relative">
+            <img 
+              src={avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} 
+              className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-primary shadow-2xl object-cover transition-opacity ${loading ? 'opacity-50' : 'opacity-100'}`}
+            />
+            {loading && (
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+              </div>
+            )}
+          </div>
           <label 
             htmlFor="avatar-upload"
-            className="absolute bottom-0 right-0 bg-navy text-white w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center cursor-pointer border-4 border-white hover:scale-110 transition-all"
+            className="absolute bottom-0 right-0 bg-navy text-white w-8 h-8 sm:w-10 sm:h-10 rounded-full flex items-center justify-center cursor-pointer border-4 border-white hover:scale-110 transition-all shadow-lg"
           >
             <IconRenderer name="camera" className="w-4 h-4 sm:w-5 sm:h-5" />
           </label>
@@ -80,6 +122,7 @@ export function Profile({ user }: ProfileProps) {
             type="file" 
             id="avatar-upload" 
             className="hidden" 
+            accept="image/*"
             onChange={handleAvatarChange}
             disabled={loading}
           />

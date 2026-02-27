@@ -56,9 +56,25 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
 
       await update(dbRef(rtdb, `applications/${app.id}`), updates);
 
-      // Send Status Update Email
+      // Send Status Update or Note Email
       if (newStatus) {
         sendEmail(app.email, `Status Update: ${app.serviceName}`, emailTemplates.statusUpdate(app.name, app.serviceName, newStatus));
+        
+        // Special case: Pay After Work
+        if (newStatus === 'completed' && app.paymentMethod === 'pay_after_work' && app.paymentStatus === 'pending') {
+          sendEmail(app.email, `Payment Required: ${app.serviceName}`, `
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+              <h2 style="color: #FF9933;">Application Completed - Payment Required</h2>
+              <p>Hello <strong>${app.name}</strong>,</p>
+              <p>Your application for <strong>${app.serviceName}</strong> has been completed successfully.</p>
+              <p>Please log in to your dashboard to make the payment of <strong>₹${app.charge}</strong> to download your documents.</p>
+              <br/>
+              <p>Best Regards,<br/>India Cyber Cafe Team</p>
+            </div>
+          `);
+        }
+      } else if (noteText) {
+        sendEmail(app.email, `New Update: ${app.serviceName}`, emailTemplates.noteAdded(app.name, app.serviceName, noteText));
       }
 
       showToast('Update added successfully!');
@@ -75,6 +91,12 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
   const handleAssign = async (operatorEmail: string) => {
     try {
       await update(dbRef(rtdb, `applications/${app.id}`), { assignedTo: operatorEmail });
+      
+      // Send Assignment Email
+      if (operatorEmail) {
+        sendEmail(app.email, `Operator Assigned: ${app.serviceName}`, emailTemplates.operatorAssigned(app.name, app.serviceName));
+      }
+      
       showToast(`Assigned to ${operatorEmail}`);
     } catch (error: any) {
       showToast(error.message, 'error');
