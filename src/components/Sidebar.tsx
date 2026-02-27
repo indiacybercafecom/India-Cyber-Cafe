@@ -1,0 +1,98 @@
+import { motion, AnimatePresence } from 'motion/react';
+import { UserProfile } from '../types';
+import { IconRenderer } from './Icons';
+
+interface SidebarProps {
+  isOpen: boolean;
+  onClose: () => void;
+  user: UserProfile | null;
+  onNavigate: (page: string) => void;
+  onLogout: () => void;
+}
+
+export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: SidebarProps) {
+  const menuItems = [
+    { id: 'home', label: 'Home', icon: 'house' },
+    { id: 'services', label: 'Services', icon: 'layer-group' },
+    { id: 'track', label: 'My Applications', icon: 'list-check' },
+    { id: 'profile', label: 'Edit Profile', icon: 'user-pen' },
+  ];
+
+  if (user?.role === 'admin') {
+    menuItems.push({ id: 'admin', label: 'Admin Panel', icon: 'shield-halved' });
+  }
+  if (user?.role === 'operator') {
+    menuItems.push({ id: 'operator', label: 'Operator Panel', icon: 'desktop' });
+  }
+
+  return (
+    <>
+      <AnimatePresence>
+        {isOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[1500]"
+          />
+        )}
+      </AnimatePresence>
+
+      <motion.div
+        initial={{ x: 300 }}
+        animate={{ x: isOpen ? 0 : 300 }}
+        transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+        className="fixed top-0 right-0 w-full max-w-[280px] h-full bg-white z-[2000] shadow-2xl flex flex-col overflow-y-auto"
+      >
+        <div className="p-8 bg-linear-to-br from-navy to-navy-light text-white relative flex items-center gap-4 shadow-lg">
+          <img 
+            src={user?.avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} 
+            className="w-[55px] h-[55px] rounded-full border-3 border-white shadow-lg"
+          />
+          <div className="flex-1">
+            <h4 className="font-bold text-lg leading-tight flex items-center gap-2">
+              {user?.name || 'Guest'}
+              {user?.email === 'indiacybercafe.com@gmail.com' && (
+                <IconRenderer name="shield-check" className="w-4 h-4 text-primary" />
+              )}
+            </h4>
+            <span className="badge bg-white/25 mt-1">
+              {user?.email === 'indiacybercafe.com@gmail.com' ? 'Super Admin' : (user?.role || 'User')}
+            </span>
+          </div>
+          <button 
+            onClick={onClose}
+            className="absolute top-4 right-4 w-8 h-8 bg-white/20 rounded-full flex items-center justify-center hover:bg-white/30 transition-all"
+          >
+            <IconRenderer name="x" className="w-5 h-5" />
+          </button>
+        </div>
+
+        <ul className="flex-1 p-4">
+          {menuItems.map(item => (
+            <li key={item.id} className="mb-2">
+              <button
+                onClick={() => { onNavigate(item.id); onClose(); }}
+                className="w-full flex items-center gap-4 p-3 rounded-xl text-slate-600 font-medium transition-all hover:bg-primary/10 hover:text-primary hover:translate-x-1 border-l-4 border-transparent hover:border-primary"
+              >
+                <IconRenderer name={item.icon} className="w-5 h-5" />
+                {item.label}
+              </button>
+            </li>
+          ))}
+          
+          <li className="mt-auto pt-4 border-t border-slate-100">
+            <button
+              onClick={onLogout}
+              className="w-full flex items-center gap-4 p-3 rounded-xl text-red-500 font-medium transition-all hover:bg-red-50 hover:translate-x-1 border-l-4 border-transparent hover:border-red-500"
+            >
+              <IconRenderer name="right-from-bracket" className="w-5 h-5" />
+              Logout
+            </button>
+          </li>
+        </ul>
+      </motion.div>
+    </>
+  );
+}

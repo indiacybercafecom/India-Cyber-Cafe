@@ -1,0 +1,60 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Poppins", ui-sans-serif, system-ui, sans-serif;
+  --color-primary: #FF9933;
+  --color-primary-dark: #FF7700;
+  --color-navy: #000080;
+  --color-navy-light: #4b6cb7;
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 font-sans;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-linear-to-br from-primary to-primary-dark text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary/40 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/50 active:scale-95 disabled:opacity-50;
+  }
+  
+  .btn-outline {
+    @apply border-2 border-navy text-navy px-6 py-3 rounded-xl font-bold transition-all hover:bg-linear-to-br hover:from-navy hover:to-navy-light hover:text-white hover:-translate-y-1 hover:shadow-lg hover:shadow-navy/30 active:scale-95;
+  }
+
+  .card {
+    @apply bg-white p-8 rounded-2xl text-center shadow-md border-2 border-transparent transition-all hover:-translate-y-2 hover:border-primary hover:shadow-xl;
+  }
+
+  .input-field {
+    @apply w-full px-4 py-3 border-2 border-slate-200 rounded-xl outline-hidden transition-all focus:border-primary focus:ring-4 focus:ring-primary/10 text-sm sm:text-base;
+  }
+
+  .badge {
+    @apply px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider text-white;
+  }
+}
+
+.mobile-card-grid {
+  @apply grid grid-cols-1 gap-4 sm:hidden;
+}
+
+.desktop-table {
+  @apply hidden sm:block;
+}
+
+.glass {
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(10px);
+}
+
+@keyframes float {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 3s ease-in-out infinite;
+}

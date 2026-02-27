@@ -1,0 +1,20 @@
+{
+  "short_name": "ICC",
+  "name": "India Cyber Cafe",
+  "icons": [
+    {
+      "src": "https://picsum.photos/seed/icc-icon/192/192",
+      "type": "image/png",
+      "sizes": "192x192"
+    },
+    {
+      "src": "https://picsum.photos/seed/icc-icon/512/512",
+      "type": "image/png",
+      "sizes": "512x512"
+    }
+  ],
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#FF9933",
+  "background_color": "#ffffff"
+}

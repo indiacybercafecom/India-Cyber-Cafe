@@ -1,0 +1,7 @@
+{
+  "name": "India Cyber Cafe",
+  "description": "Digital Seva Simplified - Apply for Government Services, Jobs & Documents online.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
