@@ -92,6 +92,11 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                       newSS[i].charge = parseFloat(e.target.value);
                       setSubservices(newSS);
                     }} />
+                    <input type="number" className="input-field py-2 w-32" placeholder="Orig. Price" value={ss.originalCharge || ''} onChange={e => {
+                      const newSS = [...subservices];
+                      newSS[i].originalCharge = parseFloat(e.target.value);
+                      setSubservices(newSS);
+                    }} />
                     <button onClick={() => setSubservices(subservices.filter((_, idx) => idx !== i))} className="text-red-500 hover:scale-110 transition-all"><IconRenderer name="trash" className="w-5 h-5" /></button>
                   </div>
                   

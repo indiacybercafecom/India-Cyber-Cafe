@@ -20,6 +20,7 @@ export interface ServiceField {
 export interface SubService {
   name: string;
   charge: number;
+  originalCharge?: number;
   paymentMethods: string[]; // e.g., ['cash', 'razorpay', 'pay_after_work', 'free']
   gatewayIds?: string[]; // IDs of specific PaymentGateway objects
   fields?: ServiceField[];

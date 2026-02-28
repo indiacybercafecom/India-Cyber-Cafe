@@ -6,6 +6,7 @@ import { auth, rtdb } from '../firebase';
 import { ref, update, remove } from 'firebase/database';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { showToast } from './Toast';
+import { ConfirmationModal } from './ConfirmationModal';
 
 interface UserManageModalProps {
   user: UserProfile | null;
@@ -18,6 +19,7 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
   const [password, setPassword] = useState(user?.password || '');
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
   if (!user) return null;
 
@@ -53,7 +55,6 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
   };
 
   const handleDelete = async () => {
-    if (!confirm('Are you sure you want to delete this user?')) return;
     setLoading(true);
     try {
       await remove(ref(rtdb, `users/${user.uid}`));
@@ -145,7 +146,7 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
               Login as User
             </button>
             <button 
-              onClick={handleDelete}
+              onClick={() => setIsDeleteConfirmOpen(true)}
               disabled={loading}
               className="py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-all border border-red-100 text-sm"
             >
@@ -153,6 +154,15 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
             </button>
           </div>
         </div>
+
+        <ConfirmationModal 
+          isOpen={isDeleteConfirmOpen}
+          onClose={() => setIsDeleteConfirmOpen(false)}
+          onConfirm={handleDelete}
+          title="Delete User"
+          message={`Are you sure you want to delete ${user.name}? This will permanently remove their account from the system.`}
+          type="danger"
+        />
       </motion.div>
     </div>
   );

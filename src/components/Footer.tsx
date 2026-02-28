@@ -8,24 +8,13 @@ export function Footer() {
         {/* Brand Section */}
         <div className="space-y-6 col-span-1 md:col-span-1">
           <img 
-            src="https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png" 
+            src="http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" 
             alt="India Cyber Cafe" 
-            className="h-14 brightness-0 invert"
+            className="h-16 brightness-0 invert"
           />
           <p className="text-slate-400 text-sm leading-relaxed">
             India's most trusted digital service portal. We help you with government applications, cyber services, and digital solutions with speed and transparency.
           </p>
-          <div className="flex gap-4">
-            <a href="#" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-primary transition-all">
-              <IconRenderer name="facebook" className="w-5 h-5" />
-            </a>
-            <a href="#" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-primary transition-all">
-              <IconRenderer name="twitter" className="w-5 h-5" />
-            </a>
-            <a href="#" className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center hover:bg-primary transition-all">
-              <IconRenderer name="instagram" className="w-5 h-5" />
-            </a>
-          </div>
         </div>
 
         {/* Quick Links */}
@@ -35,7 +24,7 @@ export function Footer() {
             <li><Link to="/" className="hover:text-primary transition-colors">Home</Link></li>
             <li><Link to="/services" className="hover:text-primary transition-colors">All Services</Link></li>
             <li><Link to="/track" className="hover:text-primary transition-colors">Track Application</Link></li>
-            <li><Link to="/profile" className="hover:text-primary transition-colors">My Profile</Link></li>
+            <li><Link to="/legal/about" className="hover:text-primary transition-colors">About Us</Link></li>
           </ul>
         </div>
 
@@ -45,8 +34,9 @@ export function Footer() {
           <ul className="space-y-3 text-slate-400 text-sm">
             <li><Link to="/legal/terms" className="hover:text-primary transition-colors">Terms & Conditions</Link></li>
             <li><Link to="/legal/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
-            <li><Link to="/legal/licenses" className="hover:text-primary transition-colors">Policies & Licenses</Link></li>
-            <li><Link to="/contact" className="hover:text-primary transition-colors">Help Center</Link></li>
+            <li><Link to="/legal/refund" className="hover:text-primary transition-colors">Refund Policy</Link></li>
+            <li><Link to="/legal/disclaimer" className="hover:text-primary transition-colors">Disclaimer</Link></li>
+            <li><Link to="/legal/contact" className="hover:text-primary transition-colors">Contact Us</Link></li>
           </ul>
         </div>
 

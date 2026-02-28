@@ -66,5 +66,27 @@ export const emailTemplates = {
       <br/>
       <p>Best Regards,<br/>India Cyber Cafe Team</p>
     </div>
+  `,
+  adminNewApplication: (userName: string, serviceName: string, appId: string) => `
+    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+      <h2 style="color: #FF9933;">New Application Received</h2>
+      <p>Admin,</p>
+      <p>A new application has been submitted by <strong>${userName}</strong> for <strong>${serviceName}</strong>.</p>
+      <p><strong>Application ID:</strong> ${appId}</p>
+      <p>Please log in to the Admin Panel to review and assign an operator.</p>
+      <br/>
+      <p>Best Regards,<br/>India Cyber Cafe System</p>
+    </div>
+  `,
+  operatorNewAssignment: (operatorName: string, userName: string, serviceName: string, appId: string) => `
+    <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+      <h2 style="color: #FF9933;">New Assignment</h2>
+      <p>Hello <strong>${operatorName}</strong>,</p>
+      <p>You have been assigned a new application from <strong>${userName}</strong> for <strong>${serviceName}</strong>.</p>
+      <p><strong>Application ID:</strong> ${appId}</p>
+      <p>Please log in to the Operator Panel to start processing.</p>
+      <br/>
+      <p>Best Regards,<br/>India Cyber Cafe System</p>
+    </div>
   `
 };

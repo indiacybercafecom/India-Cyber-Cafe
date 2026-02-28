@@ -20,6 +20,17 @@ export function useData() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let servicesLoaded = false;
+    let appsLoaded = false;
+    let usersLoaded = false;
+    let gatewaysLoaded = false;
+
+    const checkLoading = () => {
+      if (servicesLoaded && appsLoaded && usersLoaded && gatewaysLoaded) {
+        setLoading(false);
+      }
+    };
+
     const servicesRef = ref(rtdb, 'services');
     const unsubServices = onValue(servicesRef, (snapshot) => {
       const data = snapshot.val();
@@ -28,6 +39,8 @@ export function useData() {
       } else {
         setServices([]);
       }
+      servicesLoaded = true;
+      checkLoading();
     });
 
     const appsRef = query(ref(rtdb, 'applications'), orderByChild('date'));
@@ -39,6 +52,8 @@ export function useData() {
       } else {
         setApplications([]);
       }
+      appsLoaded = true;
+      checkLoading();
     });
 
     const usersRef = ref(rtdb, 'users');
@@ -49,6 +64,8 @@ export function useData() {
       } else {
         setUsers([]);
       }
+      usersLoaded = true;
+      checkLoading();
     });
 
     const gatewaysRef = ref(rtdb, 'gateways');
@@ -59,9 +76,9 @@ export function useData() {
       } else {
         setGateways([]);
       }
+      gatewaysLoaded = true;
+      checkLoading();
     });
-
-    setLoading(false);
 
     return () => {
       unsubServices();

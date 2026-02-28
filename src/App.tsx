@@ -22,6 +22,7 @@ import { ScrollToTop } from './components/ScrollToTop';
 import { ApplicationDetailsModal } from './components/ApplicationDetailsModal';
 import { ServiceBuilderModal } from './components/ServiceBuilderModal';
 import { UserManageModal } from './components/UserManageModal';
+import { ConfirmationModal, LogoutChoiceModal } from './components/ConfirmationModal';
 import { auth } from './firebase';
 import { signOut } from 'firebase/auth';
 import { showToast } from './components/Toast';
@@ -54,6 +55,8 @@ function AppContent() {
   const [isServiceBuilderOpen, setIsServiceBuilderOpen] = useState(false);
   const [editingService, setEditingService] = useState<Service | null>(null);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
+  const [isLogoutChoiceOpen, setIsLogoutChoiceOpen] = useState(false);
 
   // Back button handling for modals and sidebar
   useEffect(() => {
@@ -66,20 +69,24 @@ function AppContent() {
         setIsServiceBuilderOpen(false);
       } else if (selectedUser) {
         setSelectedUser(null);
+      } else if (isLogoutConfirmOpen) {
+        setIsLogoutConfirmOpen(false);
+      } else if (isLogoutChoiceOpen) {
+        setIsLogoutChoiceOpen(false);
       }
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isSidebarOpen, selectedApp, isServiceBuilderOpen, selectedUser]);
+  }, [isSidebarOpen, selectedApp, isServiceBuilderOpen, selectedUser, isLogoutConfirmOpen, isLogoutChoiceOpen]);
 
   // Push state when modal opens
   useEffect(() => {
-    const isAnyModalOpen = isSidebarOpen || !!selectedApp || isServiceBuilderOpen || !!selectedUser;
+    const isAnyModalOpen = isSidebarOpen || !!selectedApp || isServiceBuilderOpen || !!selectedUser || isLogoutConfirmOpen || isLogoutChoiceOpen;
     if (isAnyModalOpen) {
       window.history.pushState({ modal: true }, '');
     }
-  }, [isSidebarOpen, !!selectedApp, isServiceBuilderOpen, !!selectedUser]);
+  }, [isSidebarOpen, !!selectedApp, isServiceBuilderOpen, !!selectedUser, isLogoutConfirmOpen, isLogoutChoiceOpen]);
 
   const closeSidebar = () => {
     setIsSidebarOpen(false);
@@ -103,9 +110,10 @@ function AppContent() {
   }, [location.pathname, applications, selectedApp]);
   const handleLogout = async () => {
     try {
+      setIsSidebarOpen(false); // Close sidebar immediately
       await signOut(auth);
-      showToast('Logged out successfully!');
-      navigate('/');
+      setIsLogoutConfirmOpen(false);
+      setIsLogoutChoiceOpen(true);
     } catch (error: any) {
       showToast(error.message, 'error');
     }
@@ -126,13 +134,13 @@ function AppContent() {
     }
   };
 
-  if (authLoading) {
+  if (authLoading || dataLoading) {
     return (
       <div className="h-screen w-screen flex flex-col items-center justify-center bg-white">
         <img 
-          src="https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png" 
+          src="http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" 
           alt="Loading..." 
-          className="h-12 mb-6 animate-pulse"
+          className="h-16 mb-6 animate-pulse"
         />
         <div className="w-48 h-1 bg-slate-100 rounded-full overflow-hidden">
           <div className="w-full h-full bg-primary animate-loading-bar" />
@@ -158,7 +166,7 @@ function AppContent() {
         onClose={closeSidebar}
         user={user}
         onNavigate={(page) => navigate(`/${page === 'home' ? '' : page}`)}
-        onLogout={handleLogout}
+        onLogout={() => setIsLogoutConfirmOpen(true)}
       />
 
       <AuthModal 
@@ -172,6 +180,10 @@ function AppContent() {
           <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
           <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
           <Route path="/legal/:type" element={<Legal />} />
+          <Route path="/about" element={<Legal />} />
+          <Route path="/contact" element={<Legal />} />
+          <Route path="/payment-policy" element={<Navigate to="/legal/terms" />} />
+          <Route path="/refund-policy" element={<Navigate to="/legal/refund" />} />
           <Route path="/services" element={<Services services={services} />} />
           <Route path="/services/:serviceId" element={<ServiceDetail services={services} />} />
           <Route path="/services/:serviceId/:subserviceName" element={
@@ -278,6 +290,29 @@ function AppContent() {
       )}
 
       <Footer />
+
+      <ConfirmationModal 
+        isOpen={isLogoutConfirmOpen}
+        onClose={() => setIsLogoutConfirmOpen(false)}
+        onConfirm={handleLogout}
+        title="Logout Confirmation"
+        message="Are you sure you want to logout from your account?"
+        confirmText="Logout"
+        type="warning"
+      />
+
+      <LogoutChoiceModal 
+        isOpen={isLogoutChoiceOpen}
+        onClose={() => setIsLogoutChoiceOpen(false)}
+        onChoice={(choice) => {
+          setIsLogoutChoiceOpen(false);
+          if (choice === 'relogin') {
+            navigate('/login');
+          } else {
+            navigate('/');
+          }
+        }}
+      />
     </div>
   );
 }

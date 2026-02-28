@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Service } from '../types';
 import { IconRenderer } from '../components/Icons';
@@ -11,6 +12,14 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
   const navigate = useNavigate();
   
   const service = services.find(s => s.id === serviceId);
+
+  const slugify = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+
+  useEffect(() => {
+    if (service) {
+      document.title = `${service.name} - India Cyber Cafe`;
+    }
+  }, [service]);
 
   if (!service) {
     return (
@@ -40,13 +49,25 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
             <div 
               key={i} 
               className="bg-white p-6 rounded-2xl shadow-md border border-slate-100 hover:border-primary hover:shadow-xl transition-all cursor-pointer group"
-              onClick={() => navigate(`/services/${service.id}/${ss.name.toLowerCase().replace(/\s+/g, '-')}`)}
+              onClick={() => navigate(`/services/${service.id}/${slugify(ss.name)}`)}
             >
               <div className="flex justify-between items-start mb-4">
                 <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-all">
                   <IconRenderer name="file-circle-plus" className="w-6 h-6" />
                 </div>
-                <span className="text-lg font-bold text-primary">₹{ss.charge}</span>
+                <div className="text-right">
+                  <div className="flex items-center gap-2 justify-end">
+                    {ss.originalCharge && ss.originalCharge > ss.charge && (
+                      <span className="text-xs text-slate-400 line-through">₹{ss.originalCharge}</span>
+                    )}
+                    <span className="text-lg font-bold text-primary">₹{ss.charge}</span>
+                  </div>
+                  {ss.originalCharge && ss.originalCharge > ss.charge && (
+                    <span className="inline-block bg-green-100 text-green-600 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1">
+                      {Math.round(((ss.originalCharge - ss.charge) / ss.originalCharge) * 100)}% OFF
+                    </span>
+                  )}
+                </div>
               </div>
               <h4 className="text-lg font-bold text-navy mb-2">{ss.name}</h4>
               <div className="flex flex-wrap gap-2 mt-4">

@@ -21,17 +21,30 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
   
   const service = services.find(s => s.id === serviceId);
   const [selectedSubService, setSelectedSubService] = useState<SubService | null>(null);
+  const [subServiceNotFound, setSubServiceNotFound] = useState(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [files, setFiles] = useState<Record<string, File>>({});
   const [loading, setLoading] = useState(false);
 
+  const slugify = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+
+  useEffect(() => {
+    if (service) {
+      document.title = `${service.name} - India Cyber Cafe`;
+    }
+  }, [service]);
+
   useEffect(() => {
     if (service && subserviceName) {
       const sub = service.subservices.find(ss => 
-        ss.name.toLowerCase().replace(/\s+/g, '-') === subserviceName
+        slugify(ss.name) === subserviceName
       );
       if (sub) {
         setSelectedSubService(sub);
+        setSubServiceNotFound(false);
+        document.title = `${sub.name} | ${service.name} - India Cyber Cafe`;
+      } else {
+        setSubServiceNotFound(true);
       }
     }
   }, [service, subserviceName]);
@@ -73,9 +86,12 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
         uploadedFiles[label] = url;
       }
 
-      // Generate ID
+      // Generate ID: ICC-DDMMYYYY-HHMMSS-RRRR
       const now = new Date();
-      const appId = `ICC-${now.getTime()}`;
+      const dateStr = now.toLocaleDateString('en-GB').replace(/\//g, ''); // DDMMYYYY
+      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, ''); // HHMMSS
+      const randomStr = Math.floor(1000 + Math.random() * 9000).toString(); // 4 random digits
+      const appId = `ICC-${dateStr}-${timeStr}-${randomStr}`;
 
       const application: Omit<Application, 'id'> = {
         uid: user.uid,
@@ -93,11 +109,14 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
       };
 
       const submitApp = async (appData: any) => {
-        const newAppRef = push(dbRef(rtdb, 'applications'));
-        await set(newAppRef, appData);
+        const appWithId = { ...appData, id: appId };
+        await set(dbRef(rtdb, `applications/${appId}`), appWithId);
         
-        // Send Confirmation Email
-        sendEmail(user.email, 'Application Received - India Cyber Cafe', emailTemplates.applicationSubmitted(user.name, service.name, newAppRef.key || ''));
+        // Send Confirmation Email to User
+        sendEmail(user.email, 'Application Received - India Cyber Cafe', emailTemplates.applicationSubmitted(user.name, service.name, appId));
+        
+        // Notify Admin
+        sendEmail('icc@indiacybercafe.com', 'New Application Received - India Cyber Cafe', emailTemplates.adminNewApplication(user.name, service.name, appId));
 
         showToast('Application Submitted Successfully!');
         onSuccess();
@@ -174,6 +193,16 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
         <p className="text-sm sm:text-base text-slate-500">Please fill in the required details</p>
       </div>
 
+      {subServiceNotFound && (
+        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
+          <IconRenderer name="circle-exclamation" className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+          <div className="text-sm text-amber-800">
+            <p className="font-bold">Sub-service not found</p>
+            <p>The requested sub-service link might be outdated. Please select a service from the list below.</p>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
         {service.subservices.length > 0 && (
           <div className="space-y-1 sm:space-y-2">
@@ -181,78 +210,100 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
             <select 
               required
               className="input-field"
+              value={service.subservices.findIndex(ss => ss.name === selectedSubService?.name)}
               onChange={(e) => {
                 const sub = service.subservices[parseInt(e.target.value)];
                 setSelectedSubService(sub);
                 // Reset form data when sub-service changes
                 setFormData({});
                 setFiles({});
+                if (sub) {
+                  navigate(`/services/${service.id}/${sub.name.toLowerCase().replace(/\s+/g, '-')}`);
+                }
               }}
             >
-              <option value="">-- Choose a sub-service --</option>
+              <option value="-1">-- Choose a sub-service --</option>
               {service.subservices.map((ss, i) => (
-                <option key={i} value={i}>{ss.name} (₹{ss.charge})</option>
+                <option key={i} value={i}>{ss.name}</option>
               ))}
             </select>
             {selectedSubService && (
-              <p className="text-primary font-bold text-sm">Charge: ₹{selectedSubService.charge}</p>
+              <div className="flex items-center gap-3 mt-2">
+                <span className="text-primary font-bold text-lg">₹{selectedSubService.charge}</span>
+                {selectedSubService.originalCharge && selectedSubService.originalCharge > selectedSubService.charge && (
+                  <>
+                    <span className="text-sm text-slate-400 line-through">₹{selectedSubService.originalCharge}</span>
+                    <span className="bg-green-100 text-green-600 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      {Math.round(((selectedSubService.originalCharge - selectedSubService.charge) / selectedSubService.originalCharge) * 100)}% OFF
+                    </span>
+                  </>
+                )}
+              </div>
             )}
           </div>
         )}
 
         {(selectedSubService?.fields && selectedSubService.fields.length > 0 
           ? selectedSubService.fields 
-          : service.fields).map((field, i) => (
-          <div key={i} className="space-y-1 sm:space-y-2">
-            <label className="block font-bold text-navy text-sm sm:text-base">{field.label} *</label>
-            {field.type === 'file' ? (
-              <div className="relative">
-                <input 
-                  type="file" 
+          : service.fields).length > 0 ? (
+          (selectedSubService?.fields && selectedSubService.fields.length > 0 
+            ? selectedSubService.fields 
+            : service.fields).map((field, i) => (
+            <div key={i} className="space-y-1 sm:space-y-2">
+              <label className="block font-bold text-navy text-sm sm:text-base">{field.label} *</label>
+              {field.type === 'file' ? (
+                <div className="relative">
+                  <input 
+                    type="file" 
+                    required
+                    className="hidden" 
+                    id={`file-${i}`}
+                    onChange={e => e.target.files && handleFileChange(field.label, e.target.files[0])}
+                  />
+                  <label 
+                    htmlFor={`file-${i}`}
+                    className="w-full flex flex-col items-center justify-center p-6 sm:p-8 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
+                  >
+                    <IconRenderer name="upload" className="w-6 h-6 sm:w-8 sm:h-8 text-slate-400 mb-2" />
+                    <span className="text-xs sm:text-sm text-slate-500 font-medium text-center">
+                      {files[field.label] ? files[field.label].name : 'Click to upload or drag & drop'}
+                    </span>
+                  </label>
+                </div>
+              ) : field.type === 'textarea' ? (
+                <textarea 
                   required
-                  className="hidden" 
-                  id={`file-${i}`}
-                  onChange={e => e.target.files && handleFileChange(field.label, e.target.files[0])}
+                  placeholder={`Enter ${field.label.toLowerCase()}`}
+                  className="input-field min-h-[80px] sm:min-h-[100px]"
+                  onChange={e => handleInputChange(field.label, e.target.value)}
                 />
-                <label 
-                  htmlFor={`file-${i}`}
-                  className="w-full flex flex-col items-center justify-center p-6 sm:p-8 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
+              ) : field.type === 'select' ? (
+                <select 
+                  required
+                  className="input-field"
+                  onChange={e => handleInputChange(field.label, e.target.value)}
                 >
-                  <IconRenderer name="upload" className="w-6 h-6 sm:w-8 sm:h-8 text-slate-400 mb-2" />
-                  <span className="text-xs sm:text-sm text-slate-500 font-medium text-center">
-                    {files[field.label] ? files[field.label].name : 'Click to upload or drag & drop'}
-                  </span>
-                </label>
-              </div>
-            ) : field.type === 'textarea' ? (
-              <textarea 
-                required
-                placeholder={`Enter ${field.label.toLowerCase()}`}
-                className="input-field min-h-[80px] sm:min-h-[100px]"
-                onChange={e => handleInputChange(field.label, e.target.value)}
-              />
-            ) : field.type === 'select' ? (
-              <select 
-                required
-                className="input-field"
-                onChange={e => handleInputChange(field.label, e.target.value)}
-              >
-                <option value="">Select {field.label}</option>
-                {field.options?.map((opt, idx) => (
-                  <option key={idx} value={opt}>{opt}</option>
-                ))}
-              </select>
-            ) : (
-              <input 
-                type={field.type} 
-                required
-                placeholder={`Enter ${field.label.toLowerCase()}`}
-                className="input-field"
-                onChange={e => handleInputChange(field.label, e.target.value)}
-              />
-            )}
+                  <option value="">Select {field.label}</option>
+                  {field.options?.map((opt, idx) => (
+                    <option key={idx} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ) : (
+                <input 
+                  type={field.type} 
+                  required
+                  placeholder={`Enter ${field.label.toLowerCase()}`}
+                  className="input-field"
+                  onChange={e => handleInputChange(field.label, e.target.value)}
+                />
+              )}
+            </div>
+          ))
+        ) : (
+          <div className="p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center">
+            <p className="text-slate-500">No additional details required for this service.</p>
           </div>
-        ))}
+        )}
 
         <button 
           type="submit" 

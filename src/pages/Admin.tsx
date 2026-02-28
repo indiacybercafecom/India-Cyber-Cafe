@@ -5,6 +5,7 @@ import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
 import { utils, writeFile } from 'xlsx';
 import { GatewayModal } from '../components/GatewayModal';
+import { ConfirmationModal } from '../components/ConfirmationModal';
 
 interface AdminProps {
   applications: Application[];
@@ -41,6 +42,27 @@ export function Admin({
   const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments'>('apps');
   const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | null>(null);
   const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
+  
+  // Search States
+  const [searchApps, setSearchApps] = useState('');
+  const [searchUsers, setSearchUsers] = useState('');
+  const [searchServices, setSearchServices] = useState('');
+  const [searchPayments, setSearchPayments] = useState('');
+
+  // Confirmation Modal State
+  const [confirmConfig, setConfirmConfig] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+    type: 'danger' | 'warning' | 'info';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {},
+    type: 'warning'
+  });
 
   const handleSaveGateway = async (gateway: PaymentGateway) => {
     try {
@@ -59,10 +81,16 @@ export function Admin({
   };
 
   const handleDeleteGateway = (id: string) => {
-    if (confirm('Are you sure you want to delete this gateway?')) {
-      onDeleteGateway(id);
-      showToast('Gateway deleted');
-    }
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Gateway',
+      message: 'Are you sure you want to delete this payment gateway? This action cannot be undone.',
+      type: 'danger',
+      onConfirm: () => {
+        onDeleteGateway(id);
+        showToast('Gateway deleted');
+      }
+    });
   };
 
   const exportToExcel = (type: 'apps' | 'users' | 'services' | 'payments' | 'all' = 'apps') => {
@@ -125,11 +153,54 @@ export function Admin({
   };
 
   const handleDeleteApp = (id: string) => {
-    if (confirm('Are you sure you want to delete this application?')) {
-      onDeleteApp(id);
-      showToast('Application deleted', 'success');
-    }
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Application',
+      message: 'Are you sure you want to delete this application? All associated data will be permanently removed.',
+      type: 'danger',
+      onConfirm: () => {
+        onDeleteApp(id);
+        showToast('Application deleted', 'success');
+      }
+    });
   };
+
+  const handleDeleteService = (id: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Service',
+      message: 'Are you sure you want to delete this service? This will remove it from the public services list.',
+      type: 'danger',
+      onConfirm: () => {
+        onDeleteService(id);
+        showToast('Service deleted', 'success');
+      }
+    });
+  };
+
+  // Filtered Lists
+  const filteredApps = applications.filter(app => 
+    app.id.toLowerCase().includes(searchApps.toLowerCase()) ||
+    app.name.toLowerCase().includes(searchApps.toLowerCase()) ||
+    app.email.toLowerCase().includes(searchApps.toLowerCase()) ||
+    app.serviceName.toLowerCase().includes(searchApps.toLowerCase())
+  );
+
+  const filteredUsers = users.filter(u => 
+    u.name.toLowerCase().includes(searchUsers.toLowerCase()) ||
+    u.email.toLowerCase().includes(searchUsers.toLowerCase()) ||
+    (u.phone && u.phone.includes(searchUsers))
+  );
+
+  const filteredServices = services.filter(s => 
+    s.name.toLowerCase().includes(searchServices.toLowerCase()) ||
+    s.description.toLowerCase().includes(searchServices.toLowerCase())
+  );
+
+  const filteredGateways = gateways.filter(g => 
+    g.name.toLowerCase().includes(searchPayments.toLowerCase()) ||
+    g.type.toLowerCase().includes(searchPayments.toLowerCase())
+  );
 
   return (
     <div className="space-y-8">
@@ -177,196 +248,260 @@ export function Admin({
       </div>
 
       {tab === 'apps' && (
-        <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
-          <div className="overflow-x-auto hidden sm:block">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-navy text-white">
-                  <th className="p-6 font-bold">ID</th>
-                  <th className="p-6 font-bold">User</th>
-                  <th className="p-6 font-bold">Service</th>
-                  <th className="p-6 font-bold">Operator</th>
-                  <th className="p-6 font-bold">Status</th>
-                  <th className="p-6 font-bold">Action</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {applications.map(app => (
-                  <tr key={app.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-6 font-medium text-slate-600">{app.id}</td>
-                    <td className="p-6">
-                      <div className="font-bold text-navy">{app.name}</div>
-                      <div className="text-xs text-slate-400">{app.email}</div>
-                    </td>
-                    <td className="p-6 font-bold text-navy">{app.serviceName}</td>
-                    <td className="p-6 text-slate-500 font-medium">{app.assignedTo || 'Unassigned'}</td>
-                    <td className="p-6">
-                      <span className={`badge ${
-                        app.status === 'completed' ? 'bg-green-500' : 
-                        app.status === 'processing' ? 'bg-orange-500' : 
-                        app.status === 'rejected' ? 'bg-red-500' : 'bg-blue-500'
-                      }`}>
-                        {app.status}
-                      </span>
-                    </td>
-                    <td className="p-6">
-                      <div className="flex gap-2">
-                        <button onClick={() => navigate(`/track/${app.id}`)} className="btn-primary py-2 px-4 text-sm">View</button>
-                        <button onClick={() => handleDeleteApp(app.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all">
-                          <IconRenderer name="trash" className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+        <div className="space-y-4">
+          <div className="relative max-w-md">
+            <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search applications (ID, Name, Email, Service)..." 
+              className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+              value={searchApps}
+              onChange={e => setSearchApps(e.target.value)}
+            />
           </div>
+          <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+            <div className="overflow-x-auto hidden sm:block">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-navy text-white">
+                    <th className="p-6 font-bold">ID</th>
+                    <th className="p-6 font-bold">User</th>
+                    <th className="p-6 font-bold">Service</th>
+                    <th className="p-6 font-bold">Operator</th>
+                    <th className="p-6 font-bold">Status</th>
+                    <th className="p-6 font-bold">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredApps.map(app => (
+                    <tr key={app.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-6 font-medium text-slate-600">{app.id}</td>
+                      <td className="p-6">
+                        <div className="font-bold text-navy">{app.name}</div>
+                        <div className="text-xs text-slate-400">{app.email}</div>
+                      </td>
+                      <td className="p-6 font-bold text-navy">{app.serviceName}</td>
+                      <td className="p-6 text-slate-500 font-medium">{app.assignedTo || 'Unassigned'}</td>
+                      <td className="p-6">
+                        <span className={`badge ${
+                          app.status === 'completed' ? 'bg-green-500' : 
+                          app.status === 'processing' ? 'bg-orange-500' : 
+                          app.status === 'rejected' ? 'bg-red-500' : 'bg-blue-500'
+                        }`}>
+                          {app.status}
+                        </span>
+                      </td>
+                      <td className="p-6">
+                        <div className="flex gap-2">
+                          <button onClick={() => onViewApp(app)} className="btn-primary py-2 px-4 text-sm">View</button>
+                          <button onClick={() => handleDeleteApp(app.id)} className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all">
+                            <IconRenderer name="trash" className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredApps.length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="p-10 text-center text-slate-400 italic">No applications found.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
 
-          {/* Mobile View for Apps */}
-          <div className="sm:hidden divide-y divide-slate-100">
-            {applications.map(app => (
-              <div key={app.id} className="p-6 space-y-4">
-                <div className="flex justify-between items-start">
-                  <div>
-                    <div className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">{app.id}</div>
-                    <div className="font-bold text-navy">{app.name}</div>
-                    <div className="text-xs text-slate-500">{app.serviceName}</div>
+            {/* Mobile View for Apps */}
+            <div className="sm:hidden divide-y divide-slate-100">
+              {filteredApps.map(app => (
+                <div key={app.id} className="p-6 space-y-4">
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <div className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">{app.id}</div>
+                      <div className="font-bold text-navy">{app.name}</div>
+                      <div className="text-xs text-slate-500">{app.serviceName}</div>
+                    </div>
+                    <span className={`badge ${
+                      app.status === 'completed' ? 'bg-green-500' : 
+                      app.status === 'processing' ? 'bg-orange-500' : 
+                      app.status === 'rejected' ? 'bg-red-500' : 'bg-blue-500'
+                    }`}>
+                      {app.status}
+                    </span>
                   </div>
-                  <span className={`badge ${
-                    app.status === 'completed' ? 'bg-green-500' : 
-                    app.status === 'processing' ? 'bg-orange-500' : 
-                    app.status === 'rejected' ? 'bg-red-500' : 'bg-blue-500'
-                  }`}>
-                    {app.status}
-                  </span>
+                  <div className="flex justify-between items-center pt-2">
+                    <div className="text-xs text-slate-400 italic">
+                      By: {app.assignedTo || 'Unassigned'}
+                    </div>
+                    <div className="flex gap-2">
+                      <button onClick={() => onViewApp(app)} className="btn-primary py-2 px-4 text-xs">View</button>
+                      <button onClick={() => handleDeleteApp(app.id)} className="p-2 text-red-500 bg-red-50 rounded-lg">
+                        <IconRenderer name="trash" className="w-4 h-4" />
+                      </button>
+                    </div>
+                  </div>
                 </div>
-                <div className="flex justify-between items-center pt-2">
-                  <div className="text-xs text-slate-400 italic">
-                    By: {app.assignedTo || 'Unassigned'}
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => navigate(`/track/${app.id}`)} className="btn-primary py-2 px-4 text-xs">View</button>
-                    <button onClick={() => handleDeleteApp(app.id)} className="p-2 text-red-500 bg-red-50 rounded-lg">
-                      <IconRenderer name="trash" className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-            ))}
+              ))}
+              {filteredApps.length === 0 && (
+                <div className="p-10 text-center text-slate-400 italic">No applications found.</div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {tab === 'users' && (
-        <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
-          <div className="overflow-x-auto hidden sm:block">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-navy text-white">
-                  <th className="p-6 font-bold">Avatar</th>
-                  <th className="p-6 font-bold">Details</th>
-                  <th className="p-6 font-bold">Role</th>
-                  <th className="p-6 font-bold">Manage</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {users.map(u => (
-                  <tr key={u.uid} className="hover:bg-slate-50 transition-colors">
-                    <td className="p-6">
-                      <img src={u.avatar} className="w-10 h-10 rounded-full object-cover border-2 border-slate-100" />
-                    </td>
-                    <td className="p-6">
+        <div className="space-y-4">
+          <div className="relative max-w-md">
+            <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search users (Name, Email, Phone)..." 
+              className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+              value={searchUsers}
+              onChange={e => setSearchUsers(e.target.value)}
+            />
+          </div>
+          <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+            <div className="overflow-x-auto hidden sm:block">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-navy text-white">
+                    <th className="p-6 font-bold">Avatar</th>
+                    <th className="p-6 font-bold">Details</th>
+                    <th className="p-6 font-bold">Role</th>
+                    <th className="p-6 font-bold">Manage</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredUsers.map(u => (
+                    <tr key={u.uid} className="hover:bg-slate-50 transition-colors">
+                      <td className="p-6">
+                        <img src={u.avatar} className="w-10 h-10 rounded-full object-cover border-2 border-slate-100" />
+                      </td>
+                      <td className="p-6">
+                        <div className="font-bold text-navy">{u.name}</div>
+                        <div className="text-xs text-slate-400">{u.email}</div>
+                      </td>
+                      <td className="p-6">
+                        <span className={`badge ${
+                          u.role === 'admin' ? 'bg-red-500' : 
+                          u.role === 'operator' ? 'bg-blue-500' : 'bg-slate-500'
+                        }`}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="p-6">
+                        <button 
+                          onClick={() => onManageUser(u)}
+                          className="btn-outline py-2 px-4 text-sm"
+                        >
+                          Manage
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                  {filteredUsers.length === 0 && (
+                    <tr>
+                      <td colSpan={4} className="p-10 text-center text-slate-400 italic">No users found.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Mobile View for Users */}
+            <div className="sm:hidden divide-y divide-slate-100">
+              {filteredUsers.map(u => (
+                <div key={u.uid} className="p-6 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <img src={u.avatar} className="w-12 h-12 rounded-full object-cover border-2 border-primary/20" />
+                    <div>
                       <div className="font-bold text-navy">{u.name}</div>
                       <div className="text-xs text-slate-400">{u.email}</div>
-                    </td>
-                    <td className="p-6">
-                      <span className={`badge ${
+                      <span className={`badge mt-1 inline-block ${
                         u.role === 'admin' ? 'bg-red-500' : 
                         u.role === 'operator' ? 'bg-blue-500' : 'bg-slate-500'
                       }`}>
                         {u.role}
                       </span>
-                    </td>
-                    <td className="p-6">
-                      <button 
-                        onClick={() => onManageUser(u)}
-                        className="btn-outline py-2 px-4 text-sm"
-                      >
-                        Manage
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {/* Mobile View for Users */}
-          <div className="sm:hidden divide-y divide-slate-100">
-            {users.map(u => (
-              <div key={u.uid} className="p-6 flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <img src={u.avatar} className="w-12 h-12 rounded-full object-cover border-2 border-primary/20" />
-                  <div>
-                    <div className="font-bold text-navy">{u.name}</div>
-                    <div className="text-xs text-slate-400">{u.email}</div>
-                    <span className={`badge mt-1 inline-block ${
-                      u.role === 'admin' ? 'bg-red-500' : 
-                      u.role === 'operator' ? 'bg-blue-500' : 'bg-slate-500'
-                    }`}>
-                      {u.role}
-                    </span>
+                    </div>
                   </div>
+                  <button 
+                    onClick={() => onManageUser(u)}
+                    className="p-2 bg-slate-100 rounded-xl text-navy"
+                  >
+                    <IconRenderer name="user-pen" className="w-5 h-5" />
+                  </button>
                 </div>
-                <button 
-                  onClick={() => onManageUser(u)}
-                  className="p-2 bg-slate-100 rounded-xl text-navy"
-                >
-                  <IconRenderer name="user-pen" className="w-5 h-5" />
-                </button>
-              </div>
-            ))}
+              ))}
+              {filteredUsers.length === 0 && (
+                <div className="p-10 text-center text-slate-400 italic">No users found.</div>
+              )}
+            </div>
           </div>
         </div>
       )}
 
       {tab === 'services' && (
-        <div className="space-y-6">
-          <button onClick={onAddService} className="btn-primary flex items-center gap-2">
-            <IconRenderer name="plus" className="w-5 h-5" />
-            Create Service
-          </button>
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="relative w-full max-w-md">
+              <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search services..." 
+                className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                value={searchServices}
+                onChange={e => setSearchServices(e.target.value)}
+              />
+            </div>
+            <button onClick={onAddService} className="w-full md:w-auto btn-primary flex items-center justify-center gap-2 px-8">
+              <IconRenderer name="plus" className="w-5 h-5" />
+              Create Service
+            </button>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {services.map(s => (
+            {filteredServices.map(s => (
               <div key={s.id} className="bg-white p-6 rounded-2xl shadow-md border-2 border-transparent hover:border-primary transition-all group relative">
                 <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
                   <button onClick={() => onEditService(s)} className="p-2 bg-primary text-white rounded-lg hover:scale-110 transition-all"><IconRenderer name="user-pen" className="w-4 h-4" /></button>
-                  <button onClick={() => onDeleteService(s.id)} className="p-2 bg-red-500 text-white rounded-lg hover:scale-110 transition-all"><IconRenderer name="trash" className="w-4 h-4" /></button>
+                  <button onClick={() => handleDeleteService(s.id)} className="p-2 bg-red-500 text-white rounded-lg hover:scale-110 transition-all"><IconRenderer name="trash" className="w-4 h-4" /></button>
                 </div>
                 <IconRenderer name={s.icon} className="w-12 h-12 text-primary mb-4" />
                 <h3 className="text-lg font-bold text-navy">{s.name}</h3>
                 <p className="text-slate-400 text-sm mt-2 line-clamp-2">{s.description}</p>
               </div>
             ))}
+            {filteredServices.length === 0 && (
+              <div className="col-span-full p-10 text-center text-slate-400 italic">No services found.</div>
+            )}
           </div>
         </div>
       )}
 
       {tab === 'payments' && (
-        <div className="space-y-6">
-          <div className="flex justify-between items-center">
-            <h3 className="text-2xl font-bold text-navy">Payment Gateways</h3>
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="relative w-full max-w-md">
+              <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search gateways..." 
+                className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                value={searchPayments}
+                onChange={e => setSearchPayments(e.target.value)}
+              />
+            </div>
             <button 
               onClick={() => { setSelectedGateway(null); setIsGatewayModalOpen(true); }}
-              className="btn-primary py-2 px-4 text-sm flex items-center gap-2"
+              className="w-full md:w-auto btn-primary py-3 px-8 text-sm flex items-center justify-center gap-2"
             >
               <IconRenderer name="plus" className="w-4 h-4" />
               Add Gateway
             </button>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {gateways.map(g => (
+            {filteredGateways.map(g => (
               <div key={g.id} className={`bg-white p-6 rounded-2xl shadow-md border-2 transition-all ${g.active ? 'border-green-500' : 'border-slate-100 opacity-60'}`}>
                 <div className="flex justify-between items-start mb-4">
                   <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest bg-slate-50 px-2 py-1 rounded">{g.type}</span>
@@ -390,10 +525,8 @@ export function Admin({
                 </div>
               </div>
             ))}
-            {gateways.length === 0 && (
-              <div className="col-span-full p-10 text-center bg-white rounded-2xl border-2 border-dashed border-slate-200">
-                <p className="text-slate-400">No payment gateways configured yet.</p>
-              </div>
+            {filteredGateways.length === 0 && (
+              <div className="col-span-full p-10 text-center text-slate-400 italic">No gateways found.</div>
             )}
           </div>
         </div>
@@ -406,6 +539,15 @@ export function Admin({
           onSave={handleSaveGateway}
         />
       )}
+
+      <ConfirmationModal 
+        isOpen={confirmConfig.isOpen}
+        onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
+        onConfirm={confirmConfig.onConfirm}
+        title={confirmConfig.title}
+        message={confirmConfig.message}
+        type={confirmConfig.type}
+      />
     </div>
   );
 }

@@ -56,10 +56,36 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
 
       await update(dbRef(rtdb, `applications/${app.id}`), updates);
 
-      // Send Status Update or Note Email
+      // Send Status Update or Note Email to User
       if (newStatus) {
         sendEmail(app.email, `Status Update: ${app.serviceName}`, emailTemplates.statusUpdate(app.name, app.serviceName, newStatus));
         
+        // Notify Admin and Operator
+        const adminEmail = 'icc@indiacybercafe.com';
+        const operatorEmail = app.assignedTo;
+        
+        if (isOperator) {
+          sendEmail(adminEmail, `Operator Status Update: ${app.serviceName}`, `
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+              <h2 style="color: #FF9933;">Operator Status Update</h2>
+              <p>Admin,</p>
+              <p>Operator <strong>${currentUser.name}</strong> updated the status of application <strong>${app.id}</strong> to: <strong>${newStatus}</strong>.</p>
+              <br/>
+              <p>Best Regards,<br/>India Cyber Cafe System</p>
+            </div>
+          `);
+        } else if (isAdmin && operatorEmail) {
+          sendEmail(operatorEmail, `Admin Status Update: ${app.serviceName}`, `
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+              <h2 style="color: #FF9933;">Admin Status Update</h2>
+              <p>Hello,</p>
+              <p>Admin updated the status of application <strong>${app.id}</strong> assigned to you to: <strong>${newStatus}</strong>.</p>
+              <br/>
+              <p>Best Regards,<br/>India Cyber Cafe System</p>
+            </div>
+          `);
+        }
+
         // Special case: Pay After Work
         if (newStatus === 'completed' && app.paymentMethod === 'pay_after_work' && app.paymentStatus === 'pending') {
           sendEmail(app.email, `Payment Required: ${app.serviceName}`, `
@@ -75,6 +101,34 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
         }
       } else if (noteText) {
         sendEmail(app.email, `New Update: ${app.serviceName}`, emailTemplates.noteAdded(app.name, app.serviceName, noteText));
+        
+        // Notify Admin and Operator
+        const adminEmail = 'icc@indiacybercafe.com';
+        const operatorEmail = app.assignedTo;
+        
+        if (isOperator) {
+          sendEmail(adminEmail, `Operator Note Added: ${app.serviceName}`, `
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+              <h2 style="color: #FF9933;">Operator Note Added</h2>
+              <p>Admin,</p>
+              <p>Operator <strong>${currentUser.name}</strong> added a note to application <strong>${app.id}</strong>:</p>
+              <p><em>${noteText}</em></p>
+              <br/>
+              <p>Best Regards,<br/>India Cyber Cafe System</p>
+            </div>
+          `);
+        } else if (isAdmin && operatorEmail) {
+          sendEmail(operatorEmail, `Admin Note Added: ${app.serviceName}`, `
+            <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
+              <h2 style="color: #FF9933;">Admin Note Added</h2>
+              <p>Hello,</p>
+              <p>Admin added a note to application <strong>${app.id}</strong> assigned to you:</p>
+              <p><em>${noteText}</em></p>
+              <br/>
+              <p>Best Regards,<br/>India Cyber Cafe System</p>
+            </div>
+          `);
+        }
       }
 
       showToast('Update added successfully!');
@@ -94,6 +148,10 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       
       // Send Assignment Email
       if (operatorEmail) {
+        const operator = operators.find(op => op.email === operatorEmail);
+        // Notify Operator
+        sendEmail(operatorEmail, `New Assignment: ${app.serviceName}`, emailTemplates.operatorNewAssignment(operator?.name || 'Operator', app.name, app.serviceName, app.id));
+        // Notify User
         sendEmail(app.email, `Operator Assigned: ${app.serviceName}`, emailTemplates.operatorAssigned(app.name, app.serviceName));
       }
       

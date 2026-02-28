@@ -84,6 +84,31 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
           ))}
           
           <li className="mt-auto pt-4 border-t border-slate-100">
+            <div className="px-3 mb-4">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-3">Connect With Us</p>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { name: 'facebook', url: 'https://www.facebook.com/share/17CF8MzE4n/', icon: 'http://indiacybercafe.com/wp-content/uploads/2025/10/facebook.png' },
+                  { name: 'instagram', url: 'https://www.instagram.com/indiacybercafe?igsh=bDVrbGN4eGRucmRp', icon: 'http://indiacybercafe.com/wp-content/uploads/2025/10/instagram.png' },
+                  { name: 'youtube', url: 'https://youtube.com/@india-cybercafe?si=rVycPzAVMzeKy9gA', icon: 'http://indiacybercafe.com/wp-content/uploads/2025/10/youtube.png' },
+                  { name: 'twitter', url: 'https://x.com/indiacybercafe_?t=3Jh0boTTaj_z6uLEBBxLVQ&s=09', icon: 'http://indiacybercafe.com/wp-content/uploads/2025/10/twitter.png' },
+                  { name: 'linkedin', url: 'https://www.linkedin.com/in/india-cyber-cafe-3481b8386?utm_source=share_via&utm_content=profile&utm_medium=member_android', icon: 'http://indiacybercafe.com/wp-content/uploads/2025/10/linkedin.png' },
+                  { name: 'snapchat', url: 'https://www.snapchat.com/add/indiacybercafe?share_id=JDrbhpRfolo&locale=en-IN', icon: 'http://indiacybercafe.com/wp-content/uploads/2025/10/snapchat.png' },
+                  { name: 'telegram', url: 'https://t.me/indiacybercafe', icon: 'http://indiacybercafe.com/wp-content/uploads/2025/10/telegram.png' },
+                  { name: 'whatsapp', url: 'https://whatsapp.com/channel/0029VbAAJQACsU9JgWj4Lq2C', icon: 'http://indiacybercafe.com/wp-content/uploads/2025/10/whatsapp.png' },
+                ].map(social => (
+                  <a 
+                    key={social.name} 
+                    href={social.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center hover:bg-primary/10 transition-all border border-slate-100 group"
+                  >
+                    <img src={social.icon} alt={social.name} className="w-5 h-5 grayscale group-hover:grayscale-0 transition-all" />
+                  </a>
+                ))}
+              </div>
+            </div>
             <button
               onClick={onLogout}
               className="w-full flex items-center gap-3 p-3 rounded-xl text-red-500 font-bold transition-all hover:bg-red-50 hover:translate-x-1 border-l-4 border-transparent hover:border-red-500 text-sm"

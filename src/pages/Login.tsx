@@ -36,7 +36,35 @@ export function Login() {
       showToast('Login Successful!');
       navigate('/');
     } catch (error: any) {
-      showToast(error.message, 'error');
+      let message = 'An unexpected error occurred. Please try again.';
+      
+      // Log error for debugging
+      console.error('Login Error:', error.code, error.message);
+
+      const errorCode = error.code || '';
+      const errorMessage = error.message || '';
+
+      if (
+        errorCode === 'auth/user-not-found' || 
+        errorCode === 'auth/invalid-email' || 
+        errorCode === 'auth/invalid-credential' ||
+        errorMessage.includes('auth/invalid-credential') ||
+        errorMessage.includes('auth/user-not-found')
+      ) {
+        message = 'Invalid email/mobile or password. Please check your credentials and try again.';
+      } else if (errorCode === 'auth/wrong-password' || errorMessage.includes('auth/wrong-password')) {
+        message = 'Incorrect password. Please try again.';
+      } else if (errorCode === 'auth/too-many-requests' || errorMessage.includes('auth/too-many-requests')) {
+        message = 'Too many failed attempts. Your account has been temporarily disabled. Please try again later.';
+      } else if (errorCode === 'auth/network-request-failed' || errorMessage.includes('auth/network-request-failed')) {
+        message = 'Network error. Please check your internet connection.';
+      } else if (errorCode === 'auth/user-disabled' || errorMessage.includes('auth/user-disabled')) {
+        message = 'This account has been disabled. Please contact support.';
+      } else if (errorMessage && !errorMessage.includes('Firebase:')) {
+        message = errorMessage;
+      }
+      
+      showToast(message, 'error');
     } finally {
       setLoading(false);
     }

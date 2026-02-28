@@ -3,12 +3,7 @@
   "name": "India Cyber Cafe",
   "icons": [
     {
-      "src": "https://picsum.photos/seed/icc-icon/192/192",
-      "type": "image/png",
-      "sizes": "192x192"
-    },
-    {
-      "src": "https://picsum.photos/seed/icc-icon/512/512",
+      "src": "http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png",
       "type": "image/png",
       "sizes": "512x512"
     }
