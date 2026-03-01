@@ -24,8 +24,9 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
 
   if (!app) return null;
 
-  const isAdmin = currentUser.role === 'admin';
-  const isOperator = currentUser.role === 'operator';
+  const isAdmin = currentUser?.role === 'admin';
+  const isOperator = currentUser?.role === 'operator';
+  const isStaff = isAdmin || isOperator;
 
   const handleUpdatePaymentStatus = async (status: 'pending' | 'completed') => {
     setLoading(true);
@@ -183,21 +184,42 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                 {app.paymentStatus || 'pending'}
               </span>
             </div>
-            {Object.entries(app.details).map(([key, value]) => (
-              <div key={key} className="flex gap-2">
-                <span className="text-navy font-bold min-w-[140px] capitalize">{key}:</span>
-                <span className="text-slate-600">{String(value)}</span>
-              </div>
-            ))}
           </div>
 
-          {/* Download Section */}
-          <div className="pt-2">
-            <button className="w-full py-3 px-6 border-2 border-navy text-navy font-bold rounded-xl hover:bg-navy hover:text-white transition-all flex items-center justify-center gap-2">
-              <IconRenderer name="download" className="w-5 h-5" />
-              Download File
-            </button>
+          {/* Form Information Section */}
+          <div className="space-y-4 pb-4 border-b border-slate-100">
+            <h4 className="text-lg font-bold text-navy">Form Information</h4>
+            <div className="grid grid-cols-1 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              {Object.entries(app.details).map(([key, value]) => (
+                <div key={key} className="flex flex-col sm:flex-row sm:gap-2 border-b border-slate-200 pb-2 last:border-0 last:pb-0">
+                  <span className="text-navy font-bold min-w-[160px] capitalize text-sm">{key.replace(/_/g, ' ')}:</span>
+                  <span className="text-slate-600 text-sm break-words">
+                    {typeof value === 'string' && (value.startsWith('http') || value.includes('/uploads/')) ? (
+                      <a href={value} target="_blank" rel="noreferrer" className="text-primary hover:underline font-bold flex items-center gap-1">
+                        <IconRenderer name="external-link" className="w-3 h-3" />
+                        View Attachment
+                      </a>
+                    ) : String(value)}
+                  </span>
+                </div>
+              ))}
+            </div>
           </div>
+
+          {/* Download Section - Only for completed files */}
+          {app.fileUrl && (
+            <div className="pt-2">
+              <a 
+                href={app.fileUrl} 
+                target="_blank" 
+                rel="noreferrer"
+                className="w-full py-3 px-6 border-2 border-primary text-primary font-bold rounded-xl hover:bg-primary hover:text-white transition-all flex items-center justify-center gap-2 shadow-sm"
+              >
+                <IconRenderer name="download" className="w-5 h-5" />
+                Download Completed File
+              </a>
+            </div>
+          )}
 
           {/* Notes & History */}
           <div className="space-y-4">
@@ -229,57 +251,62 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
             </div>
           </div>
 
-          {/* Add Note & Update Section */}
-          <div className="space-y-4">
-            <h4 className="text-lg font-bold text-navy">Add Note & Update Status</h4>
-            <div className="space-y-4">
-              <textarea 
-                placeholder="Add a note or reason..."
-                className="w-full p-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all min-h-[100px] text-sm"
-                value={noteText}
-                onChange={e => setNoteText(e.target.value)}
-              />
-              
-              <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2">
-                <label className="text-xs font-bold text-navy">Update Status (Optional):</label>
-                <select 
-                  className="w-full p-3 rounded-lg border border-slate-200 bg-white text-sm outline-none"
-                  value={newStatus}
-                  onChange={e => setNewStatus(e.target.value)}
-                >
-                  <option value="">No Status Change</option>
-                  <option value="processing">Processing</option>
-                  <option value="clarification">Clarification</option>
-                  <option value="completed">Completed</option>
-                  <option value="rejected">Rejected</option>
-                </select>
-              </div>
-
-              <div 
-                onClick={() => fileInputRef.current?.click()}
-                className="p-6 border-2 border-dashed border-orange-200 rounded-xl bg-orange-50/30 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-orange-50 transition-all"
-              >
-                <IconRenderer name="upload" className="w-6 h-6 text-navy" />
-                <span className="text-xs font-medium text-slate-600">
-                  {noteFile ? noteFile.name : 'Click to upload attachment or drag & drop'}
-                </span>
-                <input 
-                  type="file" 
-                  ref={fileInputRef}
-                  className="hidden"
-                  onChange={e => e.target.files && setNoteFile(e.target.files[0])}
+          {/* Add Note & Update Section - Restricted to Admin/Operator */}
+          {isStaff && (
+            <div className="space-y-4 pt-4 border-t border-slate-100">
+              <h4 className="text-lg font-bold text-navy flex items-center gap-2">
+                <IconRenderer name="user-pen" className="w-5 h-5 text-primary" />
+                Admin/Operator Controls
+              </h4>
+              <div className="space-y-4">
+                <textarea 
+                  placeholder="Add a note or reason for the user..."
+                  className="w-full p-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all min-h-[100px] text-sm"
+                  value={noteText}
+                  onChange={e => setNoteText(e.target.value)}
                 />
-              </div>
+                
+                <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2">
+                  <label className="text-xs font-bold text-navy">Update Status (Optional):</label>
+                  <select 
+                    className="w-full p-3 rounded-lg border border-slate-200 bg-white text-sm outline-none"
+                    value={newStatus}
+                    onChange={e => setNewStatus(e.target.value)}
+                  >
+                    <option value="">No Status Change</option>
+                    <option value="processing">Processing</option>
+                    <option value="clarification">Clarification</option>
+                    <option value="completed">Completed</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
 
-              <button 
-                onClick={handleAddNote}
-                disabled={loading}
-                className="w-full py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/20"
-              >
-                {loading ? 'Processing...' : 'Add Note & Update'}
-              </button>
+                <div 
+                  onClick={() => fileInputRef.current?.click()}
+                  className="p-6 border-2 border-dashed border-orange-200 rounded-xl bg-orange-50/30 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-orange-50 transition-all"
+                >
+                  <IconRenderer name="upload" className="w-6 h-6 text-navy" />
+                  <span className="text-xs font-medium text-slate-600">
+                    {noteFile ? noteFile.name : 'Click to upload attachment or drag & drop'}
+                  </span>
+                  <input 
+                    type="file" 
+                    ref={fileInputRef}
+                    className="hidden"
+                    onChange={e => e.target.files && setNoteFile(e.target.files[0])}
+                  />
+                </div>
+
+                <button 
+                  onClick={handleAddNote}
+                  disabled={loading}
+                  className="w-full py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/20"
+                >
+                  {loading ? 'Processing...' : 'Add Note & Update'}
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Admin Specific Controls */}
           {isAdmin && (
@@ -349,6 +376,11 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
               </div>
             </div>
           )}
+        </div>
+        
+        {/* Debug Role Indicator - Subtle */}
+        <div className="p-2 bg-slate-50 border-t border-slate-100 text-[8px] text-slate-300 text-right uppercase tracking-widest">
+          View Mode: {currentUser.role}
         </div>
       </motion.div>
     </div>
