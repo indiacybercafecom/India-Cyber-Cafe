@@ -80,7 +80,7 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
       // Upload files to Server
       const fileEntries = Object.entries(files) as [string, File][];
       for (const [label, file] of fileEntries) {
-        const url = await uploadFile(file);
+        const url = await uploadFile(file, 'applications');
         uploadedFiles[label] = url;
       }
 

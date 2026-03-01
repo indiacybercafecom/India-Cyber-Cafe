@@ -1,17 +1,23 @@
-export async function uploadFile(file: File): Promise<string> {
+export async function uploadFile(file: File, category: string = 'general'): Promise<string> {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('category', category);
 
-  const response = await fetch('/api/upload', {
+  // Use the PHP uploader endpoint
+  const response = await fetch('/uploader/upload.php', {
     method: 'POST',
     body: formData,
   });
 
   if (!response.ok) {
-    const error = await response.json();
-    throw new Error(error.error || 'Upload failed');
+    throw new Error('Upload failed: Server error');
   }
 
   const data = await response.json();
-  return data.url;
+  
+  if (data.status === 'success') {
+    return data.file_url;
+  } else {
+    throw new Error(data.message || 'Upload failed');
+  }
 }

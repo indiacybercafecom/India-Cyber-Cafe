@@ -73,7 +73,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
     try {
       let attachmentUrl = '';
       if (noteFile) {
-        attachmentUrl = await uploadFile(noteFile);
+        attachmentUrl = await uploadFile(noteFile, 'notes');
       }
 
       const newNote: ApplicationNote = {

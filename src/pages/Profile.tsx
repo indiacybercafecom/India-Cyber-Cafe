@@ -43,7 +43,7 @@ export function Profile({ user }: ProfileProps) {
 
     setLoading(true);
     try {
-      const url = await uploadFile(file);
+      const url = await uploadFile(file, 'avatars');
       await update(dbRef(rtdb, `users/${user.uid}`), { avatar: url });
       setAvatar(url);
       showToast('Profile picture updated!');
