@@ -151,7 +151,7 @@ function AppContent() {
       <Navbar 
         user={user} 
         loading={authLoading}
-        onLoginClick={() => navigate('/login')}
+        onLoginClick={() => navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)}
         onMenuClick={() => setIsSidebarOpen(true)}
         onLogoClick={() => navigate('/')}
       />
@@ -180,8 +180,8 @@ function AppContent() {
                 loading={dataLoading}
               />
             } />
-            <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
-            <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+            <Route path="/login" element={<Login user={user} />} />
+            <Route path="/register" element={<Register user={user} />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/legal/:type" element={<Legal />} />
             <Route path="/about" element={<Legal />} />
@@ -209,7 +209,7 @@ function AppContent() {
                   onViewDetails={setSelectedApp}
                   onUpdateApp={updateApplication}
                 />
-              ) : <Navigate to="/" />
+              ) : <Navigate to={`/login?redirect=${encodeURIComponent('/track')}`} />
             } />
             <Route path="/track/:applicationId" element={
               user ? (
@@ -220,7 +220,7 @@ function AppContent() {
                   onViewDetails={setSelectedApp}
                   onUpdateApp={updateApplication}
                 />
-              ) : <Navigate to="/" />
+              ) : <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} />
             } />
             <Route path="/profile" element={user ? <Profile user={user} /> : <Navigate to="/" />} />
             <Route path="/operator" element={

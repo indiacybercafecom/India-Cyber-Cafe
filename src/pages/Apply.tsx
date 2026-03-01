@@ -7,6 +7,7 @@ import { rtdb } from '../firebase';
 import { ref as dbRef, set } from 'firebase/database';
 import { sendEmail, emailTemplates } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
+import { SEO } from '../components/SEO';
 
 interface ApplyProps {
   services: Service[];
@@ -29,12 +30,6 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
   const slugify = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
 
   useEffect(() => {
-    if (service) {
-      document.title = `${service.name} - India Cyber Cafe`;
-    }
-  }, [service]);
-
-  useEffect(() => {
     if (service && subserviceName) {
       const sub = service.subservices.find(ss => 
         slugify(ss.name) === subserviceName
@@ -42,7 +37,6 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
       if (sub) {
         setSelectedSubService(sub);
         setSubServiceNotFound(false);
-        document.title = `${sub.name} | ${service.name} - India Cyber Cafe`;
       } else {
         setSubServiceNotFound(true);
       }
@@ -181,6 +175,12 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
 
   return (
     <div className="max-w-2xl mx-auto bg-white p-6 sm:p-12 rounded-3xl shadow-xl space-y-6 sm:space-y-8">
+      <SEO 
+        title={selectedSubService ? `${selectedSubService.name} - ${service.name}` : service.name}
+        description={`Apply for ${selectedSubService?.name || service.name} online at India Cyber Cafe. Fast and secure digital services.`}
+        keywords={`${selectedSubService?.name || ''}, ${service.name}, online application, India Cyber Cafe`}
+        url={`https://indiacybercafe.com/services/${service.id}/${subserviceName || ''}`}
+      />
       <button 
         onClick={() => navigate(`/services/${service.id}`)}
         className="flex items-center gap-2 text-navy font-bold hover:text-primary transition-all text-sm sm:text-base"

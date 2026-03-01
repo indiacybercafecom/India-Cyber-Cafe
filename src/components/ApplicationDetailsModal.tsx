@@ -140,64 +140,64 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[3000] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[3000] flex items-center justify-center p-2 sm:p-4">
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-white rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl flex flex-col max-h-[95vh]"
+        className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl flex flex-col max-h-[98vh] sm:max-h-[95vh]"
       >
-        <div className="p-6 bg-white border-b border-slate-100 flex justify-between items-center">
-          <h3 className="text-2xl font-bold text-navy">Application Details</h3>
-          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full transition-all">
-            <IconRenderer name="x" className="w-6 h-6 text-slate-400" />
+        <div className="p-4 sm:p-6 bg-white border-b border-slate-100 flex justify-between items-center">
+          <h3 className="text-xl sm:text-2xl font-bold text-navy">Application Details</h3>
+          <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-full transition-all">
+            <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4 sm:space-y-6">
           {/* Main Info Section */}
-          <div className="space-y-3 pb-4 border-b border-slate-100">
-            <div className="flex gap-2">
-              <span className="text-navy font-bold min-w-[140px]">User:</span>
-              <span className="text-slate-600">{app.name}</span>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 sm:gap-y-3 pb-4 border-b border-slate-100">
+            <div className="flex justify-between sm:justify-start gap-2">
+              <span className="text-navy font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[140px]">User:</span>
+              <span className="text-slate-600 text-xs sm:text-sm">{app.name}</span>
             </div>
-            <div className="flex gap-2">
-              <span className="text-navy font-bold min-w-[140px]">Sub-Service:</span>
-              <span className="text-slate-600">{app.subserviceName || app.serviceName}</span>
+            <div className="flex justify-between sm:justify-start gap-2">
+              <span className="text-navy font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[140px]">Sub-Service:</span>
+              <span className="text-slate-600 text-xs sm:text-sm">{app.subserviceName || app.serviceName}</span>
             </div>
-            <div className="flex gap-2">
-              <span className="text-navy font-bold min-w-[140px]">Charge:</span>
-              <span className="text-slate-600">₹{app.charge}</span>
+            <div className="flex justify-between sm:justify-start gap-2">
+              <span className="text-navy font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[140px]">Charge:</span>
+              <span className="text-slate-600 text-xs sm:text-sm">₹{app.charge}</span>
             </div>
-            <div className="flex gap-2 items-center">
-              <span className="text-navy font-bold min-w-[140px]">Application Status:</span>
-              <span className={`px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-wider ${getStatusBadge(app.status)}`}>
+            <div className="flex justify-between sm:justify-start gap-2 items-center">
+              <span className="text-navy font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[140px]">Status:</span>
+              <span className={`px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-bold text-white uppercase tracking-wider ${getStatusBadge(app.status)}`}>
                 {app.status}
               </span>
             </div>
-            <div className="flex gap-2">
-              <span className="text-navy font-bold min-w-[140px]">Payment Method:</span>
-              <span className="text-slate-600 capitalize">{app.paymentMethod?.replace(/_/g, ' ')}</span>
+            <div className="flex justify-between sm:justify-start gap-2">
+              <span className="text-navy font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[140px]">Payment:</span>
+              <span className="text-slate-600 text-xs sm:text-sm capitalize">{app.paymentMethod?.replace(/_/g, ' ')}</span>
             </div>
-            <div className="flex gap-2 items-center">
-              <span className="text-navy font-bold min-w-[140px]">Payment Status:</span>
-              <span className={`px-3 py-1 rounded-lg text-[10px] font-bold text-white uppercase tracking-wider ${app.paymentStatus === 'completed' ? 'bg-green-500' : 'bg-orange-500'}`}>
+            <div className="flex justify-between sm:justify-start gap-2 items-center">
+              <span className="text-navy font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[140px]">Pay Status:</span>
+              <span className={`px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-bold text-white uppercase tracking-wider ${app.paymentStatus === 'completed' ? 'bg-green-500' : 'bg-orange-500'}`}>
                 {app.paymentStatus || 'pending'}
               </span>
             </div>
           </div>
 
           {/* Form Information Section */}
-          <div className="space-y-4 pb-4 border-b border-slate-100">
-            <h4 className="text-lg font-bold text-navy">Form Information</h4>
-            <div className="grid grid-cols-1 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+          <div className="space-y-2 sm:space-y-4 pb-4 border-b border-slate-100">
+            <h4 className="text-base sm:text-lg font-bold text-navy">Form Information</h4>
+            <div className="grid grid-cols-1 gap-1.5 sm:gap-3 bg-slate-50 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100">
               {Object.entries(app.details).map(([key, value]) => (
-                <div key={key} className="flex flex-col sm:flex-row sm:gap-2 border-b border-slate-200 pb-2 last:border-0 last:pb-0">
-                  <span className="text-navy font-bold min-w-[160px] capitalize text-sm">{key.replace(/_/g, ' ')}:</span>
-                  <span className="text-slate-600 text-sm break-words">
+                <div key={key} className="flex flex-col sm:flex-row sm:gap-2 border-b border-slate-200 pb-1 sm:pb-2 last:border-0 last:pb-0">
+                  <span className="text-navy font-bold min-w-[120px] sm:min-w-[160px] capitalize text-[10px] sm:text-sm">{key.replace(/_/g, ' ')}:</span>
+                  <span className="text-slate-600 text-[10px] sm:text-sm break-words">
                     {typeof value === 'string' && (value.startsWith('http') || value.includes('/uploads/')) ? (
                       <a href={value} target="_blank" rel="noreferrer" className="text-primary hover:underline font-bold flex items-center gap-1">
                         <IconRenderer name="external-link" className="w-3 h-3" />
-                        View Attachment
+                        View
                       </a>
                     ) : String(value)}
                   </span>
@@ -208,34 +208,34 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
 
           {/* Download Section - Only for completed files */}
           {app.fileUrl && (
-            <div className="pt-2">
+            <div className="pt-1 sm:pt-2">
               <a 
                 href={app.fileUrl} 
                 target="_blank" 
                 rel="noreferrer"
-                className="w-full py-3 px-6 border-2 border-primary text-primary font-bold rounded-xl hover:bg-primary hover:text-white transition-all flex items-center justify-center gap-2 shadow-sm"
+                className="w-full py-2.5 sm:py-3 px-4 sm:px-6 border-2 border-primary text-primary font-bold rounded-xl hover:bg-primary hover:text-white transition-all flex items-center justify-center gap-2 shadow-sm text-sm sm:text-base"
               >
-                <IconRenderer name="download" className="w-5 h-5" />
+                <IconRenderer name="download" className="w-4 h-4 sm:w-5 sm:h-5" />
                 Download Completed File
               </a>
             </div>
           )}
 
           {/* Notes & History */}
-          <div className="space-y-4">
-            <h4 className="text-lg font-bold text-navy">Notes & History</h4>
-            <div className="bg-slate-50 rounded-2xl p-6 min-h-[100px] border border-slate-100">
+          <div className="space-y-2 sm:space-y-4">
+            <h4 className="text-base sm:text-lg font-bold text-navy">Notes & History</h4>
+            <div className="bg-slate-50 rounded-xl sm:rounded-2xl p-4 sm:p-6 min-h-[80px] sm:min-h-[100px] border border-slate-100">
               {app.notes && app.notes.length > 0 ? (
-                <div className="space-y-4">
+                <div className="space-y-3 sm:space-y-4">
                   {app.notes.map((note, i) => (
-                    <div key={i} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
+                    <div key={i} className="bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-slate-100">
                       <div className="flex justify-between items-start mb-1">
-                        <span className="text-xs font-bold text-navy">{note.by}</span>
-                        <span className="text-[10px] text-slate-400">{note.time}</span>
+                        <span className="text-[10px] sm:text-xs font-bold text-navy">{note.by}</span>
+                        <span className="text-[8px] sm:text-[10px] text-slate-400">{note.time}</span>
                       </div>
-                      <p className="text-sm text-slate-600">{note.text}</p>
+                      <p className="text-xs sm:text-sm text-slate-600">{note.text}</p>
                       {note.attachment && (
-                        <a href={note.attachment} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-[10px] font-bold text-primary hover:underline">
+                        <a href={note.attachment} target="_blank" rel="noreferrer" className="mt-1.5 sm:mt-2 inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-bold text-primary hover:underline">
                           <IconRenderer name="download" className="w-3 h-3" />
                           {note.attachmentName || 'Attachment'}
                         </a>
@@ -244,7 +244,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                   ))}
                 </div>
               ) : (
-                <div className="flex items-center justify-center h-full text-slate-400 text-sm italic">
+                <div className="flex items-center justify-center h-full text-slate-400 text-xs sm:text-sm italic">
                   No notes yet
                 </div>
               )}
@@ -253,23 +253,23 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
 
           {/* Add Note & Update Section - Restricted to Admin/Operator */}
           {isStaff && (
-            <div className="space-y-4 pt-4 border-t border-slate-100">
-              <h4 className="text-lg font-bold text-navy flex items-center gap-2">
-                <IconRenderer name="user-pen" className="w-5 h-5 text-primary" />
+            <div className="space-y-3 sm:space-y-4 pt-4 border-t border-slate-100">
+              <h4 className="text-base sm:text-lg font-bold text-navy flex items-center gap-2">
+                <IconRenderer name="user-pen" className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                 Admin/Operator Controls
               </h4>
-              <div className="space-y-4">
+              <div className="space-y-3 sm:space-y-4">
                 <textarea 
                   placeholder="Add a note or reason for the user..."
-                  className="w-full p-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all min-h-[100px] text-sm"
+                  className="w-full p-3 sm:p-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all min-h-[80px] sm:min-h-[100px] text-xs sm:text-sm"
                   value={noteText}
                   onChange={e => setNoteText(e.target.value)}
                 />
                 
-                <div className="p-4 bg-blue-50/50 rounded-xl border border-blue-100 space-y-2">
-                  <label className="text-xs font-bold text-navy">Update Status (Optional):</label>
+                <div className="p-3 sm:p-4 bg-blue-50/50 rounded-xl border border-blue-100 space-y-1.5 sm:space-y-2">
+                  <label className="text-[10px] sm:text-xs font-bold text-navy">Update Status (Optional):</label>
                   <select 
-                    className="w-full p-3 rounded-lg border border-slate-200 bg-white text-sm outline-none"
+                    className="w-full p-2 sm:p-3 rounded-lg border border-slate-200 bg-white text-xs sm:text-sm outline-none"
                     value={newStatus}
                     onChange={e => setNewStatus(e.target.value)}
                   >
@@ -283,11 +283,11 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
 
                 <div 
                   onClick={() => fileInputRef.current?.click()}
-                  className="p-6 border-2 border-dashed border-orange-200 rounded-xl bg-orange-50/30 flex flex-col items-center justify-center gap-2 cursor-pointer hover:bg-orange-50 transition-all"
+                  className="p-4 sm:p-6 border-2 border-dashed border-orange-200 rounded-xl bg-orange-50/30 flex flex-col items-center justify-center gap-1.5 sm:gap-2 cursor-pointer hover:bg-orange-50 transition-all"
                 >
-                  <IconRenderer name="upload" className="w-6 h-6 text-navy" />
-                  <span className="text-xs font-medium text-slate-600">
-                    {noteFile ? noteFile.name : 'Click to upload attachment or drag & drop'}
+                  <IconRenderer name="upload" className="w-5 h-5 sm:w-6 sm:h-6 text-navy" />
+                  <span className="text-[10px] sm:text-xs font-medium text-slate-600 text-center">
+                    {noteFile ? noteFile.name : 'Click to upload attachment'}
                   </span>
                   <input 
                     type="file" 
@@ -300,7 +300,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                 <button 
                   onClick={handleAddNote}
                   disabled={loading}
-                  className="w-full py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/20"
+                  className="w-full py-2.5 sm:py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/20 text-sm sm:text-base"
                 >
                   {loading ? 'Processing...' : 'Add Note & Update'}
                 </button>
@@ -310,11 +310,11 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
 
           {/* Admin Specific Controls */}
           {isAdmin && (
-            <div className="space-y-6 pt-4 border-t border-slate-100">
-              <div className="space-y-2">
-                <label className="text-sm font-bold text-navy">Assign to Operator:</label>
+            <div className="space-y-4 sm:space-y-6 pt-4 border-t border-slate-100">
+              <div className="space-y-1.5 sm:space-y-2">
+                <label className="text-xs sm:text-sm font-bold text-navy">Assign to Operator:</label>
                 <select 
-                  className="w-full p-3 rounded-xl border border-slate-200 bg-white text-sm outline-none"
+                  className="w-full p-2.5 sm:p-3 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm outline-none"
                   value={app.assignedTo || ''}
                   onChange={(e) => handleAssign(e.target.value)}
                 >
@@ -325,50 +325,50 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                 </select>
               </div>
 
-              <div className="space-y-3">
-                <h4 className="text-sm font-bold text-navy">Update Payment Status:</h4>
-                <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2 sm:space-y-3">
+                <h4 className="text-xs sm:text-sm font-bold text-navy">Update Payment Status:</h4>
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <button 
                     onClick={() => handleUpdatePaymentStatus('completed')}
-                    className="py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all flex items-center justify-center gap-2 text-sm"
+                    className="py-2.5 sm:py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
                   >
-                    <IconRenderer name="check" className="w-4 h-4" />
-                    Mark as Paid
+                    <IconRenderer name="check" className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    Mark Paid
                   </button>
                   <button 
                     onClick={() => handleUpdatePaymentStatus('pending')}
-                    className="py-3 border-2 border-navy text-navy font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-2 text-sm"
+                    className="py-2.5 sm:py-3 border-2 border-navy text-navy font-bold rounded-xl hover:bg-slate-50 transition-all flex items-center justify-center gap-1.5 sm:gap-2 text-xs sm:text-sm"
                   >
-                    <IconRenderer name="clock" className="w-4 h-4" />
-                    Mark as Pending
+                    <IconRenderer name="clock" className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                    Mark Pending
                   </button>
                 </div>
               </div>
 
-              <div className="space-y-3">
-                <h4 className="text-sm font-bold text-navy">Update Status:</h4>
-                <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2 sm:space-y-3">
+                <h4 className="text-xs sm:text-sm font-bold text-navy">Quick Status Update:</h4>
+                <div className="grid grid-cols-2 gap-2 sm:gap-4">
                   <button 
                     onClick={() => handleUpdateStatusDirect('processing')}
-                    className="py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all text-sm"
+                    className="py-2 sm:py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all text-[10px] sm:text-sm"
                   >
                     Processing
                   </button>
                   <button 
                     onClick={() => handleUpdateStatusDirect('clarification')}
-                    className="py-3 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-600 transition-all text-sm"
+                    className="py-2 sm:py-3 bg-blue-500 text-white font-bold rounded-xl hover:bg-blue-600 transition-all text-[10px] sm:text-sm"
                   >
                     Clarification
                   </button>
                   <button 
                     onClick={() => handleUpdateStatusDirect('completed')}
-                    className="py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-all text-sm"
+                    className="py-2 sm:py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 transition-all text-[10px] sm:text-sm"
                   >
                     Completed
                   </button>
                   <button 
                     onClick={() => handleUpdateStatusDirect('rejected')}
-                    className="py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all text-sm"
+                    className="py-2 sm:py-3 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-all text-[10px] sm:text-sm"
                   >
                     Rejected
                   </button>

@@ -26,7 +26,7 @@ export function Track({ applications, user, gateways, onViewDetails, onUpdateApp
         onViewDetails(app);
       }
     }
-  }, [applicationId, applications]);
+  }, [applicationId]); // Only trigger on ID change to prevent loops
 
   const filteredApps = applications.filter(app => {
     const matchesSearch = 

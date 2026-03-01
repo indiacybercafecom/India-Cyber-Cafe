@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Service } from '../types';
 import { IconRenderer } from '../components/Icons';
+import { SEO } from '../components/SEO';
 
 interface ServiceDetailProps {
   services: Service[];
@@ -15,12 +16,6 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
 
   const slugify = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
 
-  useEffect(() => {
-    if (service) {
-      document.title = `${service.name} - India Cyber Cafe`;
-    }
-  }, [service]);
-
   if (!service) {
     return (
       <div className="text-center py-20">
@@ -32,6 +27,12 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
 
   return (
     <div className="space-y-8 sm:space-y-12">
+      <SEO 
+        title={`${service.name} Services`}
+        description={service.description}
+        keywords={`${service.name}, ${service.subservices.map(ss => ss.name).join(', ')}, India Cyber Cafe`}
+        url={`https://indiacybercafe.com/services/${service.id}`}
+      />
       <div className="flex flex-col sm:flex-row items-center gap-6 bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
         <div className="w-20 h-20 sm:w-24 sm:h-24 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center shrink-0">
           <IconRenderer name={service.icon} className="w-10 h-10 sm:w-12 sm:h-12 text-navy" />

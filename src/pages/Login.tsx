@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { auth, rtdb } from '../firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
@@ -6,8 +6,13 @@ import { ref, get, query, orderByChild, equalTo } from 'firebase/database';
 import { showToast } from '../components/Toast';
 import { IconRenderer } from '../components/Icons';
 import { motion } from 'motion/react';
+import { UserProfile } from '../types';
 
-export function Login() {
+interface LoginProps {
+  user: UserProfile | null;
+}
+
+export function Login({ user }: LoginProps) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -16,6 +21,12 @@ export function Login() {
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
   const redirectPath = searchParams.get('redirect') || '/';
+
+  useEffect(() => {
+    if (user) {
+      navigate(redirectPath, { replace: true });
+    }
+  }, [user, navigate, redirectPath]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -136,7 +147,7 @@ export function Login() {
           <div className="mt-8 text-center p-5 bg-linear-to-br from-primary/5 to-navy/5 rounded-2xl border border-primary/10">
             <p className="text-slate-500 text-sm mb-2">New to India Cyber Cafe?</p>
             <Link 
-              to="/register" 
+              to={`/register?redirect=${encodeURIComponent(redirectPath)}`} 
               className="text-primary font-bold hover:text-primary-dark transition-all inline-block bg-primary/10 px-6 py-2 rounded-lg border border-primary/20"
             >
               Create Account

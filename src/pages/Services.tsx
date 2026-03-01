@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Service } from '../types';
 import { IconRenderer } from '../components/Icons';
+import { SEO } from '../components/SEO';
 
 interface ServicesProps {
   services: Service[];
@@ -19,6 +20,11 @@ export function Services({ services }: ServicesProps) {
 
   return (
     <div className="space-y-6 sm:space-y-10">
+      <SEO 
+        title="All Services"
+        description="Explore all digital services provided by India Cyber Cafe. From government documents to job applications, we handle it all."
+        url="https://indiacybercafe.com/services"
+      />
       <div className="text-center space-y-2 sm:space-y-4">
         <h2 className="text-2xl sm:text-4xl font-bold text-navy">Select Service</h2>
         <p className="text-sm sm:text-base text-slate-500">Choose the service you want to apply for</p>

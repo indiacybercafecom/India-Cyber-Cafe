@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
 import { Service } from '../types';
 import { ServiceSkeleton } from '../components/Skeleton';
+import { SEO } from '../components/SEO';
 
 interface HomeProps {
   onNavigate: (page: string) => void;
@@ -22,6 +23,10 @@ export function Home({ onNavigate, services, onSelectService, loading }: HomePro
 
   return (
     <div className="space-y-8 sm:space-y-12">
+      <SEO 
+        title="India Cyber Cafe - Digital Seva Simplified"
+        description="Apply for Government Services, Jobs & Documents online with India's trusted digital partner. Fast, secure, and reliable digital services."
+      />
       {/* Hero Section */}
       <section className="bg-white p-6 sm:p-10 lg:p-12 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 md:gap-10 border border-slate-100">
         <div className="flex-1 space-y-3 sm:space-y-5 text-center md:text-left">

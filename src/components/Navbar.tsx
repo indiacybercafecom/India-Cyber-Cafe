@@ -26,22 +26,24 @@ export function Navbar({ user, loading, onLoginClick, onMenuClick, onLogoClick }
           <div className="w-24 h-10 bg-slate-100 animate-pulse rounded-full" />
         ) : !user ? (
           <button 
-            className="border-2 border-navy text-navy px-4 sm:px-6 py-1.5 sm:py-2 rounded-full text-sm sm:text-base font-semibold transition-all hover:bg-navy hover:text-white"
+            className="btn-outline px-4 sm:px-6 py-1.5 sm:py-2 rounded-full text-sm sm:text-base font-semibold"
             onClick={onLoginClick}
           >
             Login
           </button>
         ) : (
           <div 
-            className="cursor-pointer transition-transform hover:scale-110"
+            className="flex items-center gap-2 bg-slate-100/50 hover:bg-slate-100 p-1 pr-3 rounded-full cursor-pointer transition-all border border-slate-200 group"
             onClick={onMenuClick}
           >
             <img 
               src={user.avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} 
               alt={user.name}
-              className="w-[35px] h-[35px] sm:w-[45px] sm:h-[45px] rounded-full border-2 border-primary"
+              className="w-[32px] h-[32px] sm:w-[40px] sm:h-[40px] rounded-full border-2 border-white shadow-sm group-hover:border-primary transition-all"
               referrerPolicy="no-referrer"
             />
+            <span className="hidden sm:inline text-xs font-bold text-navy uppercase tracking-wider">Menu</span>
+            <IconRenderer name="chevron-down" className="w-3 h-3 text-slate-400 group-hover:text-primary transition-all" />
           </div>
         )}
       </div>

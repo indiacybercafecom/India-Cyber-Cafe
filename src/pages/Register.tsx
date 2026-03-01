@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { auth, rtdb } from '../firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { ref, set } from 'firebase/database';
@@ -7,8 +7,13 @@ import { showToast } from '../components/Toast';
 import { IconRenderer } from '../components/Icons';
 import { motion } from 'motion/react';
 import { sendEmail, emailTemplates } from '../services/emailService';
+import { UserProfile } from '../types';
 
-export function Register() {
+interface RegisterProps {
+  user: UserProfile | null;
+}
+
+export function Register({ user }: RegisterProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
@@ -16,6 +21,15 @@ export function Register() {
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const redirectPath = searchParams.get('redirect') || '/';
+
+  useEffect(() => {
+    if (user) {
+      navigate(redirectPath, { replace: true });
+    }
+  }, [user, navigate, redirectPath]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,7 +66,7 @@ export function Register() {
       `);
 
       showToast(`Account Created Successfully as ${role}!`);
-      navigate('/');
+      navigate(redirectPath);
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -141,7 +155,7 @@ export function Register() {
           <div className="mt-8 text-center p-5 bg-linear-to-br from-primary/5 to-navy/5 rounded-2xl border border-primary/10">
             <p className="text-slate-500 text-sm mb-2">Already have an account?</p>
             <Link 
-              to="/login" 
+              to={`/login?redirect=${encodeURIComponent(redirectPath)}`} 
               className="text-primary font-bold hover:text-primary-dark transition-all inline-block bg-primary/10 px-6 py-2 rounded-lg border border-primary/20"
             >
               Sign In Here
