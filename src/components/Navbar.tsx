@@ -3,12 +3,13 @@ import { IconRenderer } from './Icons';
 
 interface NavbarProps {
   user: UserProfile | null;
+  loading?: boolean;
   onLoginClick: () => void;
   onMenuClick: () => void;
   onLogoClick: () => void;
 }
 
-export function Navbar({ user, onLoginClick, onMenuClick, onLogoClick }: NavbarProps) {
+export function Navbar({ user, loading, onLoginClick, onMenuClick, onLogoClick }: NavbarProps) {
   return (
     <nav className="fixed top-0 w-full h-[60px] sm:h-[70px] glass flex justify-between items-center px-[5%] shadow-sm z-[1000]">
       <div className="flex items-center cursor-pointer transition-transform hover:scale-105" onClick={onLogoClick}>
@@ -20,7 +21,9 @@ export function Navbar({ user, onLoginClick, onMenuClick, onLogoClick }: NavbarP
       </div>
       
       <div className="flex items-center gap-2 sm:gap-4">
-        {!user ? (
+        {loading ? (
+          <div className="w-24 h-10 bg-slate-100 animate-pulse rounded-full" />
+        ) : !user ? (
           <button 
             className="border-2 border-navy text-navy px-4 sm:px-6 py-1.5 sm:py-2 rounded-full text-sm sm:text-base font-semibold transition-all hover:bg-navy hover:text-white"
             onClick={onLoginClick}

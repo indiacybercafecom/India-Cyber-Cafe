@@ -12,34 +12,62 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Ensure uploads directory exists
-  const uploadDir = path.join(process.cwd(), "uploads");
-  if (!fs.existsSync(uploadDir)) {
-    fs.mkdirSync(uploadDir, { recursive: true });
+  // Ensure base uploads directory exists
+  const baseUploadDir = path.join(process.cwd(), "uploads");
+  if (!fs.existsSync(baseUploadDir)) {
+    fs.mkdirSync(baseUploadDir, { recursive: true });
   }
 
   app.use(express.json());
-  app.use("/uploads", express.static(uploadDir));
+  app.use("/uploads", express.static(baseUploadDir));
 
-  // Multer Configuration
+  // Multer Configuration with dynamic folder support
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-      cb(null, uploadDir);
+      const category = req.body.category || "general";
+      const targetDir = path.join(baseUploadDir, category);
+      
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+      cb(null, targetDir);
     },
     filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-      cb(null, uniqueSuffix + path.extname(file.originalname));
+      const category = req.body.category || "general";
+      const randomString = Math.random().toString(36).substring(2, 14);
+      const timestamp = Date.now();
+      const sanitizedOriginalName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
+      const newFilename = `${category}_${randomString}_${timestamp}_${sanitizedOriginalName}`;
+      cb(null, newFilename);
     },
   });
 
   const upload = multer({ storage });
 
-  // API Route for file uploads
+  // Handle the PHP uploader path for the preview environment
+  app.post("/uploader/upload.php", upload.single("file"), (req: any, res) => {
+    if (!req.file) {
+      return res.status(400).json({ status: "error", message: "No file uploaded" });
+    }
+    
+    const category = req.body.category || "general";
+    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${category}/${req.file.filename}`;
+    
+    res.json({ 
+      status: "success", 
+      file_url: fileUrl, 
+      stored_file_name: req.file.filename,
+      firebase_synced: true // Simulate sync for preview
+    });
+  });
+
+  // API Route for file uploads (legacy support)
   app.post("/api/upload", upload.single("file"), (req: any, res) => {
     if (!req.file) {
       return res.status(400).json({ error: "No file uploaded" });
     }
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`;
+    const category = req.body.category || "general";
+    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${category}/${req.file.filename}`;
     res.json({ url: fileUrl });
   });
 

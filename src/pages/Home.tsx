@@ -2,14 +2,16 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
 import { Service } from '../types';
+import { ServiceSkeleton } from '../components/Skeleton';
 
 interface HomeProps {
   onNavigate: (page: string) => void;
   services: Service[];
   onSelectService: (service: Service) => void;
+  loading?: boolean;
 }
 
-export function Home({ onNavigate, services, onSelectService }: HomeProps) {
+export function Home({ onNavigate, services, onSelectService, loading }: HomeProps) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -72,21 +74,28 @@ export function Home({ onNavigate, services, onSelectService }: HomeProps) {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {filteredServices.map(service => (
-            <div 
-              key={service.id} 
-              className="card group cursor-pointer p-4 sm:p-6"
-              onClick={() => navigate(`/services/${service.id}`)}
-            >
-              <div className="w-12 h-12 sm:w-16 sm:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:rotate-12 transition-all">
-                <IconRenderer name={service.icon} className="w-6 h-6 sm:w-8 sm:h-8 text-navy group-hover:text-primary transition-all" />
+        {loading ? (
+          <ServiceSkeleton />
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+            {filteredServices.map(service => (
+              <div 
+                key={service.id} 
+                className="card group cursor-pointer p-4 sm:p-6"
+                onClick={() => navigate(`/services/${service.id}`)}
+              >
+                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:rotate-12 transition-all">
+                  <IconRenderer name={service.icon} className="w-6 h-6 sm:w-8 sm:h-8 text-navy group-hover:text-primary transition-all" />
+                </div>
+                <h3 className="text-base sm:text-lg font-bold text-navy mb-1">{service.name}</h3>
+                <p className="text-slate-500 text-[10px] sm:text-xs line-clamp-2">{service.description}</p>
               </div>
-              <h3 className="text-base sm:text-lg font-bold text-navy mb-1">{service.name}</h3>
-              <p className="text-slate-500 text-[10px] sm:text-xs line-clamp-2">{service.description}</p>
-            </div>
-          ))}
-        </div>
+            ))}
+            {filteredServices.length === 0 && searchTerm && (
+              <div className="col-span-full p-10 text-center text-slate-400 italic">No services found for "{searchTerm}"</div>
+            )}
+          </div>
+        )}
 
         <div className="text-center">
           <button className="btn-primary" onClick={() => onNavigate('services')}>View All Services →</button>
