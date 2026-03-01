@@ -72,18 +72,23 @@ function AppContent() {
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isLogoutChoiceOpen, setIsLogoutChoiceOpen] = useState(false);
-  const [hasPushedModalState, setHasPushedModalState] = useState(false);
 
   // Back button handling for modals and sidebar
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
-      setHasPushedModalState(false);
-      if (isSidebarOpen) setIsSidebarOpen(false);
-      if (selectedApp) setSelectedApp(null);
-      if (isServiceBuilderOpen) setIsServiceBuilderOpen(false);
-      if (selectedUser) setSelectedUser(null);
-      if (isLogoutConfirmOpen) setIsLogoutConfirmOpen(false);
-      if (isLogoutChoiceOpen) setIsLogoutChoiceOpen(false);
+      if (isSidebarOpen) {
+        setIsSidebarOpen(false);
+      } else if (selectedApp) {
+        setSelectedApp(null);
+      } else if (isServiceBuilderOpen) {
+        setIsServiceBuilderOpen(false);
+      } else if (selectedUser) {
+        setSelectedUser(null);
+      } else if (isLogoutConfirmOpen) {
+        setIsLogoutConfirmOpen(false);
+      } else if (isLogoutChoiceOpen) {
+        setIsLogoutChoiceOpen(false);
+      }
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -93,20 +98,15 @@ function AppContent() {
   // Push state when modal opens
   useEffect(() => {
     const isAnyModalOpen = isSidebarOpen || !!selectedApp || isServiceBuilderOpen || !!selectedUser || isLogoutConfirmOpen || isLogoutChoiceOpen;
-    
-    if (isAnyModalOpen && !hasPushedModalState) {
+    if (isAnyModalOpen) {
       window.history.pushState({ modal: true }, '');
-      setHasPushedModalState(true);
-    } else if (!isAnyModalOpen && hasPushedModalState) {
-      setHasPushedModalState(false);
     }
-  }, [isSidebarOpen, !!selectedApp, isServiceBuilderOpen, !!selectedUser, isLogoutConfirmOpen, isLogoutChoiceOpen, hasPushedModalState]);
+  }, [isSidebarOpen, !!selectedApp, isServiceBuilderOpen, !!selectedUser, isLogoutConfirmOpen, isLogoutChoiceOpen]);
 
   const closeSidebar = () => {
-    if (hasPushedModalState) {
+    setIsSidebarOpen(false);
+    if (window.history.state?.modal) {
       window.history.back();
-    } else {
-      setIsSidebarOpen(false);
     }
   };
 
@@ -262,9 +262,8 @@ function AppContent() {
           onClose={() => {
             setSelectedApp(null);
             if (location.pathname.includes('/track/')) {
-              navigate('/track', { replace: true });
-            }
-            if (hasPushedModalState) {
+              navigate('/track');
+            } else if (window.history.state?.modal) {
               window.history.back();
             }
           }} 

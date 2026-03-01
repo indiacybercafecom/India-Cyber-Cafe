@@ -23,51 +23,37 @@ export function Home({ onNavigate, services, onSelectService, loading }: HomePro
   return (
     <div className="space-y-8 sm:space-y-12">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-white p-6 sm:p-10 lg:p-16 rounded-[2.5rem] shadow-2xl flex flex-col md:flex-row items-center justify-between gap-10 md:gap-16 border border-slate-100 group">
-        <div className="absolute top-0 right-0 w-1/2 h-full bg-linear-to-bl from-primary/5 to-transparent -z-0 pointer-events-none" />
-        <div className="flex-1 space-y-6 sm:space-y-8 text-center md:text-left relative z-10">
-          <div className="inline-flex items-center gap-2 px-4 py-2 bg-primary/10 rounded-full text-primary text-xs font-bold uppercase tracking-widest animate-pulse">
-            <IconRenderer name="sparkles" className="w-3 h-3" />
-            Most Trusted Digital Portal
-          </div>
-          <h1 className="text-4xl sm:text-5xl lg:text-7xl font-black text-navy leading-[1.1] tracking-tight">
+      <section className="bg-white p-6 sm:p-10 lg:p-12 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 md:gap-10 border border-slate-100">
+        <div className="flex-1 space-y-3 sm:space-y-5 text-center md:text-left">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-navy leading-tight">
             India Cyber Cafe <br />
-            <span className="text-transparent bg-clip-text bg-linear-to-r from-primary to-primary-dark">Digital Seva</span>
+            <span className="text-primary">Digital Seva Simplified</span>
           </h1>
-          <p className="text-base sm:text-lg lg:text-xl text-slate-500 max-w-lg mx-auto md:mx-0 leading-relaxed">
-            Apply for Government Services, Jobs & Documents online with India's most trusted digital partner.
+          <p className="text-sm sm:text-base lg:text-lg text-slate-600 max-w-md mx-auto md:mx-0">
+            Apply for Government Services, Jobs & Documents online with India's trusted digital partner.
           </p>
-          <div className="flex flex-col sm:flex-row flex-wrap gap-4 justify-center md:justify-start pt-4">
-            <button className="btn-primary px-10 py-4 text-lg shadow-primary/30" onClick={() => onNavigate('services')}>
-              Apply Now
-              <IconRenderer name="arrow-right" className="w-5 h-5" />
-            </button>
-            <button className="btn-outline px-10 py-4 text-lg" onClick={() => onNavigate('track')}>Track Status</button>
+          <div className="flex flex-col sm:flex-row flex-wrap gap-3 justify-center md:justify-start pt-2">
+            <button className="btn-primary text-sm sm:text-base px-6 sm:px-8 py-2.5 sm:py-3" onClick={() => onNavigate('services')}>Apply Now</button>
+            <button className="btn-outline text-sm sm:text-base px-6 sm:px-8 py-2.5 sm:py-3" onClick={() => onNavigate('track')}>Track Status</button>
           </div>
         </div>
-        <div className="hidden lg:block shrink-0 relative z-10">
-          <div className="relative">
-            <div className="absolute inset-0 bg-primary/20 blur-[100px] rounded-full animate-pulse" />
-            <IconRenderer name="globe" className="w-[220px] h-[220px] text-navy/10 animate-float relative z-10 drop-shadow-2xl" />
-          </div>
+        <div className="hidden md:block shrink-0">
+          <IconRenderer name="globe" className="w-[150px] h-[150px] lg:w-[180px] lg:h-[180px] text-navy/10 animate-float" />
         </div>
       </section>
 
       {/* Stats Section */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
-          { icon: 'users', count: '5000+', label: 'Active Users', color: 'from-blue-500 to-blue-600' },
-          { icon: 'file-check', count: '2500+', label: 'Applications', color: 'from-emerald-500 to-emerald-600' },
-          { icon: 'headset', count: '24/7', label: 'Support', color: 'from-orange-500 to-orange-600' },
-          { icon: 'star', count: '4.9/5', label: 'Rating', color: 'from-amber-500 to-amber-600' },
+          { icon: 'users', count: '5000+', label: 'Active Users' },
+          { icon: 'file-check', count: '2500+', label: 'Applications' },
+          { icon: 'headset', count: '24/7', label: 'Support' },
+          { icon: 'star', count: '4.9/5', label: 'Rating' },
         ].map((stat, i) => (
-          <div key={i} className="group relative bg-white p-6 sm:p-10 rounded-[2rem] text-center shadow-sm border border-slate-100 hover:shadow-2xl hover:shadow-slate-200 transition-all hover:-translate-y-2 overflow-hidden">
-            <div className={`absolute top-0 left-0 w-full h-1.5 bg-linear-to-r ${stat.color}`} />
-            <div className="w-12 h-12 sm:w-16 sm:h-16 bg-slate-50 rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-6 group-hover:scale-110 transition-transform">
-              <IconRenderer name={stat.icon} className="w-6 h-6 sm:w-8 sm:h-8 text-navy" />
-            </div>
-            <h3 className="text-2xl sm:text-4xl font-black text-navy mb-1 sm:mb-2">{stat.count}</h3>
-            <p className="text-[10px] sm:text-xs text-slate-400 font-bold uppercase tracking-[0.2em]">{stat.label}</p>
+          <div key={i} className="bg-white p-4 sm:p-8 rounded-2xl text-center shadow-md border-t-4 border-primary hover:-translate-y-2 transition-all">
+            <IconRenderer name={stat.icon} className="w-6 h-6 sm:w-10 sm:h-10 text-primary mx-auto mb-2 sm:mb-4" />
+            <h3 className="text-xl sm:text-3xl font-bold text-navy mb-1">{stat.count}</h3>
+            <p className="text-[10px] sm:text-sm text-slate-500 font-medium uppercase tracking-wider">{stat.label}</p>
           </div>
         ))}
       </section>

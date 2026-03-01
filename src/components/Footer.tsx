@@ -11,7 +11,6 @@ export function Footer() {
             src="http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" 
             alt="India Cyber Cafe" 
             className="h-16 brightness-0 invert"
-            referrerPolicy="no-referrer"
           />
           <p className="text-slate-400 text-sm leading-relaxed">
             India's most trusted digital service portal. We help you with government applications, cyber services, and digital solutions with speed and transparency.
@@ -65,14 +64,6 @@ export function Footer() {
               </a>
             </li>
           </ul>
-          <div className="pt-4">
-            <img 
-              src="http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" 
-              alt="ICC" 
-              className="h-10 opacity-30 grayscale brightness-0 invert" 
-              referrerPolicy="no-referrer"
-            />
-          </div>
         </div>
       </div>
 
