@@ -73,41 +73,49 @@ function AppContent() {
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isLogoutChoiceOpen, setIsLogoutChoiceOpen] = useState(false);
 
+  // Modal state management with history
+  const closeAllModals = () => {
+    setIsSidebarOpen(false);
+    setSelectedApp(null);
+    setIsServiceBuilderOpen(false);
+    setEditingService(null);
+    setSelectedUser(null);
+    setIsLogoutConfirmOpen(false);
+    setIsLogoutChoiceOpen(false);
+  };
+
   // Back button handling for modals and sidebar
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
-      if (isSidebarOpen) {
-        setIsSidebarOpen(false);
-      } else if (selectedApp) {
-        setSelectedApp(null);
-      } else if (isServiceBuilderOpen) {
-        setIsServiceBuilderOpen(false);
-      } else if (selectedUser) {
-        setSelectedUser(null);
-      } else if (isLogoutConfirmOpen) {
-        setIsLogoutConfirmOpen(false);
-      } else if (isLogoutChoiceOpen) {
-        setIsLogoutChoiceOpen(false);
-      }
+      closeAllModals();
     };
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isSidebarOpen, selectedApp, isServiceBuilderOpen, selectedUser, isLogoutConfirmOpen, isLogoutChoiceOpen]);
+  }, []);
 
-  // Push state when modal opens
+  // Push state when modal opens, but only once
+  const isAnyModalOpen = isSidebarOpen || !!selectedApp || isServiceBuilderOpen || !!selectedUser || isLogoutConfirmOpen || isLogoutChoiceOpen;
+  
   useEffect(() => {
-    const isAnyModalOpen = isSidebarOpen || !!selectedApp || isServiceBuilderOpen || !!selectedUser || isLogoutConfirmOpen || isLogoutChoiceOpen;
     if (isAnyModalOpen) {
-      window.history.pushState({ modal: true }, '');
+      // Only push if the current state isn't already a modal state to avoid multiple pushes
+      if (!window.history.state?.modal) {
+        window.history.pushState({ modal: true }, '');
+      }
     }
-  }, [isSidebarOpen, !!selectedApp, isServiceBuilderOpen, !!selectedUser, isLogoutConfirmOpen, isLogoutChoiceOpen]);
+  }, [isAnyModalOpen]);
 
-  const closeSidebar = () => {
-    setIsSidebarOpen(false);
+  const handleCloseModal = () => {
     if (window.history.state?.modal) {
       window.history.back();
+    } else {
+      closeAllModals();
     }
+  };
+
+  const closeSidebar = () => {
+    handleCloseModal();
   };
 
   // Preload pages after home page is ready
@@ -166,7 +174,7 @@ function AppContent() {
 
       <AuthModal 
         isOpen={isAuthModalOpen}
-        onClose={() => setIsAuthModalOpen(false)}
+        onClose={handleCloseModal}
       />
 
       <main className="pt-[100px] pb-20 px-[3%] sm:px-[5%] w-full max-w-[1440px] mx-auto">
@@ -260,11 +268,11 @@ function AppContent() {
         <ApplicationDetailsModal 
           app={selectedApp} 
           onClose={() => {
-            setSelectedApp(null);
             if (location.pathname.includes('/track/')) {
-              navigate('/track');
-            } else if (window.history.state?.modal) {
-              window.history.back();
+              navigate('/track', { replace: true });
+              setSelectedApp(null);
+            } else {
+              handleCloseModal();
             }
           }} 
           currentUser={user}
@@ -275,11 +283,7 @@ function AppContent() {
       {isServiceBuilderOpen && (
         <ServiceBuilderModal 
           service={editingService}
-          onClose={() => { 
-            setIsServiceBuilderOpen(false); 
-            setEditingService(null); 
-            if (window.history.state?.modal) window.history.back();
-          }}
+          onClose={handleCloseModal}
           onSave={handleSaveService}
         />
       )}
@@ -287,10 +291,7 @@ function AppContent() {
       {selectedUser && (
         <UserManageModal 
           user={selectedUser}
-          onClose={() => {
-            setSelectedUser(null);
-            if (window.history.state?.modal) window.history.back();
-          }}
+          onClose={handleCloseModal}
         />
       )}
 
@@ -298,7 +299,7 @@ function AppContent() {
 
       <ConfirmationModal 
         isOpen={isLogoutConfirmOpen}
-        onClose={() => setIsLogoutConfirmOpen(false)}
+        onClose={handleCloseModal}
         onConfirm={handleLogout}
         title="Logout Confirmation"
         message="Are you sure you want to logout from your account?"
@@ -308,9 +309,9 @@ function AppContent() {
 
       <LogoutChoiceModal 
         isOpen={isLogoutChoiceOpen}
-        onClose={() => setIsLogoutChoiceOpen(false)}
+        onClose={handleCloseModal}
         onChoice={(choice) => {
-          setIsLogoutChoiceOpen(false);
+          handleCloseModal();
           if (choice === 'relogin') {
             navigate('/login');
           } else {

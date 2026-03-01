@@ -11,29 +11,33 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 font-sans;
+    @apply bg-slate-50 text-slate-900 font-sans selection:bg-primary/30 selection:text-navy;
   }
 }
 
 @layer components {
   .btn-primary {
-    @apply bg-linear-to-br from-primary to-primary-dark text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary/40 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/50 active:scale-95 disabled:opacity-50;
+    @apply bg-linear-to-br from-primary to-primary-dark text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary/40 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/50 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2;
   }
   
   .btn-outline {
-    @apply border-2 border-navy text-navy px-6 py-3 rounded-xl font-bold transition-all hover:bg-linear-to-br hover:from-navy hover:to-navy-light hover:text-white hover:-translate-y-1 hover:shadow-lg hover:shadow-navy/30 active:scale-95;
+    @apply border-2 border-navy text-navy px-6 py-3 rounded-xl font-bold transition-all hover:bg-navy hover:text-white hover:-translate-y-1 hover:shadow-lg hover:shadow-navy/30 active:scale-95 flex items-center justify-center gap-2;
   }
 
   .card {
-    @apply bg-white p-8 rounded-2xl text-center shadow-md border-2 border-transparent transition-all hover:-translate-y-2 hover:border-primary hover:shadow-xl;
+    @apply bg-white p-8 rounded-3xl text-center shadow-sm border border-slate-100 transition-all hover:-translate-y-2 hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10;
   }
 
   .input-field {
-    @apply w-full px-4 py-3 border-2 border-slate-200 rounded-xl outline-hidden transition-all focus:border-primary focus:ring-4 focus:ring-primary/10 text-sm sm:text-base;
+    @apply w-full px-5 py-3.5 border border-slate-200 rounded-2xl outline-hidden transition-all focus:border-primary focus:ring-4 focus:ring-primary/10 text-sm sm:text-base bg-slate-50/50 hover:bg-white;
   }
 
   .badge {
-    @apply px-2 sm:px-3 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider text-white;
+    @apply px-3 py-1 rounded-lg text-[10px] sm:text-xs font-bold uppercase tracking-wider text-white shadow-sm;
+  }
+  
+  .glass-card {
+    @apply bg-white/80 backdrop-blur-md border border-white/20 shadow-xl rounded-3xl;
   }
 }
 
