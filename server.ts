@@ -131,7 +131,11 @@ async function startServer() {
   });
 
   app.get("/sitemap.xml", async (req, res) => {
-    const baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "https://indiacybercafe.com";
+    // Use the current request's host to ensure the sitemap URLs match the environment
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const baseUrl = `${protocol}://${host}`;
+    
     const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
     
     let services: any[] = [];
@@ -139,7 +143,10 @@ async function startServer() {
       const response = await fetch(`${databaseURL}/services.json`);
       if (response.ok) {
         const data = await response.json();
-        services = data ? Object.values(data) : [];
+        if (data) {
+          // Firebase might return an object or an array
+          services = Array.isArray(data) ? data : Object.values(data);
+        }
       }
     } catch (error) {
       console.error("Error fetching services for sitemap:", error);
@@ -162,20 +169,27 @@ async function startServer() {
     let sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n`;
     sitemap += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
 
+    // Current date for lastmod
+    const today = new Date().toISOString().split('T')[0];
+
     // Static pages
     staticPages.forEach(page => {
-      sitemap += `  <url>\n    <loc>${baseUrl}${page}</loc>\n    <changefreq>daily</changefreq>\n    <priority>${page === "" ? "1.0" : "0.8"}</priority>\n  </url>\n`;
+      sitemap += `  <url>\n    <loc>${baseUrl}${page}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>${page === "" ? "1.0" : "0.8"}</priority>\n  </url>\n`;
     });
 
     // Services
     services.forEach(service => {
-      sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>\n`;
-      
-      // Subservices
-      if (service.subservices && Array.isArray(service.subservices)) {
-        service.subservices.forEach((ss: any) => {
-          sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}/${slugify(ss.name)}</loc>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n`;
-        });
+      if (service && service.id) {
+        sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>\n`;
+        
+        // Subservices
+        if (service.subservices && Array.isArray(service.subservices)) {
+          service.subservices.forEach((ss: any) => {
+            if (ss && ss.name) {
+              sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}/${slugify(ss.name)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n`;
+            }
+          });
+        }
       }
     });
 
