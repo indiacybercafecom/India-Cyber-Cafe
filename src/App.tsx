@@ -16,6 +16,7 @@ import { Admin } from './pages/Admin';
 import { Operator } from './pages/Operator';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
+import { ForgotPassword } from './pages/ForgotPassword';
 import { Legal } from './pages/Legal';
 import { Footer } from './components/Footer';
 import { ScrollToTop } from './components/ScrollToTop';
@@ -179,6 +180,7 @@ function AppContent() {
           <Route path="/" element={<Home onNavigate={(p) => navigate(`/${p === 'home' ? '' : p}`)} services={services} onSelectService={() => {}} />} />
           <Route path="/login" element={!user ? <Login /> : <Navigate to="/" />} />
           <Route path="/register" element={!user ? <Register /> : <Navigate to="/" />} />
+          <Route path="/forgot-password" element={<ForgotPassword />} />
           <Route path="/legal/:type" element={<Legal />} />
           <Route path="/about" element={<Legal />} />
           <Route path="/contact" element={<Legal />} />
@@ -194,7 +196,7 @@ function AppContent() {
                 gateways={gateways}
                 onSuccess={() => navigate('/track')}
               />
-            ) : <Navigate to="/login" />
+            ) : <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} />
           } />
           <Route path="/track" element={
             user ? (

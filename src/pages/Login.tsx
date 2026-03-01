@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { auth, rtdb } from '../firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { ref, get, query, orderByChild, equalTo } from 'firebase/database';
@@ -13,6 +13,9 @@ export function Login() {
   const [loading, setLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+  const redirectPath = searchParams.get('redirect') || '/';
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +37,7 @@ export function Login() {
 
       await signInWithEmailAndPassword(auth, loginEmail, password);
       showToast('Login Successful!');
-      navigate('/');
+      navigate(redirectPath);
     } catch (error: any) {
       let message = 'An unexpected error occurred. Please try again.';
       

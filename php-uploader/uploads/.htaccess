@@ -1,0 +1,22 @@
+# Disable PHP engine
+<IfModule mod_php7.c>
+    php_flag engine off
+</IfModule>
+<IfModule mod_php5.c>
+    php_flag engine off
+</IfModule>
+
+# Block access to PHP files directly
+<FilesMatch "\.(php|php3|php4|php5|phtml|pl|py|jsp|asp|htm|html|shtml|sh|cgi)$">
+    Order Deny,Allow
+    Deny from all
+</FilesMatch>
+
+# Prevent directory listing
+Options -Indexes
+
+# Allow only specific extensions
+<FilesMatch "^.*\.(?i:jpg|jpeg|png|pdf|heif|mp4)$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>

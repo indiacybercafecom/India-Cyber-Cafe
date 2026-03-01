@@ -3,10 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Service, UserProfile, SubService, Application, PaymentGateway } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
-import { rtdb, storage } from '../firebase';
-import { ref as dbRef, set, push } from 'firebase/database';
-import { ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { rtdb } from '../firebase';
+import { ref as dbRef, set } from 'firebase/database';
 import { sendEmail, emailTemplates } from '../services/emailService';
+import { uploadFile } from '../services/uploadService';
 
 interface ApplyProps {
   services: Service[];
@@ -77,12 +77,10 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
     try {
       const uploadedFiles: Record<string, string> = {};
       
-      // Upload files to Firebase Storage
+      // Upload files to Server
       const fileEntries = Object.entries(files) as [string, File][];
       for (const [label, file] of fileEntries) {
-        const sRef = storageRef(storage, `applications/${user.uid}/${Date.now()}_${file.name}`);
-        const snapshot = await uploadBytes(sRef, file);
-        const url = await getDownloadURL(snapshot.ref);
+        const url = await uploadFile(file);
         uploadedFiles[label] = url;
       }
 
