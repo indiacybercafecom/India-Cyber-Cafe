@@ -1,7 +1,7 @@
 export async function uploadFile(file: File, category: string = 'general'): Promise<string> {
   const formData = new FormData();
+  formData.append('category', category); // MUST be before file
   formData.append('file', file);
-  formData.append('category', category);
 
   // Use the PHP uploader endpoint
   const response = await fetch('/uploader/upload.php', {

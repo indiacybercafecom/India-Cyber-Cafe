@@ -76,16 +76,17 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
         attachmentUrl = await uploadFile(noteFile, 'notes');
       }
 
-      const newNote: ApplicationNote = {
+      const newNote: any = {
         type: newStatus ? 'status' : 'note',
         by: currentUser.name,
         email: currentUser.email,
         text: noteText || (newStatus ? `Status updated to ${newStatus}` : ''),
         time: new Date().toLocaleString(),
-        status: newStatus || undefined,
-        attachment: attachmentUrl || undefined,
-        attachmentName: noteFile?.name || undefined
       };
+
+      if (newStatus) newNote.status = newStatus;
+      if (attachmentUrl) newNote.attachment = attachmentUrl;
+      if (noteFile?.name) newNote.attachmentName = noteFile.name;
 
       const updatedNotes = [...(app.notes || []), newNote];
       const updates: any = { notes: updatedNotes };

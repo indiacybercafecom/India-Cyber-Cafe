@@ -91,20 +91,23 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
       const randomStr = Math.floor(1000 + Math.random() * 9000).toString(); // 4 random digits
       const appId = `ICC-${dateStr}-${timeStr}-${randomStr}`;
 
-      const application: Omit<Application, 'id'> = {
+      const application: any = {
         uid: user.uid,
         email: user.email,
         name: user.name,
         serviceName: service.name,
         serviceId: service.id,
-        subserviceName: selectedSubService?.name || undefined,
-        charge: selectedSubService?.charge || 0,
         details: { ...formData, ...uploadedFiles },
         status: 'processing',
         date: now.toISOString(),
         notes: [],
         paymentStatus: (selectedSubService?.paymentMethods.includes('free') || selectedSubService?.paymentMethods.includes('cash')) ? 'completed' : 'pending'
       };
+
+      if (selectedSubService) {
+        application.subserviceName = selectedSubService.name;
+        application.charge = selectedSubService.charge || 0;
+      }
 
       const submitApp = async (appData: any) => {
         const appWithId = { ...appData, id: appId };

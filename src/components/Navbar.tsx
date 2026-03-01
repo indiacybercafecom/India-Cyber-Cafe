@@ -17,6 +17,7 @@ export function Navbar({ user, loading, onLoginClick, onMenuClick, onLogoClick }
           src="https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png" 
           alt="India Cyber Cafe" 
           className="h-[40px] sm:h-[55px] w-auto object-contain"
+          referrerPolicy="no-referrer"
         />
       </div>
       
@@ -39,6 +40,7 @@ export function Navbar({ user, loading, onLoginClick, onMenuClick, onLogoClick }
               src={user.avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} 
               alt={user.name}
               className="w-[35px] h-[35px] sm:w-[45px] sm:h-[45px] rounded-full border-2 border-primary"
+              referrerPolicy="no-referrer"
             />
           </div>
         )}

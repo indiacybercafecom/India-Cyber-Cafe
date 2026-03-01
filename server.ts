@@ -12,6 +12,9 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  // Trust proxy for correct protocol and host detection behind proxies
+  app.set('trust proxy', true);
+
   // Ensure base uploads directory exists
   const baseUploadDir = path.join(process.cwd(), "uploads");
   if (!fs.existsSync(baseUploadDir)) {
@@ -36,8 +39,9 @@ async function startServer() {
       const category = req.body.category || "general";
       const randomString = Math.random().toString(36).substring(2, 14);
       const timestamp = Date.now();
-      const sanitizedOriginalName = file.originalname.replace(/[^a-zA-Z0-9._-]/g, "_");
-      const newFilename = `${category}_${randomString}_${timestamp}_${sanitizedOriginalName}`;
+      const extension = path.extname(file.originalname);
+      const sanitizedOriginalName = path.basename(file.originalname, extension).replace(/[^a-zA-Z0-9._-]/g, "_");
+      const newFilename = `${category}_${randomString}_${timestamp}_${sanitizedOriginalName}${extension}`;
       cb(null, newFilename);
     },
   });
@@ -51,7 +55,8 @@ async function startServer() {
     }
     
     const category = req.body.category || "general";
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${category}/${req.file.filename}`;
+    const baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+    const fileUrl = `${baseUrl}/uploads/${category}/${req.file.filename}`;
     
     res.json({ 
       status: "success", 
@@ -67,7 +72,8 @@ async function startServer() {
       return res.status(400).json({ error: "No file uploaded" });
     }
     const category = req.body.category || "general";
-    const fileUrl = `${req.protocol}://${req.get("host")}/uploads/${category}/${req.file.filename}`;
+    const baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+    const fileUrl = `${baseUrl}/uploads/${category}/${req.file.filename}`;
     res.json({ url: fileUrl });
   });
 

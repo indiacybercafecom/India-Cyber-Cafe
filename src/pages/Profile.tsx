@@ -108,6 +108,7 @@ export function Profile({ user }: ProfileProps) {
             <img 
               src={avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} 
               className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-primary shadow-2xl object-cover transition-opacity ${loading ? 'opacity-50' : 'opacity-100'}`}
+              referrerPolicy="no-referrer"
             />
             {loading && (
               <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 rounded-full">
