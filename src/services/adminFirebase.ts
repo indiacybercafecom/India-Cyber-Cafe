@@ -7,11 +7,17 @@ const serviceAccountVar = process.env.FIREBASE_SERVICE_ACCOUNT;
 
 if (serviceAccountVar) {
   try {
-    // Basic check to see if it even looks like JSON
-    if (!serviceAccountVar.trim().startsWith('{')) {
-      throw new Error("The FIREBASE_SERVICE_ACCOUNT environment variable must be a valid JSON string starting with '{'. It looks like you might have pasted the client email or a filename instead of the full JSON content.");
+    let cleanVar = serviceAccountVar.trim();
+    // Remove accidental wrapping quotes if present
+    if ((cleanVar.startsWith("'") && cleanVar.endsWith("'")) || 
+        (cleanVar.startsWith('"') && cleanVar.endsWith('"'))) {
+      cleanVar = cleanVar.substring(1, cleanVar.length - 1);
     }
-    const serviceAccount = JSON.parse(serviceAccountVar);
+
+    if (!cleanVar.startsWith('{')) {
+      throw new Error("FIREBASE_SERVICE_ACCOUNT must be a JSON string starting with '{'. It looks like you might have pasted the client email or a filename instead of the full JSON content.");
+    }
+    const serviceAccount = JSON.parse(cleanVar);
     if (!admin.apps.length) {
       admin.initializeApp({
         credential: admin.credential.cert(serviceAccount),
