@@ -9,7 +9,17 @@ import { adminAuth, adminDb } from "./src/services/adminFirebase";
 
 dotenv.config();
 
+// Global error handling for top-level crashes
+process.on('uncaughtException', (err) => {
+  console.error('CRITICAL: Uncaught Exception:', err);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('CRITICAL: Unhandled Rejection at:', promise, 'reason:', reason);
+});
+
 async function startServer() {
+  console.log('Starting server...');
   const app = express();
   const PORT = 3000;
 
@@ -51,6 +61,7 @@ async function startServer() {
   });
 
   if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    console.log('Google OAuth enabled.');
     passport.use(new GoogleStrategy({
       clientID: process.env.GOOGLE_CLIENT_ID,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET,
