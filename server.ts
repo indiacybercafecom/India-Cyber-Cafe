@@ -2,8 +2,10 @@ import express from "express";
 import { createServer as createViteServer } from "vite";
 import nodemailer from "nodemailer";
 import dotenv from "dotenv";
-import path from "path";
-import fs from "fs";
+import session from "express-session";
+import passport from "passport";
+import { Strategy as GoogleStrategy } from "passport-google-oauth20";
+import { adminAuth, adminDb } from "./src/services/adminFirebase";
 
 dotenv.config();
 
@@ -13,6 +15,103 @@ async function startServer() {
 
   // Trust proxy for correct protocol and host detection behind proxies
   app.set('trust proxy', true);
+
+  // Session Configuration
+  app.use(session({
+    secret: process.env.SESSION_SECRET || "icc-secret-key-2026",
+    resave: false,
+    saveUninitialized: false,
+    cookie: {
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+    }
+  }));
+
+  // Passport Configuration
+  app.use(passport.initialize());
+  app.use(passport.session());
+
+  passport.serializeUser((user: any, done) => {
+    done(null, user.uid);
+  });
+
+  passport.deserializeUser(async (uid: string, done) => {
+    try {
+      if (adminDb) {
+        const snapshot = await adminDb.ref(`users/${uid}`).once('value');
+        const user = snapshot.val();
+        done(null, user);
+      } else {
+        done(new Error("Firebase Admin not initialized"), null);
+      }
+    } catch (error) {
+      done(error, null);
+    }
+  });
+
+  if (process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET) {
+    passport.use(new GoogleStrategy({
+      clientID: process.env.GOOGLE_CLIENT_ID,
+      clientSecret: process.env.GOOGLE_CLIENT_SECRET,
+      callbackURL: "/auth/google/callback",
+      proxy: true
+    }, async (accessToken, refreshToken, profile, done) => {
+      try {
+        if (!adminDb || !adminAuth) return done(new Error("Firebase Admin not initialized"));
+
+        const email = profile.emails?.[0].value;
+        if (!email) return done(new Error("No email found in Google profile"));
+
+        // Check if user exists by email
+        let userRecord;
+        try {
+          userRecord = await adminAuth.getUserByEmail(email);
+        } catch (error: any) {
+          if (error.code === 'auth/user-not-found') {
+            // Create new user in Firebase Auth
+            userRecord = await adminAuth.createUser({
+              email,
+              displayName: profile.displayName,
+              photoURL: profile.photos?.[0].value,
+            });
+          } else {
+            throw error;
+          }
+        }
+
+        const uid = userRecord.uid;
+        const userRef = adminDb.ref(`users/${uid}`);
+        const snapshot = await userRef.once('value');
+        let userData = snapshot.val();
+
+        if (!userData) {
+          // Auto-register in RTDB
+          userData = {
+            uid,
+            email,
+            name: profile.displayName,
+            avatar: profile.photos?.[0].value,
+            role: 'user',
+            createdAt: new Date().toISOString(),
+            googleId: profile.id
+          };
+          await userRef.set(userData);
+        } else {
+          // Update existing user
+          await userRef.update({
+            avatar: profile.photos?.[0].value,
+            googleId: profile.id
+          });
+          userData = { ...userData, avatar: profile.photos?.[0].value, googleId: profile.id };
+        }
+
+        return done(null, userData);
+      } catch (error) {
+        return done(error as Error);
+      }
+    }));
+  }
 
   app.use(express.json());
 
@@ -55,6 +154,40 @@ async function startServer() {
       console.error("Email error:", error);
       res.status(500).json({ success: false, error: error.message });
     }
+  });
+
+  // Google Auth Routes
+  app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+
+  app.get("/auth/google/callback", 
+    passport.authenticate("google", { failureRedirect: "/login?error=google_auth_failed" }),
+    async (req, res) => {
+      try {
+        if (req.user && adminAuth) {
+          const user = req.user as any;
+          // Generate Firebase Custom Token
+          const customToken = await adminAuth.createCustomToken(user.uid);
+          // Redirect back to frontend with token
+          res.redirect(`/auth/callback?token=${customToken}`);
+        } else {
+          res.redirect("/login?error=auth_failed");
+        }
+      } catch (error) {
+        console.error("Error generating custom token:", error);
+        res.redirect("/login?error=token_generation_failed");
+      }
+    }
+  );
+
+  app.get("/api/auth/logout", (req, res, next) => {
+    req.logout((err) => {
+      if (err) return next(err);
+      res.json({ success: true });
+    });
+  });
+
+  app.get("/api/auth/me", (req, res) => {
+    res.json(req.user || null);
   });
 
   // Health check

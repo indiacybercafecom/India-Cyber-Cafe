@@ -8,6 +8,7 @@ import { IconRenderer } from '../components/Icons';
 import { motion } from 'motion/react';
 import { sendEmail, emailTemplates } from '../services/emailService';
 import { UserProfile } from '../types';
+import { GoogleButton } from '../components/GoogleButton';
 
 interface RegisterProps {
   user: UserProfile | null;
@@ -151,6 +152,17 @@ export function Register({ user }: RegisterProps) {
               {loading ? 'Creating Account...' : 'Register'}
             </button>
           </form>
+
+          <div className="relative my-8">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-100"></div>
+            </div>
+            <div className="relative flex justify-center text-xs uppercase">
+              <span className="bg-white px-2 text-slate-400">Or continue with</span>
+            </div>
+          </div>
+
+          <GoogleButton />
 
           <div className="mt-8 text-center p-5 bg-linear-to-br from-primary/5 to-navy/5 rounded-2xl border border-primary/10">
             <p className="text-slate-500 text-sm mb-2">Already have an account?</p>
