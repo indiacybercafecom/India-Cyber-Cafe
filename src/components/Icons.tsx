@@ -40,7 +40,16 @@ import {
   FileSpreadsheet,
   ArrowLeft,
   Globe,
-  Upload
+  Upload,
+  ChevronUp,
+  ExternalLink,
+  Check,
+  Filter,
+  FilePlus,
+  FileUp,
+  MapPin,
+  AlertTriangle,
+  LogIn
 } from 'lucide-react';
 
 export const Icons = {
@@ -85,7 +94,16 @@ export const Icons = {
   FileSpreadsheet,
   ArrowLeft,
   Globe,
-  Upload
+  Upload,
+  ChevronUp,
+  ExternalLink,
+  Check,
+  Filter,
+  FilePlus,
+  FileUp,
+  MapPin,
+  AlertTriangle,
+  LogIn
 };
 
 export function IconRenderer({ name, className }: { name: string; className?: string }) {
@@ -111,7 +129,8 @@ export function IconRenderer({ name, className }: { name: string; className?: st
   if (lowerName.includes('handshake')) return <Icons.Headset className={className} />;
   if (lowerName.includes('star')) return <Icons.Star className={className} />;
   if (lowerName.includes('bolt')) return <Icons.Zap className={className} />;
-  if (lowerName.includes('mobile')) return <Icons.Smartphone className={className} />;
+  if (lowerName.includes('shield-check')) return <Icons.ShieldCheck className={className} />;
+  if (lowerName.includes('smartphone') || lowerName.includes('mobile')) return <Icons.Smartphone className={className} />;
   if (lowerName.includes('clock')) return <Icons.Clock className={className} />;
   if (lowerName.includes('paper-plane')) return <Icons.Send className={className} />;
   if (lowerName.includes('eye-slash') || lowerName.includes('eye-off')) return <Icons.EyeOff className={className} />;
@@ -128,8 +147,17 @@ export function IconRenderer({ name, className }: { name: string; className?: st
   if (lowerName.includes('exclamation')) return <Icons.AlertCircle className={className} />;
   if (lowerName.includes('excel') || lowerName.includes('spreadsheet')) return <Icons.FileSpreadsheet className={className} />;
   if (lowerName.includes('arrow-left')) return <Icons.ArrowLeft className={className} />;
-  if (lowerName.includes('globe')) return <Icons.Globe className={className} />;
-  if (lowerName.includes('upload')) return <Icons.Upload className={className} />;
+  if (lowerName.includes('chevron-down')) return <Icons.ChevronDown className={className} />;
+  if (lowerName.includes('chevron-up')) return <Icons.ChevronUp className={className} />;
+  if (lowerName.includes('external-link')) return <Icons.ExternalLink className={className} />;
+  if (lowerName === 'check') return <Icons.Check className={className} />;
+  if (lowerName.includes('magnifying-glass') || lowerName.includes('search')) return <Icons.Search className={className} />;
+  if (lowerName.includes('filter')) return <Icons.Filter className={className} />;
+  if (lowerName.includes('file-circle-plus') || lowerName.includes('file-plus')) return <Icons.FilePlus className={className} />;
+  if (lowerName.includes('file-export') || lowerName.includes('file-up')) return <Icons.FileUp className={className} />;
+  if (lowerName.includes('location-dot') || lowerName.includes('map-pin')) return <Icons.MapPin className={className} />;
+  if (lowerName.includes('circle-exclamation') || lowerName.includes('alert-triangle')) return <Icons.AlertTriangle className={className} />;
+  if (lowerName.includes('right-to-bracket') || lowerName.includes('log-in')) return <Icons.LogIn className={className} />;
   
-  return <Icons.FileText className={className} />;
+  return <Icons.Info className={className} />;
 }

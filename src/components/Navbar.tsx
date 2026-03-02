@@ -43,7 +43,6 @@ export function Navbar({ user, loading, onLoginClick, onMenuClick, onLogoClick }
               referrerPolicy="no-referrer"
             />
             <span className="hidden sm:inline text-xs font-bold text-navy uppercase tracking-wider">Menu</span>
-            <IconRenderer name="chevron-down" className="w-3 h-3 text-slate-400 group-hover:text-primary transition-all" />
           </div>
         )}
       </div>

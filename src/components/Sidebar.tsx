@@ -54,9 +54,6 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
           <div className="flex-1 min-w-0 pr-6">
             <h4 className="font-bold text-base leading-tight truncate flex items-center gap-1.5">
               Hi, {user?.name ? user.name.split(' ')[0] : 'Guest'}
-              {user?.email === 'indiacybercafe.com@gmail.com' && (
-                <IconRenderer name="shield-check" className="w-3.5 h-3.5 text-primary shrink-0" />
-              )}
             </h4>
             <span className="inline-block px-2 py-0.5 bg-white/20 rounded text-[10px] font-bold uppercase tracking-wider mt-1">
               {user?.email === 'indiacybercafe.com@gmail.com' ? 'Super Admin' : (user?.role || 'User')}
