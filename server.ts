@@ -15,8 +15,9 @@ async function startServer() {
   // Trust proxy for correct protocol and host detection behind proxies
   app.set('trust proxy', true);
 
-  // Ensure base uploads directory exists
-  const baseUploadDir = path.join(process.cwd(), "uploads");
+  // Ensure base uploads directory exists outside of the code root if possible
+  // For standard environments, we use a folder that is clearly marked as data
+  const baseUploadDir = path.join(process.cwd(), "persistent_uploads");
   if (!fs.existsSync(baseUploadDir)) {
     fs.mkdirSync(baseUploadDir, { recursive: true });
   }
@@ -70,7 +71,8 @@ async function startServer() {
       // Determine base URL dynamically if not set in env
       let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
       if (!baseUrl) {
-        const protocol = req.protocol;
+        // Use req.get('x-forwarded-proto') to detect HTTPS behind proxies
+        const protocol = req.get('x-forwarded-proto') || req.protocol;
         const host = req.get('host');
         baseUrl = `${protocol}://${host}`;
       }
@@ -99,7 +101,7 @@ async function startServer() {
       
       let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
       if (!baseUrl) {
-        const protocol = req.protocol;
+        const protocol = req.get('x-forwarded-proto') || req.protocol;
         const host = req.get('host');
         baseUrl = `${protocol}://${host}`;
       }
