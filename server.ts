@@ -1,13 +1,15 @@
+import dotenv from "dotenv";
+dotenv.config(); // MUST be called before any other imports that use process.env
+
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import nodemailer from "nodemailer";
-import dotenv from "dotenv";
 import session from "express-session";
 import passport from "passport";
 import { Strategy as GoogleStrategy } from "passport-google-oauth20";
 import { adminAuth, adminDb } from "./src/services/adminFirebase";
-
-dotenv.config();
+import path from "path";
+import fs from "fs";
 
 // Global error handling for top-level crashes
 process.on('uncaughtException', (err) => {
@@ -313,10 +315,19 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static("dist"));
-    app.get("*", (req, res) => {
-      res.sendFile("dist/index.html", { root: "." });
-    });
+    const distPath = path.resolve("dist");
+    if (fs.existsSync(distPath)) {
+      console.log('Serving static files from dist/');
+      app.use(express.static(distPath));
+      app.get("*", (req, res) => {
+        res.sendFile(path.join(distPath, "index.html"));
+      });
+    } else {
+      console.warn('WARNING: dist/ directory not found. Static file serving might fail. Did you run npm run build?');
+      app.get("*", (req, res) => {
+        res.status(503).send("Application is still building or dist/ folder is missing. Please try again in a minute.");
+      });
+    }
   }
 
   app.listen(PORT, "0.0.0.0", () => {
