@@ -122,6 +122,14 @@ async function startServer() {
         return done(error as Error);
       }
     }));
+  } else {
+    console.warn('Google OAuth disabled: GOOGLE_CLIENT_ID or GOOGLE_CLIENT_SECRET missing.');
+  }
+
+  if (process.env.FIREBASE_SERVICE_ACCOUNT) {
+    console.log('FIREBASE_SERVICE_ACCOUNT variable found.');
+  } else {
+    console.warn('FIREBASE_SERVICE_ACCOUNT variable missing.');
   }
 
   app.use(express.json());
