@@ -27,22 +27,32 @@ async function startServer() {
   // Multer Configuration with dynamic folder support
   const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-      const category = req.body.category || "general";
-      const targetDir = path.join(baseUploadDir, category);
-      
-      if (!fs.existsSync(targetDir)) {
-        fs.mkdirSync(targetDir, { recursive: true });
+      try {
+        const category = req.body.category || "general";
+        const targetDir = path.join(baseUploadDir, category);
+        
+        if (!fs.existsSync(targetDir)) {
+          fs.mkdirSync(targetDir, { recursive: true });
+        }
+        cb(null, targetDir);
+      } catch (error: any) {
+        console.error("Multer Destination Error:", error);
+        cb(error, "");
       }
-      cb(null, targetDir);
     },
     filename: (req, file, cb) => {
-      const category = req.body.category || "general";
-      const randomString = Math.random().toString(36).substring(2, 14);
-      const timestamp = Date.now();
-      const extension = path.extname(file.originalname);
-      const sanitizedOriginalName = path.basename(file.originalname, extension).replace(/[^a-zA-Z0-9._-]/g, "_");
-      const newFilename = `${category}_${randomString}_${timestamp}_${sanitizedOriginalName}${extension}`;
-      cb(null, newFilename);
+      try {
+        const category = req.body.category || "general";
+        const randomString = Math.random().toString(36).substring(2, 14);
+        const timestamp = Date.now();
+        const extension = path.extname(file.originalname);
+        const sanitizedOriginalName = path.basename(file.originalname, extension).replace(/[^a-zA-Z0-9._-]/g, "_");
+        const newFilename = `${category}_${randomString}_${timestamp}_${sanitizedOriginalName}${extension}`;
+        cb(null, newFilename);
+      } catch (error: any) {
+        console.error("Multer Filename Error:", error);
+        cb(error, "");
+      }
     },
   });
 
@@ -50,31 +60,56 @@ async function startServer() {
 
   // Handle the PHP uploader path for the preview environment
   app.post("/uploader/upload.php", upload.single("file"), (req: any, res) => {
-    if (!req.file) {
-      return res.status(400).json({ status: "error", message: "No file uploaded" });
+    try {
+      if (!req.file) {
+        return res.status(400).json({ status: "error", message: "No file uploaded" });
+      }
+      
+      const category = req.body.category || "general";
+      
+      // Determine base URL dynamically if not set in env
+      let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+      if (!baseUrl) {
+        const protocol = req.protocol;
+        const host = req.get('host');
+        baseUrl = `${protocol}://${host}`;
+      }
+      
+      const fileUrl = `${baseUrl}/uploads/${category}/${req.file.filename}`;
+      
+      res.json({ 
+        status: "success", 
+        file_url: fileUrl, 
+        stored_file_name: req.file.filename,
+        firebase_synced: true 
+      });
+    } catch (error: any) {
+      console.error("Upload Route Error:", error);
+      res.status(500).json({ status: "error", message: error.message });
     }
-    
-    const category = req.body.category || "general";
-    const baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
-    const fileUrl = `${baseUrl}/uploads/${category}/${req.file.filename}`;
-    
-    res.json({ 
-      status: "success", 
-      file_url: fileUrl, 
-      stored_file_name: req.file.filename,
-      firebase_synced: true // Simulate sync for preview
-    });
   });
 
   // API Route for file uploads (legacy support)
   app.post("/api/upload", upload.single("file"), (req: any, res) => {
-    if (!req.file) {
-      return res.status(400).json({ error: "No file uploaded" });
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+      const category = req.body.category || "general";
+      
+      let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+      if (!baseUrl) {
+        const protocol = req.protocol;
+        const host = req.get('host');
+        baseUrl = `${protocol}://${host}`;
+      }
+      
+      const fileUrl = `${baseUrl}/uploads/${category}/${req.file.filename}`;
+      res.json({ url: fileUrl });
+    } catch (error: any) {
+      console.error("API Upload Error:", error);
+      res.status(500).json({ error: error.message });
     }
-    const category = req.body.category || "general";
-    const baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
-    const fileUrl = `${baseUrl}/uploads/${category}/${req.file.filename}`;
-    res.json({ url: fileUrl });
   });
 
   // Email Configuration
@@ -125,16 +160,26 @@ async function startServer() {
 
   // Sitemap and Robots.txt
   app.get("/robots.txt", (req, res) => {
-    const baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "https://indiacybercafe.com";
+    let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+    if (!baseUrl) {
+      const protocol = req.protocol;
+      const host = req.get('host');
+      baseUrl = `${protocol}://${host}`;
+    }
     res.type("text/plain");
     res.send(`User-agent: *\nAllow: /\nSitemap: ${baseUrl}/sitemap.xml`);
   });
 
   app.get("/sitemap.xml", async (req, res) => {
-    // Use the current request's host to ensure the sitemap URLs match the environment
-    const protocol = req.protocol;
-    const host = req.get('host');
-    const baseUrl = `${protocol}://${host}`;
+    // Use APP_URL if set, otherwise fallback to current request host
+    // This ensures that in production it uses the real domain if configured
+    let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+    
+    if (!baseUrl) {
+      const protocol = req.protocol;
+      const host = req.get('host');
+      baseUrl = `${protocol}://${host}`;
+    }
     
     const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
     
