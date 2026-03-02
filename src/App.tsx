@@ -29,6 +29,7 @@ const Admin = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin }
 const Operator = lazy(() => import('./pages/Operator').then(m => ({ default: m.Operator })));
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Register = lazy(() => import('./pages/Register').then(m => ({ default: m.Register })));
+const AuthCallback = lazy(() => import('./pages/AuthCallback').then(m => ({ default: m.AuthCallback })));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword').then(m => ({ default: m.ForgotPassword })));
 const Legal = lazy(() => import('./pages/Legal').then(m => ({ default: m.Legal })));
 
@@ -121,6 +122,8 @@ function AppContent() {
     try {
       setIsSidebarOpen(false); // Close sidebar immediately
       await signOut(auth);
+      // Also clear server-side session
+      await fetch('/api/auth/logout');
       setIsLogoutConfirmOpen(false);
       setIsLogoutChoiceOpen(true);
     } catch (error: any) {
@@ -182,6 +185,7 @@ function AppContent() {
             } />
             <Route path="/login" element={<Login user={user} />} />
             <Route path="/register" element={<Register user={user} />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/legal/:type" element={<Legal />} />
             <Route path="/about" element={<Legal />} />

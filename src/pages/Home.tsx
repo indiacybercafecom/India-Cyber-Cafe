@@ -155,6 +155,19 @@ export function Home({ onNavigate, services, onSelectService, loading }: HomePro
           ))}
         </div>
       </section>
+
+      {/* Floating Explore Services Button */}
+      <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-max">
+        <button 
+          onClick={() => onNavigate('services')}
+          className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 sm:px-6 sm:py-3 rounded-full shadow-lg shadow-emerald-500/30 flex items-center gap-2 sm:gap-3 font-bold text-xs sm:text-base transition-all hover:scale-105 active:scale-95 group animate-bounce-subtle"
+        >
+          <div className="bg-white/20 p-1 rounded-lg group-hover:rotate-12 transition-transform">
+            <IconRenderer name="layout-grid" className="w-3.5 h-3.5 sm:w-5 sm:h-5" />
+          </div>
+          <span className="whitespace-nowrap">Explore Services</span>
+        </button>
+      </div>
     </div>
   );
 }

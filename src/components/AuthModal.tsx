@@ -6,6 +6,7 @@ import { showToast } from './Toast';
 import { IconRenderer } from './Icons';
 import { motion, AnimatePresence } from 'motion/react';
 import { sendEmail, emailTemplates } from '../services/emailService';
+import { GoogleButton } from './GoogleButton';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -211,6 +212,21 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
               {loading ? 'Processing...' : view === 'login' ? 'Login' : view === 'register' ? 'Register' : 'Send Reset Link'}
             </button>
           </form>
+
+          {(view === 'login' || view === 'register') && (
+            <>
+              <div className="relative my-6 sm:my-8">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-slate-100"></div>
+                </div>
+                <div className="relative flex justify-center text-[10px] sm:text-xs uppercase">
+                  <span className="bg-white px-2 text-slate-400">Or continue with</span>
+                </div>
+              </div>
+
+              <GoogleButton />
+            </>
+          )}
 
           <div className="mt-6 sm:mt-8 text-center p-4 sm:p-5 bg-linear-to-br from-primary/5 to-navy/5 rounded-2xl border border-primary/10">
             <p className="text-slate-500 text-xs sm:text-sm mb-2">
