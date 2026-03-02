@@ -53,7 +53,7 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
           />
           <div className="flex-1 min-w-0 pr-6">
             <h4 className="font-bold text-base leading-tight truncate flex items-center gap-1.5">
-              {user?.name || 'Guest'}
+              Hi, {user?.name ? user.name.split(' ')[0] : 'Guest'}
               {user?.email === 'indiacybercafe.com@gmail.com' && (
                 <IconRenderer name="shield-check" className="w-3.5 h-3.5 text-primary shrink-0" />
               )}
