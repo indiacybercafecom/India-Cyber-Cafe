@@ -157,7 +157,13 @@ async function startServer() {
   });
 
   // Google Auth Routes
-  app.get("/auth/google", passport.authenticate("google", { scope: ["profile", "email"] }));
+  app.get("/auth/google", (req, res, next) => {
+    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
+      console.error("Google OAuth credentials missing in environment variables.");
+      return res.status(500).send("Google OAuth is not configured on the server. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET in your environment variables.");
+    }
+    passport.authenticate("google", { scope: ["profile", "email"] })(req, res, next);
+  });
 
   app.get("/auth/google/callback", 
     passport.authenticate("google", { failureRedirect: "/login?error=google_auth_failed" }),
