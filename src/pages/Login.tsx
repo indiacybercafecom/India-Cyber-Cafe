@@ -7,7 +7,6 @@ import { showToast } from '../components/Toast';
 import { IconRenderer } from '../components/Icons';
 import { motion } from 'motion/react';
 import { UserProfile } from '../types';
-import { GoogleButton } from '../components/GoogleButton';
 
 interface LoginProps {
   user: UserProfile | null;
@@ -27,20 +26,7 @@ export function Login({ user }: LoginProps) {
     if (user) {
       navigate(redirectPath, { replace: true });
     }
-    
-    // Check for errors from Google Auth
-    const error = searchParams.get('error');
-    if (error) {
-      const errorMessages: Record<string, string> = {
-        'google_auth_failed': 'Google authentication failed. Please try again.',
-        'auth_failed': 'Authentication failed. Please try again.',
-        'token_generation_failed': 'Failed to generate security token. Please contact support.'
-      };
-      showToast(errorMessages[error] || 'An error occurred during login.', 'error');
-      // Clear the error from URL
-      navigate('/login', { replace: true });
-    }
-  }, [user, navigate, redirectPath, searchParams]);
+  }, [user, navigate, redirectPath]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,17 +143,6 @@ export function Login({ user }: LoginProps) {
               {loading ? 'Logging in...' : 'Login'}
             </button>
           </form>
-
-          <div className="relative my-8">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-slate-100"></div>
-            </div>
-            <div className="relative flex justify-center text-xs uppercase">
-              <span className="bg-white px-2 text-slate-400">Or continue with</span>
-            </div>
-          </div>
-
-          <GoogleButton />
 
           <div className="mt-8 text-center p-5 bg-linear-to-br from-primary/5 to-navy/5 rounded-2xl border border-primary/10">
             <p className="text-slate-500 text-sm mb-2">New to India Cyber Cafe?</p>
