@@ -17,15 +17,15 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-linear-to-br from-primary to-primary-dark text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary/40 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/50 active:scale-95 disabled:opacity-50 flex items-center justify-center gap-2;
+    @apply bg-linear-to-br from-primary to-primary-dark text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary/40 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/50 active:scale-95 active:-translate-y-0 active:shadow-md disabled:opacity-50 flex items-center justify-center gap-2;
   }
   
   .btn-outline {
-    @apply border-2 border-navy text-navy px-6 py-3 rounded-xl font-bold transition-all hover:bg-navy hover:text-white hover:-translate-y-1 hover:shadow-lg hover:shadow-navy/30 active:scale-95 flex items-center justify-center gap-2;
+    @apply border-2 border-navy text-navy px-6 py-3 rounded-xl font-bold transition-all hover:bg-navy hover:text-white hover:-translate-y-1 hover:shadow-lg hover:shadow-navy/30 active:scale-95 active:-translate-y-0 active:shadow-md flex items-center justify-center gap-2;
   }
 
   .card {
-    @apply bg-white p-8 rounded-3xl text-center shadow-sm border border-slate-100 transition-all hover:-translate-y-2 hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10;
+    @apply bg-white p-8 rounded-3xl text-center shadow-sm border border-slate-100 transition-all hover:-translate-y-2 hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10 active:scale-[0.98] active:translate-y-0 active:shadow-lg;
   }
 
   .input-field {

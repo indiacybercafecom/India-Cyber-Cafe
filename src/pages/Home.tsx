@@ -55,7 +55,7 @@ export function Home({ onNavigate, services, onSelectService, loading }: HomePro
           { icon: 'headset', count: '24/7', label: 'Support' },
           { icon: 'star', count: '4.9/5', label: 'Rating' },
         ].map((stat, i) => (
-          <div key={i} className="bg-white p-4 sm:p-8 rounded-2xl text-center shadow-md border-t-4 border-primary hover:-translate-y-2 transition-all">
+          <div key={i} className="bg-white p-4 sm:p-8 rounded-2xl text-center shadow-md border-t-4 border-primary hover:-translate-y-2 active:translate-y-0 active:scale-95 transition-all">
             <IconRenderer name={stat.icon} className="w-6 h-6 sm:w-10 sm:h-10 text-primary mx-auto mb-2 sm:mb-4" />
             <h3 className="text-xl sm:text-3xl font-bold text-navy mb-1">{stat.count}</h3>
             <p className="text-[10px] sm:text-sm text-slate-500 font-medium uppercase tracking-wider">{stat.label}</p>
@@ -119,7 +119,7 @@ export function Home({ onNavigate, services, onSelectService, loading }: HomePro
             { icon: 'check-circle', title: 'Easy Process', desc: 'Simple steps' },
             { icon: 'clock', title: 'Real-time Updates', desc: 'Instant notifications' },
           ].map((feature, i) => (
-            <div key={i} className="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl text-center shadow-md border-t-4 border-primary hover:-translate-y-2 transition-all">
+            <div key={i} className="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl text-center shadow-md border-t-4 border-primary hover:-translate-y-2 active:translate-y-0 active:scale-95 transition-all">
               <div className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 lg:mb-6">
                 <IconRenderer name={feature.icon} className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primary" />
               </div>
