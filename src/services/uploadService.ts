@@ -1,23 +1,37 @@
+import { storage } from '../firebase';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
 export async function uploadFile(file: File, category: string = 'general'): Promise<string> {
-  const formData = new FormData();
-  formData.append('category', category); // MUST be before file
-  formData.append('file', file);
-
-  // Use the PHP uploader endpoint
-  const response = await fetch('/uploader/upload.php', {
-    method: 'POST',
-    body: formData,
-  });
-
-  if (!response.ok) {
-    throw new Error('Upload failed: Server error');
-  }
-
-  const data = await response.json();
-  
-  if (data.status === 'success') {
-    return data.file_url;
-  } else {
-    throw new Error(data.message || 'Upload failed');
+  try {
+    // Generate a unique filename to prevent overwriting and maintain organization
+    const randomString = Math.random().toString(36).substring(2, 14);
+    const timestamp = Date.now();
+    const extension = file.name.split('.').pop();
+    const fileName = `${category}/${timestamp}_${randomString}.${extension}`;
+    
+    // Create a storage reference in Firebase
+    const storageRef = ref(storage, fileName);
+    
+    // Upload the file with appropriate metadata
+    const metadata = {
+      contentType: file.type,
+    };
+    
+    const snapshot = await uploadBytes(storageRef, file, metadata);
+    
+    // Get the permanent, public download URL from Firebase
+    const downloadURL = await getDownloadURL(snapshot.ref);
+    
+    return downloadURL;
+  } catch (error: any) {
+    console.error('Firebase Upload Error:', error);
+    // Provide clear error feedback
+    let errorMessage = 'Upload failed';
+    if (error.code === 'storage/unauthorized') {
+      errorMessage = 'Permission denied. Please ensure Firebase Storage rules allow uploads.';
+    } else if (error.code === 'storage/quota-exceeded') {
+      errorMessage = 'Storage quota exceeded. Please contact support.';
+    }
+    throw new Error(errorMessage);
   }
 }

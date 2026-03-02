@@ -26,6 +26,7 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [files, setFiles] = useState<Record<string, File>>({});
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
 
   const slugify = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
 
@@ -71,11 +72,15 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
     try {
       const uploadedFiles: Record<string, string> = {};
       
-      // Upload files to Server
+      // Upload files to Firebase Storage
       const fileEntries = Object.entries(files) as [string, File][];
-      for (const [label, file] of fileEntries) {
+      setUploadProgress({ current: 0, total: fileEntries.length });
+      
+      for (let i = 0; i < fileEntries.length; i++) {
+        const [label, file] = fileEntries[i];
         const url = await uploadFile(file, 'applications');
         uploadedFiles[label] = url;
+        setUploadProgress({ current: i + 1, total: fileEntries.length });
       }
 
       // Generate ID: ICC-DDMMYYYY-HHMMSS-RRRR
@@ -309,9 +314,19 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
         <button 
           type="submit" 
           disabled={loading}
-          className="btn-primary w-full py-3 sm:py-4 text-base sm:text-lg mt-4"
+          className="btn-primary w-full py-3 sm:py-4 text-base sm:text-lg mt-4 relative overflow-hidden"
         >
-          {loading ? 'Submitting...' : selectedSubService ? 'Proceed to Payment' : 'Submit Application'}
+          {loading ? (
+            <div className="flex flex-col items-center justify-center">
+              <span className="flex items-center gap-2">
+                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                {uploadProgress.total > 0 ? `Uploading Files (${uploadProgress.current}/${uploadProgress.total})...` : 'Submitting...'}
+              </span>
+              {uploadProgress.total > 0 && (
+                <div className="absolute bottom-0 left-0 h-1 bg-white/30 transition-all duration-300" style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }} />
+              )}
+            </div>
+          ) : selectedSubService ? 'Proceed to Payment' : 'Submit Application'}
         </button>
       </form>
     </div>
