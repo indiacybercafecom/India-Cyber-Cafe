@@ -4,8 +4,47 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
+import multer from "multer";
 
 dotenv.config();
+
+// Ensure uploads directory exists
+const UPLOADS_DIR = path.join(process.cwd(), "uploads");
+const ICONS_DIR = path.join(UPLOADS_DIR, "icons");
+
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
+if (!fs.existsSync(ICONS_DIR)) fs.mkdirSync(ICONS_DIR);
+
+// Multer configuration for icon uploads
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const category = (req.body.category || "general").toLowerCase().replace(/[^a-z0-9]/g, "-");
+    const categoryDir = path.join(ICONS_DIR, category);
+    if (!fs.existsSync(categoryDir)) {
+      fs.mkdirSync(categoryDir, { recursive: true });
+    }
+    cb(null, categoryDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+    const ext = path.extname(file.originalname);
+    cb(null, file.fieldname + "-" + uniqueSuffix + ext);
+  }
+});
+
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 2 * 1024 * 1024 }, // 2MB limit
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = /jpeg|jpg|png|svg|webp/;
+    const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
+    const mimetype = allowedTypes.test(file.mimetype);
+    if (extname && mimetype) {
+      return cb(null, true);
+    }
+    cb(new Error("Only images (jpg, png, svg, webp) are allowed"));
+  }
+});
 
 async function startServer() {
   const app = express();
@@ -15,6 +54,26 @@ async function startServer() {
   app.set('trust proxy', true);
 
   app.use(express.json());
+  
+  // Serve static files from uploads directory
+  app.use("/uploads", express.static(path.join(process.cwd(), "uploads")));
+
+  // API Route for icon uploads
+  app.post("/api/upload-icon", upload.single("icon"), (req: any, res) => {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
+    
+    // Construct the public URL
+    const category = (req.body.category || "general").toLowerCase().replace(/[^a-z0-9]/g, "-");
+    const relativePath = `/uploads/icons/${category}/${req.file.filename}`;
+    
+    res.json({ 
+      success: true, 
+      url: relativePath,
+      filename: req.file.filename
+    });
+  });
 
   // Email Configuration
   const transporter = nodemailer.createTransport({

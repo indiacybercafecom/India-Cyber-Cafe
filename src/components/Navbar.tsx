@@ -7,17 +7,16 @@ interface NavbarProps {
   onLoginClick: () => void;
   onMenuClick: () => void;
   onLogoClick: () => void;
+  logoUrl?: string;
 }
 
-export function Navbar({ user, loading, onLoginClick, onMenuClick, onLogoClick }: NavbarProps) {
+export function Navbar({ user, loading, onLoginClick, onMenuClick, onLogoClick, logoUrl }: NavbarProps) {
   return (
     <nav className="fixed top-0 w-full h-[60px] sm:h-[70px] glass flex justify-between items-center px-[5%] shadow-sm z-[1000]">
       <div className="flex items-center cursor-pointer transition-transform hover:scale-105" onClick={onLogoClick}>
-        <img 
-          src="https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png" 
-          alt="India Cyber Cafe" 
+        <IconRenderer 
+          name={logoUrl || "https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png"} 
           className="h-[40px] sm:h-[55px] w-auto object-contain"
-          referrerPolicy="no-referrer"
         />
       </div>
       
