@@ -7,7 +7,6 @@ import {
   Monitor, 
   LogOut, 
   X,
-  LayoutGrid,
   Fingerprint,
   IdCard,
   Search,
@@ -62,7 +61,6 @@ export const Icons = {
   Monitor,
   LogOut,
   X,
-  LayoutGrid,
   Fingerprint,
   IdCard,
   Search,
@@ -113,7 +111,6 @@ export function IconRenderer({ name, className }: { name: string; className?: st
   const lowerName = name.toLowerCase();
   
   if (lowerName.includes('fingerprint')) return <Icons.Fingerprint className={className} />;
-  if (lowerName.includes('layout-grid')) return <Icons.LayoutGrid className={className} />;
   if (lowerName.includes('id-card')) return <Icons.IdCard className={className} />;
   if (lowerName.includes('house') || lowerName.includes('home')) return <Icons.Home className={className} />;
   if (lowerName.includes('layer-group')) return <Icons.Layers className={className} />;
