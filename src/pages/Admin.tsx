@@ -7,6 +7,8 @@ import { utils, writeFile } from 'xlsx';
 import { GatewayModal } from '../components/GatewayModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 
+import { sendEmail, emailTemplates } from '../services/emailService';
+
 interface AdminProps {
   applications: Application[];
   users: UserProfile[];
@@ -68,9 +70,11 @@ export function Admin({
     try {
       if (selectedGateway) {
         await onUpdateGateway(selectedGateway.id, gateway);
+        sendEmail('icc@indiacybercafe.com', 'Gateway Updated', emailTemplates.adminAction('Gateway Updated', `Gateway ${gateway.name} was updated.`));
         showToast('Gateway updated successfully!');
       } else {
         await onAddGateway(gateway);
+        sendEmail('icc@indiacybercafe.com', 'New Gateway Added', emailTemplates.adminAction('New Gateway Added', `Gateway ${gateway.name} was added.`));
         showToast('Gateway added successfully!');
       }
       setIsGatewayModalOpen(false);
@@ -81,6 +85,7 @@ export function Admin({
   };
 
   const handleDeleteGateway = (id: string) => {
+    const gateway = gateways.find(g => g.id === id);
     setConfirmConfig({
       isOpen: true,
       title: 'Delete Gateway',
@@ -88,6 +93,7 @@ export function Admin({
       type: 'danger',
       onConfirm: () => {
         onDeleteGateway(id);
+        sendEmail('icc@indiacybercafe.com', 'Gateway Deleted', emailTemplates.adminAction('Gateway Deleted', `Gateway ${gateway?.name || id} was deleted.`));
         showToast('Gateway deleted');
       }
     });
@@ -153,6 +159,7 @@ export function Admin({
   };
 
   const handleDeleteApp = (id: string) => {
+    const app = applications.find(a => a.id === id);
     setConfirmConfig({
       isOpen: true,
       title: 'Delete Application',
@@ -160,12 +167,14 @@ export function Admin({
       type: 'danger',
       onConfirm: () => {
         onDeleteApp(id);
+        sendEmail('icc@indiacybercafe.com', 'Application Deleted', emailTemplates.adminAction('Application Deleted', `Application ${id} (${app?.serviceName}) for ${app?.name} was deleted.`));
         showToast('Application deleted', 'success');
       }
     });
   };
 
   const handleDeleteService = (id: string) => {
+    const service = services.find(s => s.id === id);
     setConfirmConfig({
       isOpen: true,
       title: 'Delete Service',
@@ -173,6 +182,7 @@ export function Admin({
       type: 'danger',
       onConfirm: () => {
         onDeleteService(id);
+        sendEmail('icc@indiacybercafe.com', 'Service Deleted', emailTemplates.adminAction('Service Deleted', `Service ${service?.name || id} was deleted.`));
         showToast('Service deleted', 'success');
       }
     });

@@ -32,6 +32,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
     setLoading(true);
     try {
       await update(dbRef(rtdb, `applications/${app.id}`), { paymentStatus: status });
+      sendEmail(app.email, `Payment Status Update: ${app.serviceName}`, emailTemplates.paymentUpdate(app.name, app.serviceName, status));
       showToast(`Payment status updated to ${status}`);
     } catch (error: any) {
       showToast(error.message, 'error');

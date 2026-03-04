@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { Service, ServiceField, SubService } from '../types';
 import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
@@ -17,6 +17,10 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
   const [fields, setFields] = useState<ServiceField[]>(service?.fields || []);
   const [subservices, setSubservices] = useState<SubService[]>(service?.subservices || []);
   const [css, setCss] = useState(service?.css || '');
+  const [isUploading, setIsUploading] = useState(false);
+  const [mainFieldsJsonMode, setMainFieldsJsonMode] = useState(false);
+  const [subserviceJsonModes, setSubserviceJsonModes] = useState<Record<number, boolean>>({});
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleAddField = () => {
     setFields([...fields, { label: '', type: 'text' }]);
@@ -24,6 +28,34 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
 
   const handleAddSubService = () => {
     setSubservices([...subservices, { name: '', charge: 0, paymentMethods: ['razorpay', 'cash'] }]);
+  };
+
+  const handleIconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    const formData = new FormData();
+    formData.append('category', name || 'general');
+    formData.append('icon', file);
+
+    try {
+      const response = await fetch('/api/upload-icon', {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await response.json();
+      if (data.success) {
+        setIcon(data.url);
+        showToast('Icon uploaded successfully!');
+      } else {
+        showToast(data.message || 'Upload failed', 'error');
+      }
+    } catch (error) {
+      showToast('Error uploading icon', 'error');
+    } finally {
+      setIsUploading(false);
+    }
   };
 
   const handleSave = () => {
@@ -62,8 +94,30 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
               <input type="text" className="input-field" value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Passport Application" />
             </div>
             <div className="space-y-2">
-              <label className="block font-bold text-navy">Icon Class</label>
-              <input type="text" className="input-field" value={icon} onChange={e => setIcon(e.target.value)} placeholder="e.g., fingerprint" />
+              <label className="block font-bold text-navy">Icon (Class or URL)</label>
+              <div className="flex gap-2">
+                <div className="flex-1 relative">
+                  <input type="text" className="input-field pr-10" value={icon} onChange={e => setIcon(e.target.value)} placeholder="e.g., fingerprint" />
+                  <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                    <IconRenderer name={icon} className="w-5 h-5 text-slate-400" />
+                  </div>
+                </div>
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept="image/*" 
+                  onChange={handleIconUpload} 
+                />
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="btn-outline py-2 px-3 text-sm flex items-center gap-2 whitespace-nowrap"
+                >
+                  {isUploading ? '...' : <IconRenderer name="upload" className="w-4 h-4" />}
+                  Upload
+                </button>
+              </div>
             </div>
           </div>
 
@@ -103,18 +157,28 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                   {/* Sub-service specific fields */}
                   <div className="pl-6 border-l-2 border-primary/20 space-y-3">
                     <div className="flex justify-between items-center">
-                      <h5 className="text-sm font-bold text-navy/70 uppercase tracking-wider">Sub-Service Fields (Optional)</h5>
-                      <button 
-                        onClick={() => {
-                          const newSS = [...subservices];
-                          if (!newSS[i].fields) newSS[i].fields = [];
-                          newSS[i].fields!.push({ label: '', type: 'text' });
-                          setSubservices(newSS);
-                        }}
-                        className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
-                      >
-                        <IconRenderer name="plus" className="w-3 h-3" /> Add Field
-                      </button>
+                      <div className="flex items-center gap-3">
+                        <h5 className="text-sm font-bold text-navy/70 uppercase tracking-wider">Sub-Service Fields (Optional)</h5>
+                        <button 
+                          onClick={() => setSubserviceJsonModes(prev => ({ ...prev, [i]: !prev[i] }))}
+                          className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${subserviceJsonModes[i] ? 'bg-primary text-white border-primary' : 'text-slate-400 border-slate-200 hover:border-primary hover:text-primary'}`}
+                        >
+                          {subserviceJsonModes[i] ? 'Manual UI' : 'JSON Mode'}
+                        </button>
+                      </div>
+                      {!subserviceJsonModes[i] && (
+                        <button 
+                          onClick={() => {
+                            const newSS = [...subservices];
+                            if (!newSS[i].fields) newSS[i].fields = [];
+                            newSS[i].fields!.push({ label: '', type: 'text' });
+                            setSubservices(newSS);
+                          }}
+                          className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+                        >
+                          <IconRenderer name="plus" className="w-3 h-3" /> Add Field
+                        </button>
+                      )}
                     </div>
 
                     {/* Payment Methods for Sub-Service */}
@@ -142,38 +206,57 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                       </div>
                     </div>
                     
-                    {ss.fields && ss.fields.length > 0 ? (
-                      <div className="space-y-2">
-                        {ss.fields.map((f, fi) => (
-                          <div key={fi} className="flex gap-2 items-center">
-                            <input type="text" className="input-field py-1 text-sm" placeholder="Field Label" value={f.label} onChange={e => {
-                              const newSS = [...subservices];
-                              newSS[i].fields![fi].label = e.target.value;
-                              setSubservices(newSS);
-                            }} />
-                            <select className="input-field py-1 text-sm w-32" value={f.type} onChange={e => {
-                              const newSS = [...subservices];
-                              newSS[i].fields![fi].type = e.target.value as any;
-                              setSubservices(newSS);
-                            }}>
-                              <option value="text">Text</option>
-                              <option value="email">Email</option>
-                              <option value="phone">Phone</option>
-                              <option value="date">Date</option>
-                              <option value="file">File</option>
-                              <option value="textarea">Textarea</option>
-                              <option value="select">Select</option>
-                            </select>
-                            <button onClick={() => {
-                              const newSS = [...subservices];
-                              newSS[i].fields = newSS[i].fields!.filter((_, idx) => idx !== fi);
-                              setSubservices(newSS);
-                            }} className="text-red-400 hover:text-red-600"><IconRenderer name="x" className="w-4 h-4" /></button>
-                          </div>
-                        ))}
-                      </div>
+                    {subserviceJsonModes[i] ? (
+                      <textarea 
+                        className="input-field font-mono text-xs min-h-[150px] bg-slate-900 text-emerald-400 p-4"
+                        value={JSON.stringify(ss.fields || [], null, 2)}
+                        onChange={e => {
+                          try {
+                            const parsed = JSON.parse(e.target.value);
+                            const newSS = [...subservices];
+                            newSS[i].fields = parsed;
+                            setSubservices(newSS);
+                          } catch (err) {
+                            // Don't update if invalid JSON, but allow typing
+                          }
+                        }}
+                      />
                     ) : (
-                      <p className="text-xs text-slate-400 italic">No specific fields. Will use main service fields.</p>
+                      <>
+                        {ss.fields && ss.fields.length > 0 ? (
+                          <div className="space-y-2">
+                            {ss.fields.map((f, fi) => (
+                              <div key={fi} className="flex gap-2 items-center">
+                                <input type="text" className="input-field py-1 text-sm" placeholder="Field Label" value={f.label} onChange={e => {
+                                  const newSS = [...subservices];
+                                  newSS[i].fields![fi].label = e.target.value;
+                                  setSubservices(newSS);
+                                }} />
+                                <select className="input-field py-1 text-sm w-32" value={f.type} onChange={e => {
+                                  const newSS = [...subservices];
+                                  newSS[i].fields![fi].type = e.target.value as any;
+                                  setSubservices(newSS);
+                                }}>
+                                  <option value="text">Text</option>
+                                  <option value="email">Email</option>
+                                  <option value="phone">Phone</option>
+                                  <option value="date">Date</option>
+                                  <option value="file">File</option>
+                                  <option value="textarea">Textarea</option>
+                                  <option value="select">Select</option>
+                                </select>
+                                <button onClick={() => {
+                                  const newSS = [...subservices];
+                                  newSS[i].fields = newSS[i].fields!.filter((_, idx) => idx !== fi);
+                                  setSubservices(newSS);
+                                }} className="text-red-400 hover:text-red-600"><IconRenderer name="x" className="w-4 h-4" /></button>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="text-xs text-slate-400 italic">No specific fields. Will use main service fields.</p>
+                        )}
+                      </>
                     )}
                   </div>
                 </div>
@@ -184,34 +267,60 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
           {/* Main Fields */}
           <div className="space-y-4">
             <div className="flex justify-between items-center">
-              <h4 className="font-bold text-navy">Main Form Fields (Default)</h4>
-              <button onClick={handleAddField} className="btn-outline py-2 px-4 text-sm flex items-center gap-2"><IconRenderer name="plus" className="w-4 h-4" /> Add Field</button>
+              <div className="flex items-center gap-3">
+                <h4 className="font-bold text-navy">Main Form Fields (Default)</h4>
+                <button 
+                  onClick={() => setMainFieldsJsonMode(!mainFieldsJsonMode)}
+                  className={`text-[10px] px-2 py-0.5 rounded-full border transition-all ${mainFieldsJsonMode ? 'bg-primary text-white border-primary' : 'text-slate-400 border-slate-200 hover:border-primary hover:text-primary'}`}
+                >
+                  {mainFieldsJsonMode ? 'Manual UI' : 'JSON Mode'}
+                </button>
+              </div>
+              {!mainFieldsJsonMode && (
+                <button onClick={handleAddField} className="btn-outline py-2 px-4 text-sm flex items-center gap-2"><IconRenderer name="plus" className="w-4 h-4" /> Add Field</button>
+              )}
             </div>
-            <div className="space-y-3">
-              {fields.map((f, i) => (
-                <div key={i} className="flex gap-3 items-center bg-slate-50 p-4 rounded-xl border border-slate-100">
-                  <input type="text" className="input-field py-2" placeholder="Field Label" value={f.label} onChange={e => {
-                    const newFields = [...fields];
-                    newFields[i].label = e.target.value;
-                    setFields(newFields);
-                  }} />
-                  <select className="input-field py-2 w-48" value={f.type} onChange={e => {
-                    const newFields = [...fields];
-                    newFields[i].type = e.target.value as any;
-                    setFields(newFields);
-                  }}>
-                    <option value="text">Text</option>
-                    <option value="email">Email</option>
-                    <option value="phone">Phone</option>
-                    <option value="date">Date</option>
-                    <option value="file">File Upload</option>
-                    <option value="textarea">Textarea</option>
-                    <option value="select">Select Dropdown</option>
-                  </select>
-                  <button onClick={() => setFields(fields.filter((_, idx) => idx !== i))} className="text-red-500 hover:scale-110 transition-all"><IconRenderer name="trash" className="w-5 h-5" /></button>
-                </div>
-              ))}
-            </div>
+            
+            {mainFieldsJsonMode ? (
+              <textarea 
+                className="input-field font-mono text-xs min-h-[200px] bg-slate-900 text-emerald-400 p-4"
+                value={JSON.stringify(fields, null, 2)}
+                onChange={e => {
+                  try {
+                    const parsed = JSON.parse(e.target.value);
+                    setFields(parsed);
+                  } catch (err) {
+                    // Allow typing
+                  }
+                }}
+              />
+            ) : (
+              <div className="space-y-3">
+                {fields.map((f, i) => (
+                  <div key={i} className="flex gap-3 items-center bg-slate-50 p-4 rounded-xl border border-slate-100">
+                    <input type="text" className="input-field py-2" placeholder="Field Label" value={f.label} onChange={e => {
+                      const newFields = [...fields];
+                      newFields[i].label = e.target.value;
+                      setFields(newFields);
+                    }} />
+                    <select className="input-field py-2 w-48" value={f.type} onChange={e => {
+                      const newFields = [...fields];
+                      newFields[i].type = e.target.value as any;
+                      setFields(newFields);
+                    }}>
+                      <option value="text">Text</option>
+                      <option value="email">Email</option>
+                      <option value="phone">Phone</option>
+                      <option value="date">Date</option>
+                      <option value="file">File Upload</option>
+                      <option value="textarea">Textarea</option>
+                      <option value="select">Select Dropdown</option>
+                    </select>
+                    <button onClick={() => setFields(fields.filter((_, idx) => idx !== i))} className="text-red-500 hover:scale-110 transition-all"><IconRenderer name="trash" className="w-5 h-5" /></button>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
 
           <button onClick={handleSave} className="btn-primary w-full py-4 text-lg">Save Service</button>

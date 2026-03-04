@@ -17,7 +17,7 @@ import { ConfirmationModal, LogoutChoiceModal } from './components/ConfirmationM
 import { auth } from './firebase';
 import { signOut } from 'firebase/auth';
 import { showToast } from './components/Toast';
-import { Service, Application, UserProfile, PaymentGateway } from './types';
+import { Service, Application, UserProfile, PaymentGateway, GlobalIcon } from './types';
 
 // Lazy load other pages
 const Services = lazy(() => import('./pages/Services').then(m => ({ default: m.Services })));
@@ -61,7 +61,10 @@ function AppContent() {
     updateApplication,
     addGateway,
     updateGateway,
-    deleteGateway
+    deleteGateway,
+    globalIcons,
+    updateGlobalIcon,
+    addGlobalIcon
   } = useData();
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -72,6 +75,21 @@ function AppContent() {
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isLogoutChoiceOpen, setIsLogoutChoiceOpen] = useState(false);
+
+  // Seed global icons if empty
+  useEffect(() => {
+    if (!dataLoading && globalIcons.length === 0) {
+      const initialIcons: Omit<GlobalIcon, 'id'>[] = [
+        { category: 'Header', location: 'Website Logo', icon: 'monitor' },
+        { category: 'Home Page', location: 'Hero Section Icon', icon: 'monitor' },
+        { category: 'Footer', location: 'Footer Logo', icon: 'monitor' },
+        { category: 'Navigation', location: 'Services Menu', icon: 'layers' },
+        { category: 'Navigation', location: 'Track Menu', icon: 'clipboard-list' },
+        { category: 'Navigation', location: 'Profile Menu', icon: 'user' },
+      ];
+      initialIcons.forEach(icon => addGlobalIcon(icon));
+    }
+  }, [dataLoading, globalIcons.length]);
 
   // Back button handling for modals and sidebar
   useEffect(() => {
@@ -143,6 +161,10 @@ function AppContent() {
     }
   };
 
+  const getGlobalIcon = (location: string) => {
+    return globalIcons.find(i => i.location === location)?.icon;
+  };
+
   return (
     <div className="min-h-screen bg-slate-50">
       <ScrollToTop />
@@ -154,6 +176,7 @@ function AppContent() {
         onLoginClick={() => navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)}
         onMenuClick={() => setIsSidebarOpen(true)}
         onLogoClick={() => navigate('/')}
+        logoUrl={getGlobalIcon('Website Logo')}
       />
 
       <Sidebar 
@@ -178,6 +201,7 @@ function AppContent() {
                 services={services} 
                 onSelectService={() => {}} 
                 loading={dataLoading}
+                heroIcon={getGlobalIcon('Hero Section Icon')}
               />
             } />
             <Route path="/login" element={<Login user={user} />} />
@@ -239,6 +263,7 @@ function AppContent() {
                   users={users}
                   services={services}
                   gateways={gateways}
+                  globalIcons={globalIcons}
                   onViewApp={setSelectedApp}
                   onDeleteApp={deleteApplication}
                   onEditService={(s) => { setEditingService(s); setIsServiceBuilderOpen(true); }}
@@ -248,6 +273,8 @@ function AppContent() {
                   onAddGateway={addGateway}
                   onUpdateGateway={updateGateway}
                   onDeleteGateway={deleteGateway}
+                  onUpdateGlobalIcon={updateGlobalIcon}
+                  onAddGlobalIcon={addGlobalIcon}
                 />
               ) : <Navigate to="/" />
             } />
@@ -258,7 +285,7 @@ function AppContent() {
 
       {selectedApp && user && (
         <ApplicationDetailsModal 
-          app={selectedApp} 
+          app={applications.find(a => a.id === selectedApp.id) || selectedApp} 
           onClose={() => {
             setSelectedApp(null);
             if (location.pathname.includes('/track/')) {

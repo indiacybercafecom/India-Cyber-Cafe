@@ -37,23 +37,32 @@ async function startServer() {
     const smtpUser = process.env.SMTP_USER || "icc@booking.indiacybercafe.com";
     const smtpPass = process.env.SMTP_PASS || "Ankit9977498131@@@";
 
+    console.log(`Attempting to send email to: ${to} | Subject: ${subject}`);
+
     if (!smtpUser || !smtpPass) {
       console.warn("SMTP credentials missing. Email not sent.");
-      return res.status(200).json({ success: true, message: "Email simulation: Credentials missing" });
+      return res.status(500).json({ success: false, error: "SMTP credentials missing on server." });
     }
 
     try {
-      await transporter.sendMail({
+      const info = await transporter.sendMail({
         from: `"India Cyber Cafe" <${smtpUser}>`,
         to,
         subject,
         text,
         html,
       });
-      res.json({ success: true });
+      console.log("Email sent successfully:", info.messageId);
+      res.json({ success: true, messageId: info.messageId });
     } catch (error: any) {
-      console.error("Email error:", error);
-      res.status(500).json({ success: false, error: error.message });
+      console.error("CRITICAL Email Error:", error);
+      // Provide more context in the response for debugging
+      res.status(500).json({ 
+        success: false, 
+        error: error.message,
+        code: error.code,
+        command: error.command
+      });
     }
   });
 

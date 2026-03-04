@@ -10,13 +10,14 @@ import {
   orderByChild 
 } from 'firebase/database';
 import { rtdb } from '../firebase';
-import { Service, Application, UserProfile, PaymentGateway } from '../types';
+import { Service, Application, UserProfile, PaymentGateway, GlobalIcon } from '../types';
 
 export function useData() {
   const [services, setServices] = useState<Service[]>([]);
   const [applications, setApplications] = useState<Application[]>([]);
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [gateways, setGateways] = useState<PaymentGateway[]>([]);
+  const [globalIcons, setGlobalIcons] = useState<GlobalIcon[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -80,11 +81,24 @@ export function useData() {
       checkLoading();
     });
 
+    const iconsRef = ref(rtdb, 'globalIcons');
+    const unsubIcons = onValue(iconsRef, (snapshot) => {
+      const data = snapshot.val();
+      if (data) {
+        setGlobalIcons(Object.entries(data).map(([id, val]: [string, any]) => ({ id, ...val } as GlobalIcon)));
+      } else {
+        setGlobalIcons([]);
+      }
+      // We don't strictly need to wait for icons to stop loading, but good for consistency
+      // If you want to include it in checkLoading, add iconsLoaded flag
+    });
+
     return () => {
       unsubServices();
       unsubApps();
       unsubUsers();
       unsubGateways();
+      unsubIcons();
     };
   }, []);
 
@@ -126,11 +140,21 @@ export function useData() {
     return await remove(ref(rtdb, `gateways/${id}`));
   };
 
+  const updateGlobalIcon = async (id: string, icon: string) => {
+    return await update(ref(rtdb, `globalIcons/${id}`), { icon });
+  };
+
+  const addGlobalIcon = async (icon: Omit<GlobalIcon, 'id'>) => {
+    const newRef = push(ref(rtdb, 'globalIcons'));
+    return await set(newRef, { ...icon, id: newRef.key });
+  };
+
   return { 
     services, 
     applications, 
     users, 
     gateways, 
+    globalIcons,
     loading,
     addApplication,
     updateApplication,
@@ -140,6 +164,8 @@ export function useData() {
     deleteService,
     addGateway,
     updateGateway,
-    deleteGateway
+    deleteGateway,
+    updateGlobalIcon,
+    addGlobalIcon
   };
 }

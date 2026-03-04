@@ -10,9 +10,10 @@ interface HomeProps {
   services: Service[];
   onSelectService: (service: Service) => void;
   loading?: boolean;
+  heroIcon?: string;
 }
 
-export function Home({ onNavigate, services, onSelectService, loading }: HomeProps) {
+export function Home({ onNavigate, services, onSelectService, loading, heroIcon }: HomeProps) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -43,7 +44,7 @@ export function Home({ onNavigate, services, onSelectService, loading }: HomePro
           </div>
         </div>
         <div className="hidden md:block shrink-0">
-          <IconRenderer name="globe" className="w-[150px] h-[150px] lg:w-[180px] lg:h-[180px] text-navy/10 animate-float" />
+          <IconRenderer name={heroIcon || "monitor"} className="w-[150px] h-[150px] lg:w-[180px] lg:h-[180px] text-navy/10 animate-float" />
         </div>
       </section>
 
@@ -137,7 +138,7 @@ export function Home({ onNavigate, services, onSelectService, loading }: HomePro
           {[
             { num: 1, icon: 'user-plus', title: 'Register', desc: 'Account' },
             { num: 2, icon: 'file-text', title: 'Select', desc: 'Service' },
-            { num: 3, icon: 'user-pen', title: 'Fill', desc: 'Info' },
+            { num: 3, icon: 'user-pen', title: 'Fill', desc: 'Details' },
             { num: 4, icon: 'paper-plane', title: 'Submit', desc: 'Apply' },
             { num: 5, icon: 'eye', title: 'Track', desc: 'Status' },
           ].map((step, i) => (

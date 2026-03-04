@@ -52,18 +52,7 @@ export function Register({ user }: RegisterProps) {
       sendEmail(email, 'Welcome to India Cyber Cafe', emailTemplates.registration(name));
       
       // Notify Admin
-      sendEmail('icc@indiacybercafe.com', 'New User Registered - India Cyber Cafe', `
-        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #FF9933;">New User Registration</h2>
-          <p>Admin,</p>
-          <p>A new user has registered on India Cyber Cafe:</p>
-          <p><strong>Name:</strong> ${name}</p>
-          <p><strong>Email:</strong> ${email}</p>
-          <p><strong>Phone:</strong> ${phone}</p>
-          <br/>
-          <p>Best Regards,<br/>India Cyber Cafe System</p>
-        </div>
-      `);
+      sendEmail('icc@indiacybercafe.com', 'New User Registered - India Cyber Cafe', emailTemplates.adminAction('New User Registration', `A new user ${name} (${email}) has registered with phone ${phone}.`));
 
       showToast(`Account Created Successfully as ${role}!`);
       navigate(redirectPath);

@@ -5,7 +5,7 @@ import { ref as dbRef, update } from 'firebase/database';
 import { updatePassword } from 'firebase/auth';
 import { showToast } from '../components/Toast';
 import { IconRenderer } from '../components/Icons';
-import { sendEmail } from '../services/emailService';
+import { sendEmail, emailTemplates } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
 
 interface ProfileProps {
@@ -49,15 +49,7 @@ export function Profile({ user }: ProfileProps) {
       showToast('Profile picture updated!');
       
       // Send notification email
-      sendEmail(user.email, 'Profile Picture Updated - India Cyber Cafe', `
-        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #FF9933;">Profile Updated</h2>
-          <p>Hello <strong>${user.name}</strong>,</p>
-          <p>Your profile picture has been successfully updated on India Cyber Cafe.</p>
-          <br/>
-          <p>Best Regards,<br/>India Cyber Cafe Team</p>
-        </div>
-      `);
+      sendEmail(user.email, 'Profile Picture Updated - India Cyber Cafe', emailTemplates.profileUpdate(user.name));
     } catch (error: any) {
       console.error("Upload error:", error);
       showToast(error.message || 'Failed to upload image', 'error');
@@ -77,6 +69,7 @@ export function Profile({ user }: ProfileProps) {
         const currentUser = auth.currentUser;
         if (currentUser) {
           await updatePassword(currentUser, newPass);
+          sendEmail(user.email, 'Security Alert: Password Changed - India Cyber Cafe', emailTemplates.passwordUpdate(user.name));
           showToast('Password updated!');
         }
       }
@@ -84,15 +77,7 @@ export function Profile({ user }: ProfileProps) {
       showToast('Profile updated successfully!');
       
       // Send notification email
-      sendEmail(user.email, 'Profile Details Updated - India Cyber Cafe', `
-        <div style="font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #FF9933;">Profile Updated</h2>
-          <p>Hello <strong>${name}</strong>,</p>
-          <p>Your profile details (Name/Phone) have been successfully updated on India Cyber Cafe.</p>
-          <br/>
-          <p>Best Regards,<br/>India Cyber Cafe Team</p>
-        </div>
-      `);
+      sendEmail(user.email, 'Profile Details Updated - India Cyber Cafe', emailTemplates.profileUpdate(name));
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
