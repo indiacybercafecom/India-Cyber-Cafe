@@ -17,7 +17,7 @@ import { ConfirmationModal, LogoutChoiceModal } from './components/ConfirmationM
 import { auth } from './firebase';
 import { signOut } from 'firebase/auth';
 import { showToast } from './components/Toast';
-import { Service, Application, UserProfile, PaymentGateway, GlobalIcon } from './types';
+import { Service, Application, UserProfile, PaymentGateway } from './types';
 
 // Lazy load other pages
 const Services = lazy(() => import('./pages/Services').then(m => ({ default: m.Services })));
@@ -29,6 +29,7 @@ const Admin = lazy(() => import('./pages/Admin').then(m => ({ default: m.Admin }
 const Operator = lazy(() => import('./pages/Operator').then(m => ({ default: m.Operator })));
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Register = lazy(() => import('./pages/Register').then(m => ({ default: m.Register })));
+const AuthCallback = lazy(() => import('./pages/AuthCallback').then(m => ({ default: m.AuthCallback })));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword').then(m => ({ default: m.ForgotPassword })));
 const Legal = lazy(() => import('./pages/Legal').then(m => ({ default: m.Legal })));
 
@@ -61,10 +62,7 @@ function AppContent() {
     updateApplication,
     addGateway,
     updateGateway,
-    deleteGateway,
-    globalIcons,
-    updateGlobalIcon,
-    addGlobalIcon
+    deleteGateway
   } = useData();
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -75,21 +73,6 @@ function AppContent() {
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isLogoutChoiceOpen, setIsLogoutChoiceOpen] = useState(false);
-
-  // Seed global icons if empty
-  useEffect(() => {
-    if (!dataLoading && globalIcons.length === 0) {
-      const initialIcons: Omit<GlobalIcon, 'id'>[] = [
-        { category: 'Header', location: 'Website Logo', icon: 'monitor' },
-        { category: 'Home Page', location: 'Hero Section Icon', icon: 'monitor' },
-        { category: 'Footer', location: 'Footer Logo', icon: 'monitor' },
-        { category: 'Navigation', location: 'Services Menu', icon: 'layers' },
-        { category: 'Navigation', location: 'Track Menu', icon: 'clipboard-list' },
-        { category: 'Navigation', location: 'Profile Menu', icon: 'user' },
-      ];
-      initialIcons.forEach(icon => addGlobalIcon(icon));
-    }
-  }, [dataLoading, globalIcons.length]);
 
   // Back button handling for modals and sidebar
   useEffect(() => {
@@ -139,6 +122,8 @@ function AppContent() {
     try {
       setIsSidebarOpen(false); // Close sidebar immediately
       await signOut(auth);
+      // Also clear server-side session
+      await fetch('/api/auth/logout');
       setIsLogoutConfirmOpen(false);
       setIsLogoutChoiceOpen(true);
     } catch (error: any) {
@@ -161,10 +146,6 @@ function AppContent() {
     }
   };
 
-  const getGlobalIcon = (location: string) => {
-    return globalIcons.find(i => i.location === location)?.icon;
-  };
-
   return (
     <div className="min-h-screen bg-slate-50">
       <ScrollToTop />
@@ -176,7 +157,6 @@ function AppContent() {
         onLoginClick={() => navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)}
         onMenuClick={() => setIsSidebarOpen(true)}
         onLogoClick={() => navigate('/')}
-        logoUrl={getGlobalIcon('Website Logo')}
       />
 
       <Sidebar 
@@ -201,11 +181,11 @@ function AppContent() {
                 services={services} 
                 onSelectService={() => {}} 
                 loading={dataLoading}
-                heroIcon={getGlobalIcon('Hero Section Icon')}
               />
             } />
             <Route path="/login" element={<Login user={user} />} />
             <Route path="/register" element={<Register user={user} />} />
+            <Route path="/auth/callback" element={<AuthCallback />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/legal/:type" element={<Legal />} />
             <Route path="/about" element={<Legal />} />
@@ -263,7 +243,6 @@ function AppContent() {
                   users={users}
                   services={services}
                   gateways={gateways}
-                  globalIcons={globalIcons}
                   onViewApp={setSelectedApp}
                   onDeleteApp={deleteApplication}
                   onEditService={(s) => { setEditingService(s); setIsServiceBuilderOpen(true); }}
@@ -273,8 +252,6 @@ function AppContent() {
                   onAddGateway={addGateway}
                   onUpdateGateway={updateGateway}
                   onDeleteGateway={deleteGateway}
-                  onUpdateGlobalIcon={updateGlobalIcon}
-                  onAddGlobalIcon={addGlobalIcon}
                 />
               ) : <Navigate to="/" />
             } />
@@ -285,7 +262,7 @@ function AppContent() {
 
       {selectedApp && user && (
         <ApplicationDetailsModal 
-          app={applications.find(a => a.id === selectedApp.id) || selectedApp} 
+          app={selectedApp} 
           onClose={() => {
             setSelectedApp(null);
             if (location.pathname.includes('/track/')) {

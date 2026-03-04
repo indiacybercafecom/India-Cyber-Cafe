@@ -1,19 +1,17 @@
 import { Link } from 'react-router-dom';
 import { IconRenderer } from './Icons';
 
-interface FooterProps {
-  logoUrl?: string;
-}
-
-export function Footer({ logoUrl }: FooterProps) {
+export function Footer() {
   return (
     <footer className="bg-linear-to-b from-navy to-black text-white pt-16 pb-8 px-[5%]">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
         {/* Brand Section */}
         <div className="space-y-6 col-span-1 md:col-span-1">
-          <IconRenderer 
-            name={logoUrl || "http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png"} 
+          <img 
+            src="http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" 
+            alt="India Cyber Cafe" 
             className="h-16 brightness-0 invert"
+            referrerPolicy="no-referrer"
           />
           <p className="text-slate-400 text-sm leading-relaxed">
             India's most trusted digital service portal. We help you with government applications, cyber services, and digital solutions with speed and transparency.
@@ -68,9 +66,11 @@ export function Footer({ logoUrl }: FooterProps) {
             </li>
           </ul>
           <div className="pt-4">
-            <IconRenderer 
-              name={logoUrl || "http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png"} 
+            <img 
+              src="http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" 
+              alt="ICC" 
               className="h-10 opacity-30 grayscale brightness-0 invert" 
+              referrerPolicy="no-referrer"
             />
           </div>
         </div>

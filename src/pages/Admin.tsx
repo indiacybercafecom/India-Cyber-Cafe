@@ -1,19 +1,17 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Application, UserProfile, Service, PaymentGateway, GlobalIcon } from '../types';
+import { Application, UserProfile, Service, PaymentGateway } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
 import { utils, writeFile } from 'xlsx';
 import { GatewayModal } from '../components/GatewayModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
-import { GlobalIconsTab } from '../components/GlobalIconsTab';
 
 interface AdminProps {
   applications: Application[];
   users: UserProfile[];
   services: Service[];
   gateways: PaymentGateway[];
-  globalIcons: GlobalIcon[];
   onViewApp: (app: Application) => void;
   onDeleteApp: (id: string) => void;
   onEditService: (service: Service) => void;
@@ -23,8 +21,6 @@ interface AdminProps {
   onAddGateway: (gateway: PaymentGateway) => void;
   onUpdateGateway: (id: string, gateway: Partial<PaymentGateway>) => void;
   onDeleteGateway: (id: string) => void;
-  onUpdateGlobalIcon: (id: string, icon: string) => Promise<void>;
-  onAddGlobalIcon: (icon: Omit<GlobalIcon, 'id'>) => Promise<void>;
 }
 
 export function Admin({ 
@@ -32,7 +28,6 @@ export function Admin({
   users, 
   services, 
   gateways, 
-  globalIcons,
   onViewApp, 
   onDeleteApp,
   onEditService, 
@@ -41,12 +36,10 @@ export function Admin({
   onManageUser,
   onAddGateway,
   onUpdateGateway,
-  onDeleteGateway,
-  onUpdateGlobalIcon,
-  onAddGlobalIcon
+  onDeleteGateway
 }: AdminProps) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments' | 'icons'>('apps');
+  const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments'>('apps');
   const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | null>(null);
   const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
   
@@ -240,7 +233,6 @@ export function Admin({
           { id: 'users', label: 'Users', icon: 'users' },
           { id: 'services', label: 'Services', icon: 'layers' },
           { id: 'payments', label: 'Payments', icon: 'credit-card' },
-          { id: 'icons', label: 'Icons', icon: 'image' },
         ].map(t => (
           <button
             key={t.id}
@@ -538,16 +530,6 @@ export function Admin({
             )}
           </div>
         </div>
-      )}
-
-      {tab === 'icons' && (
-        <GlobalIconsTab 
-          icons={globalIcons} 
-          services={services}
-          onUpdate={onUpdateGlobalIcon} 
-          onAdd={onAddGlobalIcon} 
-          onUpdateService={onEditService}
-        />
       )}
 
       {isGatewayModalOpen && (

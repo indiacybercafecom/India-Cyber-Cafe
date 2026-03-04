@@ -75,10 +75,3 @@ export interface PaymentGateway {
   description: string;
   credentials: Record<string, string>;
 }
-
-export interface GlobalIcon {
-  id: string;
-  category: string;
-  location: string;
-  icon: string;
-}

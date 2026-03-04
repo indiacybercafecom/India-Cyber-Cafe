@@ -34,7 +34,7 @@ export function Login({ user }: LoginProps) {
       const errorMessages: Record<string, string> = {
         'google_auth_failed': 'Google authentication failed. Please try again.',
         'auth_failed': 'Authentication failed. Please try again.',
-        'token_generation_failed': 'Failed to generate security token. Please contact support.'
+        'token_generation_failed': 'Failed to generate security token. Please contact support team.'
       };
       showToast(errorMessages[error] || 'An error occurred during login.', 'error');
       // Clear the error from URL
