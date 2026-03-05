@@ -58,7 +58,7 @@ export function Track({ applications, user, gateways, onViewDetails, onUpdateApp
 
   const handlePay = async (app: Application) => {
     const razorpayGateway = gateways.find(g => g.type === 'razorpay' && g.active);
-    const key = razorpayGateway?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_SMaFkoy1k9JEy3';
+    const key = razorpayGateway?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd';
 
     const options = {
       key,

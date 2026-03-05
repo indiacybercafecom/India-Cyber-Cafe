@@ -134,7 +134,7 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
         if (methods.includes('razorpay')) {
           // Handle Razorpay
           const activeRazorpay = gateways.find(g => g.type === 'razorpay' && g.active);
-          const key = activeRazorpay?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_test_SMaFkoy1k9JEy3';
+          const key = activeRazorpay?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd';
 
           const options = {
             key,
