@@ -13,14 +13,14 @@ const emailFooter = `
       </div>
       <div>
         <p style="margin: 0 0 5px 0; font-weight: bold; color: #FF9933;">🌐 Website</p>
-        <p style="margin: 0;"><a href="https://book.indiacybercafe.com" style="color: #FF9933; text-decoration: none;">book.indiacybercafe.com</a></p>
+        <p style="margin: 0;"><a href="https://booking.indiacybercafe.com" style="color: #FF9933; text-decoration: none;">booking.indiacybercafe.com</a></p>
       </div>
     </div>
     <div style="padding: 12px; background: #fff3e0; border-radius: 6px; margin-bottom: 12px;">
       <p style="margin: 0; font-size: 11px; color: #666;">📱 Available 24/7 for your support needs</p>
       <p style="margin: 5px 0 0 0; font-size: 11px; color: #999;">Response time: Within 2 hours</p>
     </div>
-    <p style="margin: 10px 0 0 0; color: #999; font-size: 10px;">© 2024-2026 India Cyber Cafe. All rights reserved. | <a href="https://book.indiacybercafe.com/legal/privacy" style="color: #FF9933; text-decoration: none;">Privacy Policy</a></p>
+    <p style="margin: 10px 0 0 0; color: #999; font-size: 10px;">© 2024-2026 India Cyber Cafe. All rights reserved. | <a href="https://booking.indiacybercafe.com/legal/privacy" style="color: #FF9933; text-decoration: none;">Privacy Policy</a></p>
   </div>
 `;
 
@@ -102,7 +102,7 @@ export const emailTemplates = {
         </ul>
       </div>
       <p>You can now log in and explore various cyber services directly from our portal. Our team is here to help you!</p>
-      <p><a href="https://book.indiacybercafe.com/login" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Login to Your Account</a></p>
+      <p><a href="https://booking.indiacybercafe.com/login" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Login to Your Account</a></p>
       <p style="margin-top: 20px; font-style: italic; color: #666;">Need help? Contact our support team anytime.</p>
       <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
     `
@@ -120,7 +120,7 @@ export const emailTemplates = {
         <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background: #ffd700; padding: 2px 8px; border-radius: 3px; color: #000;">Pending Review</span></p>
       </div>
       <p>Our team will review your application within 24-48 hours. You will receive updates via email as your application progresses.</p>
-      <p><a href="https://book.indiacybercafe.com/track?id=${appId}" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Track Your Application</a></p>
+      <p><a href="https://booking.indiacybercafe.com/track?id=${appId}" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Track Your Application</a></p>
       <p style="margin-top: 15px; font-size: 14px; color: #666;">💡 <strong>Tip:</strong> Save your Application ID (${appId}) for future reference. You can use it to track your application status anytime.</p>
       <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
     `
@@ -136,7 +136,7 @@ export const emailTemplates = {
         <p style="margin: 5px 0;"><strong>New Status:</strong> <span style="background: ${statusColor}; padding: 3px 10px; border-radius: 3px; color: white; font-weight: bold;">${status.toUpperCase()}</span></p>
       </div>
       <p>Please log in to your dashboard to see more details and any additional information about your application.</p>
-      <p><a href="https://book.indiacybercafe.com/profile" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">View Your Dashboard</a></p>
+      <p><a href="https://booking.indiacybercafe.com/profile" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">View Your Dashboard</a></p>
       <p style="margin-top: 20px; font-style: italic; color: #666;">If you have any questions, please don't hesitate to contact us.</p>
       <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
     `
@@ -151,7 +151,7 @@ export const emailTemplates = {
         <p style="margin: 0; color: #333;">${note}</p>
       </div>
       <p>Please log in to your dashboard to see more details and respond if needed.</p>
-      <p><a href="https://book.indiacybercafe.com/profile" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Check Your Dashboard</a></p>
+      <p><a href="https://booking.indiacybercafe.com/profile" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Check Your Dashboard</a></p>
       <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
     `
   ),
@@ -213,7 +213,7 @@ export const emailTemplates = {
       
       <p style="margin-top: 20px;"><strong>How to use this password:</strong></p>
       <ol style="color: #555; line-height: 1.8;">
-        <li><strong>Login:</strong> Use your email/phone and this password to login at <a href="https://book.indiacybercafe.com/login" style="color: #FF9933;">book.indiacybercafe.com/login</a></li>
+        <li><strong>Login:</strong> Use your email/phone and this password to login at <a href="https://booking.indiacybercafe.com/login" style="color: #FF9933;">booking.indiacybercafe.com/login</a></li>
         <li><strong>Change Password:</strong> Once logged in, go to your Profile > Security Settings</li>
         <li><strong>Update Password:</strong> Click "Change Password" and enter this password in the "Current Password" field</li>
         <li><strong>Set New Password:</strong> Create a strong, unique password that only you know</li>
@@ -237,9 +237,9 @@ export const emailTemplates = {
         <li>We recommend changing your password as soon as you login</li>
       </ul>
       
-      <p style="margin-top: 20px;"><a href="https://book.indiacybercafe.com/login" style="background: #FF9933; color: white; padding: 12px 30px; border-radius: 5px; text-decoration: none; display: inline-block; font-weight: bold;">Login to Your Account</a></p>
+      <p style="margin-top: 20px;"><a href="https://booking.indiacybercafe.com/login" style="background: #FF9933; color: white; padding: 12px 30px; border-radius: 5px; text-decoration: none; display: inline-block; font-weight: bold;">Login to Your Account</a></p>
       
-      <p style="margin-top: 20px; color: #666; font-size: 13px;">If you need any help, please contact our support team at <a href="mailto:icc@indiacybercafe.com" style="color: #FF9933;">icc@indiacybercafe.com</a> or visit <a href="https://book.indiacybercafe.com" style="color: #FF9933;">book.indiacybercafe.com</a></p>
+      <p style="margin-top: 20px; color: #666; font-size: 13px;">If you need any help, please contact our support team at <a href="mailto:icc@indiacybercafe.com" style="color: #FF9933;">icc@indiacybercafe.com</a> or visit <a href="https://booking.indiacybercafe.com" style="color: #FF9933;">booking.indiacybercafe.com</a></p>
       
       <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
     `
@@ -257,7 +257,7 @@ export const emailTemplates = {
         <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background: #28a745; padding: 2px 8px; border-radius: 3px; color: white;">✓ Confirmed</span></p>
       </div>
       <p>Your payment has been processed and your application will be prioritized.</p>
-      <p><a href="https://book.indiacybercafe.com/profile" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">View Your Applications</a></p>
+      <p><a href="https://booking.indiacybercafe.com/profile" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">View Your Applications</a></p>
       <p style="margin-top: 15px; font-size: 14px; color: #666;">Please keep this email for your records. The transaction ID can be used for reference.</p>
       <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
     `
@@ -274,7 +274,7 @@ export const emailTemplates = {
         <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background: #28a745; padding: 2px 8px; border-radius: 3px; color: white;">✓ COMPLETED</span></p>
         ${completionDetails ? `<p style="margin: 10px 0;"><strong>Details:</strong></p><p>${completionDetails}</p>` : ''}
       </div>
-      <p><a href="https://book.indiacybercafe.com/track?id=${appId}" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Download Certificate/Documents</a></p>
+      <p><a href="https://booking.indiacybercafe.com/track?id=${appId}" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Download Certificate/Documents</a></p>
       <p style="margin-top: 15px; font-size: 14px; color: #666;">Thank you for choosing India Cyber Cafe. We hope our service was satisfactory. Please feel free to apply for more services.</p>
       <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
     `
@@ -292,7 +292,7 @@ export const emailTemplates = {
         ${reason ? `<p style="margin: 10px 0;"><strong>Reason:</strong></p><p>${reason}</p>` : ''}
       </div>
       <p>Please update your application with the necessary corrections and resubmit. Our team will review the updated version.</p>
-      <p><a href="https://book.indiacybercafe.com/profile" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Update Your Application</a></p>
+      <p><a href="https://booking.indiacybercafe.com/profile" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Update Your Application</a></p>
       <p style="margin-top: 15px; font-size: 14px; color: #666;">If you have questions about the required corrections, please contact our support team.</p>
       <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
     `
@@ -312,7 +312,7 @@ export const emailTemplates = {
         <p style="margin: 5px 0;"><strong>Application ID:</strong> <code style="background: #f0f0f0; padding: 2px 5px; border-radius: 3px;">${appId}</code></p>
         <p style="margin: 5px 0;"><strong>Submitted On:</strong> ${new Date().toLocaleString()}</p>
       </div>
-      <p><a href="https://book.indiacybercafe.com/admin" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Review in Admin Panel</a></p>
+      <p><a href="https://booking.indiacybercafe.com/admin" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Review in Admin Panel</a></p>
       <p>Please review and assign an operator as soon as possible.</p>
       <p>Best Regards,<br/><strong>India Cyber Cafe System</strong></p>
     `
@@ -328,7 +328,7 @@ export const emailTemplates = {
         <p style="margin: 5px 0;"><strong>Email:</strong> <a href="mailto:${email}" style="color: #FF9933;">${email}</a></p>
         <p style="margin: 5px 0;"><strong>Registered On:</strong> ${registrationDate}</p>
       </div>
-      <p><a href="https://book.indiacybercafe.com/admin" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">View User Details</a></p>
+      <p><a href="https://booking.indiacybercafe.com/admin" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">View User Details</a></p>
       <p>Best Regards,<br/><strong>India Cyber Cafe System</strong></p>
     `
   ),
@@ -380,7 +380,7 @@ export const emailTemplates = {
         <p style="margin: 5px 0;"><strong>Assigned On:</strong> ${new Date().toLocaleString()}</p>
       </div>
       <p>Please review the application details and start processing. You can add notes, request additional documents, or update the status as needed.</p>
-      <p><a href="https://book.indiacybercafe.com/operator" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">View Assignment in Operator Panel</a></p>
+      <p><a href="https://booking.indiacybercafe.com/operator" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">View Assignment in Operator Panel</a></p>
       <p>Thank you for your prompt attention to this application.</p>
       <p>Best Regards,<br/><strong>India Cyber Cafe System</strong></p>
     `
