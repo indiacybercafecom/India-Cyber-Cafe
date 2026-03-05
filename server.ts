@@ -4,8 +4,6 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
-import Razorpay from "razorpay";
-import crypto from "crypto";
 
 dotenv.config();
 
@@ -17,12 +15,6 @@ async function startServer() {
   app.set('trust proxy', true);
 
   app.use(express.json());
-
-  // Razorpay Configuration
-  const razorpay = new Razorpay({
-    key_id: process.env.RAZORPAY_KEY_ID || "",
-    key_secret: process.env.RAZORPAY_KEY_SECRET || "",
-  });
 
   // Email Configuration
   const transporter = nodemailer.createTransport({
@@ -65,92 +57,7 @@ async function startServer() {
     }
   });
 
-  // Razorpay API Routes
-  // Create Payment Order
-  app.post("/api/razorpay/create-order", async (req, res) => {
-    try {
-      const { amount, receipt, notes } = req.body;
-
-      if (!amount) {
-        return res.status(400).json({ success: false, error: "Amount is required" });
-      }
-
-      const order = await razorpay.orders.create({
-        amount: Math.round(amount * 100), // Convert to paise
-        currency: "INR",
-        receipt: receipt || `receipt_${Date.now()}`,
-        notes: notes || {},
-      });
-
-      res.json({ success: true, order });
-    } catch (error: any) {
-      console.error("Error creating order:", error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
-  // Verify Payment Signature
-  app.post("/api/razorpay/verify-payment", async (req, res) => {
-    try {
-      const { orderId, paymentId, signature } = req.body;
-
-      if (!orderId || !paymentId || !signature) {
-        return res.status(400).json({ 
-          success: false, 
-          error: "orderId, paymentId, and signature are required" 
-        });
-      }
-
-      const body = orderId + "|" + paymentId;
-      const expectedSignature = crypto
-        .createHmac("sha256", process.env.RAZORPAY_KEY_SECRET || "")
-        .update(body)
-        .digest("hex");
-
-      const isSignatureValid = expectedSignature === signature;
-
-      if (isSignatureValid) {
-        res.json({ success: true, message: "Payment verified successfully" });
-      } else {
-        res.status(400).json({ success: false, error: "Invalid signature" });
-      }
-    } catch (error: any) {
-      console.error("Error verifying payment:", error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
-  // Fetch Payment Details
-  app.get("/api/razorpay/payment/:paymentId", async (req, res) => {
-    try {
-      const { paymentId } = req.params;
-      const payment = await razorpay.payments.fetch(paymentId);
-      res.json({ success: true, payment });
-    } catch (error: any) {
-      console.error("Error fetching payment:", error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
-
-  // Refund Payment
-  app.post("/api/razorpay/refund", async (req, res) => {
-    try {
-      const { paymentId, amount } = req.body;
-
-      if (!paymentId) {
-        return res.status(400).json({ success: false, error: "paymentId is required" });
-      }
-
-      const refund = await razorpay.payments.refund(paymentId, {
-        amount: amount ? Math.round(amount * 100) : undefined,
-      });
-
-      res.json({ success: true, refund });
-    } catch (error: any) {
-      console.error("Error processing refund:", error);
-      res.status(500).json({ success: false, error: error.message });
-    }
-  });
+  // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
   });
