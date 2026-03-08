@@ -861,92 +861,112 @@ export function Admin({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredOrders.map(o => (
-                      <tr 
-                        key={o.id} 
-                        className="hover:bg-slate-50 transition-colors cursor-pointer"
-                        onClick={() => {
-                          setSelectedOrder(o);
-                          setIsOrderDetailModalOpen(true);
-                        }}
-                      >
-                        <td className="p-6 font-mono text-sm text-navy font-bold">{o.id}</td>
-                        <td className="p-6">
-                          <div className="font-bold text-navy">{o.deliveryAddress.name}</div>
-                          <div className="text-xs text-slate-400">{o.email}</div>
-                        </td>
-                        <td className="p-6 text-slate-600">{o.items.length} item{o.items.length !== 1 ? 's' : ''}</td>
-                        <td className="p-6 font-bold text-navy">₹{o.total}</td>
-                        <td className="p-6">
-                          <span className={`badge ${
-                            o.orderStatus === 'delivered' ? 'bg-green-500' :
-                            o.orderStatus === 'shipped' ? 'bg-blue-500' :
-                            o.orderStatus === 'processing' ? 'bg-orange-500' :
-                            'bg-slate-500'
-                          }`}>
-                            {o.orderStatus}
-                          </span>
-                        </td>
-                        <td className="p-6">
-                          <span className={`badge ${
-                            o.paymentStatus === 'completed' ? 'bg-green-500' :
-                            o.paymentStatus === 'pending' ? 'bg-yellow-500' :
-                            'bg-red-500'
-                          }`}>
-                            {o.paymentStatus}
-                          </span>
-                        </td>
-                        <td className="p-6 text-slate-500 text-sm">{new Date(o.createdAt).toLocaleDateString()}</td>
-                      </tr>
-                    ))}
+                    {filteredOrders.map(o => {
+                      if (!o || !o.id) return null;
+                      const customerName = o.deliveryAddress?.name || 'Unknown';
+                      const items = Array.isArray(o.items) ? o.items : [];
+                      const total = o.total || 0;
+                      const orderStatus = o.orderStatus || 'pending';
+                      const paymentStatus = o.paymentStatus || 'pending';
+                      const createdAt = o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'N/A';
+                      
+                      return (
+                        <tr 
+                          key={o.id} 
+                          className="hover:bg-slate-50 transition-colors cursor-pointer"
+                          onClick={() => {
+                            setSelectedOrder(o);
+                            setIsOrderDetailModalOpen(true);
+                          }}
+                        >
+                          <td className="p-6 font-mono text-sm text-navy font-bold">{o.id}</td>
+                          <td className="p-6">
+                            <div className="font-bold text-navy">{customerName}</div>
+                            <div className="text-xs text-slate-400">{o.email || 'N/A'}</div>
+                          </td>
+                          <td className="p-6 text-slate-600">{items.length} item{items.length !== 1 ? 's' : ''}</td>
+                          <td className="p-6 font-bold text-navy">₹{total}</td>
+                          <td className="p-6">
+                            <span className={`badge ${
+                              orderStatus === 'delivered' ? 'bg-green-500' :
+                              orderStatus === 'shipped' ? 'bg-blue-500' :
+                              orderStatus === 'processing' ? 'bg-orange-500' :
+                              'bg-slate-500'
+                            }`}>
+                              {orderStatus}
+                            </span>
+                          </td>
+                          <td className="p-6">
+                            <span className={`badge ${
+                              paymentStatus === 'completed' ? 'bg-green-500' :
+                              paymentStatus === 'pending' ? 'bg-yellow-500' :
+                              'bg-red-500'
+                            }`}>
+                              {paymentStatus}
+                            </span>
+                          </td>
+                          <td className="p-6 text-slate-500 text-sm">{createdAt}</td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
 
               {/* Mobile View for Orders */}
               <div className="sm:hidden divide-y divide-slate-100">
-                {filteredOrders.map(o => (
-                  <div 
-                    key={o.id} 
-                    className="p-6 space-y-4 cursor-pointer hover:bg-slate-50 transition-colors"
-                    onClick={() => {
-                      setSelectedOrder(o);
-                      setIsOrderDetailModalOpen(true);
-                    }}
-                  >
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <div className="font-mono text-xs text-navy font-bold mb-1">{o.id}</div>
-                        <div className="font-bold text-navy">{o.deliveryAddress.name}</div>
-                        <div className="text-xs text-slate-400">{o.email}</div>
-                      </div>
-                      <span className={`badge ${
-                        o.orderStatus === 'delivered' ? 'bg-green-500' :
-                        o.orderStatus === 'shipped' ? 'bg-blue-500' :
-                        o.orderStatus === 'processing' ? 'bg-orange-500' :
-                        'bg-slate-500'
-                      }`}>
-                        {o.orderStatus}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center pt-2 border-t border-slate-100">
-                      <div>
-                        <div className="text-xs text-slate-400 mb-1">{o.items.length} item{o.items.length !== 1 ? 's' : ''}</div>
-                        <div className="font-bold text-navy">₹{o.total}</div>
-                      </div>
-                      <div className="flex gap-2 flex-col items-end">
-                        <span className={`badge text-xs ${
-                          o.paymentStatus === 'completed' ? 'bg-green-500' :
-                          o.paymentStatus === 'pending' ? 'bg-yellow-500' :
-                          'bg-red-500'
+                {filteredOrders.map(o => {
+                  if (!o || !o.id) return null;
+                  const customerName = o.deliveryAddress?.name || 'Unknown';
+                  const items = Array.isArray(o.items) ? o.items : [];
+                  const total = o.total || 0;
+                  const orderStatus = o.orderStatus || 'pending';
+                  const paymentStatus = o.paymentStatus || 'pending';
+                  const createdAt = o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'N/A';
+                  
+                  return (
+                    <div 
+                      key={o.id} 
+                      className="p-6 space-y-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                      onClick={() => {
+                        setSelectedOrder(o);
+                        setIsOrderDetailModalOpen(true);
+                      }}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <div className="font-mono text-xs text-navy font-bold mb-1">{o.id}</div>
+                          <div className="font-bold text-navy">{customerName}</div>
+                          <div className="text-xs text-slate-400">{o.email || 'N/A'}</div>
+                        </div>
+                        <span className={`badge ${
+                          orderStatus === 'delivered' ? 'bg-green-500' :
+                          orderStatus === 'shipped' ? 'bg-blue-500' :
+                          orderStatus === 'processing' ? 'bg-orange-500' :
+                          'bg-slate-500'
                         }`}>
-                          {o.paymentStatus}
+                          {orderStatus}
                         </span>
-                        <span className="text-xs text-slate-400">{new Date(o.createdAt).toLocaleDateString()}</span>
+                      </div>
+                      <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+                        <div>
+                          <div className="text-xs text-slate-400 mb-1">{items.length} item{items.length !== 1 ? 's' : ''}</div>
+                          <div className="font-bold text-navy">₹{total}</div>
+                        </div>
+                        <div className="flex gap-2 flex-col items-end">
+                          <span className={`badge text-xs ${
+                            paymentStatus === 'completed' ? 'bg-green-500' :
+                            paymentStatus === 'pending' ? 'bg-yellow-500' :
+                            'bg-red-500'
+                          }`}>
+                            {paymentStatus}
+                          </span>
+                          <span className="text-xs text-slate-400">{createdAt}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
           )}
