@@ -373,35 +373,34 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                 placeholder="keyword1, keyword2, keyword3"
               />
             </div>
-          </div>
 
-          {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4 sm:pt-6 border-t border-slate-200 mt-4 sm:mt-6">
-            <button
-              type="button"
-              onClick={onClose}
-              className="flex-1 px-4 sm:px-6 py-3 rounded-xl border-2 border-slate-200 font-bold text-slate-700 hover:bg-slate-50 transition-all text-sm sm:text-base"
-            >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || uploadingImages}
-              className="flex-1 px-4 sm:px-6 py-3 rounded-xl bg-navy text-white font-bold hover:bg-navy-light transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
-            >
-              {loading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span>Saving...</span>
-                </>
-              ) : (
-                <>
-                  <IconRenderer name="save" className="w-4 sm:w-5 h-4 sm:h-5" />
-                  <span>{product ? 'Update Product' : 'Add Product'}</span>
-                </>
-              )}
-            </button>
-          </div>
+            {/* Actions */}
+            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4 sm:pt-6 border-t border-slate-200 mt-4 sm:mt-6">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 px-4 sm:px-6 py-3 rounded-xl border-2 border-slate-200 font-bold text-slate-700 hover:bg-slate-50 transition-all text-sm sm:text-base"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading || uploadingImages}
+                className="flex-1 px-4 sm:px-6 py-3 rounded-xl bg-navy text-white font-bold hover:bg-navy-light transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
+              >
+                {loading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <IconRenderer name="save" className="w-4 sm:w-5 h-4 sm:h-5" />
+                    <span>{product ? 'Update Product' : 'Add Product'}</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
         </form>
       </div>
