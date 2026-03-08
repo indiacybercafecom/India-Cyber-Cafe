@@ -884,6 +884,8 @@ export function Admin({
           }}
         />
       )}
+
+      {isGatewayModalOpen && (
         <GatewayModal 
           gateway={selectedGateway}
           onClose={() => { setIsGatewayModalOpen(false); setSelectedGateway(null); }}
