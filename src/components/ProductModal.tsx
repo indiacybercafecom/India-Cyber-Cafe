@@ -133,19 +133,17 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-3xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="sticky top-0 bg-gradient-to-r from-navy to-blue-700 text-white p-6 flex justify-between items-center">
-          <h2 className="text-2xl font-bold">{product ? 'Edit Product' : 'Add New Product'}</h2>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition-all">
-            <IconRenderer name="x" className="w-6 h-6" />
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-50 p-0 sm:p-4">
+      <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[95vh] sm:max-h-[90vh] flex flex-col">
+        <div className="sticky top-0 bg-gradient-to-r from-navy to-blue-700 text-white px-4 sm:px-6 py-4 sm:py-6 flex justify-between items-center z-10 flex-shrink-0">
+          <h2 className="text-xl sm:text-2xl font-bold pr-2">{product ? 'Edit Product' : 'Add New Product'}</h2>
+          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition-all flex-shrink-0">
+            <IconRenderer name="x" className="w-5 sm:w-6 h-5 sm:h-6" />
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="p-6 space-y-6">
-          {/* Basic Info */}
-          <div className="space-y-4">
-            <h3 className="font-bold text-navy text-lg">Basic Information</h3>
+        <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
+          <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
             
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-2">Product Name *</label>
@@ -378,31 +376,32 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
           </div>
 
           {/* Actions */}
-          <div className="flex gap-4 pt-4">
+          <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4 sm:pt-6 border-t border-slate-200 mt-4 sm:mt-6">
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-6 py-3 rounded-xl border-2 border-slate-200 font-bold text-slate-700 hover:bg-slate-50 transition-all"
+              className="flex-1 px-4 sm:px-6 py-3 rounded-xl border-2 border-slate-200 font-bold text-slate-700 hover:bg-slate-50 transition-all text-sm sm:text-base"
             >
               Cancel
             </button>
             <button
               type="submit"
               disabled={loading || uploadingImages}
-              className="flex-1 px-6 py-3 rounded-xl bg-navy text-white font-bold hover:bg-navy-light transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+              className="flex-1 px-4 sm:px-6 py-3 rounded-xl bg-navy text-white font-bold hover:bg-navy-light transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
             >
               {loading ? (
                 <>
                   <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Saving...
+                  <span>Saving...</span>
                 </>
               ) : (
                 <>
-                  <IconRenderer name="save" className="w-5 h-5" />
-                  {product ? 'Update Product' : 'Add Product'}
+                  <IconRenderer name="save" className="w-4 sm:w-5 h-4 sm:h-5" />
+                  <span>{product ? 'Update Product' : 'Add Product'}</span>
                 </>
               )}
             </button>
+          </div>
           </div>
         </form>
       </div>
