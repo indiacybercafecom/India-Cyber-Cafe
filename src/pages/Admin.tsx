@@ -244,10 +244,12 @@ export function Admin({
     p.shortDescription.toLowerCase().includes(searchProducts.toLowerCase())
   );
 
-  const filteredOrders = orders.filter(o =>
-    o.id.toLowerCase().includes(searchOrders.toLowerCase()) ||
-    o.email.toLowerCase().includes(searchOrders.toLowerCase())
-  );
+  const filteredOrders = (orders && Array.isArray(orders) ? orders : []).filter(o => {
+    if (!o) return false;
+    const orderIdMatch = o.id && typeof o.id === 'string' && o.id.toLowerCase().includes(searchOrders.toLowerCase());
+    const emailMatch = o.email && typeof o.email === 'string' && o.email.toLowerCase().includes(searchOrders.toLowerCase());
+    return orderIdMatch || emailMatch;
+  });
 
   return (
     <div className="space-y-8">
