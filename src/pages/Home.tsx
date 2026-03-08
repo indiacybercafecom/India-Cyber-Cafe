@@ -1,20 +1,27 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
-import { Service } from '../types';
+import { Service, Product } from '../types';
 import { ServiceSkeleton } from '../components/Skeleton';
 import { SEO } from '../components/SEO';
 
 interface HomeProps {
   onNavigate: (page: string) => void;
   services: Service[];
+  products?: Product[];
   onSelectService: (service: Service) => void;
   loading?: boolean;
 }
 
-export function Home({ onNavigate, services, onSelectService, loading }: HomeProps) {
+export function Home({ onNavigate, services, products = [], onSelectService, loading }: HomeProps) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
+
+  // Get popular products (in stock, filtered)
+  const popularProducts = products
+    .filter(p => p.inStock)
+    .sort((a, b) => (b.ratings?.count || 0) - (a.ratings?.count || 0))
+    .slice(0, 3);
 
   const filteredServices = services.filter(s => 
     s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -50,7 +57,7 @@ export function Home({ onNavigate, services, onSelectService, loading }: HomePro
               <div className="absolute w-24 h-24 lg:w-32 lg:h-32 rounded-full border-2 border-primary/30 animate-spin" style={{animationDuration: '8s'}}></div>
             </div>
             {/* Monitor Icon with animation */}
-            <IconRenderer name="monitor" className="w-[120px] h-[120px] lg:w-[150px] lg:h-[150px] text-primary drop-shadow-lg animate-bounce" style={{animationDuration: '2s'}} />
+            <IconRenderer name="monitor" className="w-[120px] h-[120px] lg:w-[150px] lg:h-[150px] text-primary drop-shadow-lg animate-bounce" />
           </div>
         </div>
       </section>
@@ -137,6 +144,87 @@ export function Home({ onNavigate, services, onSelectService, loading }: HomePro
           ))}
         </div>
       </section>
+
+      {/* Popular Products Section */}
+      {popularProducts.length > 0 && (
+        <section className="space-y-6 sm:space-y-8">
+          <div className="text-center space-y-3 sm:space-y-4">
+            <h2 className="text-2xl sm:text-3xl font-bold text-navy">Popular Products</h2>
+            <p className="text-sm sm:text-base text-slate-600">Premium prints & services with custom options</p>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5 lg:gap-6">
+            {popularProducts.map(product => (
+              <div
+                key={product.id}
+                className="group cursor-pointer bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-slate-200 hover:border-primary hover:shadow-lg transition-all"
+                onClick={() => navigate(`/store/${product.id}`)}
+              >
+                {/* Image Container */}
+                <div className="relative aspect-square overflow-hidden bg-slate-100">
+                  <img
+                    src={product.images.thumbnail}
+                    alt={product.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                  />
+                  {product.discountedPrice && (
+                    <div className="absolute top-2 right-2 bg-red-500 text-white px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold">
+                      {Math.round(((product.price - product.discountedPrice) / product.price) * 100)}% OFF
+                    </div>
+                  )}
+                </div>
+
+                {/* Content */}
+                <div className="p-3 sm:p-4">
+                  {/* Name */}
+                  <h3 className="text-xs sm:text-sm font-bold text-navy mb-1 sm:mb-2 line-clamp-2 group-hover:text-primary transition-colors">
+                    {product.name}
+                  </h3>
+
+                  {/* Description */}
+                  <p className="text-[9px] sm:text-xs text-slate-500 mb-2 sm:mb-3 line-clamp-1">
+                    {product.shortDescription}
+                  </p>
+
+                  {/* Rating */}
+                  {product.ratings && product.ratings.count > 0 && (
+                    <div className="flex items-center gap-1 mb-2 sm:mb-3">
+                      <div className="flex text-yellow-400">
+                        {[...Array(5)].map((_, i) => (
+                          <span key={i} className="text-[10px] sm:text-xs">
+                            {i < Math.round(product.ratings!.average) ? '★' : '☆'}
+                          </span>
+                        ))}
+                      </div>
+                      <span className="text-[8px] sm:text-[9px] text-slate-500">
+                        ({product.ratings.count})
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Price */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs sm:text-sm font-bold text-navy">
+                      ₹{product.discountedPrice || product.price}
+                    </span>
+                    {product.discountedPrice && (
+                      <span className="text-[8px] sm:text-[9px] text-slate-400 line-through">
+                        ₹{product.price}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="text-center">
+            <button className="btn-primary" onClick={() => navigate('store')}>
+              Explore Store →
+            </button>
+          </div>
+        </section>
+      )}
 
       {/* How It Works */}
       <section className="space-y-6 sm:space-y-10 bg-navy/5 p-4 sm:p-12 rounded-3xl">

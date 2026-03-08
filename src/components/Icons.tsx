@@ -49,7 +49,10 @@ import {
   FileUp,
   MapPin,
   AlertTriangle,
-  LogIn
+  LogIn,
+  ShoppingBag,
+  Package,
+  Truck
 } from 'lucide-react';
 
 export const Icons = {
@@ -103,7 +106,10 @@ export const Icons = {
   FileUp,
   MapPin,
   AlertTriangle,
-  LogIn
+  LogIn,
+  ShoppingBag,
+  Package,
+  Truck
 };
 
 export function IconRenderer({ name, className }: { name: string; className?: string }) {
@@ -158,6 +164,9 @@ export function IconRenderer({ name, className }: { name: string; className?: st
   if (lowerName.includes('location-dot') || lowerName.includes('map-pin')) return <Icons.MapPin className={className} />;
   if (lowerName.includes('circle-exclamation') || lowerName.includes('alert-triangle')) return <Icons.AlertTriangle className={className} />;
   if (lowerName.includes('right-to-bracket') || lowerName.includes('log-in')) return <Icons.LogIn className={className} />;
+  if (lowerName.includes('shopping-bag') || lowerName.includes('shopping-cart')) return <Icons.ShoppingBag className={className} />;
+  if (lowerName.includes('package')) return <Icons.Package className={className} />;
+  if (lowerName.includes('truck') || lowerName.includes('delivery')) return <Icons.Truck className={className} />;
   
   return <Icons.Info className={className} />;
 }

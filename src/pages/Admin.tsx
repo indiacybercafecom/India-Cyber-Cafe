@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Application, UserProfile, Service, PaymentGateway } from '../types';
+import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
 import { utils, writeFile } from 'xlsx';
@@ -12,6 +12,9 @@ interface AdminProps {
   users: UserProfile[];
   services: Service[];
   gateways: PaymentGateway[];
+  products?: Product[];
+  productCategories?: ProductCategory[];
+  orders?: Order[];
   onViewApp: (app: Application) => void;
   onDeleteApp: (id: string) => void;
   onEditService: (service: Service) => void;
@@ -21,13 +24,20 @@ interface AdminProps {
   onAddGateway: (gateway: PaymentGateway) => void;
   onUpdateGateway: (id: string, gateway: Partial<PaymentGateway>) => void;
   onDeleteGateway: (id: string) => void;
+  onEditProduct?: (product: Product) => void;
+  onAddProduct?: () => void;
+  onDeleteProduct?: (id: string) => void;
+  onViewOrder?: (order: Order) => void;
 }
 
 export function Admin({ 
   applications, 
   users, 
   services, 
-  gateways, 
+  gateways,
+  products = [],
+  productCategories = [],
+  orders = [],
   onViewApp, 
   onDeleteApp,
   onEditService, 
@@ -36,10 +46,14 @@ export function Admin({
   onManageUser,
   onAddGateway,
   onUpdateGateway,
-  onDeleteGateway
+  onDeleteGateway,
+  onEditProduct,
+  onAddProduct,
+  onDeleteProduct,
+  onViewOrder
 }: AdminProps) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments'>('apps');
+  const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders'>('apps');
   const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | null>(null);
   const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
   
@@ -48,6 +62,8 @@ export function Admin({
   const [searchUsers, setSearchUsers] = useState('');
   const [searchServices, setSearchServices] = useState('');
   const [searchPayments, setSearchPayments] = useState('');
+  const [searchProducts, setSearchProducts] = useState('');
+  const [searchOrders, setSearchOrders] = useState('');
 
   // Confirmation Modal State
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -202,6 +218,16 @@ export function Admin({
     g.type.toLowerCase().includes(searchPayments.toLowerCase())
   );
 
+  const filteredProducts = products.filter(p =>
+    p.name.toLowerCase().includes(searchProducts.toLowerCase()) ||
+    p.shortDescription.toLowerCase().includes(searchProducts.toLowerCase())
+  );
+
+  const filteredOrders = orders.filter(o =>
+    o.id.toLowerCase().includes(searchOrders.toLowerCase()) ||
+    o.email.toLowerCase().includes(searchOrders.toLowerCase())
+  );
+
   return (
     <div className="space-y-8">
       {/* Security Notice */}
@@ -232,6 +258,8 @@ export function Admin({
           { id: 'apps', label: 'Applications', icon: 'clipboard-list' },
           { id: 'users', label: 'Users', icon: 'users' },
           { id: 'services', label: 'Services', icon: 'layers' },
+          { id: 'products', label: 'Store', icon: 'shopping-bag' },
+          { id: 'orders', label: 'Orders', icon: 'package' },
           { id: 'payments', label: 'Payments', icon: 'credit-card' },
         ].map(t => (
           <button

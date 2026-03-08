@@ -75,3 +75,95 @@ export interface PaymentGateway {
   description: string;
   credentials: Record<string, string>;
 }
+
+// Store & Products Section
+export interface ProductCategory {
+  id: string;
+  name: string;
+  description: string;
+  icon?: string;
+  order?: number;
+}
+
+export interface ProductReview {
+  id: string;
+  productId: string;
+  uid: string;
+  userName: string;
+  rating: number; // 1-5
+  text: string;
+  images?: string[]; // review photo URLs
+  date: string;
+  helpful?: number; // count of helpful votes
+}
+
+export interface Product {
+  id: string;
+  name: string;
+  categoryId: string;
+  price: number;
+  discountedPrice?: number;
+  shortDescription: string;
+  longDescription: string;
+  images: {
+    thumbnail: string; // main product image
+    gallery: string[]; // additional images
+  };
+  requiresCustomImage: boolean; // whether user needs to upload custom image
+  customImageInstructions?: string;
+  turnaroundTime?: string; // e.g., "5-7 business days"
+  deliveryCharges?: number;
+  inStock: boolean;
+  ratings?: {
+    average: number;
+    count: number;
+  };
+  tags?: string[];
+  seoTitle?: string;
+  seoDescription?: string;
+  seoKeywords?: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface OrderItem {
+  productId: string;
+  productName: string;
+  price: number;
+  discountedPrice?: number;
+  quantity: number;
+  customImageUrl?: string; // URL of custom image user uploaded
+  specialInstructions?: string;
+}
+
+export interface OrderAddress {
+  name: string;
+  email: string;
+  phone: string;
+  addressLine1: string;
+  addressLine2?: string;
+  city: string;
+  state: string;
+  pincode: string;
+  country: string;
+}
+
+export interface Order {
+  id: string;
+  uid?: string; // optional if guest checkout
+  email: string;
+  items: OrderItem[];
+  deliveryAddress: OrderAddress;
+  subtotal: number;
+  deliveryCharges: number;
+  discount?: number;
+  total: number;
+  paymentMethod: 'razorpay' | 'cash' | 'bank_transfer';
+  paymentStatus: 'pending' | 'completed' | 'failed';
+  razorpayPaymentId?: string;
+  razorpayOrderId?: string;
+  orderStatus: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
+  notes: ApplicationNote[];
+  createdAt: string;
+  updatedAt: string;
+}

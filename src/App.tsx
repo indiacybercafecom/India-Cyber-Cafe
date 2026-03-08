@@ -31,6 +31,10 @@ const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login }
 const Register = lazy(() => import('./pages/Register').then(m => ({ default: m.Register })));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword').then(m => ({ default: m.ForgotPassword })));
 const Legal = lazy(() => import('./pages/Legal').then(m => ({ default: m.Legal })));
+const Store = lazy(() => import('./pages/Store').then(m => ({ default: m.Store })));
+const StoreProduct = lazy(() => import('./pages/StoreProduct').then(m => ({ default: m.StoreProduct })));
+const StoreCheckout = lazy(() => import('./pages/StoreCheckout').then(m => ({ default: m.StoreCheckout })));
+const OrderConfirmation = lazy(() => import('./pages/OrderConfirmation').then(m => ({ default: m.OrderConfirmation })));
 
 // Preload function
 const preloadPages = () => {
@@ -39,6 +43,7 @@ const preloadPages = () => {
     () => import('./pages/Track'),
     () => import('./pages/Profile'),
     () => import('./pages/Login'),
+    () => import('./pages/Store'),
   ];
   pages.forEach(p => p());
 };
@@ -52,7 +57,11 @@ function AppContent() {
     services, 
     applications, 
     users, 
-    gateways, 
+    gateways,
+    products,
+    productCategories,
+    orders,
+    productReviews,
     loading: dataLoading,
     addService,
     updateService,
@@ -61,7 +70,19 @@ function AppContent() {
     updateApplication,
     addGateway,
     updateGateway,
-    deleteGateway
+    deleteGateway,
+    addProduct,
+    updateProduct,
+    deleteProduct,
+    addProductCategory,
+    updateProductCategory,
+    deleteProductCategory,
+    addOrder,
+    updateOrder,
+    deleteOrder,
+    addProductReview,
+    updateProductReview,
+    deleteProductReview
   } = useData();
   
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -175,7 +196,8 @@ function AppContent() {
             <Route path="/" element={
               <Home 
                 onNavigate={(p) => navigate(`/${p === 'home' ? '' : p}`)} 
-                services={services} 
+                services={services}
+                products={products}
                 onSelectService={() => {}} 
                 loading={dataLoading}
               />
@@ -199,6 +221,24 @@ function AppContent() {
                   onSuccess={() => navigate('/track')}
                 />
               ) : <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} />
+            } />
+            {/* Store Routes */}
+            <Route path="/store" element={<Store products={products} categories={productCategories} />} />
+            <Route path="/store/order-confirmation" element={<OrderConfirmation />} />
+            <Route path="/store/:productId/checkout" element={
+              <StoreCheckout 
+                products={products}
+                user={user}
+                onAddOrder={addOrder}
+              />
+            } />
+            <Route path="/store/:productId" element={
+              <StoreProduct 
+                products={products} 
+                reviews={productReviews}
+                user={user}
+                onAddReview={addProductReview}
+              />
             } />
             <Route path="/track" element={
               user ? (
@@ -239,6 +279,9 @@ function AppContent() {
                   users={users}
                   services={services}
                   gateways={gateways}
+                  products={products}
+                  productCategories={productCategories}
+                  orders={orders}
                   onViewApp={setSelectedApp}
                   onDeleteApp={deleteApplication}
                   onEditService={(s) => { setEditingService(s); setIsServiceBuilderOpen(true); }}
@@ -248,6 +291,13 @@ function AppContent() {
                   onAddGateway={addGateway}
                   onUpdateGateway={updateGateway}
                   onDeleteGateway={deleteGateway}
+                  onEditProduct={updateProduct}
+                  onAddProduct={() => {}}
+                  onDeleteProduct={deleteProduct}
+                  onViewOrder={setSelectedApp as any}
+                />
+              ) : <Navigate to="/" />
+            } />
                 />
               ) : <Navigate to="/" />
             } />
