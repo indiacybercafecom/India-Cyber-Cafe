@@ -26,6 +26,10 @@
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#FF9933" />
 
+    <!-- Razorpay Checkout - Preloaded for faster payment experience -->
+    <link rel="preload" href="https://checkout.razorpay.com/v1/checkout.js" as="script" />
+    <script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
     <!-- Schema.org for Google -->
     <script type="application/ld+json">
     {
@@ -61,8 +65,6 @@
       ]
     }
     </script>
-
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   </head>
   <body>
     <div id="root"></div>

@@ -133,21 +133,50 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
         const methods = selectedSubService.paymentMethods;
         
         if (methods.includes('razorpay')) {
-          // Handle Razorpay
-          const activeRazorpay = gateways.find(g => g.type === 'razorpay' && g.active);
-          const key = activeRazorpay?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd';
+          // Handle Razorpay - Create order on backend first
+          try {
+            const charge = selectedSubService.charge || 0;
+            const chargeInPaisa = charge * 100;
 
-          const options = {
-            key,
-            amount: (selectedSubService.charge || 0) * 100,
-            currency: 'INR',
-            name: 'India Cyber Cafe',
-            description: `Payment for ${service.name}`,
-            handler: async (response: any) => {
-              try {
-                // Verify payment with backend using Razorpay signature
-                const verificationResult = await verifyRazorpayPayment(
-                  response.razorpay_payment_id,
+            console.log('📋 Creating order on backend for service...');
+            const orderResponse = await fetch('/api/create-razorpay-order', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                amount: chargeInPaisa,
+                currency: 'INR',
+                receipt: appId,
+                notes: {
+                  serviceId: service.id,
+                  serviceName: service.name,
+                  subServiceName: selectedSubService.name
+                }
+              })
+            });
+
+            if (!orderResponse.ok) {
+              throw new Error('Failed to create order on server');
+            }
+
+            const orderData = await orderResponse.json();
+            console.log('✅ Order created on backend:', orderData.orderId);
+
+            const razorpayOrderId = orderData.orderId;
+            const activeRazorpay = gateways.find(g => g.type === 'razorpay' && g.active);
+            const key = activeRazorpay?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd';
+
+            const options = {
+              key,
+              amount: chargeInPaisa,
+              currency: 'INR',
+              order_id: razorpayOrderId,
+              name: 'India Cyber Cafe',
+              description: `Payment for ${service.name}`,
+              handler: async (response: any) => {
+                try {
+                  // Verify payment with backend using Razorpay signature
+                  const verificationResult = await verifyRazorpayPayment(
+                    response.razorpay_payment_id,
                   response.razorpay_order_id,
                   response.razorpay_signature
                 );
@@ -167,15 +196,19 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
                 showToast(`Payment verification failed: ${error.message}`, 'error');
               }
             },
-            prefill: {
-              name: user.name,
-              email: user.email,
-              contact: user.phone || ''
-            },
-            theme: { color: '#FF9933' }
-          };
-          const rzp = new (window as any).Razorpay(options);
-          rzp.open();
+              prefill: {
+                name: user.name,
+                email: user.email,
+                contact: user.phone || ''
+              },
+              theme: { color: '#FF9933' }
+            };
+            const rzp = new (window as any).Razorpay(options);
+            rzp.open();
+          } catch (error: any) {
+            console.error('❌ Razorpay payment error:', error);
+            showToast(`❌ Failed to initiate payment: ${error.message}`, 'error');
+          }
         } else if (methods.includes('pay_after_work')) {
           application.paymentMethod = 'pay_after_work';
           application.paymentStatus = 'pending';
