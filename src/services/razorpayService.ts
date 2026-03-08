@@ -63,15 +63,17 @@ export const initiateRazorpayPayment = async (options: RazorpayOptions) => {
     throw new Error('Razorpay not loaded');
   }
 
-  const razorpay = new window.Razorpay({
-    key: RAZORPAY_KEY_ID,
+  // Use the key from options, fallback to default if not provided
+  const finalOptions: RazorpayOptions = {
     ...options,
+    key: options.key || RAZORPAY_KEY_ID,
     theme: {
       color: '#001A57', // Navy color
       ...options.theme
     }
-  });
+  };
 
+  const razorpay = new window.Razorpay(finalOptions);
   razorpay.open();
 };
 

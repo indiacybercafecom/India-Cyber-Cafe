@@ -192,8 +192,9 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
     }
 
     // For guest checkout (non-authenticated users), show warning if not creating account
+    // AND if an existing account was NOT found
     if (!user || !user.uid) {
-      if (!createGuestAccount) {
+      if (!createGuestAccount && !existingUserFound) {
         showToast('⚠️ Without an account, you won\'t be able to track your order. We recommend creating one.', 'warning');
       }
     }
@@ -455,12 +456,14 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
             },
             modal: {
               ondismiss: () => {
-                showToast('Payment cancelled', 'error');
+                console.log('Payment modal dismissed');
+                showToast('💳 Payment cancelled. You can try again whenever you\'re ready.', 'error');
               }
             }
           });
         } catch (error: any) {
-          showToast('Failed to initiate payment: ' + error.message, 'error');
+          console.error('Razorpay payment error:', error);
+          showToast('❌ Failed to initiate payment: ' + (error.message || 'Please check your connection and try again'), 'error');
         }
       }
     } catch (error) {
