@@ -1,4 +1,4 @@
-// Razorpay Live Keys
+// Razorpay Live Keys - Production Configuration
 const RAZORPAY_KEY_ID = 'rzp_live_SO0ZFBCZTJT9Tu';
 const RAZORPAY_KEY_SECRET = 'D8e9DgdBPgYgiMh7h5MbXXk0';
 
@@ -53,28 +53,45 @@ export const loadRazorpayScript = (): Promise<boolean> => {
 };
 
 export const initiateRazorpayPayment = async (options: RazorpayOptions) => {
-  const scriptLoaded = await loadRazorpayScript();
-  
-  if (!scriptLoaded) {
-    throw new Error('Failed to load Razorpay script');
-  }
-
-  if (!window.Razorpay) {
-    throw new Error('Razorpay not loaded');
-  }
-
-  // Use the key from options, fallback to default if not provided
-  const finalOptions: RazorpayOptions = {
-    ...options,
-    key: options.key || RAZORPAY_KEY_ID,
-    theme: {
-      color: '#001A57', // Navy color
-      ...options.theme
+  try {
+    const scriptLoaded = await loadRazorpayScript();
+    
+    if (!scriptLoaded) {
+      throw new Error('Failed to load Razorpay script. Please check your internet connection.');
     }
-  };
 
-  const razorpay = new window.Razorpay(finalOptions);
-  razorpay.open();
+    if (!window.Razorpay) {
+      throw new Error('Razorpay checkout is not available. Please refresh the page and try again.');
+    }
+
+    // Use the key from options, fallback to default if not provided
+    const keyToUse = options.key || RAZORPAY_KEY_ID;
+    console.log('Razorpay Payment initiated with key:', keyToUse.substring(0, 10) + '***');
+    console.log('Payment options:', { ...options, key: keyToUse });
+
+    const finalOptions: RazorpayOptions = {
+      ...options,
+      key: keyToUse,
+      theme: {
+        color: '#001A57', // Navy color
+        ...options.theme
+      }
+    };
+
+    // Validate required fields
+    if (!finalOptions.amount || finalOptions.amount <= 0) {
+      throw new Error('Invalid payment amount');
+    }
+    if (!finalOptions.currency) {
+      throw new Error('Currency is required');
+    }
+
+    const razorpay = new window.Razorpay(finalOptions);
+    razorpay.open();
+  } catch (error: any) {
+    console.error('Razorpay initialization error:', error);
+    throw error;
+  }
 };
 
 export const getRazorpayKeyId = () => RAZORPAY_KEY_ID;
