@@ -138,7 +138,7 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
             const charge = selectedSubService.charge || 0;
             const chargeInPaisa = charge * 100;
 
-            console.log('📋 Creating order on backend for service...');
+            console.log('📋 Creating order on backend for service... Amount:', chargeInPaisa, 'Paisa');
             const orderResponse = await fetch('/api/create-razorpay-order', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -154,14 +154,31 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
               })
             });
 
+            console.log('📡 Order response status:', orderResponse.status, orderResponse.statusText);
+
             if (!orderResponse.ok) {
-              throw new Error('Failed to create order on server');
+              const errorData = await orderResponse.json().catch(() => ({ error: 'Unknown error' }));
+              console.error('❌ Order creation failed:', errorData);
+              throw new Error(errorData.error || `Server error: ${orderResponse.status}`);
             }
 
             const orderData = await orderResponse.json();
-            console.log('✅ Order created on backend:', orderData.orderId);
+            console.log('✅ Order created on backend:', orderData);
+
+            if (!orderData.orderId) {
+              throw new Error('No order ID returned from server');
+            }
 
             const razorpayOrderId = orderData.orderId;
+
+            // Check if Razorpay is available
+            if (!window.Razorpay) {
+              console.error('❌ Razorpay window object not found');
+              showToast('❌ Payment system not available. Please refresh the page.', 'error');
+              setLoading(false);
+              return;
+            }
+
             const activeRazorpay = gateways.find(g => g.type === 'razorpay' && g.active);
             const key = activeRazorpay?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd';
 
@@ -201,13 +218,23 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
                 email: user.email,
                 contact: user.phone || ''
               },
+              modal: {
+                ondismiss: () => {
+                  console.log('⚠️ Payment modal closed by user');
+                  setLoading(false);
+                  showToast('💳 Payment cancelled. You can try again whenever you\'re ready.', 'error');
+                }
+              },
               theme: { color: '#FF9933' }
             };
+
+            console.log('🚀 Opening Razorpay checkout for service...');
             const rzp = new (window as any).Razorpay(options);
             rzp.open();
           } catch (error: any) {
             console.error('❌ Razorpay payment error:', error);
             showToast(`❌ Failed to initiate payment: ${error.message}`, 'error');
+            setLoading(false);
           }
         } else if (methods.includes('pay_after_work')) {
           application.paymentMethod = 'pay_after_work';

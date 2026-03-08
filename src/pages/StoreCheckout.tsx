@@ -354,7 +354,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
           const totalInPaisa = Math.round(total * 100);
           
           // First, create order on backend to get valid order ID
-          console.log('📋 Creating order on backend...');
+          console.log('📋 Creating order on backend... Amount:', totalInPaisa, 'Paisa');
           const orderResponse = await fetch('/api/create-razorpay-order', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -369,14 +369,30 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
             })
           });
 
+          console.log('📡 Order response status:', orderResponse.status, orderResponse.statusText);
+
           if (!orderResponse.ok) {
-            throw new Error('Failed to create order on server');
+            const errorData = await orderResponse.json().catch(() => ({ error: 'Unknown error' }));
+            console.error('❌ Order creation failed:', errorData);
+            throw new Error(errorData.error || `Server error: ${orderResponse.status}`);
           }
 
           const orderData = await orderResponse.json();
-          console.log('✅ Order created on backend:', orderData.orderId);
+          console.log('✅ Order created on backend:', orderData);
+
+          if (!orderData.orderId) {
+            throw new Error('No order ID returned from server');
+          }
 
           const razorpayOrderId = orderData.orderId;
+
+          // Check if Razorpay is available
+          if (!window.Razorpay) {
+            console.error('❌ Razorpay window object not found');
+            showToast('❌ Payment system not available. Please refresh the page.', 'error');
+            setSubmitting(false);
+            return;
+          }
           
           const options = {
             key: getRazorpayKeyId(),
@@ -492,15 +508,26 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
               } catch (error: any) {
                 console.error('❌ Payment verification error:', error);
                 showToast(`❌ Payment verification failed: ${error.message}`, 'error');
+                setSubmitting(false);
+              }
+            },
+            modal: {
+              ondismiss: () => {
+                console.log('⚠️ Payment modal closed by user');
+                setSubmitting(false);
+                showToast('💳 Payment cancelled. You can try again whenever you\'re ready.', 'error');
               }
             },
             theme: { color: '#001A57' }
           };
+
+          console.log('🚀 Opening Razorpay checkout...');
           const rzp = new (window as any).Razorpay(options);
           rzp.open();
         } catch (error: any) {
-          console.error('Razorpay payment error:', error);
+          console.error('❌ Razorpay payment error:', error);
           showToast('❌ Failed to initiate payment: ' + (error.message || 'Please check your connection and try again'), 'error');
+          setSubmitting(false);
         }
       }
     } catch (error) {
