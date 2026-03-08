@@ -119,7 +119,31 @@ export function useData() {
     const unsubOrders = onValue(ordersRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        const fetchedOrders = Object.entries(data).map(([id, val]: [string, any]) => ({ id, ...val } as Order));
+        // Helper function to recursively extract orders from nested structure
+        const extractOrders = (obj: any, prefix: string = ''): Order[] => {
+          const orders: Order[] = [];
+          
+          if (!obj || typeof obj !== 'object') return orders;
+          
+          for (const [key, value] of Object.entries(obj)) {
+            // Check if this is an actual order object (has email, items, total properties)
+            if (value && typeof value === 'object' && ('email' in value || 'items' in value || 'total' in value)) {
+              const orderId = (value as any).id || (prefix ? `${prefix}/${key}` : key);
+              orders.push({ 
+                id: orderId, 
+                ...(value as any) 
+              } as Order);
+            } else if (value && typeof value === 'object') {
+              // Recursively search nested objects
+              const nestedPrefix = prefix ? `${prefix}/${key}` : key;
+              orders.push(...extractOrders(value, nestedPrefix));
+            }
+          }
+          
+          return orders;
+        };
+        
+        const fetchedOrders = extractOrders(data);
         console.log('Orders fetched from Firebase:', fetchedOrders);
         setOrders(fetchedOrders);
       } else {
