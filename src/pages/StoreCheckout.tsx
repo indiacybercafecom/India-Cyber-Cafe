@@ -9,7 +9,7 @@ import { showToast } from '../components/Toast';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
 import { generateOrderId } from '../utils/orderIdGenerator';
-import { initiateRazorpayPayment, getRazorpayKeyId, verifyRazorpayPayment } from '../services/razorpayService';
+import { initiateRazorpayPayment, getRazorpayKeyId, verifyRazorpayPayment, loadRazorpayScript } from '../services/razorpayService';
 import { generateRandomPassword, findUserByEmail, findUserByPhone, createGuestAccount as createGuestAccountInDB } from '../services/guestCheckoutService';
 import { sendWelcomeEmail, sendOrderConfirmationEmail, sendAdminOrderNotification } from '../services/emailService';
 
@@ -351,9 +351,17 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       } else {
         // For Online, initiate Razorpay payment
         try {
+          // Load Razorpay script first
+          const scriptLoaded = await loadRazorpayScript();
+          if (!scriptLoaded) {
+            showToast('Failed to load payment system. Please check your connection.', 'error');
+            setSubmitting(false);
+            return;
+          }
+
           const totalInPaisa = Math.round(total * 100);
           
-          await initiateRazorpayPayment({
+          const options = {
             key: getRazorpayKeyId(),
             amount: totalInPaisa,
             currency: 'INR',
@@ -367,6 +375,8 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
             },
             handler: async (response: any) => {
               try {
+                console.log('Payment handler called with response:', response);
+                
                 // Verify payment with backend using Razorpay signature
                 const verificationResult = await verifyRazorpayPayment(
                   response.razorpay_payment_id,
@@ -377,6 +387,8 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                 if (!verificationResult.verified) {
                   throw new Error(verificationResult.error || 'Payment verification failed');
                 }
+
+                console.log('Payment verified successfully');
 
                 // Payment verified, save order
                 const updatedOrder: Order = {
@@ -461,17 +473,25 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                   state: { order: updatedOrder, productName: product.name }
                 });
               } catch (error: any) {
-                showToast('Order saved but there was an issue confirming payment', 'error');
-                console.error('Error saving order after payment:', error);
+                showToast('❌ Payment verification failed: ' + (error.message || 'Unknown error'), 'error');
+                console.error('Payment verification error:', error);
               }
             },
             modal: {
               ondismiss: () => {
                 console.log('Payment modal dismissed');
+                setSubmitting(false);
                 showToast('💳 Payment cancelled. You can try again whenever you\'re ready.', 'error');
               }
+            },
+            theme: {
+              color: '#001A57'
             }
-          });
+          };
+
+          console.log('Opening Razorpay with options:', { ...options, key: '***hidden***' });
+          const razorpay = new (window as any).Razorpay(options);
+          razorpay.open();
         } catch (error: any) {
           console.error('Razorpay payment error:', error);
           showToast('❌ Failed to initiate payment: ' + (error.message || 'Please check your connection and try again'), 'error');
