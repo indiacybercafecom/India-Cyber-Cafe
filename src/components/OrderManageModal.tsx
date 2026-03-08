@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Order, UserProfile } from '../types';
+import { Order, UserProfile, OrderItem, OrderAddress } from '../types';
 import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
 import { rtdb } from '../firebase';
@@ -32,8 +32,18 @@ export function OrderManageModal({
 
   if (!order) return null;
 
-  const items = Array.isArray(order.items) ? order.items : [];
-  const deliveryAddress = order.deliveryAddress || {};
+  // Handle items - Firebase converts arrays to objects with numeric keys
+  let items: OrderItem[] = Array.isArray(order.items) ? order.items : [];
+  if (!Array.isArray(order.items) && typeof order.items === 'object' && order.items !== null) {
+    items = Object.values(order.items as any).filter(item => item && typeof item === 'object') as OrderItem[];
+  }
+  
+  // Debug logging to check image URLs
+  console.log('Order items with images:', items.map(item => ({ 
+    productName: (item as any).productName, 
+    customImageUrl: (item as any).customImageUrl 
+  })));
+  const deliveryAddress: Partial<OrderAddress> = order.deliveryAddress || {};
   const total = order.total || 0;
   const subtotal = order.subtotal || 0;
   const deliveryCharges = order.deliveryCharges || 0;
@@ -66,7 +76,7 @@ export function OrderManageModal({
           // Send customer notification
           if (newOrderStatus === 'cancelled') {
             // For cancellation, send cancellation email
-            const productName = items[0]?.productName || 'Your Product';
+            const productName = (items[0] as any)?.productName || 'Your Product';
             await sendOrderCancellationEmail(
               order.email,
               order.deliveryAddress?.name || 'Valued Customer',
@@ -81,7 +91,7 @@ export function OrderManageModal({
               order.deliveryAddress?.name || 'Guest',
               order.email,
               order.deliveryAddress?.phone || 'N/A',
-              items.map(item => ({
+              items.map((item: any) => ({
                 name: item.productName || 'Product',
                 quantity: item.quantity,
                 price: item.discountedPrice || item.price
@@ -97,7 +107,7 @@ export function OrderManageModal({
             ).catch(err => console.error('Admin email error:', err));
           } else {
             // For other status changes, send status update email
-            const productName = items[0]?.productName || 'Your Product';
+            const productName = (items[0] as any)?.productName || 'Your Product';
             let estimatedDelivery = '';
             if (newOrderStatus === 'shipped') {
               const deliveryDate = new Date();
@@ -212,7 +222,18 @@ export function OrderManageModal({
         </div>
 
         {/* Scrollable Content */}
-        <div className="overflow-y-auto flex-1">
+        <div 
+          className="overflow-y-auto flex-1"
+          onWheel={(e) => {
+            const target = e.currentTarget;
+            const isAtTop = target.scrollTop === 0;
+            const isAtBottom = target.scrollTop + target.clientHeight >= target.scrollHeight - 1;
+            
+            if ((isAtTop && e.deltaY < 0) || (isAtBottom && e.deltaY > 0)) {
+              e.preventDefault();
+            }
+          }}
+        >
           <div className="p-8 space-y-8">
             {/* Customer Details */}
             <div className="space-y-4">
@@ -264,20 +285,46 @@ export function OrderManageModal({
               <div className="space-y-3">
                 {items.length > 0 ? (
                   items.map((item, idx) => (
-                    <div key={idx} className="bg-gradient-to-r from-slate-50 to-slate-100 p-5 rounded-2xl border border-slate-200 flex justify-between items-start hover:border-navy/50 transition-all">
-                      <div className="flex-1">
-                        <p className="font-bold text-navy text-base">{item.productName}</p>
-                        <p className="text-sm text-slate-600 mt-1">Qty: <span className="font-semibold">{item.quantity}</span></p>
-                        {item.specialInstructions && (
-                          <p className="text-sm text-slate-600 mt-2 bg-white/60 p-2 rounded-lg">📝 {item.specialInstructions}</p>
-                        )}
+                    <div key={idx} className="bg-gradient-to-r from-slate-50 to-slate-100 p-5 rounded-2xl border border-slate-200 hover:border-navy/50 transition-all">
+                      <div className="flex justify-between items-start">
+                        <div className="flex-1">
+                          <p className="font-bold text-navy text-base">{(item as any).productName}</p>
+                          <p className="text-sm text-slate-600 mt-1">Qty: <span className="font-semibold">{(item as any).quantity}</span></p>
+                          {(item as any).specialInstructions && (
+                            <p className="text-sm text-slate-600 mt-2 bg-white/60 p-2 rounded-lg">📝 {(item as any).specialInstructions}</p>
+                          )}
+                        </div>
+                        <div className="text-right ml-4">
+                          <p className="font-bold text-navy text-lg">₹{(item as any).price}</p>
+                          {(item as any).discountedPrice && (item as any).discountedPrice > 0 && (
+                            <p className="text-sm text-slate-500 line-through">₹{(item as any).discountedPrice}</p>
+                          )}
+                        </div>
                       </div>
-                      <div className="text-right ml-4">
-                        <p className="font-bold text-navy text-lg">₹{item.price}</p>
-                        {item.discountedPrice && item.discountedPrice > 0 && (
-                          <p className="text-sm text-slate-500 line-through">₹{item.discountedPrice}</p>
-                        )}
-                      </div>
+                      
+                      {/* Custom Image Upload Display */}
+                      {(item as any).customImageUrl && (
+                        <div className="mt-4 pt-4 border-t border-slate-300">
+                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3 flex items-center gap-2">
+                            🖼️ Custom Image Uploaded
+                          </p>
+                          <div className="flex flex-wrap gap-3">
+                            <img 
+                              src={(item as any).customImageUrl} 
+                              alt={`Custom image for ${(item as any).productName}`}
+                              className="w-32 h-32 sm:w-40 sm:h-40 rounded-xl object-cover border-2 border-slate-300 shadow-md hover:shadow-lg hover:border-navy/70 transition-all cursor-pointer"
+                              onError={(e) => {
+                                console.error('Failed to load image:', (item as any).customImageUrl);
+                                (e.target as HTMLImageElement).src = 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="160" height="160" viewBox="0 0 160 160"%3E%3Crect fill="%23f3f4f6" width="160" height="160"/%3E%3Ctext x="50%25" y="50%25" dominant-baseline="middle" text-anchor="middle" font-family="sans-serif" font-size="14" fill="%239ca3af"%3EImage Load Error%3C/text%3E%3C/svg%3E';
+                              }}
+                            />
+                            <div className="flex-1 bg-white p-3 rounded-lg border border-slate-200">
+                              <p className="text-xs text-slate-600 font-semibold mb-1">Image URL (for reference):</p>
+                              <p className="text-xs text-blue-600 break-all font-mono bg-slate-50 p-2 rounded max-h-20 overflow-y-auto">{(item as any).customImageUrl}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   ))
                 ) : (

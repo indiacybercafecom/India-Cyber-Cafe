@@ -244,12 +244,19 @@ export function Admin({
     p.shortDescription.toLowerCase().includes(searchProducts.toLowerCase())
   );
 
-  const filteredOrders = (orders && Array.isArray(orders) ? orders : []).filter(o => {
-    if (!o) return false;
-    const orderIdMatch = o.id && typeof o.id === 'string' && o.id.toLowerCase().includes(searchOrders.toLowerCase());
-    const emailMatch = o.email && typeof o.email === 'string' && o.email.toLowerCase().includes(searchOrders.toLowerCase());
-    return orderIdMatch || emailMatch;
-  });
+  const filteredOrders = (orders && Array.isArray(orders) ? orders : [])
+    .filter(o => {
+      if (!o) return false;
+      const orderIdMatch = o.id && typeof o.id === 'string' && o.id.toLowerCase().includes(searchOrders.toLowerCase());
+      const emailMatch = o.email && typeof o.email === 'string' && o.email.toLowerCase().includes(searchOrders.toLowerCase());
+      return orderIdMatch || emailMatch;
+    })
+    .sort((a, b) => {
+      // Sort by creation date - most recent first
+      const dateA = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const dateB = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return dateB - dateA;
+    });
 
   return (
     <div className="space-y-8">

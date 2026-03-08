@@ -325,6 +325,25 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
           showToast('Order placed with Cash on Delivery!', 'success');
         }
 
+        // Reset form state after successful submission
+        setExistingUserFound(false);
+        setAddress({
+          name: user?.name || '',
+          email: user?.email || '',
+          phone: user?.phone || '',
+          addressLine1: '',
+          addressLine2: '',
+          city: '',
+          state: '',
+          pincode: '',
+          country: 'India'
+        });
+        setCreateGuestAccount(false);
+        setCustomImageFile(null);
+        setCustomImageUrl('');
+        setImagePreview('');
+        setSpecialInstructions('');
+        
         navigate('/store/order-confirmation', {
           state: { order: newOrder, productName: product.name }
         });

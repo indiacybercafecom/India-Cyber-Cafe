@@ -252,6 +252,15 @@ export function useData() {
       throw new Error('User ID is required to place an order');
     }
     
+    // Log order details for debugging
+    console.log('Saving order to Firebase:', order);
+    if (order.items && order.items.length > 0) {
+      console.log('Order items with customImageUrl:', order.items.map(item => ({
+        productName: item.productName,
+        customImageUrl: item.customImageUrl
+      })));
+    }
+    
     // Remove any undefined values from the order object
     const cleanOrder = Object.fromEntries(
       Object.entries(order).filter(([_, value]) => value !== undefined)
