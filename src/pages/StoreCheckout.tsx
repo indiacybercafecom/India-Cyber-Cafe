@@ -818,6 +818,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
               className="w-full btn-primary py-2.5 sm:py-3 text-sm sm:text-base font-bold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {uploading ? 'Uploading...' : submitting ? 'Processing...' : paymentMethod === 'cod' ? '🚚 Place COD Order' : '💳 Pay Now'}
+            </button>
 
             {/* Trust Badges */}
             <div className="space-y-2 pt-4 border-t border-slate-200">
