@@ -374,6 +374,62 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
               />
             </div>
 
+            {/* Payment Methods */}
+            <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-2xl border-2 border-slate-200 space-y-4">
+              <h3 className="font-bold text-navy text-lg flex items-center gap-2">
+                <span className="text-xl">💳</span>
+                Payment Methods
+              </h3>
+              <p className="text-sm text-slate-600">Select which payment methods customers can use for this product</p>
+              
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 p-3 bg-white rounded-xl border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
+                  <input
+                    type="radio"
+                    name="paymentMethods"
+                    value="both"
+                    checked={!formData.paymentMethods || formData.paymentMethods.includes('both') || (formData.paymentMethods?.includes('online') && formData.paymentMethods?.includes('cod'))}
+                    onChange={() => setFormData({ ...formData, paymentMethods: ['both'] })}
+                    className="w-4 h-4 accent-navy cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <p className="font-bold text-navy">Both (Recommended)</p>
+                    <p className="text-sm text-slate-600">Allow customers to choose Online (Razorpay) or Cash on Delivery</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 bg-white rounded-xl border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
+                  <input
+                    type="radio"
+                    name="paymentMethods"
+                    value="online"
+                    checked={formData.paymentMethods?.length === 1 && formData.paymentMethods[0] === 'online'}
+                    onChange={() => setFormData({ ...formData, paymentMethods: ['online'] })}
+                    className="w-4 h-4 accent-navy cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <p className="font-bold text-navy">Online Only</p>
+                    <p className="text-sm text-slate-600">Accept only Razorpay online payments</p>
+                  </div>
+                </label>
+
+                <label className="flex items-center gap-3 p-3 bg-white rounded-xl border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
+                  <input
+                    type="radio"
+                    name="paymentMethods"
+                    value="cod"
+                    checked={formData.paymentMethods?.length === 1 && formData.paymentMethods[0] === 'cod'}
+                    onChange={() => setFormData({ ...formData, paymentMethods: ['cod'] })}
+                    className="w-4 h-4 accent-navy cursor-pointer"
+                  />
+                  <div className="flex-1">
+                    <p className="font-bold text-navy">Cash on Delivery Only</p>
+                    <p className="text-sm text-slate-600">Accept only cash on delivery payments</p>
+                  </div>
+                </label>
+              </div>
+            </div>
+
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4 sm:pt-6 border-t border-slate-200 mt-4 sm:mt-6">
               <button

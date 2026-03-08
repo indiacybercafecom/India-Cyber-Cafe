@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth } from '../firebase';
 import { IconRenderer } from '../components/Icons';
 import { Product, UserProfile, Order, OrderAddress } from '../types';
 import { SEO } from '../components/SEO';
@@ -7,6 +9,9 @@ import { showToast } from '../components/Toast';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
 import { generateOrderId } from '../utils/orderIdGenerator';
+import { initiateRazorpayPayment, getRazorpayKeyId } from '../services/razorpayService';
+import { generateRandomPassword, findUserByEmail, findUserByPhone, createGuestAccount as createGuestAccountInDB } from '../services/guestCheckoutService';
+import { sendWelcomeEmail, sendOrderConfirmationEmail, sendAdminOrderNotification } from '../services/emailService';
 
 interface StoreCheckoutProps {
   products: Product[];
@@ -27,6 +32,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploading, setUploading] = useState(false);
   const [specialInstructions, setSpecialInstructions] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
 
   // Address Form
   const [address, setAddress] = useState<OrderAddress>({
@@ -43,6 +49,10 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  
+  // Guest checkout states
+  const [createGuestAccount, setCreateGuestAccount] = useState(false);
+  const [existingUserFound, setExistingUserFound] = useState(false);
 
   if (!product) {
     return (
@@ -78,6 +88,57 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         setImagePreview(reader.result as string);
       };
       reader.readAsDataURL(file);
+    }
+  };
+
+  // Check if user exists by email and auto-fill their info
+  const handleEmailBlur = async () => {
+    if (!address.email || !(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.email))) {
+      setExistingUserFound(false);
+      return;
+    }
+
+    try {
+      const existingUser = await findUserByEmail(address.email);
+      if (existingUser) {
+        setExistingUserFound(true);
+        // Auto-fill fields from existing user
+        setAddress(prev => ({
+          ...prev,
+          name: existingUser.name || prev.name,
+          phone: existingUser.phone || prev.phone
+        }));
+        showToast('ℹ️ Account found! Your details are auto-filled.', 'info');
+      } else {
+        setExistingUserFound(false);
+      }
+    } catch (error) {
+      console.error('Error checking user by email:', error);
+    }
+  };
+
+  // Check if user exists by phone and auto-fill their info
+  const handlePhoneBlur = async () => {
+    if (!address.phone || !/^[0-9]{10}$/.test(address.phone.replace(/\D/g, ''))) {
+      return;
+    }
+
+    try {
+      const existingUser = await findUserByPhone(address.phone);
+      if (existingUser) {
+        setExistingUserFound(true);
+        // Auto-fill email from existing user
+        if (!address.email && existingUser.email) {
+          setAddress(prev => ({
+            ...prev,
+            email: existingUser.email,
+            name: existingUser.name || prev.name
+          }));
+          showToast('ℹ️ Account found! Your details are auto-filled.', 'info');
+        }
+      }
+    } catch (error) {
+      console.error('Error checking user by phone:', error);
     }
   };
 
@@ -130,11 +191,11 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       return;
     }
 
-    // Check if user is authenticated
+    // For guest checkout (non-authenticated users), show warning if not creating account
     if (!user || !user.uid) {
-      showToast('Please log in to place an order', 'error');
-      navigate('/login', { state: { from: '/store' } });
-      return;
+      if (!createGuestAccount) {
+        showToast('⚠️ Without an account, you won\'t be able to track your order. We recommend creating one.', 'warning');
+      }
     }
 
     try {
@@ -159,9 +220,13 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
 
       // Create order with generated ID
       const orderId = generateOrderId();
+      
+      // Use either authenticated user or guest user
+      const userId = user?.uid || `guest-${address.email}-${Date.now()}`;
+      
       const newOrder: Order = {
         id: orderId,
-        uid: user?.uid,
+        uid: userId,
         email: address.email,
         items: [
           {
@@ -178,22 +243,207 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         subtotal,
         deliveryCharges,
         total,
-        paymentMethod: 'razorpay',
-        paymentStatus: 'pending',
-        orderStatus: 'pending',
+        paymentMethod: paymentMethod === 'cod' ? 'cash' : 'razorpay',
+        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending',
+        orderStatus: paymentMethod === 'cod' ? 'pending' : 'pending',
         notes: [],
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
 
-      await onAddOrder(newOrder);
-      showToast('Order placed successfully!', 'success');
-      console.log('Order placed successfully:', newOrder);
+      // Handle different payment methods
+      if (paymentMethod === 'cod') {
+        // For COD, save order directly
+        await onAddOrder(newOrder);
+        
+        // Send order confirmation email to customer
+        await sendOrderConfirmationEmail(
+          address.email,
+          address.name,
+          orderId,
+          newOrder.items.map(item => ({
+            name: item.productName,
+            quantity: item.quantity,
+            price: item.discountedPrice || item.price
+          })),
+          total,
+          'cod'
+        ).catch(err => console.error('Email send error:', err));
 
-      // Redirect to confirmation
-      navigate('/store/order-confirmation', {
-        state: { order: newOrder, productName: product.name }
-      });
+        // Send admin notification about new order
+        await sendAdminOrderNotification(
+          orderId,
+          address.name,
+          address.email,
+          address.phone,
+          newOrder.items.map(item => ({
+            name: item.productName,
+            quantity: item.quantity,
+            price: item.discountedPrice || item.price
+          })),
+          total,
+          'cod',
+          {
+            addressLine1: address.addressLine1,
+            city: address.city,
+            state: address.state,
+            pincode: address.pincode
+          }
+        ).catch(err => console.error('Admin email send error:', err));
+
+        // If guest checkout with account creation, create account after order
+        if (!user || !user.uid) {
+          if (createGuestAccount) {
+            try {
+              const result = await createGuestAccountInDB(address.email, address.name, address.phone);
+              
+              if (result.success && result.password) {
+                // Send welcome email with the generated password
+                await sendWelcomeEmail(address.email, address.name, result.password)
+                  .catch(err => console.error('Welcome email error:', err));
+                
+                // Auto-login with the generated password
+                try {
+                  await signInWithEmailAndPassword(auth, address.email, result.password);
+                  showToast('✅ Order placed! Account created and logged in.', 'success');
+                } catch (loginError) {
+                  console.error('Auto-login error:', loginError);
+                  showToast('✅ Order placed! Account created. Please log in.', 'info');
+                }
+              } else {
+                throw new Error(result.error || 'Failed to create account');
+              }
+            } catch (error) {
+              // If account creation fails, still allow order to proceed
+              console.error('Account creation error:', error);
+              showToast('✅ Order placed! (Account creation failed, but order was saved)', 'info');
+            }
+          } else {
+            showToast('✅ Order placed! (Log in to track your order)', 'info');
+          }
+        } else {
+          showToast('Order placed with Cash on Delivery!', 'success');
+        }
+
+        navigate('/store/order-confirmation', {
+          state: { order: newOrder, productName: product.name }
+        });
+      } else {
+        // For Online, initiate Razorpay payment
+        try {
+          const totalInPaisa = Math.round(total * 100);
+          
+          await initiateRazorpayPayment({
+            key: getRazorpayKeyId(),
+            amount: totalInPaisa,
+            currency: 'INR',
+            name: 'India Cyber Cafe',
+            description: `Order ${orderId} - ${product.name}`,
+            order_id: orderId,
+            prefill: {
+              name: address.name,
+              email: address.email,
+              contact: address.phone
+            },
+            handler: async (response: any) => {
+              try {
+                // Payment successful, save order
+                const updatedOrder: Order = {
+                  ...newOrder,
+                  paymentStatus: 'completed',
+                  razorpayPaymentId: response.razorpay_payment_id,
+                  razorpayOrderId: response.razorpay_order_id
+                };
+                
+                await onAddOrder(updatedOrder);
+
+                // Send order confirmation email to customer
+                await sendOrderConfirmationEmail(
+                  address.email,
+                  address.name,
+                  orderId,
+                  updatedOrder.items.map(item => ({
+                    name: item.productName,
+                    quantity: item.quantity,
+                    price: item.discountedPrice || item.price
+                  })),
+                  total,
+                  'online'
+                ).catch(err => console.error('Email send error:', err));
+
+                // Send admin notification about new order
+                await sendAdminOrderNotification(
+                  orderId,
+                  address.name,
+                  address.email,
+                  address.phone,
+                  updatedOrder.items.map(item => ({
+                    name: item.productName,
+                    quantity: item.quantity,
+                    price: item.discountedPrice || item.price
+                  })),
+                  total,
+                  'online',
+                  {
+                    addressLine1: address.addressLine1,
+                    city: address.city,
+                    state: address.state,
+                    pincode: address.pincode
+                  }
+                ).catch(err => console.error('Admin email send error:', err));
+
+                // If guest checkout with account creation, create account after successful payment
+                if (!user || !user.uid) {
+                  if (createGuestAccount) {
+                    try {
+                      const result = await createGuestAccountInDB(address.email, address.name, address.phone);
+                      
+                      if (result.success && result.password) {
+                        // Send welcome email with the generated password
+                        await sendWelcomeEmail(address.email, address.name, result.password)
+                          .catch(err => console.error('Welcome email error:', err));
+                        
+                        // Auto-login with the generated password
+                        try {
+                          await signInWithEmailAndPassword(auth, address.email, result.password);
+                          showToast('✅ Payment successful! Account created and logged in.', 'success');
+                        } catch (loginError) {
+                          console.error('Auto-login error:', loginError);
+                          showToast('✅ Payment successful! Account created. Please log in.', 'info');
+                        }
+                      } else {
+                        throw new Error(result.error || 'Failed to create account');
+                      }
+                    } catch (error) {
+                      // If account creation fails, still allow order to proceed
+                      console.error('Account creation error:', error);
+                      showToast('✅ Payment successful! (Account creation failed, but order was saved)', 'info');
+                    }
+                  } else {
+                    showToast('✅ Payment successful! (Log in to track your order)', 'info');
+                  }
+                } else {
+                  showToast('Payment successful! Order placed.', 'success');
+                }
+
+                navigate('/store/order-confirmation', {
+                  state: { order: updatedOrder, productName: product.name }
+                });
+              } catch (error: any) {
+                showToast('Order saved but there was an issue confirming payment', 'error');
+                console.error('Error saving order after payment:', error);
+              }
+            },
+            modal: {
+              ondismiss: () => {
+                showToast('Payment cancelled', 'error');
+              }
+            }
+          });
+        } catch (error: any) {
+          showToast('Failed to initiate payment: ' + error.message, 'error');
+        }
+      }
     } catch (error) {
       console.error('Order submission error:', error);
       const errorMsg = error instanceof Error ? error.message : 'An unknown error occurred';
@@ -322,6 +572,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                   type="email"
                   value={address.email}
                   onChange={e => setAddress({ ...address, email: e.target.value })}
+                  onBlur={handleEmailBlur}
                   className={`input-field w-full text-xs sm:text-sm ${formErrors.email ? 'border-red-500' : ''}`}
                   placeholder="john@example.com"
                 />
@@ -335,6 +586,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                   type="tel"
                   value={address.phone}
                   onChange={e => setAddress({ ...address, phone: e.target.value })}
+                  onBlur={handlePhoneBlur}
                   className={`input-field w-full text-xs sm:text-sm ${formErrors.phone ? 'border-red-500' : ''}`}
                   placeholder="9876543210"
                 />
@@ -406,6 +658,69 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
               />
             </div>
           </div>
+
+          {/* Guest Checkout - Account Creation Option */}
+          {(!user || !user.uid) && !existingUserFound && (
+            <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 space-y-4">
+              <h2 className="text-lg sm:text-xl font-bold text-navy flex items-center gap-2">
+                <IconRenderer name="user-plus" className="w-5 h-5 text-primary" />
+                Create Account for Faster Checkout
+              </h2>
+
+              <div className="space-y-3">
+                <label className="flex items-start gap-3 cursor-pointer p-3 bg-white rounded-lg border-2 border-slate-200 hover:border-navy transition-all">
+                  <input
+                    type="checkbox"
+                    checked={createGuestAccount}
+                    onChange={e => setCreateGuestAccount(e.target.checked)}
+                    className="w-5 h-5 accent-navy cursor-pointer mt-0.5 flex-shrink-0"
+                  />
+                  <div className="flex-1">
+                    <p className="text-sm font-bold text-navy">Create an account with us</p>
+                    <p className="text-xs text-slate-600 mt-1">
+                      We'll send you a temporary password. You can log in and change it anytime.
+                    </p>
+                  </div>
+                </label>
+
+                {!createGuestAccount && (
+                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
+                    <p className="text-xs sm:text-sm font-semibold text-yellow-900 mb-2">⚠️ Without an Account:</p>
+                    <ul className="text-xs sm:text-sm text-yellow-800 space-y-1 list-disc list-inside">
+                      <li>You won't be able to track your order</li>
+                      <li>You won't have access to order history</li>
+                      <li>You'll need to register if you order again</li>
+                    </ul>
+                  </div>
+                )}
+
+                {createGuestAccount && (
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
+                    <p className="text-xs sm:text-sm font-semibold text-green-900">✅ Benefits of Creating Account:</p>
+                    <ul className="text-xs sm:text-sm text-green-800 space-y-1 list-disc list-inside mt-2">
+                      <li>Track all your orders in real-time</li>
+                      <li>Faster checkout next time</li>
+                      <li>Access to order history and receipts</li>
+                      <li>Get exclusive offers and updates</li>
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* If user was found, show message */}
+          {(!user || !user.uid) && existingUserFound && (
+            <div className="bg-green-50 border border-green-200 rounded-xl sm:rounded-2xl p-4 sm:p-6">
+              <p className="text-sm sm:text-base font-bold text-green-900 flex items-center gap-2">
+                <IconRenderer name="check-circle" className="w-5 h-5" />
+                Account Found! Your details are already in our system.
+              </p>
+              <p className="text-xs sm:text-sm text-green-800 mt-2">
+                Proceed with checkout. You'll receive an order confirmation email.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Order Summary Sidebar */}
@@ -446,14 +761,63 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
               </div>
             </div>
 
+            {/* Payment Methods Selection */}
+            <div className="space-y-3 pt-4 border-t border-slate-200">
+              <h4 className="font-bold text-navy text-sm">Payment Method</h4>
+              
+              {(!product.paymentMethods || product.paymentMethods.includes('both') || (product.paymentMethods.includes('online') && product.paymentMethods.includes('cod'))) ? (
+                <>
+                  {/* Both methods available */}
+                  <label className="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-50 to-slate-100 rounded-xl border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="online"
+                      checked={paymentMethod === 'online'}
+                      onChange={() => setPaymentMethod('online')}
+                      className="w-4 h-4 accent-navy cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <p className="text-xs sm:text-sm font-bold text-navy">💳 Online Payment (Razorpay)</p>
+                      <p className="text-xs text-slate-600">Pay instantly with card/UPI</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-50 to-slate-100 rounded-xl border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
+                    <input
+                      type="radio"
+                      name="paymentMethod"
+                      value="cod"
+                      checked={paymentMethod === 'cod'}
+                      onChange={() => setPaymentMethod('cod')}
+                      className="w-4 h-4 accent-navy cursor-pointer"
+                    />
+                    <div className="flex-1">
+                      <p className="text-xs sm:text-sm font-bold text-navy">🚚 Cash on Delivery</p>
+                      <p className="text-xs text-slate-600">Pay when order arrives</p>
+                    </div>
+                  </label>
+                </>
+              ) : product.paymentMethods?.includes('online') ? (
+                <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
+                  <p className="text-sm font-bold text-navy">💳 Online Payment (Razorpay)</p>
+                  <p className="text-xs text-slate-600 mt-1">Only online payment available for this product</p>
+                </div>
+              ) : product.paymentMethods?.includes('cod') ? (
+                <div className="p-3 bg-green-50 rounded-xl border border-green-200">
+                  <p className="text-sm font-bold text-navy">🚚 Cash on Delivery</p>
+                  <p className="text-xs text-slate-600 mt-1">Only cash on delivery available for this product</p>
+                </div>
+              ) : null}
+            </div>
+
             {/* Submit Button */}
             <button
               type="submit"
               disabled={submitting || uploading}
               className="w-full btn-primary py-2.5 sm:py-3 text-sm sm:text-base font-bold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {uploading ? 'Uploading...' : submitting ? 'Processing...' : 'Proceed to Payment'}
-            </button>
+              {uploading ? 'Uploading...' : submitting ? 'Processing...' : paymentMethod === 'cod' ? '🚚 Place COD Order' : '💳 Pay Now'}
 
             {/* Trust Badges */}
             <div className="space-y-2 pt-4 border-t border-slate-200">

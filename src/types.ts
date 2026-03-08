@@ -119,6 +119,7 @@ export interface Product {
   seoTitle?: string;
   seoDescription?: string;
   seoKeywords?: string;
+  paymentMethods?: ('online' | 'cod' | 'both')[]; // Payment methods: online (Razorpay), cash on delivery, or both
 }
 
 export interface OrderItem {

@@ -84,6 +84,114 @@ export async function sendEmailToAllAdmins(subject: string, html: string) {
   return results;
 }
 
+// Send welcome email to guest checkout customer
+export async function sendWelcomeEmail(customerEmail: string, customerName: string, tempPassword: string) {
+  const html = emailTemplates.guestAccountWelcome(customerName, customerEmail, tempPassword);
+  return sendEmail(customerEmail, '🎉 Your Guest Account - India Cyber Cafe Store', html);
+}
+
+// Send order confirmation email to customer
+export async function sendOrderConfirmationEmail(
+  customerEmail: string, 
+  customerName: string, 
+  orderId: string,
+  items: Array<{name: string, quantity: number, price: number}>,
+  totalAmount: number,
+  paymentMethod: 'online' | 'cod'
+) {
+  const html = emailTemplates.storeOrderConfirmation(customerName, orderId, items, totalAmount, paymentMethod);
+  return sendEmail(customerEmail, `✅ Order Confirmed - ${orderId}`, html);
+}
+
+// Send order notification to admin
+export async function sendAdminOrderNotification(
+  orderId: string,
+  customerName: string,
+  customerEmail: string,
+  customerPhone: string,
+  items: Array<{name: string, quantity: number, price: number}>,
+  totalAmount: number,
+  paymentMethod: 'online' | 'cod',
+  address: {
+    addressLine1: string;
+    city: string;
+    state: string;
+    pincode: string;
+  }
+) {
+  const html = emailTemplates.adminStoreOrder(orderId, customerName, customerEmail, customerPhone, items, totalAmount, paymentMethod, address);
+  return sendEmailToAllAdmins(`📦 New Store Order Received - ${orderId}`, html);
+}
+// Send order status update to customer
+export async function sendOrderStatusUpdateEmail(
+  customerEmail: string,
+  customerName: string,
+  orderId: string,
+  newStatus: string,
+  productName: string,
+  estimatedDelivery?: string
+) {
+  const html = emailTemplates.orderStatusUpdate(customerName, orderId, newStatus, productName, estimatedDelivery);
+  return sendEmail(customerEmail, `📦 Order Status Updated - ${orderId}`, html);
+}
+
+// Send order cancellation email to customer
+export async function sendOrderCancellationEmail(
+  customerEmail: string,
+  customerName: string,
+  orderId: string,
+  productName: string,
+  totalAmount: number,
+  reason?: string
+) {
+  const html = emailTemplates.orderCancellation(customerName, orderId, productName, totalAmount, reason);
+  return sendEmail(customerEmail, `❌ Order Cancelled - ${orderId}`, html);
+}
+
+// Send refund initiated email to customer
+export async function sendRefundInitiatedEmail(
+  customerEmail: string,
+  customerName: string,
+  orderId: string,
+  refundAmount: number,
+  expectedDays: number = 5
+) {
+  const html = emailTemplates.refundInitiated(customerName, orderId, refundAmount, expectedDays);
+  return sendEmail(customerEmail, `💰 Refund Initiated - ${orderId}`, html);
+}
+
+// Send admin notification for refund
+export async function sendAdminRefundNotification(
+  orderId: string,
+  customerName: string,
+  customerEmail: string,
+  refundAmount: number,
+  reason?: string
+) {
+  const html = emailTemplates.adminRefundInitiated(orderId, customerName, customerEmail, refundAmount, reason);
+  return sendEmailToAllAdmins(`💰 Refund Initiated - ${orderId}`, html);
+}
+
+// Send review confirmation email
+export async function sendReviewConfirmationEmail(
+  customerEmail: string,
+  customerName: string,
+  productName: string
+) {
+  const html = emailTemplates.reviewSubmitted(customerName, productName);
+  return sendEmail(customerEmail, `⭐ Review Submitted - ${productName}`, html);
+}
+
+// Send admin notification for new review
+export async function sendAdminReviewNotification(
+  productName: string,
+  customerName: string,
+  rating: number,
+  reviewText: string
+) {
+  const html = emailTemplates.adminNewReview(productName, customerName, rating, reviewText);
+  return sendEmailToAllAdmins(`⭐ New Review Received - ${productName}`, html);
+}
 export const emailTemplates = {
   // ============= USER TEMPLATES ============= 
   
@@ -414,6 +522,371 @@ export const emailTemplates = {
         <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background: #28a745; padding: 2px 8px; border-radius: 3px; color: white;">✓ COMPLETED</span></p>
       </div>
       <p>Thank you for successfully completing this application!</p>
+      <p>Best Regards,<br/><strong>India Cyber Cafe System</strong></p>
+    `
+  ),
+
+  // ============= STORE ORDER TEMPLATES =============
+
+  storeOrderConfirmation: (customerName: string, orderId: string, items: Array<{name: string, quantity: number, price: number}>, totalAmount: number, paymentMethod: string) => baseTemplate(
+    '✅ Order Confirmed - India Cyber Cafe Store',
+    `
+      <p>Hello <strong>${customerName}</strong>,</p>
+      <p>Thank you for your order! We have received your ${paymentMethod === 'cod' ? 'Cash on Delivery' : 'online payment'} order successfully.</p>
+      
+      <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #FF9933;">
+        <p style="margin: 5px 0;"><strong>Order ID:</strong> <code style="background: #f0f0f0; padding: 2px 5px; border-radius: 3px;">${orderId}</code></p>
+        <p style="margin: 5px 0;"><strong>Order Date:</strong> ${new Date().toLocaleDateString()}</p>
+        <p style="margin: 5px 0;"><strong>Payment Method:</strong> ${paymentMethod === 'cod' ? '🚚 Cash on Delivery' : '💳 Online Payment'}</p>
+      </div>
+
+      <p style="margin-top: 20px; font-weight: bold; font-size: 16px;">📦 Order Details:</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+        <thead>
+          <tr style="background: #f0f0f0; border-bottom: 2px solid #FF9933;">
+            <th style="padding: 10px; text-align: left;">Product</th>
+            <th style="padding: 10px; text-align: center;">Qty</th>
+            <th style="padding: 10px; text-align: right;">Price</th>
+            <th style="padding: 10px; text-align: right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(item => `
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 10px; text-align: left;">${item.name}</td>
+              <td style="padding: 10px; text-align: center;">${item.quantity}</td>
+              <td style="padding: 10px; text-align: right;">₹${item.price.toFixed(2)}</td>
+              <td style="padding: 10px; text-align: right;">₹${(item.quantity * item.price).toFixed(2)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      <div style="background: #fff9e6; padding: 15px; border-radius: 8px; border: 1px solid #ffe6cc; text-align: right;">
+        <p style="margin: 0; font-size: 18px; font-weight: bold; color: #FF9933;">Total Amount: ₹${totalAmount.toFixed(2)}</p>
+      </div>
+
+      <p style="margin-top: 20px; font-weight: bold; font-size: 16px;">📍 Next Steps:</p>
+      ${paymentMethod === 'cod' 
+        ? `<ol style="color: #555; line-height: 1.8; padding-left: 20px;">
+            <li>Our team will process your order within 24 hours</li>
+            <li>You will receive a confirmation call for delivery details</li>
+            <li>Our delivery partner will contact you to arrange pickup/delivery</li>
+            <li>Payment will be collected at the time of delivery</li>
+          </ol>`
+        : `<ol style="color: #555; line-height: 1.8; padding-left: 20px;">
+            <li>Your payment has been received and confirmed</li>
+            <li>Your order will be packed and dispatched within 24 hours</li>
+            <li>You will receive tracking details via email/SMS</li>
+            <li>Estimated delivery: 3-5 business days</li>
+          </ol>`
+      }
+
+      <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #FF9933;">
+        <p style="margin: 0 0 10px 0; font-weight: bold;">📞 Need Help?</p>
+        <ul style="margin: 0; padding-left: 20px; color: #555;">
+          <li>Email: <a href="mailto:store@indiacybercafe.com" style="color: #FF9933;">store@indiacybercafe.com</a></li>
+          <li>Call: +91-XXXXXXXXXX</li>
+          <li>Website: <a href="https://booking.indiacybercafe.com" style="color: #FF9933;">booking.indiacybercafe.com</a></li>
+        </ul>
+      </div>
+
+      <p style="margin-top: 20px; text-align: center;">
+        <a href="https://booking.indiacybercafe.com" style="background: #FF9933; color: white; padding: 12px 30px; border-radius: 5px; text-decoration: none; display: inline-block; font-weight: bold;">Track Your Order</a>
+      </p>
+
+      <p style="margin-top: 20px; color: #666; font-size: 13px;">Thank you for shopping at India Cyber Cafe! 🎉</p>
+      <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>
+    `
+  ),
+
+  guestAccountWelcome: (customerName: string, email: string, tempPassword: string) => baseTemplate(
+    '🎉 Your Guest Account - India Cyber Cafe Store',
+    `
+      <p>Hello <strong>${customerName}</strong>,</p>
+      <p>Welcome to India Cyber Cafe! We've automatically created an account for you to make your future purchases faster and easier.</p>
+
+      <div style="background: #fff3cd; padding: 20px; border-radius: 8px; margin: 20px 0; border: 2px solid #FF9933; text-align: center;">
+        <p style="margin: 0 0 10px 0; color: #333; font-size: 12px; font-weight: bold;">YOUR LOGIN CREDENTIALS</p>
+        <p style="margin: 5px 0;"><strong>Email:</strong> <code style="background: #f0f0f0; padding: 2px 8px; border-radius: 3px; font-family: 'Courier New', monospace;">${email}</code></p>
+        <p style="margin: 5px 0 15px 0;"><strong>Password:</strong> <code style="background: #f0f0f0; padding: 2px 8px; border-radius: 3px; font-family: 'Courier New', monospace; letter-spacing: 1px;">${tempPassword}</code></p>
+      </div>
+
+      <p><strong>🔐 How to Change Your Password:</strong></p>
+      <ol style="color: #555; line-height: 1.8; padding-left: 20px;">
+        <li>Visit <a href="https://booking.indiacybercafe.com/login" style="color: #FF9933;">booking.indiacybercafe.com/login</a></li>
+        <li>Log in with your email and the password provided above</li>
+        <li>Go to your <strong>Profile Settings</strong> → <strong>Security</strong></li>
+        <li>Click <strong>"Change Password"</strong> and create a strong, personal password</li>
+        <li>Use your new password for all future logins</li>
+      </ol>
+
+      <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #FF9933;">
+        <p style="margin: 0 0 10px 0; color: #FF9933; font-weight: bold;">💡 Account Benefits:</p>
+        <ul style="margin: 0; padding-left: 20px; color: #555;">
+          <li>✅ Track all your orders in real-time</li>
+          <li>✅ Faster checkout on your next purchase</li>
+          <li>✅ View order history and receipts</li>
+          <li>✅ Save your preferred delivery address</li>
+          <li>✅ Receive exclusive offers and updates</li>
+        </ul>
+      </div>
+
+      <p style="background: #xffe6e6; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #ff6b6b;">
+        <strong>⚠️ Important Security Tips:</strong><br/>
+        <span style="color: #555; font-size: 13px;">
+          • Never share your password with anyone<br/>
+          • Change your password as soon as you log in<br/>
+          • Delete this email after you've noted your temporary password<br/>
+          • If you didn't create this account, please contact us immediately
+        </span>
+      </p>
+
+      <p style="margin-top: 20px;">
+        <a href="https://booking.indiacybercafe.com/login" style="background: #FF9933; color: white; padding: 12px 30px; border-radius: 5px; text-decoration: none; display: inline-block; font-weight: bold;">Log In to Your Account</a>
+      </p>
+
+      <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #FF9933;">
+        <p style="margin: 0 0 10px 0; font-weight: bold;">📞 Need Help?</p>
+        <ul style="margin: 0; padding-left: 20px; color: #555; font-size: 13px;">
+          <li>Email: <a href="mailto:support@indiacybercafe.com" style="color: #FF9933;">support@indiacybercafe.com</a></li>
+          <li>Phone: +91-XXXXXXXXXX</li>
+          <li>Website: <a href="https://booking.indiacybercafe.com" style="color: #FF9933;">https://booking.indiacybercafe.com</a></li>
+        </ul>
+      </div>
+
+      <p style="margin-top: 20px; color: #666; font-size: 13px;">Thank you for choosing India Cyber Cafe! We look forward to serving you. 🚀</p>
+      <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
+    `
+  ),
+
+  // ============= ADMIN STORE TEMPLATES =============
+
+  adminStoreOrder: (
+    orderId: string,
+    customerName: string,
+    customerEmail: string,
+    customerPhone: string,
+    items: Array<{name: string, quantity: number, price: number}>,
+    totalAmount: number,
+    paymentMethod: string,
+    address: {addressLine1: string; city: string; state: string; pincode: string}
+  ) => baseTemplate(
+    '📦 New Store Order Received - Admin Alert',
+    `
+      <p>Hello Admin,</p>
+      <p>A new store order has been placed and requires your attention.</p>
+      
+      <div style="background: #e8f4f8; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #FF9933;">
+        <p style="margin: 5px 0;"><strong>Order ID:</strong> <code style="background: #f0f0f0; padding: 2px 5px; border-radius: 3px;">${orderId}</code></p>
+        <p style="margin: 5px 0;"><strong>Order Date:</strong> ${new Date().toLocaleString()}</p>
+        <p style="margin: 5px 0;"><strong>Payment Method:</strong> ${paymentMethod === 'cod' ? '🚚 Cash on Delivery' : '💳 Online (Razorpay)'}</p>
+      </div>
+
+      <p style="margin-top: 15px; font-weight: bold; font-size: 16px;">👤 Customer Details:</p>
+      <div style="background: #f9f9f9; padding: 15px; border-radius: 8px; margin: 10px 0;">
+        <p style="margin: 5px 0;"><strong>Name:</strong> ${customerName}</p>
+        <p style="margin: 5px 0;"><strong>Email:</strong> <a href="mailto:${customerEmail}" style="color: #FF9933;">${customerEmail}</a></p>
+        <p style="margin: 5px 0;"><strong>Phone:</strong> ${customerPhone}</p>
+        <p style="margin: 5px 0;"><strong>Address:</strong> ${address.addressLine1}, ${address.city}, ${address.state} - ${address.pincode}</p>
+      </div>
+
+      <p style="margin-top: 15px; font-weight: bold; font-size: 16px;">📦 Order Items:</p>
+      <table style="width: 100%; border-collapse: collapse; margin: 15px 0;">
+        <thead>
+          <tr style="background: #f0f0f0; border-bottom: 2px solid #FF9933;">
+            <th style="padding: 10px; text-align: left;">Product</th>
+            <th style="padding: 10px; text-align: center;">Qty</th>
+            <th style="padding: 10px; text-align: right;">Price</th>
+            <th style="padding: 10px; text-align: right;">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(item => `
+            <tr style="border-bottom: 1px solid #eee;">
+              <td style="padding: 10px; text-align: left;">${item.name}</td>
+              <td style="padding: 10px; text-align: center;">${item.quantity}</td>
+              <td style="padding: 10px; text-align: right;">₹${item.price.toFixed(2)}</td>
+              <td style="padding: 10px; text-align: right;">₹${(item.quantity * item.price).toFixed(2)}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+
+      <div style="background: #fff9e6; padding: 15px; border-radius: 8px; border: 1px solid #ffe6cc; text-align: right;">
+        <p style="margin: 0; font-size: 16px; font-weight: bold; color: #FF9933;">Total Amount: ₹${totalAmount.toFixed(2)}</p>
+      </div>
+
+      <p style="margin-top: 20px; font-weight: bold;">📋 Next Steps:</p>
+      <ol style="color: #555; line-height: 1.8; padding-left: 20px;">
+        ${paymentMethod === 'cod' 
+          ? `
+            <li>Order is pending payment on delivery</li>
+            <li>Arrange for packaging and dispatch</li>
+            <li>Generate shipping label</li>
+            <li>Update order status in admin panel</li>
+            `
+          : `
+            <li>Payment has been received (confirm in bank)</li>
+            <li>Prepare for immediate dispatch</li>
+            <li>Generate shipping label</li>
+            <li>Update order status as "Processing"</li>
+            `
+        }
+      </ol>
+
+      <p style="margin-top: 20px;">
+        <a href="https://booking.indiacybercafe.com/admin" style="background: #FF9933; color: white; padding: 12px 30px; border-radius: 5px; text-decoration: none; display: inline-block; font-weight: bold;">View in Admin Panel</a>
+      </p>
+
+      <p>Best Regards,<br/><strong>India Cyber Cafe System</strong></p>
+    `
+  ),
+
+  // ============= ORDER UPDATE TEMPLATES =============
+
+  orderStatusUpdate: (customerName: string, orderId: string, status: string, productName: string, estimatedDelivery?: string) => baseTemplate(
+    '📦 Order Status Updated',
+    `
+      <p>Hello <strong>${customerName}</strong>,</p>
+      <p>Great news! Your order status has been updated.</p>
+      
+      <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #28a745;">
+        <p style="margin: 5px 0;"><strong>Order ID:</strong> <code style="background: #f0f0f0; padding: 2px 5px; border-radius: 3px;">${orderId}</code></p>
+        <p style="margin: 5px 0;"><strong>Product:</strong> ${productName}</p>
+        <p style="margin: 5px 0;"><strong>New Status:</strong> <span style="background: #28a745; color: white; padding: 3px 10px; border-radius: 3px; font-weight: bold;">${status.toUpperCase()}</span></p>
+        ${estimatedDelivery ? `<p style="margin: 5px 0;"><strong>Estimated Delivery:</strong> ${estimatedDelivery}</p>` : ''}
+      </div>
+
+      <p style="margin-top: 20px;">
+        <a href="https://booking.indiacybercafe.com" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Track Your Order</a>
+      </p>
+
+      <p style="margin-top: 15px; font-size: 14px; color: #666;">Thank you for choosing India Cyber Cafe!</p>
+      <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
+    `
+  ),
+
+  orderCancellation: (customerName: string, orderId: string, productName: string, totalAmount: number, reason?: string) => baseTemplate(
+    '❌ Order Cancelled',
+    `
+      <p>Hello <strong>${customerName}</strong>,</p>
+      <p>Your order has been cancelled as requested.</p>
+      
+      <div style="background: #fff3cd; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #ffc107;">
+        <p style="margin: 5px 0;"><strong>Order ID:</strong> <code style="background: #f0f0f0; padding: 2px 5px; border-radius: 3px;">${orderId}</code></p>
+        <p style="margin: 5px 0;"><strong>Product:</strong> ${productName}</p>
+        <p style="margin: 5px 0;"><strong>Cancelled Amount:</strong> ₹${totalAmount.toFixed(2)}</p>
+        ${reason ? `<p style="margin: 5px 0;"><strong>Reason:</strong> ${reason}</p>` : ''}
+      </div>
+
+      <p style="margin-top: 15px; font-weight: bold;">💰 Refund Information:</p>
+      <ul style="color: #555; line-height: 1.8; padding-left: 20px;">
+        <li>Refund amount: ₹${totalAmount.toFixed(2)}</li>
+        <li>Refund will be processed within 5-7 business days</li>
+        <li>The amount will be credited to your original payment method</li>
+      </ul>
+
+      <p style="margin-top: 20px; background: #f0f8ff; padding: 15px; border-radius: 8px; border-left: 4px solid #FF9933;">
+        <strong>Need Help?</strong><br/>
+        <span style="color: #555; font-size: 14px;">
+          If you have any questions about this cancellation or refund, please contact our support team.
+        </span>
+      </p>
+
+      <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
+    `
+  ),
+
+  refundInitiated: (customerName: string, orderId: string, refundAmount: number, expectedDays: number = 5) => baseTemplate(
+    '💰 Refund Initiated',
+    `
+      <p>Hello <strong>${customerName}</strong>,</p>
+      <p>Good news! Your refund has been initiated and processed.</p>
+      
+      <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #28a745;">
+        <p style="margin: 5px 0;"><strong>Order ID:</strong> <code style="background: #f0f0f0; padding: 2px 5px; border-radius: 3px;">${orderId}</code></p>
+        <p style="margin: 5px 0;"><strong>Refund Amount:</strong> <span style="font-size: 18px; font-weight: bold; color: #28a745;">₹${refundAmount.toFixed(2)}</span></p>
+        <p style="margin: 5px 0;"><strong>Expected Duration:</strong> ${expectedDays} business days</p>
+        <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background: #28a745; color: white; padding: 2px 8px; border-radius: 3px;">PROCESSING</span></p>
+      </div>
+
+      <p style="margin-top: 15px;"><strong>When will you receive the refund?</strong></p>
+      <ol style="color: #555; line-height: 1.8; padding-left: 20px;">
+        <li>Refund has been initiated from our end today</li>
+        <li>Your bank usually processes refunds within ${expectedDays} business days</li>
+        <li>The amount will be credited to your original payment method</li>
+        <li>You'll receive a notification from your bank once it's credited</li>
+      </ol>
+
+      <p style="margin-top: 20px; background: #fff9e6; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107;">
+        <strong>💡 Tip:</strong> If the refund is not received within ${expectedDays} business days, <strong>please contact your bank</strong> - they may have additional processing time.
+      </p>
+
+      <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
+    `
+  ),
+
+  adminRefundInitiated: (orderId: string, customerName: string, customerEmail: string, refundAmount: number, reason?: string) => baseTemplate(
+    '💰 Refund Initiated - Admin Alert',
+    `
+      <p>Hello Admin,</p>
+      <p>A refund has been initiated for a store order.</p>
+      
+      <div style="background: #d4edda; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #28a745;">
+        <p style="margin: 5px 0;"><strong>Order ID:</strong> <code style="background: #f0f0f0; padding: 2px 5px; border-radius: 3px;">${orderId}</code></p>
+        <p style="margin: 5px 0;"><strong>Customer:</strong> ${customerName} (<a href="mailto:${customerEmail}" style="color: #FF9933;">${customerEmail}</a>)</p>
+        <p style="margin: 5px 0;"><strong>Refund Amount:</strong> ₹${refundAmount.toFixed(2)}</p>
+        <p style="margin: 5px 0;"><strong>Initiated:</strong> ${new Date().toLocaleString()}</p>
+        ${reason ? `<p style="margin: 5px 0;"><strong>Reason:</strong> ${reason}</p>` : ''}
+      </div>
+
+      <p style="margin-top: 20px;">
+        <a href="https://booking.indiacybercafe.com/admin" style="background: #FF9933; color: white; padding: 12px 30px; border-radius: 5px; text-decoration: none; display: inline-block; font-weight: bold;">View in Admin Panel</a>
+      </p>
+
+      <p>Best Regards,<br/><strong>India Cyber Cafe System</strong></p>
+    `
+  ),
+
+  reviewSubmitted: (customerName: string, productName: string) => baseTemplate(
+    '⭐ Review Submitted',
+    `
+      <p>Hello <strong>${customerName}</strong>,</p>
+      <p>Thank you for submitting your review for <strong>${productName}</strong>!</p>
+      
+      <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #FF9933;">
+        <p style="margin: 0;">Your review has been received and will be displayed on the product page after verification by our team. We appreciate your feedback!</p>
+      </div>
+
+      <p style="margin-top: 15px; color: #666; font-size: 14px;">Your review helps other customers make informed decisions and also helps us improve our products and services.</p>
+
+      <p style="margin-top: 20px;">
+        <a href="https://booking.indiacybercafe.com/store" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">Visit Store</a>
+      </p>
+
+      <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>
+    `
+  ),
+
+  adminNewReview: (productName: string, customerName: string, rating: number, reviewText: string) => baseTemplate(
+    '⭐ New Review Received',
+    `
+      <p>Hello Admin,</p>
+      <p>A new review has been submitted for <strong>${productName}</strong>.</p>
+      
+      <div style="background: #fff9e6; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #FF9933;">
+        <p style="margin: 5px 0;"><strong>Product:</strong> ${productName}</p>
+        <p style="margin: 5px 0;"><strong>Customer:</strong> ${customerName}</p>
+        <p style="margin: 5px 0;"><strong>Rating:</strong> ${'⭐'.repeat(rating)} (${rating}/5)</p>
+        <p style="margin: 10px 0 0 0;"><strong>Review:</strong></p>
+        <p style="margin: 10px 0; font-style: italic; color: #555;">"${reviewText}"</p>
+      </div>
+
+      <p style="margin-top: 20px;">
+        <a href="https://booking.indiacybercafe.com/admin" style="background: #FF9933; color: white; padding: 12px 30px; border-radius: 5px; text-decoration: none; display: inline-block; font-weight: bold;">Review in Admin Panel</a>
+      </p>
+
       <p>Best Regards,<br/><strong>India Cyber Cafe System</strong></p>
     `
   ),

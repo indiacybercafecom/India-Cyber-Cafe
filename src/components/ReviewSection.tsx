@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { IconRenderer } from './Icons';
 import { ProductReview, UserProfile } from '../types';
 import { showToast } from './Toast';
+import { sendReviewConfirmationEmail, sendAdminReviewNotification } from '../services/emailService';
 
 interface ReviewSectionProps {
   reviews: ProductReview[];
   productId: string;
+  productName?: string;
   user: UserProfile | null;
   onAddReview: (review: Omit<ProductReview, 'id'>) => Promise<void>;
 }
 
-export function ReviewSection({ reviews, productId, user, onAddReview }: ReviewSectionProps) {
+export function ReviewSection({ reviews, productId, productName = 'Product', user, onAddReview }: ReviewSectionProps) {
   const [showForm, setShowForm] = useState(false);
   const [rating, setRating] = useState(5);
   const [text, setText] = useState('');
@@ -78,6 +80,15 @@ export function ReviewSection({ reviews, productId, user, onAddReview }: ReviewS
       };
 
       await onAddReview(review);
+
+      // Send confirmation email to customer
+      await sendReviewConfirmationEmail(user.email, user.name, productName)
+        .catch(err => console.error('Review confirmation email error:', err));
+
+      // Send admin notification about new review
+      await sendAdminReviewNotification(productName, user.name, rating, text.trim())
+        .catch(err => console.error('Admin review notification error:', err));
+
       showToast('Review submitted successfully!', 'success');
 
       // Reset form
