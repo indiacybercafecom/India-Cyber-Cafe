@@ -87,7 +87,7 @@ export function Home({ onNavigate, services, onSelectService, loading }: HomePro
           </div>
         </div>
 
-        {loading ? (
+        {loading && services.length === 0 ? (
           <ServiceSkeleton />
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
