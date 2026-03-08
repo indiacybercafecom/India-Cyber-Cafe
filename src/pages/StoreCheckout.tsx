@@ -159,7 +159,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
 
       // Create order with generated ID
       const orderId = generateOrderId();
-      const newOrder: Omit<Order, 'id'> = {
+      const newOrder: Order = {
         id: orderId,
         uid: user?.uid,
         email: address.email,
@@ -188,6 +188,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
 
       await onAddOrder(newOrder);
       showToast('Order placed successfully!', 'success');
+      console.log('Order placed successfully:', newOrder);
 
       // Redirect to confirmation
       navigate('/store/order-confirmation', {
@@ -195,7 +196,8 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       });
     } catch (error) {
       console.error('Order submission error:', error);
-      showToast('Failed to place order', 'error');
+      const errorMsg = error instanceof Error ? error.message : 'An unknown error occurred';
+      showToast(`Failed to place order: ${errorMsg}`, 'error');
     } finally {
       setSubmitting(false);
     }

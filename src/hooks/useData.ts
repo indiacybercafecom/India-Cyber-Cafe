@@ -119,8 +119,11 @@ export function useData() {
     const unsubOrders = onValue(ordersRef, (snapshot) => {
       const data = snapshot.val();
       if (data) {
-        setOrders(Object.entries(data).map(([id, val]: [string, any]) => ({ id, ...val } as Order)));
+        const fetchedOrders = Object.entries(data).map(([id, val]: [string, any]) => ({ id, ...val } as Order));
+        console.log('Orders fetched from Firebase:', fetchedOrders);
+        setOrders(fetchedOrders);
       } else {
+        console.log('No orders found in Firebase');
         setOrders([]);
       }
       ordersLoaded = true;

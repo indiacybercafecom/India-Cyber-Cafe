@@ -244,6 +244,7 @@ function AppContent() {
               user ? (
                 <Track 
                   applications={applications.filter(a => a.uid === user.uid || (user.role === 'operator' && a.assignedTo === user.email))} 
+                  orders={orders}
                   user={user}
                   gateways={gateways}
                   onViewDetails={setSelectedApp}
@@ -255,6 +256,7 @@ function AppContent() {
               user ? (
                 <Track 
                   applications={applications.filter(a => a.uid === user.uid || (user.role === 'operator' && a.assignedTo === user.email))} 
+                  orders={orders}
                   user={user}
                   gateways={gateways}
                   onViewDetails={setSelectedApp}
@@ -302,9 +304,12 @@ function AppContent() {
                   onAddProduct={() => {}}
                   onDeleteProduct={deleteProduct}
                   onViewOrder={setSelectedApp as any}
+                  onUpdateOrder={updateOrder}
+                  onDeleteOrder={deleteOrder}
                   onAddCategory={addProductCategory}
                   onUpdateCategory={updateProductCategory}
                   onDeleteCategory={deleteProductCategory}
+                  currentUser={user}
                 />
               ) : <Navigate to="/" />
             } />

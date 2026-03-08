@@ -28,6 +28,9 @@ export function Track({ applications, orders = [], user, gateways, onViewDetails
   const userOrders = orders.filter(o => o.uid === user?.uid);
 
   useEffect(() => {
+    console.log('Track page - user:', user?.uid);
+    console.log('Track page - all orders:', orders);
+    console.log('Track page - user orders:', userOrders);
     if (applicationId && applications.length > 0) {
       const app = applications.find(a => a.id === applicationId);
       if (app) {

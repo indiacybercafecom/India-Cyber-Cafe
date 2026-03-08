@@ -31,9 +31,12 @@ interface AdminProps {
   onAddProduct?: () => void;
   onDeleteProduct?: (id: string) => void;
   onViewOrder?: (order: Order) => void;
+  onUpdateOrder?: (id: string, data: Partial<Order>) => Promise<void>;
+  onDeleteOrder?: (id: string) => Promise<void>;
   onAddCategory?: (category: ProductCategory) => Promise<void>;
   onUpdateCategory?: (id: string, category: Partial<ProductCategory>) => Promise<void>;
   onDeleteCategory?: (id: string) => Promise<void>;
+  currentUser?: UserProfile;
 }
 
 export function Admin({ 
@@ -57,9 +60,12 @@ export function Admin({
   onAddProduct,
   onDeleteProduct,
   onViewOrder,
+  onUpdateOrder,
+  onDeleteOrder,
   onAddCategory,
   onUpdateCategory,
-  onDeleteCategory
+  onDeleteCategory,
+  currentUser
 }: AdminProps) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders'>('apps');
@@ -868,7 +874,7 @@ export function Admin({
                           <div className="text-xs text-slate-400">{o.email}</div>
                         </td>
                         <td className="p-6 text-slate-600">{o.items.length} item{o.items.length !== 1 ? 's' : ''}</td>
-                        <td className="p-6 font-bold text-navy">₹{o.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) + o.deliveryAddress.postalCode?.length}</td>
+                        <td className="p-6 font-bold text-navy">₹{o.total}</td>
                         <td className="p-6">
                           <span className={`badge ${
                             o.orderStatus === 'delivered' ? 'bg-green-500' :
@@ -888,7 +894,7 @@ export function Admin({
                             {o.paymentStatus}
                           </span>
                         </td>
-                        <td className="p-6 text-slate-500 text-sm">{new Date(o.date).toLocaleDateString()}</td>
+                        <td className="p-6 text-slate-500 text-sm">{new Date(o.createdAt).toLocaleDateString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -924,7 +930,7 @@ export function Admin({
                     <div className="flex justify-between items-center pt-2 border-t border-slate-100">
                       <div>
                         <div className="text-xs text-slate-400 mb-1">{o.items.length} item{o.items.length !== 1 ? 's' : ''}</div>
-                        <div className="font-bold text-navy">₹{o.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) + 100}</div>
+                        <div className="font-bold text-navy">₹{o.total}</div>
                       </div>
                       <div className="flex gap-2 flex-col items-end">
                         <span className={`badge text-xs ${
@@ -934,7 +940,7 @@ export function Admin({
                         }`}>
                           {o.paymentStatus}
                         </span>
-                        <span className="text-xs text-slate-400">{new Date(o.date).toLocaleDateString()}</span>
+                        <span className="text-xs text-slate-400">{new Date(o.createdAt).toLocaleDateString()}</span>
                       </div>
                     </div>
                   </div>
@@ -1008,11 +1014,11 @@ export function Admin({
         />
       )}
 
-      {isOrderDetailModalOpen && (
+      {isOrderDetailModalOpen && selectedOrder && currentUser && (
         <OrderDetailModal 
           order={selectedOrder}
           onClose={() => { setIsOrderDetailModalOpen(false); setSelectedOrder(null); }}
-          currentUser={users[0] || null}
+          currentUser={currentUser}
         />
       )}
 
