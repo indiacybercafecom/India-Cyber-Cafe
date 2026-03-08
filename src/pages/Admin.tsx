@@ -8,6 +8,7 @@ import { GatewayModal } from '../components/GatewayModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { ProductModal } from '../components/ProductModal';
 import { CategoryModal } from '../components/CategoryModal';
+import { OrderDetailModal } from '../components/OrderDetailModal';
 
 interface AdminProps {
   applications: Application[];
@@ -68,6 +69,8 @@ export function Admin({
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<ProductCategory | null>(null);
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [isOrderDetailModalOpen, setIsOrderDetailModalOpen] = useState(false);
   
   // Search States
   const [searchApps, setSearchApps] = useState('');
@@ -851,8 +854,15 @@ export function Admin({
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {filteredOrders.map(o => (
-                      <tr key={o.id} className="hover:bg-slate-50 transition-colors">
-                        <td className="p-6 font-mono text-sm text-navy font-bold">{o.id.substring(0, 8)}...</td>
+                      <tr 
+                        key={o.id} 
+                        className="hover:bg-slate-50 transition-colors cursor-pointer"
+                        onClick={() => {
+                          setSelectedOrder(o);
+                          setIsOrderDetailModalOpen(true);
+                        }}
+                      >
+                        <td className="p-6 font-mono text-sm text-navy font-bold">{o.id}</td>
                         <td className="p-6">
                           <div className="font-bold text-navy">{o.deliveryAddress.name}</div>
                           <div className="text-xs text-slate-400">{o.email}</div>
@@ -888,10 +898,17 @@ export function Admin({
               {/* Mobile View for Orders */}
               <div className="sm:hidden divide-y divide-slate-100">
                 {filteredOrders.map(o => (
-                  <div key={o.id} className="p-6 space-y-4">
+                  <div 
+                    key={o.id} 
+                    className="p-6 space-y-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                    onClick={() => {
+                      setSelectedOrder(o);
+                      setIsOrderDetailModalOpen(true);
+                    }}
+                  >
                     <div className="flex justify-between items-start">
                       <div>
-                        <div className="font-mono text-xs text-navy font-bold mb-1">{o.id.substring(0, 8)}...</div>
+                        <div className="font-mono text-xs text-navy font-bold mb-1">{o.id}</div>
                         <div className="font-bold text-navy">{o.deliveryAddress.name}</div>
                         <div className="text-xs text-slate-400">{o.email}</div>
                       </div>
@@ -988,6 +1005,14 @@ export function Admin({
           gateway={selectedGateway}
           onClose={() => { setIsGatewayModalOpen(false); setSelectedGateway(null); }}
           onSave={handleSaveGateway}
+        />
+      )}
+
+      {isOrderDetailModalOpen && (
+        <OrderDetailModal 
+          order={selectedOrder}
+          onClose={() => { setIsOrderDetailModalOpen(false); setSelectedOrder(null); }}
+          currentUser={users[0] || null}
         />
       )}
 

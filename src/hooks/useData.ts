@@ -219,9 +219,28 @@ export function useData() {
   };
 
   // ========== ORDERS CRUD ==========
-  const addOrder = async (order: Omit<Order, 'id'>) => {
-    const newRef = push(ref(rtdb, 'orders'));
-    return await set(newRef, { ...order, id: newRef.key });
+  const addOrder = async (order: Omit<Order, 'id'> | Order) => {
+    // Validate that uid is not undefined (Firebase doesn't allow undefined values)
+    if (!order.uid) {
+      throw new Error('User ID is required to place an order');
+    }
+    
+    // Remove any undefined values from the order object
+    const cleanOrder = Object.fromEntries(
+      Object.entries(order).filter(([_, value]) => value !== undefined)
+    );
+    
+    // If order has custom id (e.g., from generateOrderId), use it; otherwise generate from Firebase
+    const orderId = 'id' in order && order.id ? order.id : undefined;
+    
+    if (orderId) {
+      // Use custom order ID
+      return await set(ref(rtdb, `orders/${orderId}`), { ...cleanOrder, id: orderId });
+    } else {
+      // Generate Firebase key for ID
+      const newRef = push(ref(rtdb, 'orders'));
+      return await set(newRef, { ...cleanOrder, id: newRef.key });
+    }
   };
 
   const updateOrder = async (id: string, data: Partial<Order>) => {

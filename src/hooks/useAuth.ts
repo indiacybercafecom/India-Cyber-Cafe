@@ -26,12 +26,18 @@ export function useAuth() {
           if (snapshot.exists()) {
             const userData = snapshot.val() as UserProfile;
             
+            // Ensure uid is always set from Firebase Auth
+            const userWithUid: UserProfile = {
+              ...userData,
+              uid: firebaseUser.uid
+            };
+            
             // Security: Hardcoded check for Super Admin email
-            if (userData.email?.toLowerCase() === 'indiacybercafe.com@gmail.com') {
-              userData.role = 'admin';
+            if (userWithUid.email?.toLowerCase() === 'indiacybercafe.com@gmail.com') {
+              userWithUid.role = 'admin';
             }
             
-            setUser(userData);
+            setUser(userWithUid);
             setLoading(false);
           } else {
             // Fallback for Admin email if profile doesn't exist yet

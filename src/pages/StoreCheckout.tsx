@@ -6,6 +6,7 @@ import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
+import { generateOrderId } from '../utils/orderIdGenerator';
 
 interface StoreCheckoutProps {
   products: Product[];
@@ -129,6 +130,13 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       return;
     }
 
+    // Check if user is authenticated
+    if (!user || !user.uid) {
+      showToast('Please log in to place an order', 'error');
+      navigate('/login', { state: { from: '/store' } });
+      return;
+    }
+
     try {
       setSubmitting(true);
 
@@ -149,8 +157,10 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       const deliveryCharges = product.deliveryCharges || 0;
       const total = subtotal + deliveryCharges;
 
-      // Create order
+      // Create order with generated ID
+      const orderId = generateOrderId();
       const newOrder: Omit<Order, 'id'> = {
+        id: orderId,
         uid: user?.uid,
         email: address.email,
         items: [
