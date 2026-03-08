@@ -298,9 +298,6 @@ function AppContent() {
                 />
               ) : <Navigate to="/" />
             } />
-                />
-              ) : <Navigate to="/" />
-            } />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </Suspense>
