@@ -4,6 +4,7 @@ import nodemailer from "nodemailer";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -145,6 +146,58 @@ async function startServer() {
     sitemap += `</urlset>`;
     res.type("application/xml");
     res.send(sitemap);
+  });
+
+  // Razorpay Payment Verification Endpoint
+  app.post("/api/verify-razorpay-payment", (req, res) => {
+    try {
+      const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
+
+      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        return res.status(400).json({
+          verified: false,
+          error: "Missing required payment verification data"
+        });
+      }
+
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keySecret) {
+        console.error("RAZORPAY_KEY_SECRET is not configured");
+        return res.status(500).json({
+          verified: false,
+          error: "Payment verification not configured"
+        });
+      }
+
+      // Create HMAC-SHA256 signature
+      const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+      const expectedSignature = crypto
+        .createHmac("sha256", keySecret)
+        .update(body)
+        .digest("hex");
+
+      const isSignatureValid = expectedSignature === razorpay_signature;
+
+      if (isSignatureValid) {
+        console.log(`✅ Payment verified - Order: ${razorpay_order_id}, Payment ID: ${razorpay_payment_id}`);
+        res.json({
+          verified: true,
+          message: "Payment successfully verified"
+        });
+      } else {
+        console.warn(`❌ Invalid payment signature - Order: ${razorpay_order_id}, Payment ID: ${razorpay_payment_id}`);
+        res.status(400).json({
+          verified: false,
+          error: "Invalid payment signature"
+        });
+      }
+    } catch (error: any) {
+      console.error("Payment verification error:", error);
+      res.status(500).json({
+        verified: false,
+        error: error.message || "Failed to verify payment"
+      });
+    }
   });
 
   // Vite middleware for development

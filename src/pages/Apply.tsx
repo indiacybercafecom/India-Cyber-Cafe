@@ -8,6 +8,7 @@ import { ref as dbRef, set } from 'firebase/database';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
 import { SEO } from '../components/SEO';
+import { verifyRazorpayPayment } from '../services/razorpayService';
 
 interface ApplyProps {
   services: Service[];
@@ -143,10 +144,28 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
             name: 'India Cyber Cafe',
             description: `Payment for ${service.name}`,
             handler: async (response: any) => {
-              application.paymentMethod = 'razorpay';
-              application.paymentStatus = 'completed';
-              application.razorpayPaymentId = response.razorpay_payment_id;
-              await submitApp(application);
+              try {
+                // Verify payment with backend using Razorpay signature
+                const verificationResult = await verifyRazorpayPayment(
+                  response.razorpay_payment_id,
+                  response.razorpay_order_id,
+                  response.razorpay_signature
+                );
+
+                if (!verificationResult.verified) {
+                  throw new Error(verificationResult.error || 'Payment verification failed');
+                }
+
+                // Payment verified, save application
+                application.paymentMethod = 'razorpay';
+                application.paymentStatus = 'completed';
+                application.razorpayPaymentId = response.razorpay_payment_id;
+                application.razorpayOrderId = response.razorpay_order_id;
+                await submitApp(application);
+              } catch (error: any) {
+                console.error('Payment verification error:', error);
+                showToast(`Payment verification failed: ${error.message}`, 'error');
+              }
             },
             prefill: {
               name: user.name,

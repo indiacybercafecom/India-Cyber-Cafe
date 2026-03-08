@@ -64,6 +64,7 @@ export interface Application {
   paymentMethod?: string;
   paymentStatus?: 'pending' | 'completed';
   razorpayPaymentId?: string;
+  razorpayOrderId?: string;
   notes: ApplicationNote[];
 }
 

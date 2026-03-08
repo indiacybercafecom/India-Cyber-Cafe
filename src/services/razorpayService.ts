@@ -1,6 +1,6 @@
-// Razorpay Live Keys - Production Configuration
-const RAZORPAY_KEY_ID = 'rzp_live_SO0ZFBCZTJT9Tu';
-const RAZORPAY_KEY_SECRET = 'D8e9DgdBPgYgiMh7h5MbXXk0';
+// Razorpay Configuration - Frontend Only (Key ID)
+// The Key Secret is kept safe on the backend only
+const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_SO0ZFBCZTJT9Tu';
 
 export interface RazorpayOptions {
   key: string;
@@ -100,9 +100,9 @@ export const verifyRazorpayPayment = async (
   paymentId: string,
   orderId: string,
   signature: string
-): Promise<boolean> => {
+): Promise<{ verified: boolean; error?: string }> => {
   try {
-    const response = await fetch('/api/verify-payment', {
+    const response = await fetch('/api/verify-razorpay-payment', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -115,9 +115,24 @@ export const verifyRazorpayPayment = async (
     });
 
     const data = await response.json();
-    return data.verified || false;
+    
+    if (!response.ok) {
+      return {
+        verified: false,
+        error: data.error || 'Payment verification failed'
+      };
+    }
+
+    return {
+      verified: data.verified || false,
+      error: data.verified ? undefined : 'Payment could not be verified'
+    };
   } catch (error) {
-    console.error('Payment verification failed:', error);
-    return false;
+    const errorMsg = error instanceof Error ? error.message : 'Network error during verification';
+    console.error('Payment verification error:', error);
+    return {
+      verified: false,
+      error: errorMsg
+    };
   }
 };

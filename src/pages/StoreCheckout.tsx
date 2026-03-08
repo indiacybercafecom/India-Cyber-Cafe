@@ -9,7 +9,7 @@ import { showToast } from '../components/Toast';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
 import { generateOrderId } from '../utils/orderIdGenerator';
-import { initiateRazorpayPayment, getRazorpayKeyId } from '../services/razorpayService';
+import { initiateRazorpayPayment, getRazorpayKeyId, verifyRazorpayPayment } from '../services/razorpayService';
 import { generateRandomPassword, findUserByEmail, findUserByPhone, createGuestAccount as createGuestAccountInDB } from '../services/guestCheckoutService';
 import { sendWelcomeEmail, sendOrderConfirmationEmail, sendAdminOrderNotification } from '../services/emailService';
 
@@ -367,7 +367,18 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
             },
             handler: async (response: any) => {
               try {
-                // Payment successful, save order
+                // Verify payment with backend using Razorpay signature
+                const verificationResult = await verifyRazorpayPayment(
+                  response.razorpay_payment_id,
+                  response.razorpay_order_id,
+                  response.razorpay_signature
+                );
+
+                if (!verificationResult.verified) {
+                  throw new Error(verificationResult.error || 'Payment verification failed');
+                }
+
+                // Payment verified, save order
                 const updatedOrder: Order = {
                   ...newOrder,
                   paymentStatus: 'completed',
