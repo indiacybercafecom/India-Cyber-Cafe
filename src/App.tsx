@@ -302,6 +302,9 @@ function AppContent() {
                   onAddProduct={() => {}}
                   onDeleteProduct={deleteProduct}
                   onViewOrder={setSelectedApp as any}
+                  onAddCategory={addProductCategory}
+                  onUpdateCategory={updateProductCategory}
+                  onDeleteCategory={deleteProductCategory}
                 />
               ) : <Navigate to="/" />
             } />

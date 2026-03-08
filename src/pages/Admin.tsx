@@ -7,6 +7,7 @@ import { utils, writeFile } from 'xlsx';
 import { GatewayModal } from '../components/GatewayModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { ProductModal } from '../components/ProductModal';
+import { CategoryModal } from '../components/CategoryModal';
 
 interface AdminProps {
   applications: Application[];
@@ -25,10 +26,13 @@ interface AdminProps {
   onAddGateway: (gateway: PaymentGateway) => void;
   onUpdateGateway: (id: string, gateway: Partial<PaymentGateway>) => void;
   onDeleteGateway: (id: string) => void;
-  onEditProduct?: (product: Product) => void;
+  onEditProduct?: (id: string, product: any) => void;
   onAddProduct?: () => void;
   onDeleteProduct?: (id: string) => void;
   onViewOrder?: (order: Order) => void;
+  onAddCategory?: (category: ProductCategory) => Promise<void>;
+  onUpdateCategory?: (id: string, category: Partial<ProductCategory>) => Promise<void>;
+  onDeleteCategory?: (id: string) => Promise<void>;
 }
 
 export function Admin({ 
@@ -51,7 +55,10 @@ export function Admin({
   onEditProduct,
   onAddProduct,
   onDeleteProduct,
-  onViewOrder
+  onViewOrder,
+  onAddCategory,
+  onUpdateCategory,
+  onDeleteCategory
 }: AdminProps) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders'>('apps');
@@ -59,6 +66,8 @@ export function Admin({
   const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState<ProductCategory | null>(null);
+  const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   
   // Search States
   const [searchApps, setSearchApps] = useState('');
@@ -576,14 +585,74 @@ export function Admin({
                 onChange={e => setSearchProducts(e.target.value)}
               />
             </div>
-            <button 
-              onClick={() => { setSelectedProduct(null); setIsProductModalOpen(true); }}
-              className="w-full md:w-auto btn-primary py-3 px-8 text-sm flex items-center justify-center gap-2"
-            >
-              <IconRenderer name="plus" className="w-4 h-4" />
-              Add Product
-            </button>
+            <div className="flex gap-3 flex-wrap">
+              <button 
+                onClick={() => { setSelectedCategory(null); setIsCategoryModalOpen(true); }}
+                className="btn-outline py-3 px-6 text-sm flex items-center justify-center gap-2"
+              >
+                <IconRenderer name="layers" className="w-4 h-4" />
+                Manage Categories
+              </button>
+              <button 
+                onClick={() => { setSelectedProduct(null); setIsProductModalOpen(true); }}
+                className="btn-primary py-3 px-8 text-sm flex items-center justify-center gap-2"
+              >
+                <IconRenderer name="plus" className="w-4 h-4" />
+                Add Product
+              </button>
+            </div>
           </div>
+
+          {/* Categories Section */}
+          {productCategories && productCategories.length > 0 && (
+            <div className="space-y-3">
+              <h3 className="text-sm font-bold text-slate-700">Categories ({productCategories.length})</h3>
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3">
+                {productCategories.map(cat => (
+                  <div key={cat.id} className="bg-white p-4 rounded-xl border border-slate-200 hover:border-navy transition-all group">
+                    <div className="flex items-start justify-between mb-3">
+                      <IconRenderer name={cat.icon} className="w-6 h-6 text-navy" />
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button
+                          onClick={() => { setSelectedCategory(cat); setIsCategoryModalOpen(true); }}
+                          className="p-1.5 bg-blue-100 text-blue-600 rounded-lg hover:bg-blue-200 transition-all"
+                          title="Edit"
+                        >
+                          <IconRenderer name="user-pen" className="w-3 h-3" />
+                        </button>
+                        <button
+                          onClick={() => {
+                            setConfirmConfig({
+                              isOpen: true,
+                              title: 'Delete Category',
+                              message: `Are you sure you want to delete "${cat.name}"? Products in this category will not be affected.`,
+                              type: 'danger',
+                              onConfirm: async () => {
+                                try {
+                                  if (onDeleteCategory) {
+                                    await onDeleteCategory(cat.id);
+                                    showToast('Category deleted successfully!', 'success');
+                                  }
+                                } catch (error: any) {
+                                  showToast(error.message || 'Failed to delete category', 'error');
+                                }
+                              }
+                            });
+                          }}
+                          className="p-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all"
+                          title="Delete"
+                        >
+                          <IconRenderer name="trash" className="w-3 h-3" />
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-xs font-bold text-navy mb-1 line-clamp-2">{cat.name}</p>
+                    <p className="text-[10px] text-slate-500 line-clamp-1">{cat.description}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           
           {filteredProducts.length === 0 ? (
             <div className="bg-white rounded-3xl shadow-xl p-20 text-center">
@@ -880,6 +949,35 @@ export function Admin({
               if (onEditProduct) {
                 await onEditProduct(productData.id, productData);
               }
+            }
+          }}
+        />
+      )}
+
+      {isCategoryModalOpen && (
+        <CategoryModal 
+          category={selectedCategory || undefined}
+          onClose={() => { setIsCategoryModalOpen(false); setSelectedCategory(null); }}
+          onSave={async (categoryData) => {
+            try {
+              const existingCategory = productCategories.find(c => c.id === categoryData.id);
+              
+              if (existingCategory && selectedCategory) {
+                // Update existing category
+                if (onUpdateCategory) {
+                  const { id, ...dataToUpdate } = categoryData;
+                  await onUpdateCategory(id, dataToUpdate);
+                  showToast('Category updated successfully!', 'success');
+                }
+              } else {
+                // Add new category
+                if (onAddCategory) {
+                  await onAddCategory(categoryData);
+                  showToast('Category added successfully!', 'success');
+                }
+              }
+            } catch (error: any) {
+              showToast(error.message || 'Failed to save category', 'error');
             }
           }}
         />
