@@ -27,8 +27,8 @@ export async function findUserByEmail(email: string) {
     
     if (!snapshot.exists()) return null;
     
-    const users = snapshot.val();
-    for (const [uid, userData]: any) {
+    const users = snapshot.val() as Record<string, any>;
+    for (const [uid, userData] of Object.entries(users)) {
       if (userData.email === email) {
         return { uid, ...userData };
       }
@@ -50,8 +50,8 @@ export async function findUserByPhone(phone: string) {
     
     if (!snapshot.exists()) return null;
     
-    const users = snapshot.val();
-    for (const [uid, userData]: any) {
+    const users = snapshot.val() as Record<string, any>;
+    for (const [uid, userData] of Object.entries(users)) {
       if (userData.phone === phone) {
         return { uid, ...userData };
       }
