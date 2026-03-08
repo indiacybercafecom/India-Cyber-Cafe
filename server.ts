@@ -149,7 +149,7 @@ async function startServer() {
   });
 
   // Razorpay Order Creation Endpoint
-  app.post("/api/create-razorpay-order", (req, res) => {
+  app.post("/api/create-razorpay-order", async (req, res) => {
     try {
       const { amount, currency = 'INR', receipt, notes = {} } = req.body;
 
@@ -159,36 +159,58 @@ async function startServer() {
         });
       }
 
+      const keyId = process.env.RAZORPAY_KEY_ID;
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
-      if (!keySecret) {
-        console.error("RAZORPAY_KEY_SECRET is not configured");
+
+      if (!keyId || !keySecret) {
+        console.error("Razorpay keys not configured");
         return res.status(500).json({
           error: "Payment gateway not configured"
         });
       }
 
-      // Generate order ID (since Razorpay Orders API requires server-to-server call with API Key)
-      // For now, we'll use our own order ID format
-      const orderId = receipt || `ORDER-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+      try {
+        // Call Razorpay Orders API to create order
+        const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+        
+        console.log('📡 Calling Razorpay Orders API...');
+        const razorpayResponse = await fetch('https://api.razorpay.com/v1/orders', {
+          method: 'POST',
+          headers: {
+            'Authorization': authHeader,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            amount: amount, // in paisa
+            currency: currency,
+            receipt: receipt,
+            notes: notes
+          })
+        });
 
-      // In production, you would call Razorpay Orders API here:
-      // const response = await fetch('https://api.razorpay.com/v1/orders', {
-      //   method: 'POST',
-      //   headers: {
-      //     'Authorization': 'Basic ' + Buffer.from(`${RAZORPAY_KEY_ID}:${keySecret}`).toString('base64'),
-      //     'Content-Type': 'application/json'
-      //   },
-      //   body: JSON.stringify({ amount, currency, receipt, notes })
-      // });
+        if (!razorpayResponse.ok) {
+          const errorData = await razorpayResponse.json();
+          console.error('❌ Razorpay API error:', errorData);
+          return res.status(400).json({
+            error: errorData.error?.description || 'Failed to create order with Razorpay'
+          });
+        }
 
-      console.log(`✅ Order created (local): ${orderId}, Amount: ${amount}, Currency: ${currency}`);
+        const orderData = await razorpayResponse.json();
+        console.log('✅ Order created with Razorpay:', orderData.id);
 
-      res.json({
-        success: true,
-        orderId: orderId,
-        amount: amount,
-        currency: currency
-      });
+        res.json({
+          success: true,
+          orderId: orderData.id,
+          amount: orderData.amount,
+          currency: orderData.currency
+        });
+      } catch (apiError: any) {
+        console.error('❌ Error calling Razorpay API:', apiError);
+        return res.status(500).json({
+          error: apiError.message || 'Failed to create order'
+        });
+      }
     } catch (error: any) {
       console.error("Order creation error:", error);
       res.status(500).json({
