@@ -8,7 +8,7 @@ import { GatewayModal } from '../components/GatewayModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { ProductModal } from '../components/ProductModal';
 import { CategoryModal } from '../components/CategoryModal';
-import { OrderDetailModal } from '../components/OrderDetailModal';
+import { OrderManageModal } from '../components/OrderManageModal';
 
 interface AdminProps {
   applications: Application[];
@@ -858,6 +858,7 @@ export function Admin({
                       <th className="p-6 font-bold">Status</th>
                       <th className="p-6 font-bold">Payment</th>
                       <th className="p-6 font-bold">Date</th>
+                      <th className="p-6 font-bold">Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -873,11 +874,7 @@ export function Admin({
                       return (
                         <tr 
                           key={o.id} 
-                          className="hover:bg-slate-50 transition-colors cursor-pointer"
-                          onClick={() => {
-                            setSelectedOrder(o);
-                            setIsOrderDetailModalOpen(true);
-                          }}
+                          className="hover:bg-slate-50 transition-colors"
                         >
                           <td className="p-6 font-mono text-sm text-navy font-bold">{o.id}</td>
                           <td className="p-6">
@@ -906,6 +903,42 @@ export function Admin({
                             </span>
                           </td>
                           <td className="p-6 text-slate-500 text-sm">{createdAt}</td>
+                          <td className="p-6">
+                            <div className="flex gap-2">
+                              <button 
+                                onClick={() => {
+                                  setSelectedOrder(o);
+                                  setIsOrderDetailModalOpen(true);
+                                }}
+                                className="btn-primary py-2 px-4 text-sm"
+                              >
+                                View
+                              </button>
+                              <button 
+                                onClick={() => {
+                                  setConfirmConfig({
+                                    isOpen: true,
+                                    title: 'Delete Order',
+                                    message: `Are you sure you want to delete order ${o.id}? This action cannot be undone.`,
+                                    type: 'danger',
+                                    onConfirm: async () => {
+                                      try {
+                                        if (onDeleteOrder) {
+                                          await onDeleteOrder(o.id);
+                                          showToast('Order deleted successfully!', 'success');
+                                        }
+                                      } catch (error: any) {
+                                        showToast(error.message || 'Failed to delete order', 'error');
+                                      }
+                                    }
+                                  });
+                                }}
+                                className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                              >
+                                <IconRenderer name="trash" className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </td>
                         </tr>
                       );
                     })}
@@ -927,11 +960,7 @@ export function Admin({
                   return (
                     <div 
                       key={o.id} 
-                      className="p-6 space-y-4 cursor-pointer hover:bg-slate-50 transition-colors"
-                      onClick={() => {
-                        setSelectedOrder(o);
-                        setIsOrderDetailModalOpen(true);
-                      }}
+                      className="p-6 space-y-4"
                     >
                       <div className="flex justify-between items-start">
                         <div>
@@ -963,6 +992,40 @@ export function Admin({
                           </span>
                           <span className="text-xs text-slate-400">{createdAt}</span>
                         </div>
+                      </div>
+                      <div className="flex gap-2 pt-2">
+                        <button 
+                          onClick={() => {
+                            setSelectedOrder(o);
+                            setIsOrderDetailModalOpen(true);
+                          }}
+                          className="flex-1 btn-primary py-2 text-xs"
+                        >
+                          View & Manage
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setConfirmConfig({
+                              isOpen: true,
+                              title: 'Delete Order',
+                              message: `Are you sure you want to delete order ${o.id}?`,
+                              type: 'danger',
+                              onConfirm: async () => {
+                                try {
+                                  if (onDeleteOrder) {
+                                    await onDeleteOrder(o.id);
+                                    showToast('Order deleted successfully!', 'success');
+                                  }
+                                } catch (error: any) {
+                                  showToast(error.message || 'Failed to delete order', 'error');
+                                }
+                              }
+                            });
+                          }}
+                          className="p-2 text-red-500 bg-red-50 rounded-lg"
+                        >
+                          <IconRenderer name="trash" className="w-4 h-4" />
+                        </button>
                       </div>
                     </div>
                   );
@@ -1036,11 +1099,13 @@ export function Admin({
         />
       )}
 
-      {isOrderDetailModalOpen && selectedOrder && currentUser && (
-        <OrderDetailModal 
+      {isOrderDetailModalOpen && selectedOrder && (
+        <OrderManageModal 
           order={selectedOrder}
           onClose={() => { setIsOrderDetailModalOpen(false); setSelectedOrder(null); }}
           currentUser={currentUser}
+          onUpdateOrder={onUpdateOrder}
+          onDeleteOrder={onDeleteOrder}
         />
       )}
 
