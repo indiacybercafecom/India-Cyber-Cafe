@@ -405,7 +405,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
             <div className="border-b border-slate-200 pb-4">
               <div className="flex gap-3 mb-3">
                 <img
-                  src={product.images.thumbnail}
+                  src={product.images[0]}
                   alt={product.name}
                   className="w-16 h-16 object-cover rounded-lg"
                 />

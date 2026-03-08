@@ -100,30 +100,25 @@ export interface ProductReview {
 export interface Product {
   id: string;
   name: string;
-  categoryId: string;
+  category: string;
   price: number;
-  discountedPrice?: number;
+  discountedPrice: number;
   shortDescription: string;
   longDescription: string;
-  images: {
-    thumbnail: string; // main product image
-    gallery: string[]; // additional images
-  };
+  images: string[]; // array of image URLs
   requiresCustomImage: boolean; // whether user needs to upload custom image
   customImageInstructions?: string;
   turnaroundTime?: string; // e.g., "5-7 business days"
   deliveryCharges?: number;
   inStock: boolean;
-  ratings?: {
+  ratings: {
     average: number;
     count: number;
+    breakdown?: { [key: number]: number };
   };
-  tags?: string[];
   seoTitle?: string;
   seoDescription?: string;
   seoKeywords?: string;
-  createdAt: number;
-  updatedAt: number;
 }
 
 export interface OrderItem {

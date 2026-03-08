@@ -21,7 +21,7 @@ export function Store({ products, categories, onSelectProduct }: StoreProps) {
     let filtered = products.filter(p => {
       const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         p.shortDescription.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesCategory = selectedCategory === 'all' || p.categoryId === selectedCategory;
+      const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
       return matchesSearch && matchesCategory && p.inStock;
     });
 
@@ -32,16 +32,12 @@ export function Store({ products, categories, onSelectProduct }: StoreProps) {
       case 'price-high':
         return filtered.sort((a, b) => (b.discountedPrice || b.price) - (a.discountedPrice || a.price));
       case 'newest':
-        return filtered.sort((a, b) => b.createdAt - a.createdAt);
+        return filtered.sort((a, b) => a.name.localeCompare(b.name));
       case 'name':
       default:
         return filtered.sort((a, b) => a.name.localeCompare(b.name));
     }
   }, [products, searchTerm, selectedCategory, sortBy]);
-
-  const getCategoryName = (catId: string) => {
-    return categories.find(c => c.id === catId)?.name || 'Unknown';
-  };
 
   const seoDescription = `Browse our collection of premium products. ${filteredProducts.length} products available. Fast delivery, custom printing support.`;
 
@@ -133,7 +129,7 @@ export function Store({ products, categories, onSelectProduct }: StoreProps) {
               {/* Image Container */}
               <div className="relative aspect-square overflow-hidden bg-slate-100">
                 <img
-                  src={product.images.thumbnail}
+                  src={product.images[0]}
                   alt={product.name}
                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                 />
@@ -148,7 +144,7 @@ export function Store({ products, categories, onSelectProduct }: StoreProps) {
               <div className="p-3 sm:p-4">
                 {/* Category */}
                 <p className="text-[10px] sm:text-xs text-primary font-semibold uppercase tracking-wider mb-1 sm:mb-2">
-                  {getCategoryName(product.categoryId)}
+                  {product.category}
                 </p>
 
                 {/* Name */}

@@ -291,7 +291,14 @@ function AppContent() {
                   onAddGateway={addGateway}
                   onUpdateGateway={updateGateway}
                   onDeleteGateway={deleteGateway}
-                  onEditProduct={updateProduct}
+                  onEditProduct={async (id: string, data: any) => {
+                    const existingProduct = products.find(p => p.id === id);
+                    if (existingProduct) {
+                      await updateProduct(id, data);
+                    } else {
+                      await addProduct(data);
+                    }
+                  }}
                   onAddProduct={() => {}}
                   onDeleteProduct={deleteProduct}
                   onViewOrder={setSelectedApp as any}

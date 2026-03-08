@@ -6,6 +6,7 @@ import { showToast } from '../components/Toast';
 import { utils, writeFile } from 'xlsx';
 import { GatewayModal } from '../components/GatewayModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
+import { ProductModal } from '../components/ProductModal';
 
 interface AdminProps {
   applications: Application[];
@@ -56,6 +57,8 @@ export function Admin({
   const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders'>('apps');
   const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | null>(null);
   const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
+  const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
+  const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   
   // Search States
   const [searchApps, setSearchApps] = useState('');
@@ -560,7 +563,327 @@ export function Admin({
         </div>
       )}
 
-      {isGatewayModalOpen && (
+      {tab === 'products' && (
+        <div className="space-y-4">
+          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div className="relative w-full max-w-md">
+              <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search products..." 
+                className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                value={searchProducts}
+                onChange={e => setSearchProducts(e.target.value)}
+              />
+            </div>
+            <button 
+              onClick={() => { setSelectedProduct(null); setIsProductModalOpen(true); }}
+              className="w-full md:w-auto btn-primary py-3 px-8 text-sm flex items-center justify-center gap-2"
+            >
+              <IconRenderer name="plus" className="w-4 h-4" />
+              Add Product
+            </button>
+          </div>
+          
+          {filteredProducts.length === 0 ? (
+            <div className="bg-white rounded-3xl shadow-xl p-20 text-center">
+              <div className="flex justify-center mb-4">
+                <IconRenderer name="shopping-bag" className="w-16 h-16 text-slate-300" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-700 mb-2">No Products Yet</h3>
+              <p className="text-slate-400 mb-6">Start adding products to your store to get started!</p>
+              <button 
+                onClick={() => { setSelectedProduct(null); setIsProductModalOpen(true); }}
+                className="btn-primary py-3 px-8 flex items-center justify-center gap-2 mx-auto"
+              >
+                <IconRenderer name="plus" className="w-5 h-5" />
+                Add First Product
+              </button>
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+              <div className="overflow-x-auto hidden sm:block">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-navy text-white">
+                      <th className="p-6 font-bold">Product</th>
+                      <th className="p-6 font-bold">Category</th>
+                      <th className="p-6 font-bold">Price</th>
+                      <th className="p-6 font-bold">Stock</th>
+                      <th className="p-6 font-bold">Rating</th>
+                      <th className="p-6 font-bold">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredProducts.map(p => (
+                      <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-6">
+                          <div className="flex items-center gap-4">
+                            {p.images && p.images[0] && (
+                              <img src={p.images[0]} alt={p.name} className="w-12 h-12 rounded-lg object-cover" />
+                            )}
+                            <div>
+                              <div className="font-bold text-navy">{p.name}</div>
+                              <div className="text-xs text-slate-400 line-clamp-1">{p.shortDescription}</div>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="p-6 font-medium text-slate-600">{p.category}</td>
+                        <td className="p-6">
+                          <div className="font-bold text-navy">₹{p.discountedPrice || p.price}</div>
+                          {p.discountedPrice > 0 && <div className="text-xs text-slate-400 line-through">₹{p.price}</div>}
+                        </td>
+                        <td className="p-6">
+                          <span className={`badge ${p.inStock ? 'bg-green-500' : 'bg-red-500'}`}>
+                            {p.inStock ? 'In Stock' : 'Out'}
+                          </span>
+                        </td>
+                        <td className="p-6">
+                          <div className="flex items-center gap-1">
+                            <IconRenderer name="star" className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                            <span className="font-bold text-navy">{p.ratings.average.toFixed(1)}</span>
+                            <span className="text-xs text-slate-400">({p.ratings.count})</span>
+                          </div>
+                        </td>
+                        <td className="p-6">
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => { setSelectedProduct(p); setIsProductModalOpen(true); }}
+                              className="btn-outline py-2 px-4 text-sm"
+                            >
+                              Edit
+                            </button>
+                            <button 
+                              onClick={() => {
+                                setConfirmConfig({
+                                  isOpen: true,
+                                  title: 'Delete Product',
+                                  message: `Are you sure you want to delete "${p.name}"? This action cannot be undone.`,
+                                  type: 'danger',
+                                  onConfirm: () => {
+                                    if (onDeleteProduct) {
+                                      onDeleteProduct(p.id);
+                                      showToast('Product deleted', 'success');
+                                    }
+                                  }
+                                });
+                              }}
+                              className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
+                            >
+                              <IconRenderer name="trash" className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile View for Products */}
+              <div className="sm:hidden divide-y divide-slate-100">
+                {filteredProducts.map(p => (
+                  <div key={p.id} className="p-6 space-y-4">
+                    <div className="flex items-start gap-4">
+                      {p.images && p.images[0] && (
+                        <img src={p.images[0]} alt={p.name} className="w-16 h-16 rounded-lg object-cover" />
+                      )}
+                      <div className="flex-1">
+                        <div className="font-bold text-navy">{p.name}</div>
+                        <div className="text-xs text-slate-400 line-clamp-1 mb-2">{p.category}</div>
+                        <div className="flex items-center gap-4">
+                          <div>
+                            <div className="font-bold text-navy">₹{p.discountedPrice || p.price}</div>
+                            {p.discountedPrice > 0 && <div className="text-xs text-slate-400 line-through">₹{p.price}</div>}
+                          </div>
+                          <span className={`badge text-xs ${p.inStock ? 'bg-green-500' : 'bg-red-500'}`}>
+                            {p.inStock ? 'In Stock' : 'Out'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex justify-between items-center pt-2">
+                      <div className="flex items-center gap-1">
+                        <IconRenderer name="star" className="w-4 h-4 text-yellow-500 fill-yellow-500" />
+                        <span className="font-bold text-navy">{p.ratings.average.toFixed(1)}</span>
+                        <span className="text-xs text-slate-400">({p.ratings.count})</span>
+                      </div>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => { setSelectedProduct(p); setIsProductModalOpen(true); }}
+                          className="btn-outline py-2 px-3 text-xs"
+                        >
+                          Edit
+                        </button>
+                        <button 
+                          onClick={() => {
+                            setConfirmConfig({
+                              isOpen: true,
+                              title: 'Delete Product',
+                              message: `Are you sure you want to delete "${p.name}"?`,
+                              type: 'danger',
+                              onConfirm: () => {
+                                if (onDeleteProduct) {
+                                  onDeleteProduct(p.id);
+                                  showToast('Product deleted', 'success');
+                                }
+                              }
+                            });
+                          }}
+                          className="p-2 text-red-500 bg-red-50 rounded-lg"
+                        >
+                          <IconRenderer name="trash" className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'orders' && (
+        <div className="space-y-4">
+          <div className="relative max-w-md">
+            <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search orders (ID, Email)..." 
+              className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+              value={searchOrders}
+              onChange={e => setSearchOrders(e.target.value)}
+            />
+          </div>
+
+          {filteredOrders.length === 0 ? (
+            <div className="bg-white rounded-3xl shadow-xl p-20 text-center">
+              <div className="flex justify-center mb-4">
+                <IconRenderer name="package" className="w-16 h-16 text-slate-300" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-700 mb-2">No Orders Yet</h3>
+              <p className="text-slate-400">Orders will appear here when customers place them in the store.</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+              <div className="overflow-x-auto hidden sm:block">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-navy text-white">
+                      <th className="p-6 font-bold">Order ID</th>
+                      <th className="p-6 font-bold">Customer</th>
+                      <th className="p-6 font-bold">Items</th>
+                      <th className="p-6 font-bold">Total</th>
+                      <th className="p-6 font-bold">Status</th>
+                      <th className="p-6 font-bold">Payment</th>
+                      <th className="p-6 font-bold">Date</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {filteredOrders.map(o => (
+                      <tr key={o.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-6 font-mono text-sm text-navy font-bold">{o.id.substring(0, 8)}...</td>
+                        <td className="p-6">
+                          <div className="font-bold text-navy">{o.deliveryAddress.name}</div>
+                          <div className="text-xs text-slate-400">{o.email}</div>
+                        </td>
+                        <td className="p-6 text-slate-600">{o.items.length} item{o.items.length !== 1 ? 's' : ''}</td>
+                        <td className="p-6 font-bold text-navy">₹{o.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) + o.deliveryAddress.postalCode?.length}</td>
+                        <td className="p-6">
+                          <span className={`badge ${
+                            o.orderStatus === 'delivered' ? 'bg-green-500' :
+                            o.orderStatus === 'shipped' ? 'bg-blue-500' :
+                            o.orderStatus === 'processing' ? 'bg-orange-500' :
+                            'bg-slate-500'
+                          }`}>
+                            {o.orderStatus}
+                          </span>
+                        </td>
+                        <td className="p-6">
+                          <span className={`badge ${
+                            o.paymentStatus === 'completed' ? 'bg-green-500' :
+                            o.paymentStatus === 'pending' ? 'bg-yellow-500' :
+                            'bg-red-500'
+                          }`}>
+                            {o.paymentStatus}
+                          </span>
+                        </td>
+                        <td className="p-6 text-slate-500 text-sm">{new Date(o.date).toLocaleDateString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile View for Orders */}
+              <div className="sm:hidden divide-y divide-slate-100">
+                {filteredOrders.map(o => (
+                  <div key={o.id} className="p-6 space-y-4">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="font-mono text-xs text-navy font-bold mb-1">{o.id.substring(0, 8)}...</div>
+                        <div className="font-bold text-navy">{o.deliveryAddress.name}</div>
+                        <div className="text-xs text-slate-400">{o.email}</div>
+                      </div>
+                      <span className={`badge ${
+                        o.orderStatus === 'delivered' ? 'bg-green-500' :
+                        o.orderStatus === 'shipped' ? 'bg-blue-500' :
+                        o.orderStatus === 'processing' ? 'bg-orange-500' :
+                        'bg-slate-500'
+                      }`}>
+                        {o.orderStatus}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center pt-2 border-t border-slate-100">
+                      <div>
+                        <div className="text-xs text-slate-400 mb-1">{o.items.length} item{o.items.length !== 1 ? 's' : ''}</div>
+                        <div className="font-bold text-navy">₹{o.items.reduce((sum, item) => sum + (item.price * item.quantity), 0) + 100}</div>
+                      </div>
+                      <div className="flex gap-2 flex-col items-end">
+                        <span className={`badge text-xs ${
+                          o.paymentStatus === 'completed' ? 'bg-green-500' :
+                          o.paymentStatus === 'pending' ? 'bg-yellow-500' :
+                          'bg-red-500'
+                        }`}>
+                          {o.paymentStatus}
+                        </span>
+                        <span className="text-xs text-slate-400">{new Date(o.date).toLocaleDateString()}</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {isProductModalOpen && productCategories && (
+        <ProductModal 
+          product={selectedProduct || undefined}
+          categories={productCategories}
+          onClose={() => { setIsProductModalOpen(false); setSelectedProduct(null); }}
+          onSave={async (productData) => {
+            // Check if product exists by checking if selectedProduct was provided
+            const existingProductIndex = products.findIndex(p => p.id === productData.id);
+            
+            if (existingProductIndex !== -1 && selectedProduct) {
+              // Update existing product
+              if (onEditProduct) {
+                // Remove id from update data and pass id separately
+                const { id, ...dataToUpdate } = productData;
+                await onEditProduct(id, dataToUpdate);
+              }
+            } else {
+              // Add new product
+              if (onEditProduct) {
+                await onEditProduct(productData.id, productData);
+              }
+            }
+          }}
+        />
+      )}
         <GatewayModal 
           gateway={selectedGateway}
           onClose={() => { setIsGatewayModalOpen(false); setSelectedGateway(null); }}

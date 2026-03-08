@@ -36,7 +36,7 @@ export function StoreProduct({ products, reviews, user, onAddReview }: StoreProd
   }
 
   const productReviews = reviews.filter(r => r.productId === productId);
-  const allImages = [product.images.thumbnail, ...product.images.gallery];
+  const allImages = product.images && product.images.length > 0 ? product.images : [];
 
   const seoDescription = `${product.shortDescription}. Price: ₹${product.discountedPrice || product.price}. ${productReviews.length} customer reviews.`;
 
