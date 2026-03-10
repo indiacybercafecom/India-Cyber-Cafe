@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Order, UserProfile, OrderItem, OrderAddress } from '../types';
 import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
@@ -6,6 +6,7 @@ import { rtdb } from '../firebase';
 import { ref as dbRef, update, remove } from 'firebase/database';
 import { motion } from 'motion/react';
 import { sendOrderStatusUpdateEmail, sendOrderCancellationEmail, sendAdminOrderNotification } from '../services/emailService';
+import { uploadFile } from '../services/uploadService';
 
 interface OrderManageModalProps {
   order: Order | null;
@@ -28,7 +29,10 @@ export function OrderManageModal({
   const [newOrderStatus, setNewOrderStatus] = useState(order?.orderStatus || 'pending');
   const [newPaymentStatus, setNewPaymentStatus] = useState(order?.paymentStatus || 'pending');
   const [noteText, setNoteText] = useState('');
+  const [noteFile, setNoteFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+  const [uploadingFile, setUploadingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   if (!order) return null;
 
@@ -135,9 +139,23 @@ export function OrderManageModal({
     }
   };
 
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('File size must be less than 5MB', 'error');
+      return;
+    }
+
+    setNoteFile(file);
+    showToast(`File selected: ${file.name}`, 'success');
+  };
+
   const handleAddNote = async () => {
-    if (!noteText.trim()) {
-      showToast('Please enter a note', 'error');
+    if (!noteText.trim() && !noteFile) {
+      showToast('Please enter a note or select a file', 'error');
       return;
     }
 
@@ -150,24 +168,45 @@ export function OrderManageModal({
 
     setLoading(true);
     try {
-      const newNote = {
-        type: 'note' as const,
+      let attachmentUrl = '';
+      let attachmentName = '';
+
+      // Upload file if selected
+      if (noteFile) {
+        setUploadingFile(true);
+        attachmentUrl = await uploadFile(noteFile, 'order-notes');
+        attachmentName = noteFile.name;
+        setUploadingFile(false);
+      }
+
+      const newNote: any = {
+        type: 'note',
         by: currentUser.name,
         email: currentUser.email,
         text: noteText,
         time: new Date().toLocaleString()
       };
 
+      if (attachmentUrl) {
+        newNote.attachment = attachmentUrl;
+        newNote.attachmentName = attachmentName;
+      }
+
       const updatedNotes = [...notes, newNote];
       if (onUpdateOrder) {
         await onUpdateOrder(order.id, { notes: updatedNotes as any });
       }
       setNoteText('');
+      setNoteFile(null);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
       showToast('Note added successfully!', 'success');
     } catch (error: any) {
       showToast(error.message || 'Failed to add note', 'error');
     } finally {
       setLoading(false);
+      setUploadingFile(false);
     }
   };
 
@@ -433,6 +472,17 @@ export function OrderManageModal({
                         </div>
                       </div>
                       <p className="text-sm text-blue-900 mt-2">{note.text}</p>
+                      {(note as any).attachment && (
+                        <a 
+                          href={(note as any).attachment} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-800 bg-white px-3 py-1.5 rounded-lg hover:underline transition-all"
+                        >
+                          <IconRenderer name="download" className="w-4 h-4" />
+                          {(note as any).attachmentName || 'Download Attachment'}
+                        </a>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -447,12 +497,52 @@ export function OrderManageModal({
                   className="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all resize-none bg-white"
                   rows={3}
                 />
+
+                {/* File Input Section */}
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <button 
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={uploadingFile || loading}
+                      className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-slate-400 font-semibold text-slate-700 hover:border-navy hover:bg-slate-50 transition-all disabled:opacity-50 text-sm"
+                    >
+                      <IconRenderer name="paperclip" className="w-4 h-4" />
+                      {uploadingFile ? 'Uploading...' : 'Attach File'}
+                    </button>
+                    <input 
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={handleFileSelect}
+                      disabled={uploadingFile || loading}
+                      className="hidden"
+                    />
+                    {noteFile && (
+                      <span className="flex items-center gap-2 px-3 py-2 bg-green-100 border border-green-300 rounded-lg text-sm font-semibold text-green-700">
+                        <IconRenderer name="check" className="w-4 h-4" />
+                        {noteFile.name}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-slate-500">Max file size: 5MB (PDF, Images, Documents)</p>
+                </div>
+
                 <button 
                   onClick={handleAddNote}
-                  disabled={loading || !noteText.trim()}
-                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 px-4 rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50"
+                  disabled={loading || uploadingFile || (!noteText.trim() && !noteFile)}
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 px-4 rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
                 >
-                  {loading ? 'Adding...' : '+ Add Note'}
+                  {loading || uploadingFile ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      {uploadingFile ? 'Uploading...' : 'Adding...'}
+                    </>
+                  ) : (
+                    <>
+                      <IconRenderer name="plus" className="w-5 h-5" />
+                      Add Note
+                    </>
+                  )}
                 </button>
               </div>
             </div>

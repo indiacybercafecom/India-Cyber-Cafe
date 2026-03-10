@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { UserProfile } from '../types';
+import { UserProfile, OrderAddress } from '../types';
 import { auth, rtdb } from '../firebase';
 import { ref as dbRef, update } from 'firebase/database';
 import { updatePassword } from 'firebase/auth';
@@ -19,6 +19,17 @@ export function Profile({ user }: ProfileProps) {
   const [newPass, setNewPass] = useState('');
   const [loading, setLoading] = useState(false);
   const [avatar, setAvatar] = useState(user.avatar);
+  const [address, setAddress] = useState<OrderAddress>(user.address || {
+    name: user.name,
+    email: user.email,
+    phone: user.phone || '',
+    addressLine1: '',
+    addressLine2: '',
+    city: '',
+    state: '',
+    pincode: '',
+    country: 'India'
+  });
 
   // Sync avatar state with user prop if it changes externally
   useEffect(() => {
@@ -62,7 +73,7 @@ export function Profile({ user }: ProfileProps) {
     e.preventDefault();
     setLoading(true);
     try {
-      const updates: any = { name, phone };
+      const updates: any = { name, phone, address };
       await update(dbRef(rtdb, `users/${user.uid}`), updates);
 
       if (newPass) {
@@ -76,7 +87,7 @@ export function Profile({ user }: ProfileProps) {
       showToast('Profile updated successfully!');
       
       // Send notification email
-      sendEmail(user.email, 'Profile Details Updated - India Cyber Cafe', emailTemplates.profileUpdated(name, 'Name & Phone Number'));
+      sendEmail(user.email, 'Profile Details Updated - India Cyber Cafe', emailTemplates.profileUpdated(name, 'Name, Phone & Address'));
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {
@@ -142,6 +153,115 @@ export function Profile({ user }: ProfileProps) {
             onChange={e => setPhone(e.target.value)}
             required
           />
+        </div>
+
+        {/* Address Section */}
+        <div className="p-4 sm:p-6 bg-linear-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-200 space-y-4 sm:space-y-5">
+          <h3 className="font-bold text-navy flex items-center gap-2 text-sm sm:text-base">
+            <IconRenderer name="map-pin" className="w-4 h-4" />
+            Delivery Address
+          </h3>
+          
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="space-y-1 sm:space-y-2">
+              <label className="block text-xs sm:text-sm font-semibold text-slate-600">Full Name</label>
+              <input 
+                type="text" 
+                className="input-field text-sm"
+                value={address.name}
+                onChange={e => setAddress({...address, name: e.target.value})}
+                placeholder="Your full name"
+              />
+            </div>
+            <div className="space-y-1 sm:space-y-2">
+              <label className="block text-xs sm:text-sm font-semibold text-slate-600">Email</label>
+              <input 
+                type="email" 
+                className="input-field text-sm"
+                value={address.email}
+                onChange={e => setAddress({...address, email: e.target.value})}
+                placeholder="Email address"
+              />
+            </div>
+            <div className="space-y-1 sm:space-y-2">
+              <label className="block text-xs sm:text-sm font-semibold text-slate-600">Phone</label>
+              <input 
+                type="tel" 
+                className="input-field text-sm"
+                value={address.phone}
+                onChange={e => setAddress({...address, phone: e.target.value})}
+                placeholder="Phone number"
+              />
+            </div>
+            <div className="space-y-1 sm:space-y-2">
+              <label className="block text-xs sm:text-sm font-semibold text-slate-600">Pincode</label>
+              <input 
+                type="text" 
+                className="input-field text-sm"
+                value={address.pincode}
+                onChange={e => setAddress({...address, pincode: e.target.value})}
+                placeholder="Postal code"
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1 sm:space-y-2">
+            <label className="block text-xs sm:text-sm font-semibold text-slate-600">Address Line 1 *</label>
+            <input 
+              type="text" 
+              className="input-field text-sm"
+              value={address.addressLine1}
+              onChange={e => setAddress({...address, addressLine1: e.target.value})}
+              placeholder="Street address, building, etc."
+              required
+            />
+          </div>
+
+          <div className="space-y-1 sm:space-y-2">
+            <label className="block text-xs sm:text-sm font-semibold text-slate-600">Address Line 2 (Optional)</label>
+            <input 
+              type="text" 
+              className="input-field text-sm"
+              value={address.addressLine2 || ''}
+              onChange={e => setAddress({...address, addressLine2: e.target.value})}
+              placeholder="Apartment, floor, etc."
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <div className="space-y-1 sm:space-y-2">
+              <label className="block text-xs sm:text-sm font-semibold text-slate-600">City *</label>
+              <input 
+                type="text" 
+                className="input-field text-sm"
+                value={address.city}
+                onChange={e => setAddress({...address, city: e.target.value})}
+                placeholder="City"
+                required
+              />
+            </div>
+            <div className="space-y-1 sm:space-y-2">
+              <label className="block text-xs sm:text-sm font-semibold text-slate-600">State *</label>
+              <input 
+                type="text" 
+                className="input-field text-sm"
+                value={address.state}
+                onChange={e => setAddress({...address, state: e.target.value})}
+                placeholder="State"
+                required
+              />
+            </div>
+          </div>
+
+          <div className="space-y-1 sm:space-y-2">
+            <label className="block text-xs sm:text-sm font-semibold text-slate-600">Country</label>
+            <input 
+              type="text" 
+              className="input-field text-sm bg-slate-100"
+              value={address.country}
+              disabled
+            />
+          </div>
         </div>
 
         <div className="p-4 sm:p-6 bg-linear-to-br from-primary/5 to-navy/5 rounded-2xl border border-primary/10 space-y-3 sm:space-y-4">

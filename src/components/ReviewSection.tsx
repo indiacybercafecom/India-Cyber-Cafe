@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { uploadBytes, getDownloadURL, ref } from 'firebase/storage';
+import { storage } from '../firebase';
 import { IconRenderer } from './Icons';
 import { ProductReview, UserProfile } from '../types';
 import { showToast } from './Toast';
@@ -68,13 +70,44 @@ export function ReviewSection({ reviews, productId, productName = 'Product', use
     try {
       setSubmitting(true);
 
+      // Upload images to Firebase Storage and get download URLs
+      const imageUrls: string[] = [];
+      
+      if (imageFiles.length > 0) {
+        for (let i = 0; i < imageFiles.length; i++) {
+          try {
+            const file = imageFiles[i];
+            const timestamp = Date.now();
+            const fileExt = file.name.split('.').pop();
+            const fileName = `review_${user.uid}_${timestamp}_${i}.${fileExt}`;
+            
+            // Create storage reference for the review image
+            const storageRef = ref(storage, `reviews/${productId}/${fileName}`);
+            
+            // Upload file to Firebase Storage
+            await uploadBytes(storageRef, file);
+            
+            // Get download URL
+            const downloadUrl = await getDownloadURL(storageRef);
+            imageUrls.push(downloadUrl);
+            
+            console.log(`✅ Image ${i + 1} uploaded successfully`);
+          } catch (error) {
+            console.error(`Error uploading image ${i + 1}:`, error);
+            showToast(`Failed to upload image ${i + 1}`, 'error');
+            setSubmitting(false);
+            return;
+          }
+        }
+      }
+
       const review: Omit<ProductReview, 'id'> = {
         productId,
         uid: user.uid,
         userName: user.name,
         rating,
         text: text.trim(),
-        images: imagePreviews, // In real app, upload to storage first
+        images: imageUrls, // Upload to Firebase Storage
         date: new Date().toISOString(),
         helpful: 0
       };

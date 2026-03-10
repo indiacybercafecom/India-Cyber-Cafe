@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order } from '../types';
+import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
 import { utils, writeFile } from 'xlsx';
@@ -18,6 +18,7 @@ interface AdminProps {
   products?: Product[];
   productCategories?: ProductCategory[];
   orders?: Order[];
+  productReviews?: ProductReview[];
   onViewApp: (app: Application) => void;
   onDeleteApp: (id: string) => void;
   onEditService: (service: Service) => void;
@@ -47,6 +48,7 @@ export function Admin({
   products = [],
   productCategories = [],
   orders = [],
+  productReviews = [],
   onViewApp, 
   onDeleteApp,
   onEditService, 
@@ -68,7 +70,7 @@ export function Admin({
   currentUser
 }: AdminProps) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders'>('apps');
+  const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders' | 'reviews'>('apps');
   const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | null>(null);
   const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -77,6 +79,8 @@ export function Admin({
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
   const [isOrderDetailModalOpen, setIsOrderDetailModalOpen] = useState(false);
+  const [selectedReview, setSelectedReview] = useState<ProductReview | null>(null);
+  const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   
   // Search States
   const [searchApps, setSearchApps] = useState('');
@@ -85,6 +89,8 @@ export function Admin({
   const [searchPayments, setSearchPayments] = useState('');
   const [searchProducts, setSearchProducts] = useState('');
   const [searchOrders, setSearchOrders] = useState('');
+  const [searchReviews, setSearchReviews] = useState('');
+  const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'user' | 'operator' | 'admin'>('all');
 
   // Confirmation Modal State
   const [confirmConfig, setConfirmConfig] = useState<{
@@ -223,11 +229,17 @@ export function Admin({
     app.serviceName.toLowerCase().includes(searchApps.toLowerCase())
   );
 
-  const filteredUsers = users.filter(u => 
-    u.name.toLowerCase().includes(searchUsers.toLowerCase()) ||
-    u.email.toLowerCase().includes(searchUsers.toLowerCase()) ||
-    (u.phone && u.phone.includes(searchUsers))
-  );
+  const filteredUsers = users
+    .filter(u => 
+      (u.name.toLowerCase().includes(searchUsers.toLowerCase()) ||
+       u.email.toLowerCase().includes(searchUsers.toLowerCase()) ||
+       (u.phone && u.phone.includes(searchUsers))) &&
+      (userRoleFilter === 'all' || u.role === userRoleFilter)
+    )
+    .sort((a, b) => {
+      // Sort by creation date - most recent first
+      return b.createdAt - a.createdAt;
+    });
 
   const filteredServices = services.filter(s => 
     s.name.toLowerCase().includes(searchServices.toLowerCase()) ||
@@ -290,6 +302,7 @@ export function Admin({
           { id: 'services', label: 'Services', icon: 'layers' },
           { id: 'products', label: 'Store', icon: 'shopping-bag' },
           { id: 'orders', label: 'Orders', icon: 'package' },
+          { id: 'reviews', label: 'Reviews', icon: 'star' },
           { id: 'payments', label: 'Payments', icon: 'credit-card' },
         ].map(t => (
           <button
@@ -409,15 +422,27 @@ export function Admin({
 
       {tab === 'users' && (
         <div className="space-y-4">
-          <div className="relative max-w-md">
-            <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input 
-              type="text" 
-              placeholder="Search users (Name, Email, Phone)..." 
-              className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-              value={searchUsers}
-              onChange={e => setSearchUsers(e.target.value)}
-            />
+          <div className="flex flex-col sm:flex-row gap-4">
+            <div className="relative flex-1 max-w-md">
+              <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input 
+                type="text" 
+                placeholder="Search users (Name, Email, Phone)..." 
+                className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                value={searchUsers}
+                onChange={e => setSearchUsers(e.target.value)}
+              />
+            </div>
+            <select 
+              value={userRoleFilter}
+              onChange={e => setUserRoleFilter(e.target.value as any)}
+              className="px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white font-medium text-navy"
+            >
+              <option value="all">All Roles</option>
+              <option value="user">Users</option>
+              <option value="operator">Operators</option>
+              <option value="admin">Admins</option>
+            </select>
           </div>
           <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
             <div className="overflow-x-auto hidden sm:block">
@@ -425,7 +450,9 @@ export function Admin({
                 <thead>
                   <tr className="bg-navy text-white">
                     <th className="p-6 font-bold">Avatar</th>
-                    <th className="p-6 font-bold">Details</th>
+                    <th className="p-6 font-bold">Name</th>
+                    <th className="p-6 font-bold">Email</th>
+                    <th className="p-6 font-bold">Mobile</th>
                     <th className="p-6 font-bold">Role</th>
                     <th className="p-6 font-bold">Manage</th>
                   </tr>
@@ -436,10 +463,9 @@ export function Admin({
                       <td className="p-6">
                         <img src={u.avatar} className="w-10 h-10 rounded-full object-cover border-2 border-slate-100" />
                       </td>
-                      <td className="p-6">
-                        <div className="font-bold text-navy">{u.name}</div>
-                        <div className="text-xs text-slate-400">{u.email}</div>
-                      </td>
+                      <td className="p-6 font-bold text-navy">{u.name}</td>
+                      <td className="p-6 text-sm text-slate-600">{u.email}</td>
+                      <td className="p-6 text-sm text-slate-600">{u.phone || 'N/A'}</td>
                       <td className="p-6">
                         <span className={`badge ${
                           u.role === 'admin' ? 'bg-red-500' : 
@@ -460,7 +486,7 @@ export function Admin({
                   ))}
                   {filteredUsers.length === 0 && (
                     <tr>
-                      <td colSpan={4} className="p-10 text-center text-slate-400 italic">No users found.</td>
+                      <td colSpan={6} className="p-10 text-center text-slate-400 italic">No users found.</td>
                     </tr>
                   )}
                 </tbody>
@@ -473,10 +499,11 @@ export function Admin({
                 <div key={u.uid} className="p-6 flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <img src={u.avatar} className="w-12 h-12 rounded-full object-cover border-2 border-primary/20" />
-                    <div>
+                    <div className="min-w-0">
                       <div className="font-bold text-navy">{u.name}</div>
-                      <div className="text-xs text-slate-400">{u.email}</div>
-                      <span className={`badge mt-1 inline-block ${
+                      <div className="text-xs text-slate-400 truncate">{u.email}</div>
+                      <div className="text-xs text-slate-400">{u.phone || 'No phone'}</div>
+                      <span className={`badge mt-1 inline-block text-xs ${
                         u.role === 'admin' ? 'bg-red-500' : 
                         u.role === 'operator' ? 'bg-blue-500' : 'bg-slate-500'
                       }`}>
@@ -486,7 +513,7 @@ export function Admin({
                   </div>
                   <button 
                     onClick={() => onManageUser(u)}
-                    className="p-2 bg-slate-100 rounded-xl text-navy"
+                    className="p-2 bg-slate-100 rounded-xl text-navy flex-shrink-0"
                   >
                     <IconRenderer name="user-pen" className="w-5 h-5" />
                   </button>
@@ -1116,6 +1143,94 @@ export function Admin({
         />
       )}
 
+      {tab === 'reviews' && (
+        <div className="space-y-4">
+          <div className="relative max-w-md">
+            <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input 
+              type="text" 
+              placeholder="Search reviews (Product, User)..." 
+              className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+              value={searchReviews}
+              onChange={e => setSearchReviews(e.target.value)}
+            />
+          </div>
+
+          {(productReviews || []).length === 0 ? (
+            <div className="bg-white rounded-3xl shadow-xl p-20 text-center">
+              <div className="flex justify-center mb-4">
+                <IconRenderer name="star" className="w-16 h-16 text-slate-300" />
+              </div>
+              <h3 className="text-2xl font-bold text-slate-700 mb-2">No Reviews Yet</h3>
+              <p className="text-slate-400">Customer reviews will appear here.</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-navy text-white">
+                      <th className="p-4 sm:p-6 font-bold text-sm">Product</th>
+                      <th className="p-4 sm:p-6 font-bold text-sm">User</th>
+                      <th className="p-4 sm:p-6 font-bold text-sm">Rating</th>
+                      <th className="p-4 sm:p-6 font-bold text-sm">Images</th>
+                      <th className="p-4 sm:p-6 font-bold text-sm">Date</th>
+                      <th className="p-4 sm:p-6 font-bold text-sm">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(productReviews || []).filter((r: ProductReview) => 
+                      (r.productId?.toLowerCase().includes(searchReviews.toLowerCase()) ||
+                       r.userName?.toLowerCase().includes(searchReviews.toLowerCase()) ||
+                       r.text?.toLowerCase().includes(searchReviews.toLowerCase()))
+                    ).map(review => (
+                      <tr key={review.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="p-4 sm:p-6 font-medium text-slate-600 text-sm">{review.productId || 'N/A'}</td>
+                        <td className="p-4 sm:p-6">
+                          <div className="font-bold text-navy text-sm">{review.userName}</div>
+                          <div className="text-xs text-slate-400">{review.uid}</div>
+                        </td>
+                        <td className="p-4 sm:p-6">
+                          <div className="flex gap-0.5">
+                            {[...Array(5)].map((_, i) => (
+                              <span key={i} className="text-yellow-400 text-sm">
+                                {i < review.rating ? '★' : '☆'}
+                              </span>
+                            ))}
+                          </div>
+                          <div className="text-xs text-slate-500 mt-1">{review.rating}/5</div>
+                        </td>
+                        <td className="p-4 sm:p-6 text-sm">
+                          {review.images && review.images.length > 0 ? (
+                            <span className="badge bg-blue-500">{review.images.length} images</span>
+                          ) : (
+                            <span className="text-slate-400 text-xs">No images</span>
+                          )}
+                        </td>
+                        <td className="p-4 sm:p-6 text-xs sm:text-sm text-slate-500">
+                          {new Date(review.date).toLocaleDateString()}
+                        </td>
+                        <td className="p-4 sm:p-6">
+                          <button 
+                            onClick={() => {
+                              setSelectedReview(review);
+                              setIsReviewModalOpen(true);
+                            }}
+                            className="btn-primary py-2 px-4 text-xs"
+                          >
+                            View
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       <ConfirmationModal 
         isOpen={confirmConfig.isOpen}
         onClose={() => setConfirmConfig(prev => ({ ...prev, isOpen: false }))}
@@ -1124,6 +1239,117 @@ export function Admin({
         message={confirmConfig.message}
         type={confirmConfig.type}
       />
+
+      {/* Review Details Modal */}
+      {isReviewModalOpen && selectedReview && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6">
+          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-yellow-400 to-amber-400 p-6 sm:p-8 flex items-start justify-between">
+              <div className="flex-1">
+                <h2 className="text-2xl sm:text-3xl font-bold text-navy mb-2">Customer Review</h2>
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex gap-1 text-yellow-500">
+                    {[...Array(5)].map((_, i) => (
+                      <span key={i} className="text-2xl">
+                        {i < selectedReview.rating ? '★' : '☆'}
+                      </span>
+                    ))}
+                  </div>
+                  <span className="font-bold text-navy bg-white/80 px-3 py-1 rounded-lg">{selectedReview.rating}/5</span>
+                </div>
+              </div>
+              <button 
+                onClick={() => { setIsReviewModalOpen(false); setSelectedReview(null); }}
+                className="p-2 hover:bg-white/20 rounded-full transition-all flex-shrink-0"
+              >
+                <IconRenderer name="x" className="w-6 h-6 text-navy" />
+              </button>
+            </div>
+
+            {/* Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 space-y-6">
+              {/* User Info */}
+              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mb-2">Reviewed By</p>
+                <h3 className="text-xl font-bold text-navy mb-1">{selectedReview.userName}</h3>
+                <div className="space-y-1 text-sm text-slate-600">
+                  <p><span className="font-semibold">Email:</span> {selectedReview.uid}</p>
+                  <p><span className="font-semibold">Date:</span> {new Date(selectedReview.date).toLocaleString()}</p>
+                  <p><span className="font-semibold">Product ID:</span> {selectedReview.productId}</p>
+                </div>
+              </div>
+
+              {/* Review Text */}
+              <div>
+                <h4 className="text-sm font-bold text-slate-700 mb-3 uppercase tracking-widest">Review</h4>
+                <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg">
+                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap break-words">
+                    {selectedReview.text}
+                  </p>
+                </div>
+              </div>
+
+              {/* Images */}
+              {selectedReview.images && selectedReview.images.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-bold text-slate-700 mb-3 uppercase tracking-widest">
+                    Images ({selectedReview.images.length})
+                  </h4>
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                    {selectedReview.images.map((img, idx) => (
+                      <div key={idx} className="group cursor-pointer">
+                        <img 
+                          src={img} 
+                          alt={`Review image ${idx + 1}`}
+                          className="w-full h-32 object-cover rounded-xl shadow-md group-hover:shadow-lg transition-all group-hover:scale-105"
+                          onClick={() => window.open(img, '_blank')}
+                          title="Click to view full size"
+                        />
+                        <p className="text-xs text-slate-500 mt-1 text-center">Image {idx + 1}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Stats */}
+              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold mb-1">Helpful Votes</p>
+                  <p className="text-2xl font-bold text-navy">👍 {selectedReview.helpful || 0}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-slate-500 uppercase font-bold mb-1">Posted</p>
+                  <p className="text-sm text-slate-700">{new Date(selectedReview.date).toLocaleDateString()}</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="bg-slate-50 border-t border-slate-200 p-4 sm:p-6 flex gap-3">
+              <button 
+                onClick={() => {
+                  if (selectedReview.images && selectedReview.images.length > 0) {
+                    window.open(selectedReview.images[0], '_blank');
+                  }
+                }}
+                disabled={!selectedReview.images || selectedReview.images.length === 0}
+                className="flex-1 btn-outline py-3 text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <IconRenderer name="image" className="w-4 h-4" />
+                View Images
+              </button>
+              <button 
+                onClick={() => { setIsReviewModalOpen(false); setSelectedReview(null); }}
+                className="flex-1 btn-primary py-3 text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

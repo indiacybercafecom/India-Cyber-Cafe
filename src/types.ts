@@ -8,6 +8,7 @@ export interface UserProfile {
   password?: string;
   role: UserRole;
   avatar?: string;
+  address?: OrderAddress;
   createdAt: number;
 }
 

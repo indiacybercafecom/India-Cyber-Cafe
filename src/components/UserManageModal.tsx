@@ -72,19 +72,19 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-white rounded-3xl w-full max-w-md relative overflow-hidden shadow-2xl"
+        className="bg-white rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl max-h-[90vh] flex flex-col sm:max-h-[80vh]"
       >
-        <div className="p-6 bg-navy text-white flex justify-between items-center">
-          <h3 className="text-xl font-bold">Manage User</h3>
+        <div className="sticky top-0 z-10 p-4 sm:p-6 bg-navy text-white flex justify-between items-center">
+          <h3 className="text-xl sm:text-2xl font-bold">Manage User</h3>
           <button onClick={onClose} className="hover:rotate-90 transition-all">
             <IconRenderer name="x" className="w-6 h-6" />
           </button>
         </div>
 
-        <div className="p-8 space-y-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6">
           <div className="text-center">
-            <img src={user.avatar} className="w-24 h-24 rounded-full mx-auto border-4 border-primary shadow-lg object-cover" />
-            <p className="text-slate-400 mt-2 text-sm">{user.email}</p>
+            <img src={user.avatar} className="w-20 h-20 sm:w-24 sm:h-24 rounded-full mx-auto border-4 border-primary shadow-lg object-cover" />
+            <p className="text-slate-400 mt-2 text-xs sm:text-sm break-all">{user.email}</p>
           </div>
 
           <form onSubmit={handleUpdate} className="space-y-4">
@@ -130,25 +130,25 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
             <button 
               type="submit" 
               disabled={loading}
-              className="btn-primary w-full py-3"
+              className="btn-primary w-full py-2 sm:py-3 text-sm sm:text-base"
             >
               {loading ? 'Updating...' : 'Update User'}
             </button>
           </form>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button 
               onClick={handleLoginAsUser}
               disabled={loading}
-              className="py-3 bg-navy text-white font-bold rounded-xl transition-all hover:bg-navy-light flex items-center justify-center gap-2 text-sm"
+              className="py-2 sm:py-3 bg-navy text-white font-bold rounded-xl transition-all hover:bg-navy-light flex items-center justify-center gap-2 text-xs sm:text-sm"
             >
               <IconRenderer name="right-to-bracket" className="w-4 h-4" />
-              Login as User
+              <span>Login as User</span>
             </button>
             <button 
               onClick={() => setIsDeleteConfirmOpen(true)}
               disabled={loading}
-              className="py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-all border border-red-100 text-sm"
+              className="py-2 sm:py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-all border border-red-100 text-xs sm:text-sm"
             >
               Delete User
             </button>

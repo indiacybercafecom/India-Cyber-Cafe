@@ -426,7 +426,7 @@ export const emailTemplates = {
     `
   ),
 
-  adminUserRegistered: (name: string, email: string, registrationDate: string) => baseTemplate(
+  adminUserRegistered: (name: string, email: string, phone: string, registrationDate: string) => baseTemplate(
     '👤 New User Registration - Admin Alert',
     `
       <p>Hello Admin,</p>
@@ -434,6 +434,7 @@ export const emailTemplates = {
       <div style="background: #e8f4f8; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #FF9933;">
         <p style="margin: 5px 0;"><strong>User Name:</strong> ${name}</p>
         <p style="margin: 5px 0;"><strong>Email:</strong> <a href="mailto:${email}" style="color: #FF9933;">${email}</a></p>
+        <p style="margin: 5px 0;"><strong>Mobile Number:</strong> ${phone || 'N/A'}</p>
         <p style="margin: 5px 0;"><strong>Registered On:</strong> ${registrationDate}</p>
       </div>
       <p><a href="https://booking.indiacybercafe.com/admin" style="background: #FF9933; color: white; padding: 10px 20px; border-radius: 5px; text-decoration: none; display: inline-block;">View User Details</a></p>

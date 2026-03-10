@@ -1,13 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth } from '../firebase';
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
+import { auth, rtdb } from '../firebase';
 import { IconRenderer } from '../components/Icons';
 import { Product, UserProfile, Order, OrderAddress } from '../types';
 import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
+import { update, ref as dbRef } from 'firebase/database';
 import { generateOrderId } from '../utils/orderIdGenerator';
 import { getRazorpayKeyId, verifyRazorpayPayment } from '../services/razorpayService';
 import { generateRandomPassword, findUserByEmail, findUserByPhone, createGuestAccount as createGuestAccountInDB } from '../services/guestCheckoutService';
@@ -34,18 +35,20 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
 
-  // Address Form
-  const [address, setAddress] = useState<OrderAddress>({
-    name: user?.name || '',
-    email: user?.email || '',
-    phone: user?.phone || '',
-    addressLine1: '',
-    addressLine2: '',
-    city: '',
-    state: '',
-    pincode: '',
-    country: 'India'
-  });
+  // Address Form - Initialize with user address if available, otherwise empty
+  const [address, setAddress] = useState<OrderAddress>(
+    user?.address ? { ...user.address } : {
+      name: user?.name || '',
+      email: user?.email || '',
+      phone: user?.phone || '',
+      addressLine1: '',
+      addressLine2: '',
+      city: '',
+      state: '',
+      pincode: '',
+      country: 'India'
+    }
+  );
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -53,6 +56,19 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
   // Guest checkout states
   const [createGuestAccount, setCreateGuestAccount] = useState(false);
   const [existingUserFound, setExistingUserFound] = useState(false);
+  const [existingUserData, setExistingUserData] = useState<any>(null);
+  const [requiresPassword, setRequiresPassword] = useState(false);
+  const [passwordInput, setPasswordInput] = useState('');
+  const [verifyingPassword, setVerifyingPassword] = useState(false);
+  const [passwordVerified, setPasswordVerified] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+
+  // Update address when user changes (auto-fill from profile)
+  useEffect(() => {
+    if (user && user.address) {
+      setAddress({ ...user.address });
+    }
+  }, [user?.uid]);
 
   if (!product) {
     return (
@@ -91,33 +107,87 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
     }
   };
 
-  // Check if user exists by email and auto-fill their info
+  // Check if user exists by email and request password verification
   const handleEmailBlur = async () => {
     if (!address.email || !(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.email))) {
       setExistingUserFound(false);
+      setRequiresPassword(false);
+      setPasswordVerified(false);
       return;
     }
 
     try {
       const existingUser = await findUserByEmail(address.email);
-      if (existingUser) {
+      if (existingUser && !user) {
+        // User not logged in but account exists - require password verification
         setExistingUserFound(true);
-        // Auto-fill fields from existing user
-        setAddress(prev => ({
-          ...prev,
-          name: existingUser.name || prev.name,
-          phone: existingUser.phone || prev.phone
-        }));
-        showToast('ℹ️ Account found! Your details are auto-filled.', 'info');
+        setExistingUserData(existingUser);
+        setRequiresPassword(true);
+        setPasswordVerified(false);
+        setPasswordInput('');
+        showToast('Account found! Please verify with password.', 'info');
       } else {
         setExistingUserFound(false);
+        setRequiresPassword(false);
+        setPasswordVerified(false);
       }
     } catch (error) {
       console.error('Error checking user by email:', error);
     }
   };
 
-  // Check if user exists by phone and auto-fill their info
+  // Verify password and auto-fill data
+  const handlePasswordVerify = async () => {
+    if (!passwordInput.trim()) {
+      showToast('Please enter password', 'error');
+      return;
+    }
+
+    setVerifyingPassword(true);
+    try {
+      // Try to authenticate with the provided credentials
+      await signInWithEmailAndPassword(auth, address.email, passwordInput);
+      setPasswordVerified(true);
+      setPasswordInput('');
+
+      // Auto-fill address from existing user data
+      if (existingUserData?.address) {
+        setAddress(prev => ({
+          ...prev,
+          name: existingUserData.address.name || prev.name,
+          phone: existingUserData.address.phone || prev.phone,
+          addressLine1: existingUserData.address.addressLine1 || prev.addressLine1,
+          addressLine2: existingUserData.address.addressLine2 || prev.addressLine2,
+          city: existingUserData.address.city || prev.city,
+          state: existingUserData.address.state || prev.state,
+          pincode: existingUserData.address.pincode || prev.pincode
+        }));
+        showToast('✅ Password verified! Your address auto-filled.', 'success');
+      } else {
+        // If no address in profile, just fill basic info
+        setAddress(prev => ({
+          ...prev,
+          name: existingUserData.name || prev.name,
+          phone: existingUserData.phone || prev.phone
+        }));
+        showToast('✅ Password verified! Your info auto-filled.', 'success');
+      }
+
+      // Logout after verification to maintain guest checkout mode
+      try {
+        await signOut(auth);
+      } catch (e) {
+        console.error('Error logging out after verification:', e);
+      }
+    } catch (error: any) {
+      showToast('❌ Password incorrect. Please try again.', 'error');
+      setPasswordInput('');
+    } finally {
+      setVerifyingPassword(false);
+    }
+  };
+
+  // Check if user exists by phone and request password verification
   const handlePhoneBlur = async () => {
     if (!address.phone || !/^[0-9]{10}$/.test(address.phone.replace(/\D/g, ''))) {
       return;
@@ -125,17 +195,18 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
 
     try {
       const existingUser = await findUserByPhone(address.phone);
-      if (existingUser) {
-        setExistingUserFound(true);
-        // Auto-fill email from existing user
+      if (existingUser && !passwordVerified && !user) {
+        // Update email if found
         if (!address.email && existingUser.email) {
           setAddress(prev => ({
             ...prev,
-            email: existingUser.email,
-            name: existingUser.name || prev.name
+            email: existingUser.email
           }));
-          showToast('ℹ️ Account found! Your details are auto-filled.', 'info');
         }
+        setExistingUserFound(true);
+        setExistingUserData(existingUser);
+        setRequiresPassword(true);
+        showToast('Account found! Please verify with email and password.', 'info');
       }
     } catch (error) {
       console.error('Error checking user by phone:', error);
@@ -257,6 +328,15 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         // For COD, save order directly
         await onAddOrder(newOrder);
         
+        // Auto-save address to user profile if user is logged in and doesn't have address yet
+        if (user && user.uid && !user.address) {
+          try {
+            await update(dbRef(rtdb, `users/${user.uid}`), { address });
+          } catch (error) {
+            console.error('Error saving address to profile:', error);
+          }
+        }
+        
         // Send order confirmation email to customer
         await sendOrderConfirmationEmail(
           address.email,
@@ -328,6 +408,11 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
 
         // Reset form state after successful submission
         setExistingUserFound(false);
+        setRequiresPassword(false);
+        setPasswordVerified(false);
+        setPasswordInput('');
+        setExistingUserData(null);
+        setShowPassword(false);
         setAddress({
           name: user?.name || '',
           email: user?.email || '',
@@ -432,6 +517,15 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                 };
                 
                 await onAddOrder(updatedOrder);
+
+                // Auto-save address to user profile if user is logged in and doesn't have address yet
+                if (user && user.uid && !user.address) {
+                  try {
+                    await update(dbRef(rtdb, `users/${user.uid}`), { address });
+                  } catch (error) {
+                    console.error('Error saving address to profile:', error);
+                  }
+                }
 
                 // Send order confirmation email to customer
                 await sendOrderConfirmationEmail(
@@ -664,6 +758,71 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                 />
                 {formErrors.email && <p className="text-red-600 text-xs mt-1">{formErrors.email}</p>}
               </div>
+
+              {/* Password Verification - Show when existing account found */}
+              {requiresPassword && !passwordVerified && (
+                <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4 space-y-3">
+                  <div className="flex items-start gap-2">
+                    <span className="text-lg">🔐</span>
+                    <div>
+                      <p className="font-semibold text-slate-800 text-sm">Account Already Exists</p>
+                      <p className="text-xs text-slate-600 mt-1">Verify your password to use your saved address.</p>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      value={passwordInput}
+                      onChange={e => setPasswordInput(e.target.value)}
+                      onKeyPress={e => e.key === 'Enter' && handlePasswordVerify()}
+                      disabled={verifyingPassword}
+                      className="input-field w-full text-xs sm:text-sm pr-10"
+                      placeholder="Enter your password"
+                      autoFocus
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 transition-colors"
+                    >
+                      {showPassword ? '👁️' : '👁️‍🗨️'}
+                    </button>
+                  </div>
+
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={handlePasswordVerify}
+                      disabled={verifyingPassword || !passwordInput.trim()}
+                      className="flex-1 bg-primary hover:bg-primary-dark text-white font-semibold py-2 px-3 rounded-lg text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    >
+                      {verifyingPassword ? '⏳ Verifying...' : '✓ Verify Password'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRequiresPassword(false);
+                        setPasswordInput('');
+                        setPasswordVerified(false);
+                        setExistingUserData(null);
+                      }}
+                      className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 font-semibold py-2 px-3 rounded-lg text-xs sm:text-sm transition-colors"
+                    >
+                      ✗ Skip
+                    </button>
+                  </div>
+
+                  <div className="text-center">
+                    <a 
+                      href="/forgot-password"
+                      className="text-primary hover:text-primary-dark text-xs font-semibold underline transition-colors"
+                    >
+                      Forgot Password?
+                    </a>
+                  </div>
+                </div>
+              )}
 
               {/* Phone */}
               <div>

@@ -52,7 +52,7 @@ export function Register({ user }: RegisterProps) {
       sendEmail(email, 'Welcome to India Cyber Cafe', emailTemplates.registration(name));
       
       // Notify All Admins
-      sendEmailToAllAdmins('New User Registered - India Cyber Cafe', emailTemplates.adminUserRegistered(name, email, new Date().toLocaleString()));
+      sendEmailToAllAdmins('New User Registered - India Cyber Cafe', emailTemplates.adminUserRegistered(name, email, phone, new Date().toLocaleString()));
 
       showToast(`Account Created Successfully as ${role}!`);
       navigate(redirectPath);
