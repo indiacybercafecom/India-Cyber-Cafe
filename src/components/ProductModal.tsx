@@ -149,10 +149,10 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
         </div>
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
-          <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+          <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
             
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Product Name *</label>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Product Name *</label>
               <input
                 type="text"
                 value={formData.name}
@@ -163,7 +163,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Category *</label>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Category *</label>
               <select
                 value={formData.category}
                 onChange={e => setFormData({ ...formData, category: e.target.value })}
@@ -177,7 +177,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Short Description *</label>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Short Description *</label>
               <textarea
                 value={formData.shortDescription}
                 onChange={e => setFormData({ ...formData, shortDescription: e.target.value })}
@@ -188,7 +188,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Long Description</label>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Long Description</label>
               <textarea
                 value={formData.longDescription}
                 onChange={e => setFormData({ ...formData, longDescription: e.target.value })}
@@ -200,12 +200,12 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
           </div>
 
           {/* Pricing */}
-          <div className="space-y-4 p-4 bg-slate-50 rounded-2xl">
+          <div className="space-y-2 sm:space-y-3 p-3 sm:p-4 bg-slate-50 rounded-2xl">
             <h3 className="font-bold text-navy text-lg">Pricing & Stock</h3>
             
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Base Price (₹) *</label>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Base Price (₹) *</label>
                 <input
                   type="number"
                   value={formData.price}
@@ -218,7 +218,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Discounted Price (₹)</label>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Discounted Price (₹)</label>
                 <input
                   type="number"
                   value={formData.discountedPrice}
@@ -231,9 +231,9 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Delivery Charges (₹)</label>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Delivery Charges (₹)</label>
                 <input
                   type="number"
                   value={formData.deliveryCharges}
@@ -246,7 +246,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
               </div>
 
               <div>
-                <label className="block text-sm font-bold text-slate-700 mb-2">Stock Status</label>
+                <label className="block text-sm font-bold text-slate-700 mb-1">Stock Status</label>
                 <select
                   value={formData.inStock ? 'in' : 'out'}
                   onChange={e => setFormData({ ...formData, inStock: e.target.value === 'in' })}
@@ -260,11 +260,11 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
           </div>
 
           {/* Turnaround */}
-          <div className="space-y-4">
+          <div className="space-y-2 sm:space-y-3 px-3 sm:px-4">
             <h3 className="font-bold text-navy text-lg">Delivery</h3>
             
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Turnaround Time</label>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Turnaround Time</label>
               <input
                 type="text"
                 value={formData.turnaroundTime}
@@ -276,7 +276,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
           </div>
 
           {/* Custom Image */}
-          <div className="space-y-4 p-4 bg-orange-50 rounded-2xl border-2 border-orange-200">
+          <div className="space-y-2 sm:space-y-3 p-3 sm:p-4 mx-3 sm:mx-4 bg-orange-50 rounded-2xl border-2 border-orange-200">
             <div className="flex items-center gap-4">
               <input
                 type="checkbox"
@@ -299,10 +299,10 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
           </div>
 
           {/* Product Images */}
-          <div className="space-y-4">
+          <div className="space-y-2 sm:space-y-3 px-3 sm:px-4">
             <h3 className="font-bold text-navy text-lg">Product Images *</h3>
             
-            <div className="border-2 border-dashed border-slate-300 rounded-2xl p-6 text-center hover:border-navy transition-colors">
+            <div className="border-2 border-dashed border-slate-300 rounded-2xl p-4 text-center hover:border-navy transition-colors">
               <input
                 type="file"
                 multiple
@@ -322,7 +322,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
             </div>
 
             {formData.images && formData.images.length > 0 && (
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-3 gap-2">
                 {formData.images.map((img, idx) => (
                   <div key={idx} className="relative group">
                     <img src={img} alt={`Product ${idx}`} className="w-full h-24 object-cover rounded-lg" />
@@ -340,11 +340,11 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
           </div>
 
           {/* SEO */}
-          <div className="space-y-4 p-4 bg-slate-50 rounded-2xl">
+          <div className="space-y-2 sm:space-y-3 p-3 sm:p-4 mx-3 sm:mx-4 bg-slate-50 rounded-2xl">
             <h3 className="font-bold text-navy text-lg">SEO</h3>
             
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">SEO Title</label>
+              <label className="block text-sm font-bold text-slate-700 mb-1">SEO Title</label>
               <input
                 type="text"
                 value={formData.seoTitle}
@@ -357,7 +357,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">SEO Description</label>
+              <label className="block text-sm font-bold text-slate-700 mb-1">SEO Description</label>
               <textarea
                 value={formData.seoDescription}
                 onChange={e => setFormData({ ...formData, seoDescription: e.target.value })}
@@ -370,7 +370,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
             </div>
 
             <div>
-              <label className="block text-sm font-bold text-slate-700 mb-2">Keywords (comma separated)</label>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Keywords (comma separated)</label>
               <input
                 type="text"
                 value={formData.seoKeywords}
@@ -381,15 +381,15 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
             </div>
 
             {/* Payment Methods */}
-            <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-2xl border-2 border-slate-200 space-y-4">
+            <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 rounded-2xl border-2 border-slate-200 space-y-3">
               <h3 className="font-bold text-navy text-lg flex items-center gap-2">
                 <span className="text-xl">💳</span>
                 Payment Methods
               </h3>
               <p className="text-sm text-slate-600">Select which payment methods customers can use for this product</p>
               
-              <div className="space-y-3">
-                <label className="flex items-center gap-3 p-3 bg-white rounded-xl border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 p-2 sm:p-3 bg-white rounded-lg border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
                   <input
                     type="radio"
                     name="paymentMethods"
@@ -399,12 +399,12 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                     className="w-4 h-4 accent-navy cursor-pointer"
                   />
                   <div className="flex-1">
-                    <p className="font-bold text-navy">Both (Recommended)</p>
-                    <p className="text-sm text-slate-600">Allow customers to choose Online (Razorpay) or Cash on Delivery</p>
+                    <p className="font-bold text-navy text-sm">Both (Recommended)</p>
+                    <p className="text-xs text-slate-600">Allow customers to choose Online (Razorpay) or Cash on Delivery</p>
                   </div>
                 </label>
 
-                <label className="flex items-center gap-3 p-3 bg-white rounded-xl border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
+                <label className="flex items-center gap-2 p-2 sm:p-3 bg-white rounded-lg border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
                   <input
                     type="radio"
                     name="paymentMethods"
@@ -414,12 +414,12 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                     className="w-4 h-4 accent-navy cursor-pointer"
                   />
                   <div className="flex-1">
-                    <p className="font-bold text-navy">Online Only</p>
-                    <p className="text-sm text-slate-600">Accept only Razorpay online payments</p>
+                    <p className="font-bold text-navy text-sm">Online Only</p>
+                    <p className="text-xs text-slate-600">Accept only Razorpay online payments</p>
                   </div>
                 </label>
 
-                <label className="flex items-center gap-3 p-3 bg-white rounded-xl border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
+                <label className="flex items-center gap-2 p-2 sm:p-3 bg-white rounded-lg border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
                   <input
                     type="radio"
                     name="paymentMethods"
@@ -429,15 +429,15 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                     className="w-4 h-4 accent-navy cursor-pointer"
                   />
                   <div className="flex-1">
-                    <p className="font-bold text-navy">Cash on Delivery Only</p>
-                    <p className="text-sm text-slate-600">Accept only cash on delivery payments</p>
+                    <p className="font-bold text-navy text-sm">Cash on Delivery Only</p>
+                    <p className="text-xs text-slate-600">Accept only cash on delivery payments</p>
                   </div>
                 </label>
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 pt-4 sm:pt-6 border-t border-slate-200 mt-4 sm:mt-6">
+            <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-slate-200 mt-3 sm:mt-4">
               <button
                 type="button"
                 onClick={onClose}

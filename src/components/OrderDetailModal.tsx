@@ -306,6 +306,18 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
                         <p className="text-xs text-slate-500">{note.time}</p>
                       </div>
                       <p className="text-slate-700 text-sm">{note.text}</p>
+                      {(note as any).attachment && (
+                        <a 
+                          href={(note as any).attachment} 
+                          target="_blank" 
+                          rel="noreferrer" 
+                          download={(note as any).attachmentName || 'download'}
+                          className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-blue-600 hover:text-blue-800 bg-blue-50 px-3 py-2 rounded-lg hover:underline transition-all border border-blue-200"
+                        >
+                          <IconRenderer name="download" className="w-4 h-4" />
+                          📎 {(note as any).attachmentName || 'Download Attachment'}
+                        </a>
+                      )}
                     </div>
                   ))}
                 </div>

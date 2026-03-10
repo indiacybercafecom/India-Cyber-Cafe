@@ -92,11 +92,13 @@ export interface ProductReview {
   productId: string;
   uid: string;
   userName: string;
+  userEmail?: string; // Email of the reviewer
   rating: number; // 1-5
   text: string;
   images?: string[]; // review photo URLs
   date: string;
   helpful?: number; // count of helpful votes
+  helpfulBy?: string[]; // array of user IDs who marked as helpful
 }
 
 export interface Product {

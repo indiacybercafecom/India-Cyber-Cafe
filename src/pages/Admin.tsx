@@ -148,7 +148,7 @@ export function Admin({
         SubService: app.subserviceName || 'N/A',
         Charge: app.charge,
         Status: app.status,
-        Date: new Date(app.date).toLocaleString(),
+        Date: new Date(app.date).toLocaleString('en-IN'),
         AssignedTo: app.assignedTo || 'Unassigned'
       }));
       const ws = utils.json_to_sheet(data);
@@ -162,7 +162,7 @@ export function Admin({
         Email: u.email,
         Phone: u.phone || 'N/A',
         Role: u.role,
-        Joined: new Date(u.createdAt).toLocaleString()
+        Joined: new Date(u.createdAt).toLocaleString('en-IN')
       }));
       const ws = utils.json_to_sheet(data);
       utils.book_append_sheet(wb, ws, "Users");
@@ -903,7 +903,7 @@ export function Admin({
                       const total = o.total || 0;
                       const orderStatus = o.orderStatus || 'pending';
                       const paymentStatus = o.paymentStatus || 'pending';
-                      const createdAt = o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'N/A';
+                      const createdAt = o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-IN') : 'N/A';
                       
                       return (
                         <tr 
@@ -989,7 +989,7 @@ export function Admin({
                   const total = o.total || 0;
                   const orderStatus = o.orderStatus || 'pending';
                   const paymentStatus = o.paymentStatus || 'pending';
-                  const createdAt = o.createdAt ? new Date(o.createdAt).toLocaleDateString() : 'N/A';
+                  const createdAt = o.createdAt ? new Date(o.createdAt).toLocaleDateString('en-IN') : 'N/A';
                   
                   return (
                     <div 
@@ -1208,18 +1208,37 @@ export function Admin({
                           )}
                         </td>
                         <td className="p-4 sm:p-6 text-xs sm:text-sm text-slate-500">
-                          {new Date(review.date).toLocaleDateString()}
+                          {new Date(review.date).toLocaleDateString('en-IN')}
                         </td>
                         <td className="p-4 sm:p-6">
-                          <button 
-                            onClick={() => {
-                              setSelectedReview(review);
-                              setIsReviewModalOpen(true);
-                            }}
-                            className="btn-primary py-2 px-4 text-xs"
-                          >
-                            View
-                          </button>
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => {
+                                setSelectedReview(review);
+                                setIsReviewModalOpen(true);
+                              }}
+                              className="btn-primary py-2 px-3 text-xs"
+                            >
+                              View
+                            </button>
+                            <button 
+                              onClick={() => {
+                                setConfirmConfig({
+                                  isOpen: true,
+                                  title: 'Delete Review',
+                                  message: 'Are you sure you want to delete this review? This action cannot be undone.',
+                                  type: 'delete',
+                                  onConfirm: () => {
+                                    deleteProductReview(review.id);
+                                    setConfirmConfig(prev => ({ ...prev, isOpen: false }));
+                                  }
+                                });
+                              }}
+                              className="btn-danger py-2 px-3 text-xs bg-red-500 hover:bg-red-600 text-white rounded-lg"
+                            >
+                              Delete
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -1274,8 +1293,8 @@ export function Admin({
                 <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mb-2">Reviewed By</p>
                 <h3 className="text-base sm:text-lg font-bold text-navy mb-1">{selectedReview.userName}</h3>
                 <div className="space-y-0.5 text-xs sm:text-sm text-slate-600">
-                  <p><span className="font-semibold">Email:</span> {selectedReview.uid}</p>
-                  <p><span className="font-semibold">Date:</span> {new Date(selectedReview.date).toLocaleDateString()}</p>
+                  <p><span className="font-semibold">Email:</span> {selectedReview.userEmail || selectedReview.uid}</p>
+                  <p><span className="font-semibold">Date:</span> {new Date(selectedReview.date).toLocaleDateString('en-IN')}</p>
                   <p><span className="font-semibold">Product:</span> {selectedReview.productId}</p>
                 </div>
               </div>
@@ -1321,13 +1340,31 @@ export function Admin({
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 uppercase font-bold mb-1">Posted</p>
-                  <p className="text-sm text-slate-700">{new Date(selectedReview.date).toLocaleDateString()}</p>
+                  <p className="text-sm text-slate-700">{new Date(selectedReview.date).toLocaleDateString('en-IN')}</p>
                 </div>
               </div>
             </div>
 
             {/* Footer */}
             <div className="bg-slate-50 border-t border-slate-200 p-3 sm:p-4 flex gap-2 flex-shrink-0">
+              <button 
+                onClick={async () => {
+                  if (selectedReview) {
+                    const currentHelpful = selectedReview.helpful || 0;
+                    await updateProductReview(selectedReview.id, { 
+                      helpful: currentHelpful + 1,
+                      helpfulBy: [...(selectedReview.helpfulBy || []), user?.uid || 'admin']
+                    });
+                    setSelectedReview({ ...selectedReview, helpful: currentHelpful + 1 });
+                    showToast('Marked as helpful!', 'success');
+                  }
+                }}
+                className="flex-1 btn-outline py-2 sm:py-3 text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 hover:bg-blue-100"
+              >
+                <span>👍</span>
+                <span className="hidden sm:inline">Mark Helpful</span>
+                <span className="sm:hidden">Helpful</span>
+              </button>
               <button 
                 onClick={() => {
                   if (selectedReview.images && selectedReview.images.length > 0) {

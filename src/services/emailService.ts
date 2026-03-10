@@ -583,15 +583,6 @@ export const emailTemplates = {
           </ol>`
       }
 
-      <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #FF9933;">
-        <p style="margin: 0 0 10px 0; font-weight: bold;">📞 Need Help?</p>
-        <ul style="margin: 0; padding-left: 20px; color: #555;">
-          <li>Email: <a href="mailto:store@indiacybercafe.com" style="color: #FF9933;">store@indiacybercafe.com</a></li>
-          <li>Call: +91-XXXXXXXXXX</li>
-          <li>Website: <a href="https://booking.indiacybercafe.com" style="color: #FF9933;">booking.indiacybercafe.com</a></li>
-        </ul>
-      </div>
-
       <p style="margin-top: 20px; text-align: center;">
         <a href="https://booking.indiacybercafe.com" style="background: #FF9933; color: white; padding: 12px 30px; border-radius: 5px; text-decoration: none; display: inline-block; font-weight: bold;">Track Your Order</a>
       </p>
@@ -646,15 +637,6 @@ export const emailTemplates = {
       <p style="margin-top: 20px;">
         <a href="https://booking.indiacybercafe.com/login" style="background: #FF9933; color: white; padding: 12px 30px; border-radius: 5px; text-decoration: none; display: inline-block; font-weight: bold;">Log In to Your Account</a>
       </p>
-
-      <div style="background: #f0f8ff; padding: 15px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #FF9933;">
-        <p style="margin: 0 0 10px 0; font-weight: bold;">📞 Need Help?</p>
-        <ul style="margin: 0; padding-left: 20px; color: #555; font-size: 13px;">
-          <li>Email: <a href="mailto:support@indiacybercafe.com" style="color: #FF9933;">support@indiacybercafe.com</a></li>
-          <li>Phone: +91-XXXXXXXXXX</li>
-          <li>Website: <a href="https://booking.indiacybercafe.com" style="color: #FF9933;">https://booking.indiacybercafe.com</a></li>
-        </ul>
-      </div>
 
       <p style="margin-top: 20px; color: #666; font-size: 13px;">Thank you for choosing India Cyber Cafe! We look forward to serving you. 🚀</p>
       <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>

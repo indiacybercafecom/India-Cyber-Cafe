@@ -105,11 +105,13 @@ export function ReviewSection({ reviews, productId, productName = 'Product', use
         productId,
         uid: user.uid,
         userName: user.name,
+        userEmail: user.email, // Store reviewer email
         rating,
         text: text.trim(),
         images: imageUrls, // Upload to Firebase Storage
         date: new Date().toISOString(),
-        helpful: 0
+        helpful: 0,
+        helpfulBy: []
       };
 
       await onAddReview(review);
