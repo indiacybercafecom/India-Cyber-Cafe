@@ -102,6 +102,7 @@ export interface ProductReview {
 export interface Product {
   id: string;
   name: string;
+  permalink: string; // URL-friendly slug based on product name
   category: string;
   price: number;
   discountedPrice: number;

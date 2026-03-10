@@ -233,24 +233,24 @@ export function OrderManageModal({
 
   return (
     <motion.div 
-      className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/50 z-[60] flex items-center justify-center p-2 sm:p-4"
       onClick={onClose}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
       <motion.div 
-        className="bg-white rounded-2xl shadow-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
       >
         {/* Header */}
-        <div className="sticky top-0 bg-gradient-to-r from-navy via-navy-dark to-navy text-white p-6 flex justify-between items-center border-b border-white/10">
+        <div className="sticky top-0 z-10 bg-gradient-to-r from-navy via-navy-dark to-navy text-white px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center border-b border-white/10 flex-shrink-0">
           <div>
-            <p className="text-sm font-bold opacity-90">Order ID</p>
-            <h2 className="text-2xl font-bold">{order.id}</h2>
+            <p className="text-xs sm:text-sm font-bold opacity-90">Order ID</p>
+            <h2 className="text-lg sm:text-2xl font-bold">{order.id}</h2>
           </div>
           <button 
             onClick={onClose}
@@ -273,37 +273,37 @@ export function OrderManageModal({
             }
           }}
         >
-          <div className="p-8 space-y-8">
+          <div className="p-4 sm:p-6 space-y-5 sm:space-y-6">
             {/* Customer Details */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-navy flex items-center gap-3">
-                <div className="p-2 bg-navy/10 rounded-lg">
-                  <IconRenderer name="user" className="w-5 h-5 text-navy" />
+            <div className="space-y-3">
+              <h3 className="text-base sm:text-lg font-bold text-navy flex items-center gap-2">
+                <div className="p-1.5 bg-navy/10 rounded-lg">
+                  <IconRenderer name="user" className="w-4 h-4 sm:w-5 sm:h-5 text-navy" />
                 </div>
                 Customer Details
               </h3>
-              <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-2xl border border-slate-200 space-y-4">
-                <div className="grid grid-cols-2 gap-6">
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-5 rounded-xl sm:rounded-2xl border border-slate-200 space-y-3">
+                <div className="grid grid-cols-2 gap-3 sm:gap-4">
                   <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Name</p>
-                    <p className="text-navy font-semibold text-lg">{deliveryAddress.name || 'N/A'}</p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Name</p>
+                    <p className="text-sm sm:text-base text-navy font-semibold">{deliveryAddress.name || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Email</p>
-                    <p className="text-navy font-semibold break-all">{order.email || 'N/A'}</p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Email</p>
+                    <p className="text-xs sm:text-sm text-navy font-semibold break-all">{order.email || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Phone</p>
-                    <p className="text-navy font-semibold">{deliveryAddress.phone || 'N/A'}</p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Phone</p>
+                    <p className="text-sm sm:text-base text-navy font-semibold">{deliveryAddress.phone || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">City</p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">City</p>
                     <p className="text-navy font-semibold">{deliveryAddress.city || 'N/A'}</p>
                   </div>
                 </div>
-                <div className="border-t border-slate-300 pt-4">
-                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">Full Address</p>
-                  <p className="text-navy font-semibold text-sm leading-relaxed">
+                <div className="border-t border-slate-300 pt-3">
+                  <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Full Address</p>
+                  <p className="text-xs sm:text-sm text-navy font-semibold leading-relaxed">
                     {deliveryAddress.addressLine1 || 'N/A'}
                     {deliveryAddress.addressLine2 && `, ${deliveryAddress.addressLine2}`}
                     {deliveryAddress.state && `, ${deliveryAddress.state}`}
@@ -314,40 +314,40 @@ export function OrderManageModal({
             </div>
 
             {/* Order Items */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-navy flex items-center gap-3">
-                <div className="p-2 bg-navy/10 rounded-lg">
-                  <IconRenderer name="shopping-cart" className="w-5 h-5 text-navy" />
+            <div className="space-y-3">
+              <h3 className="text-base sm:text-lg font-bold text-navy flex items-center gap-2">
+                <div className="p-1.5 bg-navy/10 rounded-lg">
+                  <IconRenderer name="shopping-cart" className="w-4 h-4 sm:w-5 sm:h-5 text-navy" />
                 </div>
                 Order Items ({items.length})
               </h3>
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {items.length > 0 ? (
                   items.map((item, idx) => (
-                    <div key={idx} className="bg-gradient-to-r from-slate-50 to-slate-100 p-5 rounded-2xl border border-slate-200 hover:border-navy/50 transition-all">
+                    <div key={idx} className="bg-gradient-to-r from-slate-50 to-slate-100 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-slate-200 hover:border-navy/50 transition-all">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <p className="font-bold text-navy text-base">{(item as any).productName}</p>
-                          <p className="text-sm text-slate-600 mt-1">Qty: <span className="font-semibold">{(item as any).quantity}</span></p>
+                          <p className="font-bold text-navy text-sm sm:text-base">{(item as any).productName}</p>
+                          <p className="text-xs sm:text-sm text-slate-600 mt-0.5">Qty: <span className="font-semibold">{(item as any).quantity}</span></p>
                           {(item as any).specialInstructions && (
                             <p className="text-sm text-slate-600 mt-2 bg-white/60 p-2 rounded-lg">📝 {(item as any).specialInstructions}</p>
                           )}
                         </div>
-                        <div className="text-right ml-4">
-                          <p className="font-bold text-navy text-lg">₹{(item as any).price}</p>
+                        <div className="text-right ml-3">
+                          <p className="font-bold text-navy text-sm sm:text-lg">₹{(item as any).price}</p>
                           {(item as any).discountedPrice && (item as any).discountedPrice > 0 && (
-                            <p className="text-sm text-slate-500 line-through">₹{(item as any).discountedPrice}</p>
+                            <p className="text-xs sm:text-sm text-slate-500 line-through">₹{(item as any).discountedPrice}</p>
                           )}
                         </div>
                       </div>
                       
                       {/* Custom Image Upload Display */}
                       {(item as any).customImageUrl && (
-                        <div className="mt-4 pt-4 border-t border-slate-300">
-                          <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-3 flex items-center gap-2">
-                            🖼️ Custom Image Uploaded
+                        <div className="mt-3 pt-3 border-t border-slate-300">
+                          <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-2 flex items-center gap-2">
+                            🖼️ Custom Image
                           </p>
-                          <div className="flex flex-wrap gap-3">
+                          <div className="flex flex-wrap gap-2">
                             <img 
                               src={(item as any).customImageUrl} 
                               alt={`Custom image for ${(item as any).productName}`}
@@ -373,50 +373,50 @@ export function OrderManageModal({
             </div>
 
             {/* Order Summary */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-navy flex items-center gap-3">
-                <div className="p-2 bg-navy/10 rounded-lg">
-                  <IconRenderer name="calculator" className="w-5 h-5 text-navy" />
+            <div className="space-y-3">
+              <h3 className="text-base sm:text-lg font-bold text-navy flex items-center gap-2">
+                <div className="p-1.5 bg-navy/10 rounded-lg">
+                  <IconRenderer name="calculator" className="w-4 h-4 sm:w-5 sm:h-5 text-navy" />
                 </div>
                 Order Summary
               </h3>
-              <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex justify-between items-center">
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-5 rounded-lg sm:rounded-xl border border-slate-200 space-y-2">
+                <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-700 font-medium">Subtotal</span>
-                  <span className="font-semibold text-navy text-lg">₹{subtotal}</span>
+                  <span className="font-semibold text-navy">₹{subtotal}</span>
                 </div>
-                <div className="flex justify-between items-center">
-                  <span className="text-slate-700 font-medium">Delivery Charges</span>
-                  <span className="font-semibold text-navy text-lg">₹{deliveryCharges}</span>
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-700 font-medium">Delivery</span>
+                  <span className="font-semibold text-navy">₹{deliveryCharges}</span>
                 </div>
                 {discount > 0 && (
-                  <div className="flex justify-between items-center bg-green-50 p-3 rounded-lg border border-green-200">
+                  <div className="flex justify-between items-center bg-green-50 p-2 rounded-lg border border-green-200 text-sm">
                     <span className="text-green-700 font-medium">Discount</span>
-                    <span className="font-semibold text-green-700 text-lg">-₹{discount}</span>
+                    <span className="font-semibold text-green-700">-₹{discount}</span>
                   </div>
                 )}
-                <div className="border-t-2 border-slate-300 pt-3 flex justify-between items-center bg-navy/5 p-3 rounded-lg">
-                  <span className="font-bold text-navy text-lg">Total Amount</span>
-                  <span className="font-bold text-xl bg-gradient-to-r from-navy to-navy-dark bg-clip-text text-transparent">₹{total}</span>
+                <div className="border-t-2 border-slate-300 pt-2 flex justify-between items-center bg-navy/5 p-2 rounded-lg">
+                  <span className="font-bold text-navy text-sm">Total</span>
+                  <span className="font-bold text-base sm:text-lg bg-gradient-to-r from-navy to-navy-dark bg-clip-text text-transparent">₹{total}</span>
                 </div>
               </div>
             </div>
 
             {/* Status Management */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-navy flex items-center gap-3">
-                <div className="p-2 bg-navy/10 rounded-lg">
-                  <IconRenderer name="sliders" className="w-5 h-5 text-navy" />
+            <div className="space-y-3">
+              <h3 className="text-base sm:text-lg font-bold text-navy flex items-center gap-2">
+                <div className="p-1.5 bg-navy/10 rounded-lg">
+                  <IconRenderer name="sliders" className="w-4 h-4 sm:w-5 sm:h-5 text-navy" />
                 </div>
                 Manage Status
               </h3>
-              <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-2xl border border-slate-200 space-y-4">
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-5 rounded-lg sm:rounded-xl border border-slate-200 space-y-3">
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-3">Order Status</label>
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-2">Order Status</label>
                   <select 
                     value={newOrderStatus} 
                     onChange={(e) => setNewOrderStatus(e.target.value as any)}
-                    className="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all bg-white font-medium"
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-slate-300 rounded-lg sm:rounded-xl focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all bg-white font-medium text-sm"
                   >
                     {ORDER_STATUSES.map(status => (
                       <option key={status} value={status}>
@@ -427,11 +427,11 @@ export function OrderManageModal({
                 </div>
 
                 <div>
-                  <label className="block text-sm font-bold text-slate-700 mb-3">Payment Status</label>
+                  <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-2">Payment Status</label>
                   <select 
                     value={newPaymentStatus} 
                     onChange={(e) => setNewPaymentStatus(e.target.value as any)}
-                    className="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all bg-white font-medium"
+                    className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-slate-300 rounded-lg sm:rounded-xl focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all bg-white font-medium text-sm"
                   >
                     {PAYMENT_STATUSES.map(status => (
                       <option key={status} value={status}>
@@ -444,7 +444,7 @@ export function OrderManageModal({
                 <button 
                   onClick={handleStatusUpdate}
                   disabled={loading}
-                  className="w-full bg-gradient-to-r from-navy to-navy-dark text-white py-3 px-4 rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 mt-2"
+                  className="w-full bg-gradient-to-r from-navy to-navy-dark text-white py-2 sm:py-3 px-4 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base hover:shadow-lg transition-all disabled:opacity-50 mt-1"
                 >
                   {loading ? 'Updating...' : '✓ Update Status'}
                 </button>
@@ -452,35 +452,35 @@ export function OrderManageModal({
             </div>
 
             {/* Add Notes */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-navy flex items-center gap-3">
-                <div className="p-2 bg-navy/10 rounded-lg">
-                  <IconRenderer name="message-square" className="w-5 h-5 text-navy" />
+            <div className="space-y-3">
+              <h3 className="text-base sm:text-lg font-bold text-navy flex items-center gap-2">
+                <div className="p-1.5 bg-navy/10 rounded-lg">
+                  <IconRenderer name="message-square" className="w-4 h-4 sm:w-5 sm:h-5 text-navy" />
                 </div>
                 Internal Notes ({notes.length})
               </h3>
 
               {/* Notes List */}
               {notes.length > 0 && (
-                <div className="space-y-2 max-h-48 overflow-y-auto">
+                <div className="space-y-2 max-h-40 overflow-y-auto">
                   {notes.map((note, idx) => (
-                    <div key={idx} className="bg-gradient-to-r from-blue-50 to-blue-100 p-4 rounded-xl border-l-4 border-blue-500">
+                    <div key={idx} className="bg-gradient-to-r from-blue-50 to-blue-100 p-3 sm:p-4 rounded-lg border-l-4 border-blue-500">
                       <div className="flex justify-between items-start">
                         <div className="flex-1">
-                          <p className="font-semibold text-blue-900 text-sm">{note.by}</p>
-                          <p className="text-xs text-blue-700 opacity-75 mt-1">{note.time}</p>
+                          <p className="font-semibold text-blue-900 text-xs sm:text-sm">{note.by}</p>
+                          <p className="text-xs text-blue-700 opacity-75 mt-0.5">{note.time}</p>
                         </div>
                       </div>
-                      <p className="text-sm text-blue-900 mt-2">{note.text}</p>
+                      <p className="text-xs sm:text-sm text-blue-900 mt-1">{note.text}</p>
                       {(note as any).attachment && (
                         <a 
                           href={(note as any).attachment} 
                           target="_blank" 
                           rel="noreferrer" 
-                          className="mt-3 inline-flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-800 bg-white px-3 py-1.5 rounded-lg hover:underline transition-all"
+                          className="mt-2 inline-flex items-center gap-2 text-xs font-bold text-blue-600 hover:text-blue-800 bg-white px-2 py-1 rounded-lg hover:underline transition-all"
                         >
-                          <IconRenderer name="download" className="w-4 h-4" />
-                          {(note as any).attachmentName || 'Download Attachment'}
+                          <IconRenderer name="download" className="w-3 h-3" />
+                          {(note as any).attachmentName || 'Download'}
                         </a>
                       )}
                     </div>
@@ -489,26 +489,26 @@ export function OrderManageModal({
               )}
 
               {/* Add New Note */}
-              <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-2xl border border-slate-200 space-y-3">
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-5 rounded-lg sm:rounded-xl border border-slate-200 space-y-2">
                 <textarea
                   value={noteText}
                   onChange={(e) => setNoteText(e.target.value)}
                   placeholder="Add a note about this order..."
-                  className="w-full px-4 py-3 border-2 border-slate-300 rounded-xl focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all resize-none bg-white"
-                  rows={3}
+                  className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-slate-300 rounded-lg sm:rounded-xl focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all resize-none bg-white text-sm"
+                  rows={2}
                 />
 
                 {/* File Input Section */}
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
+                <div className="space-y-1.5">
+                  <div className="flex items-center gap-2 flex-wrap">
                     <button 
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
                       disabled={uploadingFile || loading}
-                      className="flex items-center gap-2 px-4 py-2 rounded-lg border-2 border-slate-400 font-semibold text-slate-700 hover:border-navy hover:bg-slate-50 transition-all disabled:opacity-50 text-sm"
+                      className="flex items-center gap-1.5 px-3 py-1.5 sm:px-4 sm:py-2 rounded-lg border-2 border-slate-400 font-semibold text-slate-700 hover:border-navy hover:bg-slate-50 transition-all disabled:opacity-50 text-xs sm:text-sm"
                     >
-                      <IconRenderer name="paperclip" className="w-4 h-4" />
-                      {uploadingFile ? 'Uploading...' : 'Attach File'}
+                      <IconRenderer name="paperclip" className="w-3 h-3 sm:w-4 sm:h-4" />
+                      {uploadingFile ? 'Uploading...' : 'Attach'}
                     </button>
                     <input 
                       type="file"
@@ -518,28 +518,28 @@ export function OrderManageModal({
                       className="hidden"
                     />
                     {noteFile && (
-                      <span className="flex items-center gap-2 px-3 py-2 bg-green-100 border border-green-300 rounded-lg text-sm font-semibold text-green-700">
-                        <IconRenderer name="check" className="w-4 h-4" />
-                        {noteFile.name}
+                      <span className="flex items-center gap-1.5 px-2 py-1 bg-green-100 border border-green-300 rounded-lg text-xs font-semibold text-green-700">
+                        <IconRenderer name="check" className="w-3 h-3" />
+                        {noteFile.name.length > 15 ? noteFile.name.substring(0, 15) + '...' : noteFile.name}
                       </span>
                     )}
                   </div>
-                  <p className="text-xs text-slate-500">Max file size: 5MB (PDF, Images, Documents)</p>
+                  <p className="text-xs text-slate-500">Max 5MB</p>
                 </div>
 
                 <button 
                   onClick={handleAddNote}
                   disabled={loading || uploadingFile || (!noteText.trim() && !noteFile)}
-                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-3 px-4 rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="w-full bg-gradient-to-r from-blue-600 to-blue-700 text-white py-2 sm:py-3 px-4 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-1.5"
                 >
                   {loading || uploadingFile ? (
                     <>
-                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      <div className="w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />
                       {uploadingFile ? 'Uploading...' : 'Adding...'}
                     </>
                   ) : (
                     <>
-                      <IconRenderer name="plus" className="w-5 h-5" />
+                      <IconRenderer name="plus" className="w-4 h-4 sm:w-5 sm:h-5" />
                       Add Note
                     </>
                   )}
@@ -548,25 +548,25 @@ export function OrderManageModal({
             </div>
 
             {/* Order Info */}
-            <div className="space-y-4">
-              <h3 className="text-lg font-bold text-navy flex items-center gap-3">
-                <div className="p-2 bg-navy/10 rounded-lg">
-                  <IconRenderer name="info" className="w-5 h-5 text-navy" />
+            <div className="space-y-3">
+              <h3 className="text-base sm:text-lg font-bold text-navy flex items-center gap-2">
+                <div className="p-1.5 bg-navy/10 rounded-lg">
+                  <IconRenderer name="info" className="w-4 h-4 sm:w-5 sm:h-5 text-navy" />
                 </div>
                 Order Information
               </h3>
-              <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-6 rounded-2xl border border-slate-200 space-y-3">
-                <div className="flex justify-between items-center pb-3 border-b border-slate-300">
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-5 rounded-lg sm:rounded-xl border border-slate-200 space-y-2">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-300 text-sm">
                   <span className="text-slate-700 font-medium">Payment Method</span>
-                  <span className="font-semibold text-navy capitalize bg-white px-3 py-1 rounded-lg">{(order.paymentMethod || 'N/A').replace('_', ' ')}</span>
+                  <span className="font-semibold text-navy capitalize text-xs sm:text-sm">{(order.paymentMethod || 'N/A').replace('_', ' ')}</span>
                 </div>
-                <div className="flex justify-between items-center pb-3 border-b border-slate-300">
+                <div className="flex justify-between items-center pb-2 border-b border-slate-300 text-sm">
                   <span className="text-slate-700 font-medium">Created On</span>
-                  <span className="font-semibold text-navy text-sm">{order.createdAt ? new Date(order.createdAt).toLocaleString() : 'N/A'}</span>
+                  <span className="font-semibold text-navy text-xs sm:text-sm">{order.createdAt ? new Date(order.createdAt).toLocaleDateString() : 'N/A'}</span>
                 </div>
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-center text-sm">
                   <span className="text-slate-700 font-medium">Last Updated</span>
-                  <span className="font-semibold text-navy text-sm">{order.updatedAt ? new Date(order.updatedAt).toLocaleString() : 'N/A'}</span>
+                  <span className="font-semibold text-navy text-xs sm:text-sm">{order.updatedAt ? new Date(order.updatedAt).toLocaleDateString() : 'N/A'}</span>
                 </div>
               </div>
             </div>
@@ -574,11 +574,11 @@ export function OrderManageModal({
         </div>
 
         {/* Delete Button - Sticky at bottom */}
-        <div className="sticky bottom-0 bg-white border-t border-slate-200 p-6">
+        <div className="sticky bottom-0 bg-white border-t border-slate-200 p-4 sm:p-5 flex-shrink-0">
           <button 
             onClick={handleDeleteOrder}
             disabled={loading}
-            className="w-full bg-gradient-to-r from-red-500 to-red-600 text-white py-3 px-4 rounded-xl font-bold hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full bg-gradient-to-r from-red-500 to-red-600 text-white py-2 sm:py-3 px-4 rounded-lg sm:rounded-xl font-bold text-sm sm:text-base hover:shadow-lg transition-all disabled:opacity-50 flex items-center justify-center gap-2"
           >
             <IconRenderer name="trash" className="w-5 h-5" />
             Delete Order

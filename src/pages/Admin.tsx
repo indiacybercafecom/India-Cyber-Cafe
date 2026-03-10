@@ -1242,49 +1242,49 @@ export function Admin({
 
       {/* Review Details Modal */}
       {isReviewModalOpen && selectedReview && (
-        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 sm:p-6">
-          <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white rounded-xl sm:rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="bg-gradient-to-r from-yellow-400 to-amber-400 p-6 sm:p-8 flex items-start justify-between">
+            <div className="bg-gradient-to-r from-yellow-400 to-amber-400 p-4 sm:p-6 flex items-start justify-between flex-shrink-0">
               <div className="flex-1">
-                <h2 className="text-2xl sm:text-3xl font-bold text-navy mb-2">Customer Review</h2>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <div className="flex gap-1 text-yellow-500">
+                <h2 className="text-xl sm:text-2xl font-bold text-navy mb-2">Customer Review</h2>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex gap-0.5 text-yellow-500">
                     {[...Array(5)].map((_, i) => (
-                      <span key={i} className="text-2xl">
+                      <span key={i} className="text-lg sm:text-xl">
                         {i < selectedReview.rating ? '★' : '☆'}
                       </span>
                     ))}
                   </div>
-                  <span className="font-bold text-navy bg-white/80 px-3 py-1 rounded-lg">{selectedReview.rating}/5</span>
+                  <span className="font-bold text-navy bg-white/80 px-2.5 py-0.5 rounded-lg text-sm sm:text-base">{selectedReview.rating}/5</span>
                 </div>
               </div>
               <button 
                 onClick={() => { setIsReviewModalOpen(false); setSelectedReview(null); }}
-                className="p-2 hover:bg-white/20 rounded-full transition-all flex-shrink-0"
+                className="p-1.5 sm:p-2 hover:bg-white/20 rounded-full transition-all flex-shrink-0"
               >
-                <IconRenderer name="x" className="w-6 h-6 text-navy" />
+                <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6 text-navy" />
               </button>
             </div>
 
             {/* Content - Scrollable */}
-            <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 space-y-6">
+            <div className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5">
               {/* User Info */}
-              <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              <div className="bg-slate-50 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-slate-200">
                 <p className="text-xs text-slate-500 uppercase font-bold tracking-widest mb-2">Reviewed By</p>
-                <h3 className="text-xl font-bold text-navy mb-1">{selectedReview.userName}</h3>
-                <div className="space-y-1 text-sm text-slate-600">
+                <h3 className="text-base sm:text-lg font-bold text-navy mb-1">{selectedReview.userName}</h3>
+                <div className="space-y-0.5 text-xs sm:text-sm text-slate-600">
                   <p><span className="font-semibold">Email:</span> {selectedReview.uid}</p>
-                  <p><span className="font-semibold">Date:</span> {new Date(selectedReview.date).toLocaleString()}</p>
-                  <p><span className="font-semibold">Product ID:</span> {selectedReview.productId}</p>
+                  <p><span className="font-semibold">Date:</span> {new Date(selectedReview.date).toLocaleDateString()}</p>
+                  <p><span className="font-semibold">Product:</span> {selectedReview.productId}</p>
                 </div>
               </div>
 
               {/* Review Text */}
               <div>
-                <h4 className="text-sm font-bold text-slate-700 mb-3 uppercase tracking-widest">Review</h4>
-                <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-lg">
-                  <p className="text-slate-700 leading-relaxed whitespace-pre-wrap break-words">
+                <h4 className="text-xs sm:text-sm font-bold text-slate-700 mb-2 uppercase tracking-widest">Review</h4>
+                <div className="bg-blue-50 border-l-4 border-blue-500 p-3 sm:p-4 rounded-lg">
+                  <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-wrap break-words">
                     {selectedReview.text}
                   </p>
                 </div>
@@ -1293,20 +1293,20 @@ export function Admin({
               {/* Images */}
               {selectedReview.images && selectedReview.images.length > 0 && (
                 <div>
-                  <h4 className="text-sm font-bold text-slate-700 mb-3 uppercase tracking-widest">
+                  <h4 className="text-xs sm:text-sm font-bold text-slate-700 mb-2 uppercase tracking-widest">
                     Images ({selectedReview.images.length})
                   </h4>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                     {selectedReview.images.map((img, idx) => (
                       <div key={idx} className="group cursor-pointer">
                         <img 
                           src={img} 
                           alt={`Review image ${idx + 1}`}
-                          className="w-full h-32 object-cover rounded-xl shadow-md group-hover:shadow-lg transition-all group-hover:scale-105"
+                          className="w-full h-24 sm:h-32 object-cover rounded-lg shadow-md group-hover:shadow-lg transition-all group-hover:scale-105"
                           onClick={() => window.open(img, '_blank')}
                           title="Click to view full size"
                         />
-                        <p className="text-xs text-slate-500 mt-1 text-center">Image {idx + 1}</p>
+                        <p className="text-xs text-slate-500 mt-1 text-center">Img {idx + 1}</p>
                       </div>
                     ))}
                   </div>
@@ -1314,10 +1314,10 @@ export function Admin({
               )}
 
               {/* Stats */}
-              <div className="grid grid-cols-2 gap-3 bg-slate-50 p-4 rounded-2xl border border-slate-200">
+              <div className="grid grid-cols-2 gap-2 sm:gap-3 bg-slate-50 p-3 sm:p-4 rounded-lg sm:rounded-xl border border-slate-200">
                 <div>
-                  <p className="text-xs text-slate-500 uppercase font-bold mb-1">Helpful Votes</p>
-                  <p className="text-2xl font-bold text-navy">👍 {selectedReview.helpful || 0}</p>
+                  <p className="text-xs text-slate-500 uppercase font-bold mb-1">Helpfulness</p>
+                  <p className="text-lg sm:text-xl font-bold text-navy">👍 {selectedReview.helpful || 0}</p>
                 </div>
                 <div>
                   <p className="text-xs text-slate-500 uppercase font-bold mb-1">Posted</p>
@@ -1327,7 +1327,7 @@ export function Admin({
             </div>
 
             {/* Footer */}
-            <div className="bg-slate-50 border-t border-slate-200 p-4 sm:p-6 flex gap-3">
+            <div className="bg-slate-50 border-t border-slate-200 p-3 sm:p-4 flex gap-2 flex-shrink-0">
               <button 
                 onClick={() => {
                   if (selectedReview.images && selectedReview.images.length > 0) {
@@ -1335,14 +1335,15 @@ export function Admin({
                   }
                 }}
                 disabled={!selectedReview.images || selectedReview.images.length === 0}
-                className="flex-1 btn-outline py-3 text-sm flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="flex-1 btn-outline py-2 sm:py-3 text-xs sm:text-sm flex items-center justify-center gap-1.5 sm:gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <IconRenderer name="image" className="w-4 h-4" />
-                View Images
+                <span className="hidden sm:inline">View Images</span>
+                <span className="sm:hidden">Images</span>
               </button>
               <button 
                 onClick={() => { setIsReviewModalOpen(false); setSelectedReview(null); }}
-                className="flex-1 btn-primary py-3 text-sm"
+                className="flex-1 btn-primary py-2 sm:py-3 text-xs sm:text-sm"
               >
                 Close
               </button>

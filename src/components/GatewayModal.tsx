@@ -32,17 +32,17 @@ export function GatewayModal({ gateway, onClose, onSave }: GatewayModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[3000] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[60] flex items-center justify-center p-2 sm:p-4">
       <motion.div 
-        initial={{ scale: 0.9, opacity: 0 }}
+        initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-white rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl max-h-[90vh] flex flex-col sm:max-h-[85vh]"
+        className="bg-white rounded-xl sm:rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl max-h-[92vh] flex flex-col"
       >
         {/* Header */}
-        <div className="sticky top-0 z-10 p-4 sm:p-6 bg-gradient-to-r from-navy to-blue-700 text-white flex justify-between items-center flex-shrink-0">
-          <h3 className="text-lg sm:text-2xl font-bold">{gateway ? 'Edit Payment Gateway' : 'Add Payment Gateway'}</h3>
-          <button onClick={onClose} className="p-2 hover:bg-white/20 rounded-lg transition-all flex-shrink-0">
-            <IconRenderer name="x" className="w-5 sm:w-6 h-5 sm:h-6" />
+        <div className="sticky top-0 z-10 p-3 sm:p-6 bg-gradient-to-r from-navy to-blue-700 text-white flex justify-between items-center flex-shrink-0">
+          <h3 className="text-lg sm:text-xl font-bold">{gateway ? 'Edit Gateway' : 'Add Gateway'}</h3>
+          <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-white/20 rounded-lg transition-all flex-shrink-0">
+            <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
