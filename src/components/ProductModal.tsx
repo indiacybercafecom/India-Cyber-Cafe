@@ -139,7 +139,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[60] p-0 sm:p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center z-[2000] p-0 sm:p-4">
       <div className="bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl w-full sm:max-w-2xl max-h-[95vh] sm:max-h-[90vh] flex flex-col">
         <div className="sticky top-0 bg-gradient-to-r from-navy to-blue-700 text-white px-4 sm:px-6 py-4 sm:py-6 flex justify-between items-center z-10 flex-shrink-0">
           <h2 className="text-xl sm:text-2xl font-bold pr-2">{product ? 'Edit Product' : 'Add New Product'}</h2>
