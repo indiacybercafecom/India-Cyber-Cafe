@@ -94,7 +94,7 @@ export function useData() {
     const lastSyncReviews = syncManager.getLastSync('productReviews');
 
     const now = Date.now();
-    const SYNC_THRESHOLD = 1 * 60 * 1000; // 1 minute
+    const SYNC_THRESHOLD = 5 * 60 * 1000; // 5 minutes
 
     // Only fetch collections that need sync (older than 5 minutes)
     const needsSyncServices = now - lastSyncServices > SYNC_THRESHOLD;
@@ -347,29 +347,11 @@ export function useData() {
 
   const addApplication = async (app: Omit<Application, 'id'>) => {
     const newAppRef = push(ref(rtdb, 'applications'));
-    const appId = newAppRef.key;
-    
-    // Add app with generated ID
-    const appWithId = { ...app, id: appId } as Application;
-    await set(newAppRef, appWithId);
-    
-    // Update local state immediately
-    const updatedApps = [appWithId, ...applications];
-    setApplications(updatedApps);
-    cacheManager.set('applications', updatedApps);
-    syncManager.updateSync('applications');
-    
-    return appWithId;
+    return await set(newAppRef, app);
   };
 
   const updateApplication = async (id: string, data: Partial<Application>) => {
-    await update(ref(rtdb, `applications/${id}`), data);
-    
-    // Update local state immediately
-    const updatedApps = applications.map(app => app.id === id ? { ...app, ...data } : app);
-    setApplications(updatedApps);
-    cacheManager.set('applications', updatedApps);
-    syncManager.updateSync('applications');
+    return await update(ref(rtdb, `applications/${id}`), data);
   };
 
   const deleteApplication = async (id: string) => {
