@@ -1,6 +1,7 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import nodemailer from "nodemailer";
+import multer from "multer";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
@@ -16,6 +17,14 @@ async function startServer() {
   app.set('trust proxy', true);
 
   app.use(express.json());
+
+  // Configure multer for file uploads (in memory storage)
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: {
+      fileSize: 5 * 1024 * 1024, // 5MB max
+    }
+  });
 
   // Email Configuration
   const transporter = nodemailer.createTransport({
@@ -61,6 +70,65 @@ async function startServer() {
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
+  });
+
+  // File Upload Endpoint (for guest checkout and guest uploads)
+  // This bypasses Firebase Storage authentication requirements
+  app.post("/api/upload", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file provided" });
+      }
+
+      const category = req.body.category || "general";
+      const timestamp = Date.now();
+      const randomString = Math.random().toString(36).substring(2, 12);
+      const fileExtension = path.extname(req.file.originalname);
+      const fileName = `${timestamp}-${randomString}${fileExtension}`;
+      const storagePath = `${category}/${fileName}`;
+
+      console.log(`[Upload] Starting upload: ${storagePath}, size: ${req.file.size} bytes, type: ${req.file.mimetype}`);
+
+      // Firebase REST API endpoint
+      const firebaseProjectId = "india-cyber-cafe";
+      const bucket = "india-cyber-cafe.firebasestorage.app";
+      const uploadUrl = `https://www.googleapis.com/upload/storage/v1/b/${bucket}/o?uploadType=media&name=${encodeURIComponent(storagePath)}`;
+
+      // Upload to Firebase Storage using REST API (no auth required for public bucket)
+      const uploadResponse = await fetch(uploadUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": req.file.mimetype,
+        },
+        body: req.file.buffer,
+      });
+
+      if (!uploadResponse.ok) {
+        const errorText = await uploadResponse.text();
+        console.error(`[Upload] Firebase error: ${uploadResponse.status} ${errorText}`);
+        return res.status(uploadResponse.status).json({
+          error: "Upload to Firebase failed",
+          details: errorText,
+        });
+      }
+
+      console.log(`[Upload] ✅ File uploaded successfully to ${storagePath}`);
+
+      // Generate download URL (Firebase Storage public download URL format)
+      const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(storagePath)}?alt=media`;
+
+      res.json({
+        success: true,
+        url: downloadUrl,
+        path: storagePath,
+      });
+    } catch (error: any) {
+      console.error("[Upload] Error:", error);
+      res.status(500).json({
+        error: "Upload failed",
+        message: error.message,
+      });
+    }
   });
 
   // Sitemap and Robots.txt

@@ -1,5 +1,5 @@
+import { deleteObject, ref } from 'firebase/storage';
 import { storage } from '../firebase';
-import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 
 export type UploadCategory = 
   | 'applications' 
@@ -16,7 +16,8 @@ const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 /**
- * Upload a file to Firebase Storage
+ * Upload a file to Firebase Storage via backend API
+ * Works for both authenticated and unauthenticated users
  * @param file - File to upload
  * @param category - The category/folder for the file
  * @param customName - Optional custom filename (without extension)
@@ -48,54 +49,41 @@ export async function uploadFile(
       }
     }
 
-    // Generate filename
-    const timestamp = Date.now();
-    const randomString = Math.random().toString(36).substring(2, 12);
-    const extension = file.name.split('.').pop() || 'file';
-    const filename = customName 
-      ? `${customName}-${timestamp}.${extension}`
-      : `${timestamp}-${randomString}.${extension}`;
+    console.log(`[Upload] Starting upload via backend: ${category}/${file.name}, size: ${(file.size / 1024).toFixed(2)}KB, type: ${file.type}`);
+
+    // Create FormData for backend upload
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('category', category);
+
+    // Upload via backend API (works for guest users too)
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({}));
+      const errorMessage = errorData.message || errorData.error || `Upload failed with status ${response.status}`;
+      throw new Error(errorMessage);
+    }
+
+    const data = await response.json();
     
-    const storagePath = `${category}/${filename}`;
-    const storageRef = ref(storage, storagePath);
+    if (!data.url) {
+      throw new Error('No download URL returned from server');
+    }
 
-    console.log(`[Upload] Starting upload: ${storagePath}, size: ${(file.size / 1024).toFixed(2)}KB, type: ${file.type}`);
-
-    // Upload file with metadata
-    const metadata = {
-      contentType: file.type,
-      customMetadata: {
-        uploadedAt: new Date().toISOString(),
-        category: category,
-        fileName: file.name
-      }
-    };
-
-    const snapshot = await uploadBytes(storageRef, file, metadata);
-    console.log(`[Upload] ✅ File uploaded successfully: ${snapshot.ref.fullPath}`);
-
-    // Get download URL
-    const downloadURL = await getDownloadURL(snapshot.ref);
-    console.log(`[Upload] ✅ Download URL obtained: ${downloadURL}`);
-
-    return downloadURL;
+    console.log(`[Upload] ✅ File uploaded successfully: ${data.url}`);
+    return data.url;
   } catch (error: any) {
     console.error('[Upload Error]', error);
-    console.error('[Upload Error Code]', error.code);
     console.error('[Upload Error Message]', error.message);
     
     // Provide clear error messages
     let errorMessage = 'Upload failed';
     
-    if (error.code === 'storage/unauthorized') {
-      errorMessage = 'Permission denied. Firebase rules may need to be updated.';
-    } else if (error.code === 'storage/quota-exceeded') {
-      errorMessage = 'Storage quota exceeded. Contact support.';
-    } else if (error.code === 'storage/invalid-argument') {
-      errorMessage = 'Invalid file. Check file format and size.';
-    } else if (error.code === 'storage/unknown') {
-      errorMessage = 'Unknown error. Check Firebase console for details.';
-    } else if (error.message) {
+    if (error.message) {
       errorMessage = error.message;
     }
     
