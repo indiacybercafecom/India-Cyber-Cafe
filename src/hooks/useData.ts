@@ -355,7 +355,13 @@ export function useData() {
   };
 
   const deleteApplication = async (id: string) => {
-    return await remove(ref(rtdb, `applications/${id}`));
+    await remove(ref(rtdb, `applications/${id}`));
+    
+    // Update local state immediately
+    const updatedApplications = applications.filter(a => a.id !== id);
+    setApplications(updatedApplications);
+    cacheManager.set('applications', updatedApplications);
+    syncManager.updateSync('applications');
   };
 
   const addService = async (service: Service) => {
@@ -367,7 +373,13 @@ export function useData() {
   };
 
   const deleteService = async (id: string) => {
-    return await remove(ref(rtdb, `services/${id}`));
+    await remove(ref(rtdb, `services/${id}`));
+    
+    // Update local state immediately
+    const updatedServices = services.filter(s => s.id !== id);
+    setServices(updatedServices);
+    cacheManager.set('services', updatedServices);
+    syncManager.updateSync('services');
   };
 
   const addGateway = async (gateway: PaymentGateway) => {
@@ -380,7 +392,13 @@ export function useData() {
   };
 
   const deleteGateway = async (id: string) => {
-    return await remove(ref(rtdb, `gateways/${id}`));
+    await remove(ref(rtdb, `gateways/${id}`));
+    
+    // Update local state immediately
+    const updatedGateways = gateways.filter(g => g.id !== id);
+    setGateways(updatedGateways);
+    cacheManager.set('gateways', updatedGateways);
+    syncManager.updateSync('gateways');
   };
 
   // ========== STORE PRODUCTS CRUD ==========
@@ -506,7 +524,13 @@ export function useData() {
   };
 
   const deleteOrder = async (id: string) => {
-    return await remove(ref(rtdb, `orders/${id}`));
+    await remove(ref(rtdb, `orders/${id}`));
+    
+    // Update local state immediately
+    const updatedOrders = orders.filter(o => o.id !== id);
+    setOrders(updatedOrders);
+    cacheManager.set('orders', updatedOrders);
+    syncManager.updateSync('orders');
   };
 
   // ========== PRODUCT REVIEWS CRUD ==========
@@ -520,7 +544,13 @@ export function useData() {
   };
 
   const deleteProductReview = async (id: string) => {
-    return await remove(ref(rtdb, `productReviews/${id}`));
+    await remove(ref(rtdb, `productReviews/${id}`));
+    
+    // Update local state immediately
+    const updatedReviews = productReviews.filter(r => r.id !== id);
+    setProductReviews(updatedReviews);
+    cacheManager.set('productReviews', updatedReviews);
+    syncManager.updateSync('productReviews');
   };
 
   // Cache management utilities
