@@ -162,7 +162,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
           state: existingUserData.address.state || prev.state,
           pincode: existingUserData.address.pincode || prev.pincode
         }));
-        showToast('✅ Password verified! Your address auto-filled.', 'success');
+        showToast('✅ Password verified! You are now logged in. Your address has been auto-filled.', 'success');
       } else {
         // If no address in profile, just fill basic info
         setAddress(prev => ({
@@ -170,15 +170,12 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
           name: existingUserData.name || prev.name,
           phone: existingUserData.phone || prev.phone
         }));
-        showToast('✅ Password verified! Your info auto-filled.', 'success');
+        showToast('✅ Password verified! You are now logged in. Your info has been auto-filled.', 'success');
       }
 
-      // Logout after verification to maintain guest checkout mode
-      try {
-        await signOut(auth);
-      } catch (e) {
-        console.error('Error logging out after verification:', e);
-      }
+      // Keep user logged in for checkout - don't sign out
+      setExistingUserFound(false);
+      setRequiresPassword(false);
     } catch (error: any) {
       showToast('❌ Password incorrect. Please try again.', 'error');
       setPasswordInput('');
@@ -206,7 +203,13 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         setExistingUserFound(true);
         setExistingUserData(existingUser);
         setRequiresPassword(true);
-        showToast('Account found! Please verify with email and password.', 'info');
+        setPasswordInput('');
+        showToast('✅ Account found! Please enter your password to proceed with auto-filled details.', 'info');
+      } else if (existingUser && user && !user.uid) {
+        // If user somehow changed but still not logged in
+        setExistingUserFound(true);
+        setExistingUserData(existingUser);
+        setRequiresPassword(true);
       }
     } catch (error) {
       console.error('Error checking user by phone:', error);
@@ -761,12 +764,12 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
 
               {/* Password Verification - Show when existing account found */}
               {requiresPassword && !passwordVerified && (
-                <div className="bg-yellow-50 border-2 border-yellow-300 rounded-lg p-4 space-y-3">
+                <div className="lg:col-span-2 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-lg p-4 space-y-3">
                   <div className="flex items-start gap-2">
-                    <span className="text-lg">🔐</span>
+                    <span className="text-xl">🔐</span>
                     <div>
-                      <p className="font-semibold text-slate-800 text-sm">Account Already Exists</p>
-                      <p className="text-xs text-slate-600 mt-1">Verify your password to use your saved address.</p>
+                      <p className="font-bold text-slate-900 text-base">Welcome Back! 👋</p>
+                      <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">We found your existing account. Enter your password to verify and auto-fill your saved address details.</p>
                     </div>
                   </div>
 
@@ -813,13 +816,18 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                     </button>
                   </div>
 
-                  <div className="text-center">
+                  <div className="flex gap-2 justify-between items-center pt-1">
                     <a 
                       href="/forgot-password"
                       className="text-primary hover:text-primary-dark text-xs font-semibold underline transition-colors"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate('/forgot-password');
+                      }}
                     >
-                      Forgot Password?
+                      🔑 Forgot Password?
                     </a>
+                    <span className="text-xs text-slate-500">Or skip to checkout as guest</span>
                   </div>
                 </div>
               )}
