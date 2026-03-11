@@ -110,9 +110,12 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
   // Check if user exists by email and request password verification
   const handleEmailBlur = async () => {
     if (!address.email || !(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.email))) {
-      setExistingUserFound(false);
-      setRequiresPassword(false);
-      setPasswordVerified(false);
+      // Don't reset if password verification is already in progress
+      if (!requiresPassword || !passwordInput) {
+        setExistingUserFound(false);
+        setRequiresPassword(false);
+        setPasswordVerified(false);
+      }
       return;
     }
 
@@ -125,8 +128,9 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         setRequiresPassword(true);
         setPasswordVerified(false);
         setPasswordInput('');
-        showToast('Account found! Please verify with password.', 'info');
-      } else {
+        showToast('✅ Account found! Please verify with your password.', 'info');
+      } else if (!existingUser) {
+        // No account found with this email
         setExistingUserFound(false);
         setRequiresPassword(false);
         setPasswordVerified(false);
@@ -162,22 +166,29 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
           state: existingUserData.address.state || prev.state,
           pincode: existingUserData.address.pincode || prev.pincode
         }));
-        showToast('✅ Password verified! You are now logged in. Your address has been auto-filled.', 'success');
+        showToast('✅ Password verified! Your saved address has been auto-filled.', 'success');
       } else {
-        // If no address in profile, just fill basic info
+        // If no address in profile, fill basic info (name, phone)
         setAddress(prev => ({
           ...prev,
           name: existingUserData.name || prev.name,
           phone: existingUserData.phone || prev.phone
         }));
-        showToast('✅ Password verified! You are now logged in. Your info has been auto-filled.', 'success');
+        showToast('✅ Password verified! Your basic info has been auto-filled.', 'success');
       }
 
       // Keep user logged in for checkout - don't sign out
       setExistingUserFound(false);
       setRequiresPassword(false);
     } catch (error: any) {
-      showToast('❌ Password incorrect. Please try again.', 'error');
+      console.error('Password verification error:', error);
+      if (error.code === 'auth/wrong-password') {
+        showToast('❌ Incorrect password. Please try again.', 'error');
+      } else if (error.code === 'auth/user-not-found') {
+        showToast('❌ User account not found. Please check your email.', 'error');
+      } else {
+        showToast('❌ Verification failed. Please try again.', 'error');
+      }
       setPasswordInput('');
     } finally {
       setVerifyingPassword(false);
@@ -187,13 +198,18 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
   // Check if user exists by phone and request password verification
   const handlePhoneBlur = async () => {
     if (!address.phone || !/^[0-9]{10}$/.test(address.phone.replace(/\D/g, ''))) {
+      // If phone is invalid and no user found, reset states
+      if (!existingUserFound) {
+        setRequiresPassword(false);
+      }
       return;
     }
 
     try {
       const existingUser = await findUserByPhone(address.phone);
-      if (existingUser && !passwordVerified && !user) {
-        // Update email if found
+      if (existingUser && !user) {
+        // User not logged in but account exists by phone
+        // Update email if found and email is empty
         if (!address.email && existingUser.email) {
           setAddress(prev => ({
             ...prev,
@@ -203,13 +219,16 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         setExistingUserFound(true);
         setExistingUserData(existingUser);
         setRequiresPassword(true);
+        setPasswordVerified(false);
         setPasswordInput('');
-        showToast('✅ Account found! Please enter your password to proceed with auto-filled details.', 'info');
-      } else if (existingUser && user && !user.uid) {
-        // If user somehow changed but still not logged in
-        setExistingUserFound(true);
-        setExistingUserData(existingUser);
-        setRequiresPassword(true);
+        showToast('✅ Account found! Please verify your password to auto-fill your saved details.', 'info');
+      } else {
+        // No user found by phone, reset if not already requiring password
+        if (!requiresPassword) {
+          setExistingUserFound(false);
+          setRequiresPassword(false);
+          setPasswordVerified(false);
+        }
       }
     } catch (error) {
       console.error('Error checking user by phone:', error);
@@ -734,6 +753,87 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
               Delivery Address
             </h2>
 
+            {/* Display if account found/verified */}
+            {existingUserFound && passwordVerified && (
+              <div className="bg-green-50 border-2 border-green-400 rounded-lg p-3 flex items-center gap-2 mb-4">
+                <span className="text-lg">✅</span>
+                <div>
+                  <p className="font-semibold text-green-900 text-sm">Account Verified!</p>
+                  <p className="text-xs text-green-800">Your details have been auto-filled from your saved profile.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Password Verification - Show when existing account found, placed ABOVE the grid */}
+            {requiresPassword && !passwordVerified && (
+              <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-lg p-4 space-y-3 mb-4">
+                <div className="flex items-start gap-2">
+                  <span className="text-xl">🔐</span>
+                  <div>
+                    <p className="font-bold text-slate-900 text-base">Welcome Back! 👋</p>
+                    <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">We found your existing account registered with this email. Enter your password to verify and auto-fill your saved address details.</p>
+                  </div>
+                </div>
+
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={passwordInput}
+                    onChange={e => setPasswordInput(e.target.value)}
+                    onKeyPress={e => e.key === 'Enter' && handlePasswordVerify()}
+                    disabled={verifyingPassword}
+                    className="input-field w-full text-xs sm:text-sm pr-10"
+                    placeholder="Enter your password"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 transition-colors"
+                  >
+                    {showPassword ? '👁️' : '👁️‍🗨️'}
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={handlePasswordVerify}
+                    disabled={verifyingPassword || !passwordInput.trim()}
+                    className="flex-1 bg-primary hover:bg-primary-dark text-white font-semibold py-2 px-3 rounded-lg text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  >
+                    {verifyingPassword ? '⏳ Verifying...' : '✓ Verify Password'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRequiresPassword(false);
+                      setPasswordInput('');
+                      setPasswordVerified(false);
+                      setExistingUserData(null);
+                    }}
+                    className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 font-semibold py-2 px-3 rounded-lg text-xs sm:text-sm transition-colors"
+                  >
+                    ✗ Skip
+                  </button>
+                </div>
+
+                <div className="flex gap-2 justify-between items-center pt-1">
+                  <a 
+                    href="/forgot-password"
+                    className="text-primary hover:text-primary-dark text-xs font-semibold underline transition-colors"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      navigate('/forgot-password');
+                    }}
+                  >
+                    🔑 Forgot Password?
+                  </a>
+                  <span className="text-xs text-slate-500">Or skip to checkout as guest</span>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               {/* Name */}
               <div>
@@ -761,76 +861,6 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                 />
                 {formErrors.email && <p className="text-red-600 text-xs mt-1">{formErrors.email}</p>}
               </div>
-
-              {/* Password Verification - Show when existing account found */}
-              {requiresPassword && !passwordVerified && (
-                <div className="lg:col-span-2 bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-lg p-4 space-y-3">
-                  <div className="flex items-start gap-2">
-                    <span className="text-xl">🔐</span>
-                    <div>
-                      <p className="font-bold text-slate-900 text-base">Welcome Back! 👋</p>
-                      <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">We found your existing account. Enter your password to verify and auto-fill your saved address details.</p>
-                    </div>
-                  </div>
-
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={passwordInput}
-                      onChange={e => setPasswordInput(e.target.value)}
-                      onKeyPress={e => e.key === 'Enter' && handlePasswordVerify()}
-                      disabled={verifyingPassword}
-                      className="input-field w-full text-xs sm:text-sm pr-10"
-                      placeholder="Enter your password"
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700 transition-colors"
-                    >
-                      {showPassword ? '👁️' : '👁️‍🗨️'}
-                    </button>
-                  </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={handlePasswordVerify}
-                      disabled={verifyingPassword || !passwordInput.trim()}
-                      className="flex-1 bg-primary hover:bg-primary-dark text-white font-semibold py-2 px-3 rounded-lg text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {verifyingPassword ? '⏳ Verifying...' : '✓ Verify Password'}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setRequiresPassword(false);
-                        setPasswordInput('');
-                        setPasswordVerified(false);
-                        setExistingUserData(null);
-                      }}
-                      className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 font-semibold py-2 px-3 rounded-lg text-xs sm:text-sm transition-colors"
-                    >
-                      ✗ Skip
-                    </button>
-                  </div>
-
-                  <div className="flex gap-2 justify-between items-center pt-1">
-                    <a 
-                      href="/forgot-password"
-                      className="text-primary hover:text-primary-dark text-xs font-semibold underline transition-colors"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        navigate('/forgot-password');
-                      }}
-                    >
-                      🔑 Forgot Password?
-                    </a>
-                    <span className="text-xs text-slate-500">Or skip to checkout as guest</span>
-                  </div>
-                </div>
-              )}
 
               {/* Phone */}
               <div>
