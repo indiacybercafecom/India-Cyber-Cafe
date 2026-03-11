@@ -13,6 +13,7 @@ import { rtdb } from '../firebase';
 import { Service, Application, UserProfile, PaymentGateway, Product, ProductCategory, Order, ProductReview } from '../types';
 import { cacheManager } from '../utils/cacheManager';
 import { syncManager, mergeIncrementalData } from '../utils/syncManager';
+import { generateSlug } from '../utils/slugGenerator';
 
 // Pagination limits for large datasets
 const PAGINATION_LIMITS = {
@@ -384,8 +385,17 @@ export function useData() {
 
   // ========== STORE PRODUCTS CRUD ==========
   const addProduct = async (product: Omit<Product, 'id'>) => {
-    const newRef = push(ref(rtdb, 'products'));
-    return await set(newRef, { ...product, id: newRef.key });
+    // Generate slug-based ID from product name for better SEO
+    let productId = generateSlug(product.name);
+    
+    // Append timestamp if product with this slug already exists
+    const existingProduct = products.find(p => p.id === productId);
+    if (existingProduct) {
+      const timestamp = Date.now().toString().slice(-6);
+      productId = `${productId}-${timestamp}`;
+    }
+    
+    return await set(ref(rtdb, `products/${productId}`), { ...product, id: productId });
   };
 
   const updateProduct = async (id: string, data: Partial<Product>) => {
@@ -398,8 +408,17 @@ export function useData() {
 
   // ========== PRODUCT CATEGORIES CRUD ==========
   const addProductCategory = async (category: Omit<ProductCategory, 'id'>) => {
-    const newRef = push(ref(rtdb, 'productCategories'));
-    return await set(newRef, { ...category, id: newRef.key });
+    // Generate slug-based ID from category name for better SEO
+    let categoryId = generateSlug(category.name);
+    
+    // Append timestamp if category with this slug already exists
+    const existingCategory = productCategories.find(c => c.id === categoryId);
+    if (existingCategory) {
+      const timestamp = Date.now().toString().slice(-6);
+      categoryId = `${categoryId}-${timestamp}`;
+    }
+    
+    return await set(ref(rtdb, `productCategories/${categoryId}`), { ...category, id: categoryId });
   };
 
   const updateProductCategory = async (id: string, data: Partial<ProductCategory>) => {

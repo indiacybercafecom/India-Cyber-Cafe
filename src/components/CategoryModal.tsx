@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { ProductCategory } from '../types';
 import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
+import { generateSlug } from '../utils/slugGenerator';
 
 interface CategoryModalProps {
   category?: ProductCategory;
@@ -53,7 +54,7 @@ export function CategoryModal({ category, onClose, onSave }: CategoryModalProps)
     setLoading(true);
     try {
       if (!formData.id) {
-        formData.id = `category-${Date.now()}`;
+        formData.id = generateSlug(formData.name);
       }
       await onSave(formData);
       showToast(category ? 'Category updated successfully!' : 'Category added successfully!', 'success');

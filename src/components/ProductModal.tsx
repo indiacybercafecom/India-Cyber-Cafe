@@ -121,8 +121,9 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
 
     setLoading(true);
     try {
-      if (!formData.id) {
-        formData.id = `product-${Date.now()}`;
+      // Generate ID as slug from product name (only for new products)
+      if (!product) {
+        formData.id = generateSlug(formData.name);
       }
       
       // Generate permalink from product name

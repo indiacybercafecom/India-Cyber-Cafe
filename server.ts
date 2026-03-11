@@ -89,6 +89,9 @@ async function startServer() {
     const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
     
     let services: any[] = [];
+    let productCategories: any[] = [];
+    let products: any[] = [];
+    
     try {
       const response = await fetch(`${databaseURL}/services.json`);
       if (response.ok) {
@@ -102,9 +105,34 @@ async function startServer() {
       console.error("Error fetching services for sitemap:", error);
     }
 
+    try {
+      const response = await fetch(`${databaseURL}/productCategories.json`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data) {
+          productCategories = Array.isArray(data) ? data : Object.values(data);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching product categories for sitemap:", error);
+    }
+
+    try {
+      const response = await fetch(`${databaseURL}/products.json`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data) {
+          products = Array.isArray(data) ? data : Object.values(data);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching products for sitemap:", error);
+    }
+
     const staticPages = [
       "",
       "/services",
+      "/store",
       "/track",
       "/profile",
       "/about",
@@ -140,6 +168,20 @@ async function startServer() {
             }
           });
         }
+      }
+    });
+
+    // Product Categories
+    productCategories.forEach(category => {
+      if (category && category.id) {
+        sitemap += `  <url>\n    <loc>${baseUrl}/store/${category.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n  </url>\n`;
+      }
+    });
+
+    // Products
+    products.forEach(product => {
+      if (product && product.id) {
+        sitemap += `  <url>\n    <loc>${baseUrl}/store/${product.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n  </url>\n`;
       }
     });
 
