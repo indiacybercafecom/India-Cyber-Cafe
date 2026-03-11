@@ -13,7 +13,7 @@ interface ServiceBuilderModalProps {
 export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilderModalProps) {
   const [name, setName] = useState(service?.name || '');
   const [icon, setIcon] = useState(service?.icon || 'file-text');
-  const [iconType, setIconType] = useState<'class' | 'url'>('class');
+  const [iconType, setIconType] = useState<'class' | 'url'>(service?.iconType || 'class');
   const [description, setDescription] = useState(service?.description || '');
   const [fields, setFields] = useState<ServiceField[]>(service?.fields || []);
   const [subservices, setSubservices] = useState<SubService[]>(service?.subservices || []);
@@ -89,6 +89,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
       id: service?.id || name.toLowerCase().replace(/ /g, '-'),
       name,
       icon,
+      iconType,
       description,
       fields,
       subservices,

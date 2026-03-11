@@ -120,23 +120,28 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
     }
 
     try {
+      console.log('🔍 Checking for existing user with email:', address.email);
       const existingUser = await findUserByEmail(address.email);
-      if (existingUser && !user) {
-        // User not logged in but account exists - require password verification
+      console.log('📊 Found user:', existingUser);
+      
+      if (existingUser) {
+        // Account exists in database
+        console.log('✅ Account found with email:', address.email);
         setExistingUserFound(true);
         setExistingUserData(existingUser);
         setRequiresPassword(true);
         setPasswordVerified(false);
         setPasswordInput('');
         showToast('✅ Account found! Please verify with your password.', 'info');
-      } else if (!existingUser) {
-        // No account found with this email
+      } else {
+        // No account found
+        console.log('❌ No account found with email:', address.email);
         setExistingUserFound(false);
         setRequiresPassword(false);
         setPasswordVerified(false);
       }
     } catch (error) {
-      console.error('Error checking user by email:', error);
+      console.error('❌ Error checking user by email:', error);
     }
   };
 
@@ -206,11 +211,16 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
     }
 
     try {
+      console.log('🔍 Checking for existing user with phone:', address.phone);
       const existingUser = await findUserByPhone(address.phone);
-      if (existingUser && !user) {
-        // User not logged in but account exists by phone
+      console.log('📊 Found user:', existingUser);
+      
+      if (existingUser) {
+        // User account exists by phone
+        console.log('✅ Account found with phone:', address.phone);
         // Update email if found and email is empty
         if (!address.email && existingUser.email) {
+          console.log('📧 Auto-filling email:', existingUser.email);
           setAddress(prev => ({
             ...prev,
             email: existingUser.email
@@ -223,7 +233,8 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         setPasswordInput('');
         showToast('✅ Account found! Please verify your password to auto-fill your saved details.', 'info');
       } else {
-        // No user found by phone, reset if not already requiring password
+        // No user found by phone
+        console.log('❌ No account found with phone:', address.phone);
         if (!requiresPassword) {
           setExistingUserFound(false);
           setRequiresPassword(false);
@@ -231,7 +242,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         }
       }
     } catch (error) {
-      console.error('Error checking user by phone:', error);
+      console.error('❌ Error checking user by phone:', error);
     }
   };
 

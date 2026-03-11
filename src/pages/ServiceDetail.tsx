@@ -34,8 +34,16 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
         url={`https://b.indiacybercafe.com/services/${service.id}`}
       />
       <div className="flex flex-col sm:flex-row items-center gap-6 bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
-        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center shrink-0">
-          <IconRenderer name={service.icon} className="w-10 h-10 sm:w-12 sm:h-12 text-navy" />
+        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center shrink-0 overflow-hidden">
+          {service.iconType === 'url' && service.icon ? (
+            service.icon.toLowerCase().endsWith('.mp4') ? (
+              <video src={service.icon} className="w-full h-full object-cover" muted autoPlay loop />
+            ) : (
+              <img src={service.icon} alt={service.name} className="w-full h-full object-cover" />
+            )
+          ) : (
+            <IconRenderer name={service.icon} className="w-10 h-10 sm:w-12 sm:h-12 text-navy" />
+          )}
         </div>
         <div className="text-center sm:text-left space-y-2">
           <h2 className="text-3xl sm:text-4xl font-bold text-navy">{service.name}</h2>

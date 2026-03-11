@@ -31,6 +31,7 @@ export interface Service {
   id: string;
   name: string;
   icon: string;
+  iconType?: 'class' | 'url'; // 'class' for icon class names, 'url' for image/gif/mp4 links
   description: string;
   fields: ServiceField[];
   subservices: SubService[];

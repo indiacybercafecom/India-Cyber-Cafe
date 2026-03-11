@@ -48,8 +48,16 @@ export function Services({ services }: ServicesProps) {
             className="card group cursor-pointer p-6 sm:p-8"
             onClick={() => navigate(`/services/${service.id}`)}
           >
-            <div className="w-14 h-14 sm:w-20 sm:h-20 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 group-hover:rotate-12 active:rotate-12 transition-all">
-              <IconRenderer name={service.icon} className="w-6 h-6 sm:w-10 sm:h-10 text-navy group-hover:text-primary active:text-primary transition-all" />
+            <div className="w-14 h-14 sm:w-20 sm:h-20 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 group-hover:rotate-12 active:rotate-12 transition-all overflow-hidden">
+              {service.iconType === 'url' && service.icon ? (
+                service.icon.toLowerCase().endsWith('.mp4') ? (
+                  <video src={service.icon} className="w-full h-full object-cover" muted autoPlay loop />
+                ) : (
+                  <img src={service.icon} alt={service.name} className="w-full h-full object-cover" />
+                )
+              ) : (
+                <IconRenderer name={service.icon} className="w-6 h-6 sm:w-10 sm:h-10 text-navy group-hover:text-primary active:text-primary transition-all" />
+              )}
             </div>
             <h3 className="text-lg sm:text-xl font-bold text-navy mb-1 sm:mb-2">{service.name}</h3>
             <p className="text-slate-500 text-xs sm:text-sm line-clamp-2">{service.description}</p>
