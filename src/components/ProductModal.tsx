@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { Product, ProductCategory } from '../types';
 import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { uploadFile } from '../services/uploadService';
 import { generateSlug } from '../utils/slugGenerator';
 
 interface ProductModalProps {
@@ -45,37 +45,26 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
 
     setUploadingImages(true);
     try {
-      const storage = getStorage();
       const uploadedUrls: string[] = [];
 
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
         
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-          showToast('Please select valid image files', 'error');
-          continue;
+        try {
+          const url = await uploadFile(file, 'products');
+          uploadedUrls.push(url);
+        } catch (error: any) {
+          showToast(`Failed to upload ${file.name}: ${error.message}`, 'error');
         }
-
-        // Validate file size (5MB max)
-        if (file.size > 5 * 1024 * 1024) {
-          showToast(`Image ${file.name} is too large (max 5MB)`, 'error');
-          continue;
-        }
-
-        const timestamp = Date.now();
-        const storageRef = ref(storage, `products/${timestamp}-${file.name}`);
-        
-        const snapshot = await uploadBytes(storageRef, file);
-        const url = await getDownloadURL(snapshot.ref);
-        uploadedUrls.push(url);
       }
 
-      setFormData(prev => ({
-        ...prev,
-        images: [...(prev.images || []), ...uploadedUrls]
-      }));
-      showToast(`${uploadedUrls.length} images uploaded successfully!`, 'success');
+      if (uploadedUrls.length > 0) {
+        setFormData(prev => ({
+          ...prev,
+          images: [...(prev.images || []), ...uploadedUrls]
+        }));
+        showToast(`${uploadedUrls.length} image(s) uploaded successfully!`, 'success');
+      }
     } catch (error: any) {
       showToast(error.message || 'Failed to upload images', 'error');
     } finally {
