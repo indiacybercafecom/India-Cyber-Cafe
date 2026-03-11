@@ -22,20 +22,34 @@ export function generateRandomPassword(length: number = 6): string {
  */
 export async function findUserByEmail(email: string) {
   try {
+    const normalizedEmail = email.toLowerCase().trim();
+    console.log('🔎 Searching for email in database:', normalizedEmail);
+    
     const usersRef = dbRef(rtdb, 'users');
     const snapshot = await get(usersRef);
     
-    if (!snapshot.exists()) return null;
+    if (!snapshot.exists()) {
+      console.log('❌ No users found in database');
+      return null;
+    }
     
     const users = snapshot.val() as Record<string, any>;
+    console.log('📋 Total users in database:', Object.keys(users).length);
+    
     for (const [uid, userData] of Object.entries(users)) {
-      if (userData.email === email) {
+      const userEmail = userData.email ? userData.email.toLowerCase().trim() : '';
+      console.log('🔍 Comparing:', userEmail, '===', normalizedEmail, '→', userEmail === normalizedEmail);
+      
+      if (userEmail === normalizedEmail) {
+        console.log('✅ Found matching user:', uid);
         return { uid, ...userData };
       }
     }
+    
+    console.log('❌ No matching user found');
     return null;
   } catch (error) {
-    console.error('Error finding user by email:', error);
+    console.error('❌ Error finding user by email:', error);
     return null;
   }
 }
@@ -45,20 +59,34 @@ export async function findUserByEmail(email: string) {
  */
 export async function findUserByPhone(phone: string) {
   try {
+    const normalizedPhone = phone.replace(/\D/g, ''); // Remove all non-digits
+    console.log('🔎 Searching for phone in database:', normalizedPhone);
+    
     const usersRef = dbRef(rtdb, 'users');
     const snapshot = await get(usersRef);
     
-    if (!snapshot.exists()) return null;
+    if (!snapshot.exists()) {
+      console.log('❌ No users found in database');
+      return null;
+    }
     
     const users = snapshot.val() as Record<string, any>;
+    console.log('📋 Total users in database:', Object.keys(users).length);
+    
     for (const [uid, userData] of Object.entries(users)) {
-      if (userData.phone === phone) {
+      const userPhone = userData.phone ? userData.phone.replace(/\D/g, '') : '';
+      console.log('🔍 Comparing:', userPhone, '===', normalizedPhone, '→', userPhone === normalizedPhone);
+      
+      if (userPhone === normalizedPhone) {
+        console.log('✅ Found matching user:', uid);
         return { uid, ...userData };
       }
     }
+    
+    console.log('❌ No matching user found');
     return null;
   } catch (error) {
-    console.error('Error finding user by phone:', error);
+    console.error('❌ Error finding user by phone:', error);
     return null;
   }
 }

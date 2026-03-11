@@ -197,6 +197,62 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                     }} />
                     <button onClick={() => setSubservices(subservices.filter((_, idx) => idx !== i))} className="text-red-500 hover:scale-110 transition-all"><IconRenderer name="trash" className="w-5 h-5" /></button>
                   </div>
+
+                  {/* Sub-service image/background */}
+                  <div className="space-y-3 bg-white rounded-lg p-4 border border-slate-100">
+                    <div className="flex justify-between items-center">
+                      <h5 className="text-sm font-bold text-navy/70 uppercase tracking-wider">Sub-Service Display Image</h5>
+                      <div className="flex gap-2">
+                        <button 
+                          onClick={() => {
+                            const newSS = [...subservices];
+                            newSS[i].imageType = newSS[i].imageType === 'url' ? 'class' : 'url';
+                            setSubservices(newSS);
+                          }}
+                          className={`text-xs font-bold px-2 py-1 rounded transition-all ${ss.imageType === 'url' ? 'bg-primary text-white' : 'bg-slate-200 text-slate-700'}`}
+                        >
+                          {ss.imageType === 'url' ? 'Image/Video' : 'Icon Class'}
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {ss.imageType === 'url' ? (
+                      <div className="space-y-2">
+                        <input 
+                          type="text" 
+                          className="input-field text-sm" 
+                          value={ss.image || ''} 
+                          onChange={e => {
+                            const newSS = [...subservices];
+                            newSS[i].image = e.target.value;
+                            setSubservices(newSS);
+                          }}
+                          placeholder="e.g., https://example.com/image.jpg or https://example.com/video.mp4" 
+                        />
+                        {ss.image && (
+                          <div className="bg-slate-100 rounded-lg p-3 flex items-center justify-center min-h-40 border border-slate-200 overflow-hidden">
+                            {ss.image.toLowerCase().endsWith('.mp4') ? (
+                              <video src={ss.image} className="max-w-full max-h-40 rounded" muted autoPlay loop />
+                            ) : (
+                              <img src={ss.image} alt="Preview" className="max-w-full max-h-40 rounded object-cover" />
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <input 
+                        type="text" 
+                        className="input-field text-sm" 
+                        value={ss.image || ''} 
+                        onChange={e => {
+                          const newSS = [...subservices];
+                          newSS[i].image = e.target.value;
+                          setSubservices(newSS);
+                        }}
+                        placeholder="e.g., file-text, shield, fingerprint" 
+                      />
+                    )}
+                  </div>
                   
                   {/* Sub-service specific fields */}
                   <div className="pl-6 border-l-2 border-primary/20 space-y-3">

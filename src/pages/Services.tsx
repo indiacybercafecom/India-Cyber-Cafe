@@ -48,7 +48,11 @@ export function Services({ services }: ServicesProps) {
             className="card group cursor-pointer p-6 sm:p-8"
             onClick={() => navigate(`/services/${service.id}`)}
           >
-            <div className="w-14 h-14 sm:w-20 sm:h-20 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center mx-auto mb-4 sm:mb-6 group-hover:rotate-12 active:rotate-12 transition-all overflow-hidden">
+            <div className={`flex items-center justify-center mx-auto mb-4 sm:mb-6 transition-all ${
+              service.iconType === 'url' && service.icon
+                ? 'w-full h-48 sm:h-56 rounded-2xl border border-slate-200 overflow-hidden'
+                : 'w-14 h-14 sm:w-20 sm:h-20 bg-linear-to-br from-primary/10 to-navy/10 rounded-full group-hover:rotate-12 active:rotate-12 overflow-hidden'
+            }`}>
               {service.iconType === 'url' && service.icon ? (
                 service.icon.toLowerCase().endsWith('.mp4') ? (
                   <video src={service.icon} className="w-full h-full object-cover" muted autoPlay loop />

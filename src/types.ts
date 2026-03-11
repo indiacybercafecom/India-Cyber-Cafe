@@ -25,6 +25,8 @@ export interface SubService {
   paymentMethods: string[]; // e.g., ['cash', 'razorpay', 'pay_after_work', 'free']
   gatewayIds?: string[]; // IDs of specific PaymentGateway objects
   fields?: ServiceField[];
+  image?: string; // Image/GIF/MP4 URL for sub-service display
+  imageType?: 'class' | 'url'; // 'class' for icon classes, 'url' for image/gif/mp4 links
 }
 
 export interface Service {

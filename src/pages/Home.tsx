@@ -104,7 +104,11 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
                 className="card group cursor-pointer p-4 sm:p-6"
                 onClick={() => navigate(`/services/${service.id}`)}
               >
-                <div className="w-12 h-12 sm:w-16 sm:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 group-hover:rotate-12 transition-all overflow-hidden">
+                <div className={`flex items-center justify-center mx-auto mb-3 sm:mb-4 transition-all ${
+                  service.iconType === 'url' && service.icon
+                    ? 'w-full h-40 sm:h-48 rounded-xl border border-slate-200 overflow-hidden'
+                    : 'w-12 h-12 sm:w-16 sm:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full group-hover:rotate-12 overflow-hidden'
+                }`}>
                   {service.iconType === 'url' && service.icon ? (
                     service.icon.toLowerCase().endsWith('.mp4') ? (
                       <video src={service.icon} className="w-full h-full object-cover" muted autoPlay loop />

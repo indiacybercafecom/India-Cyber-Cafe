@@ -34,7 +34,11 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
         url={`https://b.indiacybercafe.com/services/${service.id}`}
       />
       <div className="flex flex-col sm:flex-row items-center gap-6 bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
-        <div className="w-20 h-20 sm:w-24 sm:h-24 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center shrink-0 overflow-hidden">
+        <div className={`flex items-center justify-center shrink-0 overflow-hidden ${
+          service.iconType === 'url' && service.icon
+            ? 'w-full sm:w-64 h-48 sm:h-56 rounded-2xl border border-slate-200'
+            : 'w-20 h-20 sm:w-24 sm:h-24 bg-linear-to-br from-primary/10 to-navy/10 rounded-full'
+        }`}>
           {service.iconType === 'url' && service.icon ? (
             service.icon.toLowerCase().endsWith('.mp4') ? (
               <video src={service.icon} className="w-full h-full object-cover" muted autoPlay loop />
@@ -57,34 +61,56 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
           {service.subservices.map((ss, i) => (
             <div 
               key={i} 
-              className="bg-white p-6 rounded-2xl shadow-md border border-slate-100 hover:border-primary hover:shadow-xl transition-all cursor-pointer group"
+              className="bg-white rounded-2xl shadow-md border border-slate-100 hover:border-primary hover:shadow-xl transition-all cursor-pointer group overflow-hidden flex flex-col h-full"
               onClick={() => navigate(`/services/${service.id}/${slugify(ss.name)}`)}
             >
-              <div className="flex justify-between items-start mb-4">
-                <div className="w-12 h-12 bg-primary/10 rounded-xl flex items-center justify-center group-hover:bg-primary group-hover:text-white transition-all">
-                  <IconRenderer name="file-circle-plus" className="w-6 h-6" />
-                </div>
-                <div className="text-right">
-                  <div className="flex items-center gap-2 justify-end">
-                    {ss.originalCharge && ss.originalCharge > ss.charge && (
-                      <span className="text-xs text-slate-400 line-through">₹{ss.originalCharge}</span>
-                    )}
-                    <span className="text-lg font-bold text-primary">₹{ss.charge}</span>
-                  </div>
-                  {ss.originalCharge && ss.originalCharge > ss.charge && (
-                    <span className="inline-block bg-green-100 text-green-600 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1">
-                      {Math.round(((ss.originalCharge - ss.charge) / ss.originalCharge) * 100)}% OFF
-                    </span>
+              {/* Sub-Service Image/Icon Display */}
+              {ss.image && (
+                <div className={`w-full flex items-center justify-center overflow-hidden ${
+                  ss.imageType === 'url' && ss.image
+                    ? 'h-48 sm:h-56 bg-slate-100'
+                    : 'h-20 sm:h-24 bg-primary/10'
+                }`}>
+                  {ss.imageType === 'url' && ss.image ? (
+                    ss.image.toLowerCase().endsWith('.mp4') ? (
+                      <video src={ss.image} className="w-full h-full object-cover" muted autoPlay loop />
+                    ) : (
+                      <img src={ss.image} alt={ss.name} className="w-full h-full object-cover" />
+                    )
+                  ) : (
+                    <IconRenderer name={ss.image || 'file-circle-plus'} className="w-10 h-10 sm:w-12 sm:h-12 text-primary" />
                   )}
                 </div>
-              </div>
-              <h4 className="text-lg font-bold text-navy mb-2">{ss.name}</h4>
-              <div className="flex flex-wrap gap-2 mt-4">
-                {ss.paymentMethods.map((pm, idx) => (
-                  <span key={idx} className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 px-2 py-1 rounded">
-                    {pm.replace(/_/g, ' ')}
-                  </span>
-                ))}
+              )}
+              
+              {/* Sub-Service Content */}
+              <div className="p-6 flex flex-col flex-1">
+                <div className="flex justify-between items-start mb-4 flex-1">
+                  <div className="space-y-2 flex-1">
+                    <h4 className="text-lg font-bold text-navy">{ss.name}</h4>
+                  </div>
+                  <div className="text-right ml-4">
+                    <div className="flex items-center gap-2 justify-end">
+                      {ss.originalCharge && ss.originalCharge > ss.charge && (
+                        <span className="text-xs text-slate-400 line-through">₹{ss.originalCharge}</span>
+                      )}
+                      <span className="text-lg font-bold text-primary">₹{ss.charge}</span>
+                    </div>
+                    {ss.originalCharge && ss.originalCharge > ss.charge && (
+                      <span className="inline-block bg-green-100 text-green-600 text-[10px] font-bold px-2 py-0.5 rounded-full mt-1">
+                        {Math.round(((ss.originalCharge - ss.charge) / ss.originalCharge) * 100)}% OFF
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                <div className="flex flex-wrap gap-2 mt-auto">
+                  {ss.paymentMethods.map((pm, idx) => (
+                    <span key={idx} className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 px-2 py-1 rounded">
+                      {pm.replace(/_/g, ' ')}
+                    </span>
+                  ))}
+                </div>
               </div>
             </div>
           ))}
