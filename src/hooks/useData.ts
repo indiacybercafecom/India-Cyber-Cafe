@@ -395,15 +395,34 @@ export function useData() {
       productId = `${productId}-${timestamp}`;
     }
     
-    return await set(ref(rtdb, `products/${productId}`), { ...product, id: productId });
+    await set(ref(rtdb, `products/${productId}`), { ...product, id: productId });
+    
+    // Update local state immediately so UI reflects changes
+    const newProduct = { ...product, id: productId } as Product;
+    const updatedProducts = [...products, newProduct];
+    setProducts(updatedProducts);
+    cacheManager.set('products', updatedProducts);
+    syncManager.updateSync('products');
   };
 
   const updateProduct = async (id: string, data: Partial<Product>) => {
-    return await update(ref(rtdb, `products/${id}`), data);
+    await update(ref(rtdb, `products/${id}`), data);
+    
+    // Update local state immediately
+    const updatedProducts = products.map(p => p.id === id ? { ...p, ...data } : p);
+    setProducts(updatedProducts);
+    cacheManager.set('products', updatedProducts);
+    syncManager.updateSync('products');
   };
 
   const deleteProduct = async (id: string) => {
-    return await remove(ref(rtdb, `products/${id}`));
+    await remove(ref(rtdb, `products/${id}`));
+    
+    // Update local state immediately
+    const updatedProducts = products.filter(p => p.id !== id);
+    setProducts(updatedProducts);
+    cacheManager.set('products', updatedProducts);
+    syncManager.updateSync('products');
   };
 
   // ========== PRODUCT CATEGORIES CRUD ==========
@@ -418,15 +437,34 @@ export function useData() {
       categoryId = `${categoryId}-${timestamp}`;
     }
     
-    return await set(ref(rtdb, `productCategories/${categoryId}`), { ...category, id: categoryId });
+    await set(ref(rtdb, `productCategories/${categoryId}`), { ...category, id: categoryId });
+    
+    // Update local state immediately
+    const newCategory = { ...category, id: categoryId } as ProductCategory;
+    const updatedCategories = [...productCategories, newCategory];
+    setProductCategories(updatedCategories);
+    cacheManager.set('productCategories', updatedCategories);
+    syncManager.updateSync('productCategories');
   };
 
   const updateProductCategory = async (id: string, data: Partial<ProductCategory>) => {
-    return await update(ref(rtdb, `productCategories/${id}`), data);
+    await update(ref(rtdb, `productCategories/${id}`), data);
+    
+    // Update local state immediately
+    const updatedCategories = productCategories.map(c => c.id === id ? { ...c, ...data } : c);
+    setProductCategories(updatedCategories);
+    cacheManager.set('productCategories', updatedCategories);
+    syncManager.updateSync('productCategories');
   };
 
   const deleteProductCategory = async (id: string) => {
-    return await remove(ref(rtdb, `productCategories/${id}`));
+    await remove(ref(rtdb, `productCategories/${id}`));
+    
+    // Update local state immediately
+    const updatedCategories = productCategories.filter(c => c.id !== id);
+    setProductCategories(updatedCategories);
+    cacheManager.set('productCategories', updatedCategories);
+    syncManager.updateSync('productCategories');
   };
 
   // ========== ORDERS CRUD ==========
