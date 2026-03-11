@@ -270,11 +270,9 @@ function AppContent() {
                 />
               ) : <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} />
             } />
-            <Route path="/profile" element={authLoading ? <PageSkeleton /> : user ? <Profile user={user} /> : <Navigate to="/" />} />
+            <Route path="/profile" element={user ? <Profile user={user} /> : <Navigate to="/" />} />
             <Route path="/operator" element={
-              authLoading ? (
-                <PageSkeleton />
-              ) : user?.role === 'operator' ? (
+              user?.role === 'operator' ? (
                 <Operator 
                   applications={applications}
                   user={user}
@@ -283,9 +281,7 @@ function AppContent() {
               ) : <Navigate to="/" />
             } />
             <Route path="/admin" element={
-              authLoading ? (
-                <PageSkeleton />
-              ) : user?.role === 'admin' ? (
+              user?.role === 'admin' ? (
                 <Admin 
                   applications={applications}
                   users={users}
@@ -320,7 +316,6 @@ function AppContent() {
                   onAddCategory={addProductCategory}
                   onUpdateCategory={updateProductCategory}
                   onDeleteCategory={deleteProductCategory}
-                  onDeleteProductReview={deleteProductReview}
                   currentUser={user}
                 />
               ) : <Navigate to="/" />
