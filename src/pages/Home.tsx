@@ -51,13 +51,13 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
         </div>
         <div className="hidden md:flex items-center justify-center shrink-0 h-[200px] lg:h-[250px]">
           <div className="relative w-full h-full flex items-center justify-center">
-            {/* Animated background circles */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="absolute w-32 h-32 lg:w-40 lg:h-40 rounded-full border-2 border-primary/20 animate-pulse"></div>
-              <div className="absolute w-24 h-24 lg:w-32 lg:h-32 rounded-full border-2 border-primary/30 animate-spin" style={{animationDuration: '8s'}}></div>
-            </div>
-            {/* Monitor Icon with animation */}
-            <IconRenderer name="monitor" className="w-[120px] h-[120px] lg:w-[150px] lg:h-[150px] text-primary drop-shadow-lg animate-bounce" />
+            {/* Lottie Animation */}
+            <dotlottie-wc
+              src="https://lottie.host/ec4bf91c-cc73-4056-b87f-9eaedb9293d9/M8QLqGxWFm.lottie"
+              style={{ width: '300px', height: '300px' }}
+              autoplay
+              loop
+            ></dotlottie-wc>
           </div>
         </div>
       </section>
