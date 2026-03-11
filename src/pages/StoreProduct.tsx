@@ -13,7 +13,7 @@ interface StoreProductProps {
 }
 
 export function StoreProduct({ products, reviews, user, onAddReview }: StoreProductProps) {
-  const { productId } = useParams<{ productId: string }>();
+  const { productId, categoryId } = useParams<{ productId: string; categoryId: string }>();
   const navigate = useNavigate();
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
@@ -41,7 +41,7 @@ export function StoreProduct({ products, reviews, user, onAddReview }: StoreProd
   const seoDescription = `${product.shortDescription}. Price: ₹${product.discountedPrice || product.price}. ${productReviews.length} customer reviews.`;
 
   const handleBuyNow = () => {
-    navigate(`/store/${productId}/checkout`, {
+    navigate(`/store/${categoryId}/${productId}/checkout`, {
       state: { quantity }
     });
   };
@@ -51,7 +51,7 @@ export function StoreProduct({ products, reviews, user, onAddReview }: StoreProd
       <SEO
         title={`${product.name} - India Cyber Cafe Store`}
         description={seoDescription}
-        url={`https://b.indiacybercafe.com/store/${productId}`}
+        url={`https://b.indiacybercafe.com/store/${categoryId}/${productId}`}
         keywords={product.seoKeywords || product.name}
       />
 

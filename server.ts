@@ -180,8 +180,8 @@ async function startServer() {
 
     // Products
     products.forEach(product => {
-      if (product && product.id) {
-        sitemap += `  <url>\n    <loc>${baseUrl}/store/${product.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.6</priority>\n  </url>\n`;
+      if (product && product.id && product.category) {
+        sitemap += `  <url>\n    <loc>${baseUrl}/store/${product.category}/${product.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.6</priority>\n  </url>\n`;
       }
     });
 

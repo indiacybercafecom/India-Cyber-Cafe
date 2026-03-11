@@ -124,7 +124,7 @@ export function Store({ products, categories, onSelectProduct }: StoreProps) {
             <div
               key={product.id}
               className="group cursor-pointer bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-slate-200 hover:border-primary hover:shadow-lg transition-all"
-              onClick={() => navigate(`/store/${product.id}`)}
+              onClick={() => navigate(`/store/${product.category}/${product.id}`)}
             >
               {/* Image Container */}
               <div className="relative aspect-square overflow-hidden bg-slate-100">

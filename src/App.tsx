@@ -231,14 +231,14 @@ function AppContent() {
             {/* Store Routes */}
             <Route path="/store" element={<Store products={products} categories={productCategories} />} />
             <Route path="/store/order-confirmation" element={<OrderConfirmation />} />
-            <Route path="/store/:productId/checkout" element={
+            <Route path="/store/:categoryId/:productId/checkout" element={
               <StoreCheckout 
                 products={products}
                 user={user}
                 onAddOrder={addOrder}
               />
             } />
-            <Route path="/store/:productId" element={
+            <Route path="/store/:categoryId/:productId" element={
               <StoreProduct 
                 products={products} 
                 reviews={productReviews}

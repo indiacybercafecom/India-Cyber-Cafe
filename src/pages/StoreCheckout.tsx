@@ -21,7 +21,7 @@ interface StoreCheckoutProps {
 }
 
 export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps) {
-  const { productId } = useParams<{ productId: string }>();
+  const { productId, categoryId } = useParams<{ productId: string; categoryId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const quantity = location.state?.quantity || 1;
@@ -647,7 +647,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       {/* Header */}
       <div>
         <button
-          onClick={() => navigate(`/store/${productId}`)}
+          onClick={() => navigate(`/store/${categoryId}/${productId}`)}
           className="flex items-center gap-2 text-primary font-semibold hover:gap-3 transition-all mb-4"
         >
           <IconRenderer name="arrow-left" className="w-4 h-4" />
