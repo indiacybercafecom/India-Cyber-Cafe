@@ -31,7 +31,7 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
         title={`${service.name} Services`}
         description={service.description}
         keywords={`${service.name}, ${service.subservices.map(ss => ss.name).join(', ')}, India Cyber Cafe`}
-        url={`https://book.indiacybercafe.com/services/${service.id}`}
+        url={`https://b.indiacybercafe.com/services/${service.id}`}
       />
       <div className="flex flex-col sm:flex-row items-center gap-6 bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
         <div className="w-20 h-20 sm:w-24 sm:h-24 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center shrink-0">

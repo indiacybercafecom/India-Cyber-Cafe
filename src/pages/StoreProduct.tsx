@@ -51,7 +51,7 @@ export function StoreProduct({ products, reviews, user, onAddReview }: StoreProd
       <SEO
         title={`${product.name} - India Cyber Cafe Store`}
         description={seoDescription}
-        url={`https://book.indiacybercafe.com/store/${productId}`}
+        url={`https://b.indiacybercafe.com/store/${productId}`}
         keywords={product.seoKeywords || product.name}
       />
 

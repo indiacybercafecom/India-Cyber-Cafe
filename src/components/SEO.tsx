@@ -14,7 +14,7 @@ export function SEO({
   description = "Apply for Government Services, Jobs & Documents online with India's trusted digital partner. Fast, secure, and reliable digital services.",
   keywords = "India Cyber Cafe, Digital Seva, Government Services, Online Application, CSC, Digital India",
   image = "https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png",
-  url = "https://book.indiacybercafe.com",
+  url = "https://b.indiacybercafe.com",
   type = "website"
 }: SEOProps) {
   const siteTitle = title.includes("India Cyber Cafe") ? title : `${title} | India Cyber Cafe`;

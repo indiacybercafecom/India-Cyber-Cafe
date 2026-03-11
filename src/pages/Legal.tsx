@@ -11,7 +11,7 @@ export function Legal() {
       sections: [
         {
           heading: "1. Acceptance of Terms",
-          text: "By accessing and using India Cyber Cafe (https://indiacybercafe.com and https://book.indiacybercafe.com), you agree to comply with and be bound by these Terms and Conditions. Our services are available only to Indian citizens residing in India."
+          text: "By accessing and using India Cyber Cafe (https://indiacybercafe.com and https://b.indiacybercafe.com), you agree to comply with and be bound by these Terms and Conditions. Our services are available only to Indian citizens residing in India."
         },
         {
           heading: "2. Nature of Services",
@@ -112,7 +112,7 @@ export function Legal() {
         },
         {
           heading: "Email Support",
-          text: "icc@booking.indiacybercafe.com\nicc@indiacybercafe.com"
+          text: "icc@b.indiacybercafe.com\nicc@indiacybercafe.com"
         },
         {
           heading: "Phone",

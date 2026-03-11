@@ -269,7 +269,7 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
         title={selectedSubService ? `${selectedSubService.name} - ${service.name}` : service.name}
         description={`Apply for ${selectedSubService?.name || service.name} online at India Cyber Cafe. Fast and secure digital services.`}
         keywords={`${selectedSubService?.name || ''}, ${service.name}, online application, India Cyber Cafe`}
-        url={`https://book.indiacybercafe.com/services/${service.id}/${subserviceName || ''}`}
+        url={`https://b.indiacybercafe.com/services/${service.id}/${subserviceName || ''}`}
       />
       <button 
         onClick={() => navigate(`/services/${service.id}`)}

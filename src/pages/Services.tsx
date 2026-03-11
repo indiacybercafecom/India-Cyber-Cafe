@@ -23,7 +23,7 @@ export function Services({ services }: ServicesProps) {
       <SEO 
         title="All Services"
         description="Explore all digital services provided by India Cyber Cafe. From government documents to job applications, we handle it all."
-        url="https://book.indiacybercafe.com/services"
+        url="https://b.indiacybercafe.com/services"
       />
       <div className="text-center space-y-2 sm:space-y-4">
         <h2 className="text-2xl sm:text-4xl font-bold text-navy">Select Service</h2>

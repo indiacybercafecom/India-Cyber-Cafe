@@ -46,7 +46,7 @@ export function Store({ products, categories, onSelectProduct }: StoreProps) {
       <SEO
         title="Store - India Cyber Cafe"
         description={seoDescription}
-        url="https://book.indiacybercafe.com/store"
+        url="https://b.indiacybercafe.com/store"
         keywords="custom prints, products, store, india cyber cafe"
       />
 
