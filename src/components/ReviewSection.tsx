@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { uploadFile } from '../services/uploadService';
+import { uploadBytes, getDownloadURL, ref } from 'firebase/storage';
+import { storage } from '../firebase';
 import { IconRenderer } from './Icons';
 import { ProductReview, UserProfile } from '../types';
 import { showToast } from './Toast';
@@ -76,16 +77,24 @@ export function ReviewSection({ reviews, productId, productName = 'Product', use
         for (let i = 0; i < imageFiles.length; i++) {
           try {
             const file = imageFiles[i];
-            const customName = `review_${user.uid}_${Date.now()}_${i}`;
+            const timestamp = Date.now();
+            const fileExt = file.name.split('.').pop();
+            const fileName = `review_${user.uid}_${timestamp}_${i}.${fileExt}`;
             
-            // Upload image to Firebase Storage using uploadService
-            const downloadUrl = await uploadFile(file, 'reviews', customName);
+            // Create storage reference for the review image
+            const storageRef = ref(storage, `reviews/${productId}/${fileName}`);
+            
+            // Upload file to Firebase Storage
+            await uploadBytes(storageRef, file);
+            
+            // Get download URL
+            const downloadUrl = await getDownloadURL(storageRef);
             imageUrls.push(downloadUrl);
             
             console.log(`✅ Image ${i + 1} uploaded successfully`);
-          } catch (error: any) {
+          } catch (error) {
             console.error(`Error uploading image ${i + 1}:`, error);
-            showToast(`Failed to upload image ${i + 1}: ${error.message}`, 'error');
+            showToast(`Failed to upload image ${i + 1}`, 'error');
             setSubmitting(false);
             return;
           }

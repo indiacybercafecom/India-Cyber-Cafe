@@ -6,7 +6,8 @@ import { IconRenderer } from '../components/Icons';
 import { Product, UserProfile, Order, OrderAddress } from '../types';
 import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
-import { uploadFile } from '../services/uploadService';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../firebase';
 import { update, ref as dbRef } from 'firebase/database';
 import { generateOrderId } from '../utils/orderIdGenerator';
 import { getRazorpayKeyId, verifyRazorpayPayment } from '../services/razorpayService';
@@ -217,17 +218,14 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
 
     try {
       setUploading(true);
-      console.log(`[Checkout] Uploading custom image: ${customImageFile.name}, size: ${customImageFile.size} bytes`);
-      
-      const customName = `custom-${Date.now()}`;
-      const downloadUrl = await uploadFile(customImageFile, 'general', customName);
-      
-      console.log(`[Checkout] ✅ Image uploaded successfully: ${downloadUrl}`);
+      const fileName = `custom-images/${Date.now()}-${customImageFile.name}`;
+      const fileRef = ref(storage, fileName);
+      await uploadBytes(fileRef, customImageFile);
+      const downloadUrl = await getDownloadURL(fileRef);
       return downloadUrl;
-    } catch (error: any) {
-      console.error('[Checkout] Image upload error:', error);
-      console.error('[Checkout] Error details:', error.message);
-      showToast(error.message || 'Failed to upload image', 'error');
+    } catch (error) {
+      console.error('Image upload error:', error);
+      showToast('Failed to upload image', 'error');
       return null;
     } finally {
       setUploading(false);

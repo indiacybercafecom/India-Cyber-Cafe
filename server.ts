@@ -1,26 +1,12 @@
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import nodemailer from "nodemailer";
-import multer from "multer";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import * as admin from "firebase-admin";
 
 dotenv.config();
-
-// Initialize Firebase Admin SDK
-const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_KEY || "./firebase-service-account.json";
-if (fs.existsSync(serviceAccountPath)) {
-  const serviceAccount = JSON.parse(fs.readFileSync(serviceAccountPath, "utf-8"));
-  admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
-    storageBucket: "india-cyber-cafe.firebasestorage.app",
-  });
-} else {
-  console.warn(`⚠️  Firebase service account not found at ${serviceAccountPath}. Uploads may fail.`);
-}
 
 async function startServer() {
   const app = express();
@@ -30,14 +16,6 @@ async function startServer() {
   app.set('trust proxy', true);
 
   app.use(express.json());
-
-  // Configure multer for file uploads (in memory storage)
-  const upload = multer({
-    storage: multer.memoryStorage(),
-    limits: {
-      fileSize: 5 * 1024 * 1024, // 5MB max
-    }
-  });
 
   // Email Configuration
   const transporter = nodemailer.createTransport({
@@ -83,84 +61,6 @@ async function startServer() {
   // Health check
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok" });
-  });
-
-  // File Upload Endpoint (for guest checkout and guest uploads)
-  // Uses Firebase Admin SDK for secure server-side uploads
-  app.post("/api/upload", upload.single("file"), async (req, res) => {
-    try {
-      if (!req.file) {
-        return res.status(400).json({ error: "No file provided" });
-      }
-
-      const category = req.body.category || "general";
-      const timestamp = Date.now();
-      const randomString = Math.random().toString(36).substring(2, 12);
-      const fileExtension = path.extname(req.file.originalname);
-      const fileName = `${timestamp}-${randomString}${fileExtension}`;
-      const storagePath = `${category}/${fileName}`;
-
-      console.log(`[Upload] Starting upload: ${storagePath}, size: ${req.file.size} bytes, type: ${req.file.mimetype}`);
-
-      // Check if Firebase Admin is initialized
-      if (!admin.apps.length) {
-        console.error("[Upload] Firebase Admin not initialized");
-        return res.status(500).json({
-          error: "Upload service not configured",
-          message: "Firebase service account not set up"
-        });
-      }
-
-      try {
-        // Get Firebase Storage bucket reference
-        const bucket = admin.storage().bucket();
-        
-        // Create file reference
-        const file = bucket.file(storagePath);
-        
-        // Upload file with metadata
-        await file.save(req.file.buffer, {
-          metadata: {
-            contentType: req.file.mimetype,
-            metadata: {
-              uploadedAt: new Date().toISOString(),
-            }
-          }
-        });
-
-        // Make file public if needed (for public folders)
-        const publicFolders = ['products', 'reviews', 'custom-images'];
-        const isPublicFolder = publicFolders.includes(category);
-        
-        if (isPublicFolder) {
-          await file.makePublic();
-        }
-
-        console.log(`[Upload] ✅ File uploaded successfully to ${storagePath}`);
-
-        // Generate download URL
-        const downloadUrl = `https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe.firebasestorage.app/o/${encodeURIComponent(storagePath)}?alt=media`;
-
-        res.json({
-          success: true,
-          url: downloadUrl,
-          path: storagePath,
-        });
-      } catch (firebaseError: any) {
-        console.error(`[Upload] Firebase error: ${firebaseError.message}`);
-        return res.status(500).json({
-          error: "Upload to Firebase failed",
-          message: firebaseError.message,
-        });
-      }
-    } catch (error: any) {
-      console.error("[Upload] Error:", error);
-      res.status(500).json({
-        error: "Upload failed",
-        message: error.message,
-      });
-    }
-    }
   });
 
   // Sitemap and Robots.txt

@@ -20,14 +20,14 @@ interface AdminProps {
   orders?: Order[];
   productReviews?: ProductReview[];
   onViewApp: (app: Application) => void;
-  onDeleteApp: (id: string) => void;
+  onDeleteApp: (id: string) => Promise<void>;
   onEditService: (service: Service) => void;
   onAddService: () => void;
-  onDeleteService: (id: string) => void;
+  onDeleteService: (id: string) => Promise<void>;
   onManageUser: (user: UserProfile) => void;
   onAddGateway: (gateway: PaymentGateway) => void;
   onUpdateGateway: (id: string, gateway: Partial<PaymentGateway>) => void;
-  onDeleteGateway: (id: string) => void;
+  onDeleteGateway: (id: string) => Promise<void>;
   onEditProduct?: (id: string, product: any) => void;
   onAddProduct?: () => void;
   onDeleteProduct?: (id: string) => void;
@@ -37,6 +37,7 @@ interface AdminProps {
   onAddCategory?: (category: ProductCategory) => Promise<void>;
   onUpdateCategory?: (id: string, category: Partial<ProductCategory>) => Promise<void>;
   onDeleteCategory?: (id: string) => Promise<void>;
+  onDeleteProductReview?: (id: string) => Promise<void>;
   currentUser?: UserProfile;
 }
 
@@ -67,6 +68,7 @@ export function Admin({
   onAddCategory,
   onUpdateCategory,
   onDeleteCategory,
+  onDeleteProductReview,
   currentUser
 }: AdminProps) {
   const navigate = useNavigate();
@@ -129,9 +131,89 @@ export function Admin({
       title: 'Delete Gateway',
       message: 'Are you sure you want to delete this payment gateway? This action cannot be undone.',
       type: 'danger',
-      onConfirm: () => {
-        onDeleteGateway(id);
-        showToast('Gateway deleted');
+      onConfirm: async () => {
+        try {
+          await onDeleteGateway(id);
+          showToast('Gateway deleted successfully', 'success');
+        } catch (error: any) {
+          showToast(error.message || 'Failed to delete gateway', 'error');
+        }
+      }
+    });
+  };
+
+  const handleDeleteProduct = (id: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Product',
+      message: 'Are you sure you want to delete this product? This action cannot be undone.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          if (onDeleteProduct) {
+            onDeleteProduct(id);
+            showToast('Product deleted successfully');
+          }
+        } catch (error: any) {
+          showToast(error.message || 'Failed to delete product', 'error');
+        }
+      }
+    });
+  };
+
+  const handleDeleteCategory = (id: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Category',
+      message: 'Are you sure you want to delete this category? Products in this category will not be affected.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          if (onDeleteCategory) {
+            await onDeleteCategory(id);
+            showToast('Category deleted successfully');
+          }
+        } catch (error: any) {
+          showToast(error.message || 'Failed to delete category', 'error');
+        }
+      }
+    });
+  };
+
+  const handleDeleteOrder = (id: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Order',
+      message: 'Are you sure you want to delete this order? This action cannot be undone.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          if (onDeleteOrder) {
+            await onDeleteOrder(id);
+            showToast('Order deleted successfully');
+          }
+        } catch (error: any) {
+          showToast(error.message || 'Failed to delete order', 'error');
+        }
+      }
+    });
+  };
+
+  const handleDeleteReview = (id: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete Review',
+      message: 'Are you sure you want to delete this review? This action cannot be undone.',
+      type: 'danger',
+      onConfirm: async () => {
+        try {
+          if (onDeleteProductReview) {
+            await onDeleteProductReview(id);
+            showToast('Review deleted successfully');
+          }
+        } catch (error: any) {
+          showToast(error.message || 'Failed to delete review', 'error');
+        }
       }
     });
   };
@@ -201,9 +283,13 @@ export function Admin({
       title: 'Delete Application',
       message: 'Are you sure you want to delete this application? All associated data will be permanently removed.',
       type: 'danger',
-      onConfirm: () => {
-        onDeleteApp(id);
-        showToast('Application deleted', 'success');
+      onConfirm: async () => {
+        try {
+          await onDeleteApp(id);
+          showToast('Application deleted successfully', 'success');
+        } catch (error: any) {
+          showToast(error.message || 'Failed to delete application', 'error');
+        }
       }
     });
   };
@@ -214,9 +300,13 @@ export function Admin({
       title: 'Delete Service',
       message: 'Are you sure you want to delete this service? This will remove it from the public services list.',
       type: 'danger',
-      onConfirm: () => {
-        onDeleteService(id);
-        showToast('Service deleted', 'success');
+      onConfirm: async () => {
+        try {
+          await onDeleteService(id);
+          showToast('Service deleted successfully', 'success');
+        } catch (error: any) {
+          showToast(error.message || 'Failed to delete service', 'error');
+        }
       }
     });
   };
@@ -666,24 +756,7 @@ export function Admin({
                           <IconRenderer name="user-pen" className="w-3 h-3" />
                         </button>
                         <button
-                          onClick={() => {
-                            setConfirmConfig({
-                              isOpen: true,
-                              title: 'Delete Category',
-                              message: `Are you sure you want to delete "${cat.name}"? Products in this category will not be affected.`,
-                              type: 'danger',
-                              onConfirm: async () => {
-                                try {
-                                  if (onDeleteCategory) {
-                                    await onDeleteCategory(cat.id);
-                                    showToast('Category deleted successfully!', 'success');
-                                  }
-                                } catch (error: any) {
-                                  showToast(error.message || 'Failed to delete category', 'error');
-                                }
-                              }
-                            });
-                          }}
+                          onClick={() => handleDeleteCategory(cat.id)}
                           className="p-1.5 bg-red-100 text-red-600 rounded-lg hover:bg-red-200 transition-all"
                           title="Delete"
                         >
@@ -768,20 +841,7 @@ export function Admin({
                               Edit
                             </button>
                             <button 
-                              onClick={() => {
-                                setConfirmConfig({
-                                  isOpen: true,
-                                  title: 'Delete Product',
-                                  message: `Are you sure you want to delete "${p.name}"? This action cannot be undone.`,
-                                  type: 'danger',
-                                  onConfirm: () => {
-                                    if (onDeleteProduct) {
-                                      onDeleteProduct(p.id);
-                                      showToast('Product deleted', 'success');
-                                    }
-                                  }
-                                });
-                              }}
+                              onClick={() => handleDeleteProduct(p.id)}
                               className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
                             >
                               <IconRenderer name="trash" className="w-4 h-4" />
@@ -830,20 +890,7 @@ export function Admin({
                           Edit
                         </button>
                         <button 
-                          onClick={() => {
-                            setConfirmConfig({
-                              isOpen: true,
-                              title: 'Delete Product',
-                              message: `Are you sure you want to delete "${p.name}"?`,
-                              type: 'danger',
-                              onConfirm: () => {
-                                if (onDeleteProduct) {
-                                  onDeleteProduct(p.id);
-                                  showToast('Product deleted', 'success');
-                                }
-                              }
-                            });
-                          }}
+                          onClick={() => handleDeleteProduct(p.id)}
                           className="p-2 text-red-500 bg-red-50 rounded-lg"
                         >
                           <IconRenderer name="trash" className="w-4 h-4" />
@@ -949,24 +996,7 @@ export function Admin({
                                 View
                               </button>
                               <button 
-                                onClick={() => {
-                                  setConfirmConfig({
-                                    isOpen: true,
-                                    title: 'Delete Order',
-                                    message: `Are you sure you want to delete order ${o.id}? This action cannot be undone.`,
-                                    type: 'danger',
-                                    onConfirm: async () => {
-                                      try {
-                                        if (onDeleteOrder) {
-                                          await onDeleteOrder(o.id);
-                                          showToast('Order deleted successfully!', 'success');
-                                        }
-                                      } catch (error: any) {
-                                        showToast(error.message || 'Failed to delete order', 'error');
-                                      }
-                                    }
-                                  });
-                                }}
+                                onClick={() => handleDeleteOrder(o.id)}
                                 className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-all"
                               >
                                 <IconRenderer name="trash" className="w-4 h-4" />
@@ -1038,24 +1068,7 @@ export function Admin({
                           View & Manage
                         </button>
                         <button 
-                          onClick={() => {
-                            setConfirmConfig({
-                              isOpen: true,
-                              title: 'Delete Order',
-                              message: `Are you sure you want to delete order ${o.id}?`,
-                              type: 'danger',
-                              onConfirm: async () => {
-                                try {
-                                  if (onDeleteOrder) {
-                                    await onDeleteOrder(o.id);
-                                    showToast('Order deleted successfully!', 'success');
-                                  }
-                                } catch (error: any) {
-                                  showToast(error.message || 'Failed to delete order', 'error');
-                                }
-                              }
-                            });
-                          }}
+                          onClick={() => handleDeleteOrder(o.id)}
                           className="p-2 text-red-500 bg-red-50 rounded-lg"
                         >
                           <IconRenderer name="trash" className="w-4 h-4" />
@@ -1222,18 +1235,7 @@ export function Admin({
                               View
                             </button>
                             <button 
-                              onClick={() => {
-                                setConfirmConfig({
-                                  isOpen: true,
-                                  title: 'Delete Review',
-                                  message: 'Are you sure you want to delete this review? This action cannot be undone.',
-                                  type: 'delete',
-                                  onConfirm: () => {
-                                    deleteProductReview(review.id);
-                                    setConfirmConfig(prev => ({ ...prev, isOpen: false }));
-                                  }
-                                });
-                              }}
+                              onClick={() => handleDeleteReview(review.id)}
                               className="btn-danger py-2 px-3 text-xs bg-red-500 hover:bg-red-600 text-white rounded-lg"
                             >
                               Delete
