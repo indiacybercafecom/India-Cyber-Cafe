@@ -334,6 +334,27 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
           </div>
         )}
 
+        {/* Sub-Service Image Display */}
+        {selectedSubService && selectedSubService.image && (
+          <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-md">
+            <div className={`flex items-center justify-center w-full overflow-hidden ${
+              selectedSubService.imageType === 'url' && selectedSubService.image
+                ? 'h-64 sm:h-80 bg-slate-100'
+                : 'h-32 sm:h-40 bg-primary/5'
+            }`}>
+              {selectedSubService.imageType === 'url' && selectedSubService.image ? (
+                selectedSubService.image.toLowerCase().endsWith('.mp4') ? (
+                  <video src={selectedSubService.image} className="w-full h-full object-cover" muted autoPlay loop />
+                ) : (
+                  <img src={selectedSubService.image} alt={selectedSubService.name} className="w-full h-full object-cover" />
+                )
+              ) : (
+                <IconRenderer name={selectedSubService.image || 'file-text'} className="w-16 h-16 sm:w-20 sm:h-20 text-primary" />
+              )}
+            </div>
+          </div>
+        )}
+
         {(selectedSubService?.fields && selectedSubService.fields.length > 0 
           ? selectedSubService.fields 
           : service.fields).length > 0 ? (
