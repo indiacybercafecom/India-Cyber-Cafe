@@ -65,6 +65,40 @@ export function Services({ services }: ServicesProps) {
             </div>
             <h3 className="text-lg sm:text-xl font-bold text-navy mb-1 sm:mb-2">{service.name}</h3>
             <p className="text-slate-500 text-xs sm:text-sm line-clamp-2">{service.description}</p>
+            
+            {/* Show Sub-services with images */}
+            {service.subservices.length > 0 && (
+              <div className="mt-4 pt-4 border-t border-slate-200 space-y-2">
+                <p className="text-xs font-bold text-slate-600 uppercase">Sub-Services:</p>
+                <div className="grid grid-cols-3 gap-2">
+                  {service.subservices.map((ss, i) => (
+                    <div key={i} className="group/sub overflow-hidden rounded-lg bg-slate-100 border border-slate-200 hover:border-primary transition-all hover:shadow-md">
+                      {ss.image && (
+                        <div className={`flex items-center justify-center overflow-hidden ${
+                          ss.imageType === 'url' && ss.image
+                            ? 'h-20 sm:h-24'
+                            : 'h-12 sm:h-14 bg-primary/5'
+                        }`}>
+                          {ss.imageType === 'url' && ss.image ? (
+                            ss.image.toLowerCase().endsWith('.mp4') ? (
+                              <video src={ss.image} className="w-full h-full object-cover" muted autoPlay loop />
+                            ) : (
+                              <img src={ss.image} alt={ss.name} className="w-full h-full object-cover" />
+                            )
+                          ) : (
+                            <IconRenderer name={ss.image || 'file-text'} className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
+                          )}
+                        </div>
+                      )}
+                      <div className="p-1.5 sm:p-2">
+                        <p className="text-[10px] sm:text-xs font-bold text-navy line-clamp-1">{ss.name}</p>
+                        <p className="text-[9px] sm:text-[10px] text-primary font-bold">₹{ss.charge}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         ))}
       </div>

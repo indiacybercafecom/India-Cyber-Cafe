@@ -54,6 +54,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
   const [submitting, setSubmitting] = useState(false);
   
   // Guest checkout states
+  const [emailChecked, setEmailChecked] = useState(false); // Track if email has been checked
   const [createGuestAccount, setCreateGuestAccount] = useState(false);
   const [existingUserFound, setExistingUserFound] = useState(false);
   const [existingUserData, setExistingUserData] = useState<any>(null);
@@ -115,6 +116,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         setExistingUserFound(false);
         setRequiresPassword(false);
         setPasswordVerified(false);
+        setEmailChecked(false);
       }
       return;
     }
@@ -124,6 +126,8 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       const existingUser = await findUserByEmail(address.email);
       console.log('📊 Found user:', existingUser);
       
+      setEmailChecked(true); // Mark email as checked
+      
       if (existingUser) {
         // Account exists in database
         console.log('✅ Account found with email:', address.email);
@@ -132,6 +136,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         setRequiresPassword(true);
         setPasswordVerified(false);
         setPasswordInput('');
+        setCreateGuestAccount(false); // Don't create account if exists
         showToast('✅ Account found! Please verify with your password.', 'info');
       } else {
         // No account found
@@ -142,6 +147,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       }
     } catch (error) {
       console.error('❌ Error checking user by email:', error);
+      setEmailChecked(true); // Still mark as checked even on error
     }
   };
 
@@ -215,6 +221,8 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       const existingUser = await findUserByPhone(address.phone);
       console.log('📊 Found user:', existingUser);
       
+      setEmailChecked(true); // Mark as checked
+      
       if (existingUser) {
         // User account exists by phone
         console.log('✅ Account found with phone:', address.phone);
@@ -231,6 +239,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         setRequiresPassword(true);
         setPasswordVerified(false);
         setPasswordInput('');
+        setCreateGuestAccount(false); // Don't create account if exists
         showToast('✅ Account found! Please verify your password to auto-fill your saved details.', 'info');
       } else {
         // No user found by phone
@@ -243,6 +252,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       }
     } catch (error) {
       console.error('❌ Error checking user by phone:', error);
+      setEmailChecked(true); // Still mark as checked even on error
     }
   };
 
@@ -865,7 +875,10 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                 <input
                   type="email"
                   value={address.email}
-                  onChange={e => setAddress({ ...address, email: e.target.value })}
+                  onChange={e => {
+                    setAddress({ ...address, email: e.target.value });
+                    setEmailChecked(false); // Reset email check when user modifies email
+                  }}
                   onBlur={handleEmailBlur}
                   className={`input-field w-full text-xs sm:text-sm ${formErrors.email ? 'border-red-500' : ''}`}
                   placeholder="john@example.com"
@@ -879,7 +892,10 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                 <input
                   type="tel"
                   value={address.phone}
-                  onChange={e => setAddress({ ...address, phone: e.target.value })}
+                  onChange={e => {
+                    setAddress({ ...address, phone: e.target.value });
+                    setEmailChecked(false); // Reset email check when user modifies phone
+                  }}
                   onBlur={handlePhoneBlur}
                   className={`input-field w-full text-xs sm:text-sm ${formErrors.phone ? 'border-red-500' : ''}`}
                   placeholder="9876543210"
@@ -953,8 +969,8 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
             </div>
           </div>
 
-          {/* Guest Checkout - Account Creation Option */}
-          {(!user || !user.uid) && !existingUserFound && (
+          {/* Guest Checkout - Account Creation Option (Only show if email checked and no account found) */}
+          {(!user || !user.uid) && emailChecked && !existingUserFound && (
             <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 space-y-4">
               <h2 className="text-lg sm:text-xl font-bold text-navy flex items-center gap-2">
                 <IconRenderer name="user-plus" className="w-5 h-5 text-primary" />
