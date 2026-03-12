@@ -17,19 +17,19 @@
 
 @layer components {
   .btn-primary {
-    @apply bg-linear-to-br from-primary to-primary-dark text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-primary/40 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/50 active:scale-95 active:-translate-y-0 active:shadow-md disabled:opacity-50 flex items-center justify-center gap-2;
+    @apply bg-linear-to-br from-primary to-primary-dark text-white px-4 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-bold shadow-lg shadow-primary/40 transition-all hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/50 active:scale-95 active:-translate-y-0 active:shadow-md disabled:opacity-50 flex items-center justify-center gap-2 text-xs sm:text-sm md:text-base overflow-hidden;
   }
   
   .btn-outline {
-    @apply border-2 border-navy text-navy px-6 py-3 rounded-xl font-bold transition-all hover:bg-navy hover:text-white hover:-translate-y-1 hover:shadow-lg hover:shadow-navy/30 active:scale-95 active:-translate-y-0 active:shadow-md flex items-center justify-center gap-2;
+    @apply border-2 border-navy text-navy px-4 sm:px-6 py-2 sm:py-3 rounded-lg sm:rounded-xl font-bold transition-all hover:bg-navy hover:text-white hover:-translate-y-1 hover:shadow-lg hover:shadow-navy/30 active:scale-95 active:-translate-y-0 active:shadow-md flex items-center justify-center gap-2 text-xs sm:text-sm md:text-base overflow-hidden;
   }
 
   .card {
-    @apply bg-white p-8 rounded-3xl text-center shadow-sm border border-slate-100 transition-all hover:-translate-y-2 hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10 active:scale-[0.98] active:translate-y-0 active:shadow-lg;
+    @apply bg-white p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl text-center shadow-sm border border-slate-100 transition-all hover:-translate-y-2 hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10 active:scale-[0.98] active:translate-y-0 active:shadow-lg overflow-hidden;
   }
 
   .input-field {
-    @apply w-full px-5 py-3.5 border border-slate-200 rounded-2xl outline-hidden transition-all focus:border-primary focus:ring-4 focus:ring-primary/10 text-sm sm:text-base bg-slate-50/50 hover:bg-white;
+    @apply w-full px-3 sm:px-5 py-2 sm:py-3.5 border border-slate-200 rounded-xl sm:rounded-2xl outline-hidden transition-all focus:border-primary focus:ring-4 focus:ring-primary/10 text-xs sm:text-sm md:text-base bg-slate-50/50 hover:bg-white;
   }
 
   .badge {

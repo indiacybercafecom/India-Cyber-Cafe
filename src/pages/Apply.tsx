@@ -264,40 +264,42 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
   };
 
   return (
-    <div className="max-w-2xl mx-auto bg-white p-6 sm:p-12 rounded-3xl shadow-xl space-y-6 sm:space-y-8">
-      <SEO 
-        title={selectedSubService ? `${selectedSubService.name} - ${service.name}` : service.name}
-        description={`Apply for ${selectedSubService?.name || service.name} online at India Cyber Cafe. Fast and secure digital services.`}
-        keywords={`${selectedSubService?.name || ''}, ${service.name}, online application, India Cyber Cafe`}
-        url={`https://b.indiacybercafe.com/services/${service.id}/${subserviceName || ''}`}
-      />
-      <button 
-        onClick={() => navigate(`/services/${service.id}`)}
-        className="flex items-center gap-2 text-navy font-bold hover:text-primary transition-all text-sm sm:text-base"
-      >
-        <IconRenderer name="arrow-left" className="w-4 h-4 sm:w-5 sm:h-5" />
-        Back to Services
-      </button>
+    <div className="w-full min-h-screen flex flex-col">
+      <div className="flex-1 max-w-2xl mx-auto w-full bg-white rounded-3xl shadow-xl overflow-hidden">
+        <div className="p-4 sm:p-8 md:p-12 space-y-6 sm:space-y-8">
+          <SEO 
+            title={selectedSubService ? `${selectedSubService.name} - ${service.name}` : service.name}
+            description={`Apply for ${selectedSubService?.name || service.name} online at India Cyber Cafe. Fast and secure digital services.`}
+            keywords={`${selectedSubService?.name || ''}, ${service.name}, online application, India Cyber Cafe`}
+            url={`https://b.indiacybercafe.com/services/${service.id}/${subserviceName || ''}`}
+          />
+          <button 
+            onClick={() => navigate(`/services/${service.id}`)}
+            className="flex items-center gap-2 text-navy font-bold hover:text-primary transition-all text-sm sm:text-base"
+          >
+            <IconRenderer name="arrow-left" className="w-4 h-4 sm:w-5 sm:h-5" />
+            Back to Services
+          </button>
 
-      <div className="text-center space-y-1 sm:space-y-2">
-        <h2 className="text-2xl sm:text-3xl font-bold text-navy">{service.name}</h2>
-        <p className="text-sm sm:text-base text-slate-500">Please fill in the required details</p>
-      </div>
-
-      {subServiceNotFound && (
-        <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3">
-          <IconRenderer name="circle-exclamation" className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
-          <div className="text-sm text-amber-800">
-            <p className="font-bold">Sub-service not found</p>
-            <p>The requested sub-service link might be outdated. Please select a service from the list below.</p>
+          <div className="text-center space-y-1 sm:space-y-2">
+            <h2 className="text-2xl sm:text-3xl font-bold text-navy line-clamp-2">{service.name}</h2>
+            <p className="text-sm sm:text-base text-slate-500">Please fill in the required details</p>
           </div>
-        </div>
-      )}
 
-      <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
-        {service.subservices.length > 0 && (
-          <div className="space-y-1 sm:space-y-2">
-            <label className="block font-bold text-navy text-sm sm:text-base">Select Sub-Service *</label>
+          {subServiceNotFound && (
+            <div className="p-3 sm:p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 overflow-hidden">
+              <IconRenderer name="circle-exclamation" className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+              <div className="text-xs sm:text-sm text-amber-800 min-w-0">
+                <p className="font-bold">Sub-service not found</p>
+                <p>The requested sub-service link might be outdated. Please select a service from the list below.</p>
+              </div>
+            </div>
+          )}
+
+          <form onSubmit={handleSubmit} className="space-y-4 sm:space-y-6">
+            {service.subservices.length > 0 && (
+              <div className="space-y-1 sm:space-y-2">
+                <label className="block font-bold text-navy text-sm sm:text-base truncate">Select Sub-Service *</label>
             <select 
               required
               className="input-field"
@@ -319,12 +321,12 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
               ))}
             </select>
             {selectedSubService && (
-              <div className="flex items-center gap-3 mt-2">
-                <span className="text-primary font-bold text-lg">₹{selectedSubService.charge}</span>
+              <div className="flex items-center gap-2 sm:gap-3 mt-2 flex-wrap">
+                <span className="text-primary font-bold text-lg sm:text-xl">₹{selectedSubService.charge}</span>
                 {selectedSubService.originalCharge && selectedSubService.originalCharge > selectedSubService.charge && (
                   <>
-                    <span className="text-sm text-slate-400 line-through">₹{selectedSubService.originalCharge}</span>
-                    <span className="bg-green-100 text-green-600 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                    <span className="text-xs sm:text-sm text-slate-400 line-through">₹{selectedSubService.originalCharge}</span>
+                    <span className="bg-green-100 text-green-600 text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
                       {Math.round(((selectedSubService.originalCharge - selectedSubService.charge) / selectedSubService.originalCharge) * 100)}% OFF
                     </span>
                   </>
@@ -336,11 +338,11 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
 
         {/* Sub-Service Image Display */}
         {selectedSubService && selectedSubService.image && (
-          <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-md">
+          <div className="rounded-2xl overflow-hidden border border-slate-200 shadow-md w-full">
             <div className={`flex items-center justify-center w-full overflow-hidden ${
               selectedSubService.imageType === 'url' && selectedSubService.image
-                ? 'h-64 sm:h-80 bg-slate-100'
-                : 'h-32 sm:h-40 bg-primary/5'
+                ? 'h-40 sm:h-56 md:h-64 bg-slate-100'
+                : 'h-28 sm:h-40 bg-primary/5'
             }`}>
               {selectedSubService.imageType === 'url' && selectedSubService.image ? (
                 selectedSubService.image.toLowerCase().endsWith('.mp4') ? (
@@ -349,7 +351,7 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
                   <img src={selectedSubService.image} alt={selectedSubService.name} className="w-full h-full object-cover" />
                 )
               ) : (
-                <IconRenderer name={selectedSubService.image || 'file-text'} className="w-16 h-16 sm:w-20 sm:h-20 text-primary" />
+                <IconRenderer name={selectedSubService.image || 'file-text'} className="w-12 h-12 sm:w-16 sm:h-16 md:w-20 md:h-20 text-primary" />
               )}
             </div>
           </div>
@@ -361,10 +363,10 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
           (selectedSubService?.fields && selectedSubService.fields.length > 0 
             ? selectedSubService.fields 
             : service.fields).map((field, i) => (
-            <div key={i} className="space-y-1 sm:space-y-2">
-              <label className="block font-bold text-navy text-sm sm:text-base">{field.label} *</label>
+            <div key={i} className="space-y-1 sm:space-y-2 w-full">
+              <label className="block font-bold text-navy text-xs sm:text-sm md:text-base truncate">{field.label} *</label>
               {field.type === 'file' ? (
-                <div className="relative">
+                <div className="relative w-full">
                   <input 
                     type="file" 
                     required
@@ -374,14 +376,14 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
                   />
                   <label 
                     htmlFor={`file-${i}`}
-                    className="w-full flex flex-col items-center justify-center p-6 sm:p-8 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
+                    className="w-full flex flex-col items-center justify-center p-4 sm:p-6 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all overflow-hidden"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#ff841b" className="w-6 h-6 sm:w-8 sm:h-8 mb-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#ff841b" className="w-5 h-5 sm:w-6 sm:h-6 md:w-8 md:h-8 mb-2 shrink-0">
                       <path d="M15.26 22.2503H8.73998C3.82998 22.2503 1.72998 20.1503 1.72998 15.2403V15.1103C1.72998 10.6703 3.47998 8.53027 7.39998 8.16027C7.79998 8.13027 8.17998 8.43027 8.21998 8.84027C8.25998 9.25027 7.95998 9.62027 7.53998 9.66027C4.39998 9.95027 3.22998 11.4303 3.22998 15.1203V15.2503C3.22998 19.3203 4.66998 20.7603 8.73998 20.7603H15.26C19.33 20.7603 20.77 19.3203 20.77 15.2503V15.1203C20.77 11.4103 19.58 9.93027 16.38 9.66027C15.97 9.62027 15.66 9.26027 15.7 8.85027C15.74 8.44027 16.09 8.13027 16.51 8.17027C20.49 8.51027 22.27 10.6603 22.27 15.1303V15.2603C22.27 20.1503 20.17 22.2503 15.26 22.2503Z" fill="#ff841b"/>
                       <path d="M12 15.7501C11.59 15.7501 11.25 15.4101 11.25 15.0001V3.62012C11.25 3.21012 11.59 2.87012 12 2.87012C12.41 2.87012 12.75 3.21012 12.75 3.62012V15.0001C12.75 15.4101 12.41 15.7501 12 15.7501Z" fill="#ff841b"/>
                       <path d="M15.3501 6.60043C15.1601 6.60043 14.9701 6.53043 14.8201 6.38043L12.0001 3.56043L9.18009 6.38043C8.89009 6.67043 8.41009 6.67043 8.12009 6.38043C7.83009 6.09043 7.83009 5.61043 8.12009 5.32043L11.4701 1.97043C11.7601 1.68043 12.2401 1.68043 12.5301 1.97043L15.8801 5.32043C16.1701 5.61043 16.1701 6.09043 15.8801 6.38043C15.7401 6.53043 15.5401 6.60043 15.3501 6.60043Z" fill="#ff841b"/>
                     </svg>
-                    <span className="text-xs sm:text-sm text-slate-500 font-medium text-center">
+                    <span className="text-xs sm:text-sm text-slate-500 font-medium text-center line-clamp-2 px-1">
                       {files[field.label] ? files[field.label].name : 'Click to upload or drag & drop'}
                     </span>
                   </label>
@@ -390,13 +392,13 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
                 <textarea 
                   required
                   placeholder={`Enter ${field.label.toLowerCase()}`}
-                  className="input-field min-h-[80px] sm:min-h-[100px]"
+                  className="input-field min-h-[80px] sm:min-h-[100px] text-xs sm:text-sm resize-vertical w-full"
                   onChange={e => handleInputChange(field.label, e.target.value)}
                 />
               ) : field.type === 'select' ? (
                 <select 
                   required
-                  className="input-field"
+                  className="input-field text-xs sm:text-sm w-full"
                   onChange={e => handleInputChange(field.label, e.target.value)}
                 >
                   <option value="">Select {field.label}</option>
@@ -409,28 +411,30 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
                   type={field.type} 
                   required
                   placeholder={`Enter ${field.label.toLowerCase()}`}
-                  className="input-field"
+                  className="input-field text-xs sm:text-sm w-full"
                   onChange={e => handleInputChange(field.label, e.target.value)}
                 />
               )}
             </div>
           ))
         ) : (
-          <div className="p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center">
-            <p className="text-slate-500">No additional details required for this service.</p>
+          <div className="p-6 sm:p-8 bg-slate-50 rounded-2xl border border-dashed border-slate-200 text-center w-full overflow-hidden">
+            <p className="text-xs sm:text-sm text-slate-500">No additional details required for this service.</p>
           </div>
         )}
 
         <button 
           type="submit" 
           disabled={loading}
-          className="btn-primary w-full py-3 sm:py-4 text-base sm:text-lg mt-4 relative overflow-hidden"
+          className="btn-primary w-full py-2.5 sm:py-3 md:py-4 text-xs sm:text-sm md:text-base mt-4 relative overflow-hidden"
         >
           {loading ? (
             <div className="flex flex-col items-center justify-center">
               <span className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                {uploadProgress.total > 0 ? `Uploading Files (${uploadProgress.current}/${uploadProgress.total})...` : 'Submitting...'}
+                <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <span className="text-xs sm:text-sm">
+                  {uploadProgress.total > 0 ? `Uploading (${uploadProgress.current}/${uploadProgress.total})...` : 'Submitting...'}
+                </span>
               </span>
               {uploadProgress.total > 0 && (
                 <div className="absolute bottom-0 left-0 h-1 bg-white/30 transition-all duration-300" style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }} />
@@ -438,7 +442,9 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
             </div>
           ) : selectedSubService ? 'Proceed to Payment' : 'Submit Application'}
         </button>
-      </form>
+        </form>
+        </div>
+      </div>
     </div>
   );
 }
