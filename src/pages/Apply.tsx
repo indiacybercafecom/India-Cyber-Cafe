@@ -376,7 +376,7 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
                     htmlFor={`file-${i}`}
                     className="w-full flex flex-col items-center justify-center p-6 sm:p-8 border-2 border-dashed border-slate-200 rounded-2xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
                   >
-                    <IconRenderer name="upload" className="w-6 h-6 sm:w-8 sm:h-8 text-slate-400 mb-2" />
+                    <img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABgAAAAYCAYAAADgdz34AAACMUlEQVR4AbSVSyh0YRjHz3yLjyxdosillIXLCllSYoOFUnLbKJS1BRssJCsrVlIkO4QNJZeFhUs2lHKJsHZZKZvx+5v3nMnMucyQ6fnN877P7T/nnTln/ll//EpKIBwOZ0F6Mp8pYQEGVzL4AA5ZV+ETsoQEGFjLtDUogHxYI1aHD7RAAQY1MWUdUiDV8B+/Tq4Z72uBAnRvgoZ34FUv2llLZAPvayr2LSA5Dp2hUGgHvy9Y7+IlqBxLbwsUYNgYrMSOILYKY7Hx2H2cAOdaAQMwA3tQGNtk75UD1UziOyDuJ/xNgIJumvdgGupB9qo3D2zxNvLzcMyMTrxjjgCJBqKLcAxlXH4J1IGnALl9UE0xPeVwB0tmFkvLcgTYdcEb9NN0i0/K6LmmoRc0Q7NYGgEU09jpeJYpfGD9IzO9yzR3m5nOFWQRlJ3rzQfd0cKnxLo0yQx5+4gytYFH8DNdnfCrsWd8zbQFbP/h10lu1oDztHeT0Z3uHNGNCeYY7+o44ynhmowG88xSX3pEgKYXgveQC7+1bAY8MvMZHxHQAvQFD+J/a3pGndpD7LPXfoK3XH5egc8X6lzN9JaSHIIvcwS4pCMiejqOUngBI9ALjVDrQQPxHhiGJ/pHYZxZzo3qCJCwSOjT67a/Yj8Ac7AFej65sU1uAfrgDGrMDJYR+yagEAW30Ar6a9TNUkNcf49uVJNLp7YIWkCnQChqcQLRlKUrelYT6KHmxgk5/QItr9cnAAAA///cwTPHAAAABklEQVQDANF51THeO9ctAAAAAElFTkSuQmCC" alt="Upload Icon" className="w-6 h-6 sm:w-8 sm:h-8 mb-2" />
                     <span className="text-xs sm:text-sm text-slate-500 font-medium text-center">
                       {files[field.label] ? files[field.label].name : 'Click to upload or drag & drop'}
                     </span>
