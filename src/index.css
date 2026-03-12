@@ -25,7 +25,7 @@
   }
 
   .card {
-    @apply bg-white p-4 sm:p-6 md:p-8 rounded-2xl sm:rounded-3xl text-center shadow-sm border border-slate-100 transition-all hover:-translate-y-2 hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10 active:scale-[0.98] active:translate-y-0 active:shadow-lg overflow-hidden;
+    @apply bg-white p-3 sm:p-4 md:p-6 rounded-xl sm:rounded-2xl md:rounded-3xl text-center shadow-sm border border-slate-100 transition-all hover:-translate-y-2 hover:border-primary/30 hover:shadow-2xl hover:shadow-primary/10 active:scale-[0.98] active:translate-y-0 active:shadow-lg overflow-hidden flex flex-col;
   }
 
   .input-field {
