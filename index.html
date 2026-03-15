@@ -2,7 +2,13 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=yes, maximum-scale=5, minimum-scale=1" />
+    <meta name="format-detection" content="telephone=no, email=no, address=no" />
+    <meta name="theme-color" content="#FF9933" />
+    <meta name="color-scheme" content="light dark" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="ICC" />
     <title>India Cyber Cafe - Digital Services, CSC & Online Form Portal</title>
     <meta name="description" content="India Cyber Cafe provides expert digital services, CSC services, online form filling, and government document assistance. Fast, reliable, and secure portal for all your digital needs." />
     <meta name="keywords" content="Cyber Cafe, CSC, India Cyber Cafe, Online Form, Digital Services, Pan Card, Aadhaar, Passport, Online Application, Digital India" />
@@ -13,18 +19,37 @@
     <meta property="og:url" content="https://b.indiacybercafe.com/" />
     <meta property="og:title" content="India Cyber Cafe - Your Trusted Digital Partner" />
     <meta property="og:description" content="Apply for government services, online forms, and digital documents easily at India Cyber Cafe." />
-    <meta property="og:image" content="http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" />
+    <meta property="og:image" content="https://b.indiacybercafe.com/og-image.png" />
+    <meta property="og:site_name" content="India Cyber Cafe" />
+    <meta property="og:locale" content="en_IN" />
 
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" />
+    <link rel="icon" type="image/png" href="https://b.indiacybercafe.com/favicon.png" />
+    <link rel="apple-touch-icon" href="https://b.indiacybercafe.com/apple-touch-icon.png" />
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image" />
     <meta property="twitter:title" content="India Cyber Cafe - Digital Services Portal" />
     <meta property="twitter:description" content="Fast and secure online form filling and digital services." />
+    <meta property="twitter:image" content="https://b.indiacybercafe.com/og-image.png" />
+    <meta property="twitter:site" content="@indiacybercafe" />
 
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#FF9933" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    
+    <!-- Google Search Console & Domain Verification -->
+    <meta name="google-site-verification" content="" />
+    
+    <!-- Canonical URL -->
+    <link rel="canonical" href="https://b.indiacybercafe.com/" />
+    
+    <!-- Preconnect to external domains for performance -->
+    <link rel="preconnect" href="https://checkout.razorpay.com" />
+    <link rel="preconnect" href="https://lottie.host" />
+    <link rel="dns-prefetch" href="https://cdn-icons-mp4.freepik.com" />
 
     <!-- Razorpay Checkout - Preloaded for faster payment experience -->
     <link rel="preload" href="https://checkout.razorpay.com/v1/checkout.js" as="script" />
@@ -35,34 +60,85 @@
     {
       "@context": "https://schema.org",
       "@type": "LocalBusiness",
-      "name": "India Cyber Cafe",
-      "image": "http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png",
       "@id": "https://b.indiacybercafe.com",
+      "name": "India Cyber Cafe",
+      "image": "https://b.indiacybercafe.com/logo.png",
+      "logo": "https://b.indiacybercafe.com/logo.png",
       "url": "https://b.indiacybercafe.com",
       "telephone": "+91-9203251821",
+      "description": "India Cyber Cafe provides expert digital services, CSC services, online form filling, and government document assistance.",
       "address": {
         "@type": "PostalAddress",
         "streetAddress": "Main Road",
         "addressLocality": "India",
+        "postalCode": "110001",
         "addressCountry": "IN"
       },
-      "openingHoursSpecification": {
-        "@type": "OpeningHoursSpecification",
-        "dayOfWeek": [
-          "Monday",
-          "Tuesday",
-          "Wednesday",
-          "Thursday",
-          "Friday",
-          "Saturday"
-        ],
-        "opens": "09:00",
-        "closes": "20:00"
-      },
+      "openingHoursSpecification": [
+        {
+          "@type": "OpeningHoursSpecification",
+          "dayOfWeek": [
+            "Monday",
+            "Tuesday",
+            "Wednesday",
+            "Thursday",
+            "Friday",
+            "Saturday"
+          ],
+          "opens": "09:00",
+          "closes": "20:00"
+        }
+      ],
+      "sameAs": [
+        "https://facebook.com/indiacybercafe",
+        "https://twitter.com/indiacybercafe",
+        "https://linkedin.com/company/indiacybercafe"
+      ],
+      "areaServed": "IN",
+      "priceRange": "₹100-₹5000",
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "telephone": "+91-9203251821",
+        "contactType": "Customer Support",
+        "availableLanguage": ["hi", "en"]
+      }
+    }
+    </script>
+    
+    <!-- Organization Schema -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "name": "India Cyber Cafe",
+      "url": "https://b.indiacybercafe.com",
+      "logo": "https://b.indiacybercafe.com/logo.png",
+      "description": "Digital services, CSC services, and online government form assistance",
       "sameAs": [
         "https://facebook.com/indiacybercafe",
         "https://twitter.com/indiacybercafe"
-      ]
+      ],
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "contactType": "Customer Service",
+        "telephone": "+91-9203251821"
+      }
+    }
+    </script>
+    
+    <!-- Website Schema -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "url": "https://b.indiacybercafe.com",
+      "name": "India Cyber Cafe",
+      "description": "Digital Seva Simplified - Apply for Government Services Online",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://b.indiacybercafe.com/services?search={search_term}",
+        "query-input": "required name=search_term"
+      }
     }
     </script>
 

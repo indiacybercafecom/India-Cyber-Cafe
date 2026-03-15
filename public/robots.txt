@@ -1,0 +1,15 @@
+# robots.txt for India Cyber Cafe
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /operator
+Disallow: /api
+Disallow: /*.json$
+Disallow: /*?*sort=
+Disallow: /*?*filter=
+
+# Crawl delay to be respectful
+Crawl-delay: 1
+
+# Sitemap location
+Sitemap: https://b.indiacybercafe.com/sitemap.xml

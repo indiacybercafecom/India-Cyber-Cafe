@@ -15,7 +15,41 @@ async function startServer() {
   // Trust proxy for correct protocol and host detection behind proxies
   app.set('trust proxy', true);
 
+  // HTTPS Redirect Middleware (if in production)
+  app.use((req, res, next) => {
+    // Only redirect if behind a proxy and protocol is http
+    const protocol = req.get('x-forwarded-proto') || req.protocol;
+    const host = req.hostname;
+    
+    if (process.env.NODE_ENV === 'production' && protocol === 'http' && !host.includes('localhost')) {
+      return res.redirect(301, `https://${host}${req.originalUrl}`);
+    }
+    next();
+  });
+
   app.use(express.json());
+
+  // SEO and Security Headers Middleware
+  app.use((req, res, next) => {
+    // Security headers required by Google Search Console
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    
+    // HSTS - Forces HTTPS connections
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+    
+    // Content Security Policy for security
+    res.setHeader('Content-Security-Policy', 'default-src \'self\'; script-src \'self\' \'unsafe-inline\' https://checkout.razorpay.com https://lottie.host https://unpkg.com https://*.firebaseio.com; style-src \'self\' \'unsafe-inline\'; img-src \'self\' data: https:; connect-src \'self\' https://*.firebaseapp.com https://*.firebaseio.com https://checkout.razorpay.com https://lottie.host; frame-src https://checkout.razorpay.com;');
+    
+    // Canonical header for homepage
+    if (req.path === '/' || req.path === '') {
+      res.setHeader('Link', '<https://b.indiacybercafe.com/>; rel="canonical"');
+    }
+    
+    next();
+  });
 
   // Email Configuration
   const transporter = nodemailer.createTransport({
@@ -71,8 +105,40 @@ async function startServer() {
       const host = req.get('host');
       baseUrl = `${protocol}://${host}`;
     }
+    
+    // Cache robots.txt for 24 hours
+    res.set('Cache-Control', 'public, max-age=86400');
     res.type("text/plain");
-    res.send(`User-agent: *\nAllow: /\nSitemap: ${baseUrl}/sitemap.xml`);
+    
+    const robotsTxt = `# Robots.txt for India Cyber Cafe
+User-agent: *
+Allow: /
+Disallow: /admin
+Disallow: /operator
+Disallow: /api
+Disallow: /*.json$
+Disallow: /*?*sort=
+Disallow: /*?*filter=
+
+# Specific rules for Google bot
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 0
+
+# Disallow bad bots
+User-agent: AhrefsBot
+User-agent: SemrushBot
+User-agent: MJ12bot
+Disallow: /
+
+# Crawl delay
+Crawl-delay: 1
+Request-rate: 10/1s
+
+# Sitemap location
+Sitemap: ${baseUrl}/sitemap.xml`;
+    
+    res.send(robotsTxt);
   });
 
   app.get("/sitemap.xml", async (req, res) => {
@@ -85,6 +151,10 @@ async function startServer() {
       const host = req.get('host');
       baseUrl = `${protocol}://${host}`;
     }
+    
+    // Cache sitemap for 12 hours
+    res.set('Cache-Control', 'public, max-age=43200');
+    res.type("application/xml");
     
     const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
     
@@ -145,26 +215,26 @@ async function startServer() {
     const slugify = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
 
     let sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-    sitemap += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
+    sitemap += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:mobile="http://www.google.com/schemas/sitemap-mobile/1.0">\n`;
 
     // Current date for lastmod
     const today = new Date().toISOString().split('T')[0];
 
-    // Static pages
+    // Static pages with mobile tags
     staticPages.forEach(page => {
-      sitemap += `  <url>\n    <loc>${baseUrl}${page}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>${page === "" ? "1.0" : "0.8"}</priority>\n  </url>\n`;
+      sitemap += `  <url>\n    <loc>${baseUrl}${page || '/'}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${page === "" ? "daily" : "weekly"}</changefreq>\n    <priority>${page === "" ? "1.0" : "0.8"}</priority>\n    <mobile:mobile/>\n  </url>\n`;
     });
 
     // Services
     services.forEach(service => {
       if (service && service.id) {
-        sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.7</priority>\n  </url>\n`;
+        sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n    <mobile:mobile/>\n  </url>\n`;
         
         // Subservices
         if (service.subservices && Array.isArray(service.subservices)) {
           service.subservices.forEach((ss: any) => {
             if (ss && ss.name) {
-              sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}/${slugify(ss.name)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.6</priority>\n  </url>\n`;
+              sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}/${slugify(ss.name)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n    <mobile:mobile/>\n  </url>\n`;
             }
           });
         }
@@ -174,19 +244,18 @@ async function startServer() {
     // Product Categories
     productCategories.forEach(category => {
       if (category && category.id) {
-        sitemap += `  <url>\n    <loc>${baseUrl}/store/${category.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.7</priority>\n  </url>\n`;
+        sitemap += `  <url>\n    <loc>${baseUrl}/store/${category.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n    <mobile:mobile/>\n  </url>\n`;
       }
     });
 
     // Products
     products.forEach(product => {
       if (product && product.id && product.category) {
-        sitemap += `  <url>\n    <loc>${baseUrl}/store/${product.category}/${product.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.6</priority>\n  </url>\n`;
+        sitemap += `  <url>\n    <loc>${baseUrl}/store/${product.category}/${product.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.6</priority>\n    <mobile:mobile/>\n  </url>\n`;
       }
     });
 
     sitemap += `</urlset>`;
-    res.type("application/xml");
     res.send(sitemap);
   });
 
