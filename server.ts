@@ -135,15 +135,57 @@ Disallow: /
 Crawl-delay: 1
 Request-rate: 10/1s
 
-# Sitemap location
-Sitemap: ${baseUrl}/sitemap.xml`;
+# Sitemap Index location
+Sitemap: ${baseUrl}/sitemap-index.xml`;
     
     res.send(robotsTxt);
   });
 
-  app.get("/sitemap.xml", async (req, res) => {
-    // Use APP_URL if set, otherwise fallback to current request host
-    // This ensures that in production it uses the real domain if configured
+  // Sitemap Index - References all other sitemaps
+  app.get("/sitemap-index.xml", (req, res) => {
+    let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+    
+    if (!baseUrl) {
+      const protocol = req.protocol;
+      const host = req.get('host');
+      baseUrl = `${protocol}://${host}`;
+    }
+
+    // Cache for 24 hours since this just references other sitemaps
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.type("application/xml");
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const sitemapIndex = `<?xml version="1.0" encoding="UTF-8"?>
+<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <sitemap>
+    <loc>${baseUrl}/sitemap.xml</loc>
+    <lastmod>${today}</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>${baseUrl}/sitemap-services.xml</loc>
+    <lastmod>${today}</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>${baseUrl}/sitemap-subservices.xml</loc>
+    <lastmod>${today}</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>${baseUrl}/sitemap-categories.xml</loc>
+    <lastmod>${today}</lastmod>
+  </sitemap>
+  <sitemap>
+    <loc>${baseUrl}/sitemap-products.xml</loc>
+    <lastmod>${today}</lastmod>
+  </sitemap>
+</sitemapindex>`;
+
+    res.send(sitemapIndex);
+  });
+
+  // Main Sitemap - Static pages only
+  app.get("/sitemap.xml", (req, res) => {
     let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
     
     if (!baseUrl) {
@@ -152,28 +194,145 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       baseUrl = `${protocol}://${host}`;
     }
     
-    // Cache sitemap for 12 hours
+    // Cache sitemap for 24 hours (static pages don't change often)
+    res.set('Cache-Control', 'public, max-age=86400');
+    res.type("application/xml");
+
+    const staticPages = [
+      { path: "", changefreq: "daily", priority: "1.0" },
+      { path: "/services", changefreq: "weekly", priority: "0.9" },
+      { path: "/store", changefreq: "weekly", priority: "0.9" },
+      { path: "/track", changefreq: "daily", priority: "0.8" },
+      { path: "/profile", changefreq: "monthly", priority: "0.7" },
+      { path: "/about", changefreq: "monthly", priority: "0.7" },
+      { path: "/contact", changefreq: "monthly", priority: "0.7" },
+      { path: "/legal/terms", changefreq: "yearly", priority: "0.5" },
+      { path: "/legal/privacy", changefreq: "yearly", priority: "0.5" },
+      { path: "/legal/refund", changefreq: "yearly", priority: "0.5" },
+    ];
+
+    const today = new Date().toISOString().split('T')[0];
+
+    let sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    sitemap += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:mobile="http://www.google.com/schemas/sitemap-mobile/1.0">\n`;
+
+    staticPages.forEach(page => {
+      sitemap += `  <url>\n    <loc>${baseUrl}${page.path || '/'}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${page.changefreq}</changefreq>\n    <priority>${page.priority}</priority>\n    <mobile:mobile/>\n  </url>\n`;
+    });
+
+    sitemap += `</urlset>`;
+    res.send(sitemap);
+  });
+
+  // Services Sitemap
+  app.get("/sitemap-services.xml", async (req, res) => {
+    let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+    
+    if (!baseUrl) {
+      const protocol = req.protocol;
+      const host = req.get('host');
+      baseUrl = `${protocol}://${host}`;
+    }
+    
+    // Cache for 12 hours (services update regularly)
     res.set('Cache-Control', 'public, max-age=43200');
     res.type("application/xml");
-    
+
     const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
-    
     let services: any[] = [];
-    let productCategories: any[] = [];
-    let products: any[] = [];
-    
+
     try {
       const response = await fetch(`${databaseURL}/services.json`);
       if (response.ok) {
         const data = await response.json();
         if (data) {
-          // Firebase might return an object or an array
           services = Array.isArray(data) ? data : Object.values(data);
         }
       }
     } catch (error) {
       console.error("Error fetching services for sitemap:", error);
     }
+
+    const today = new Date().toISOString().split('T')[0];
+
+    let sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    sitemap += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:mobile="http://www.google.com/schemas/sitemap-mobile/1.0">\n`;
+
+    services.forEach(service => {
+      if (service && service.id) {
+        sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n    <mobile:mobile/>\n  </url>\n`;
+      }
+    });
+
+    sitemap += `</urlset>`;
+    res.send(sitemap);
+  });
+
+  // Subservices Sitemap
+  app.get("/sitemap-subservices.xml", async (req, res) => {
+    let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+    
+    if (!baseUrl) {
+      const protocol = req.protocol;
+      const host = req.get('host');
+      baseUrl = `${protocol}://${host}`;
+    }
+    
+    // Cache for 12 hours
+    res.set('Cache-Control', 'public, max-age=43200');
+    res.type("application/xml");
+
+    const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
+    let services: any[] = [];
+
+    try {
+      const response = await fetch(`${databaseURL}/services.json`);
+      if (response.ok) {
+        const data = await response.json();
+        if (data) {
+          services = Array.isArray(data) ? data : Object.values(data);
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching services for subservices sitemap:", error);
+    }
+
+    const slugify = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+    const today = new Date().toISOString().split('T')[0];
+
+    let sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    sitemap += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:mobile="http://www.google.com/schemas/sitemap-mobile/1.0">\n`;
+
+    services.forEach(service => {
+      if (service && service.id && service.subservices && Array.isArray(service.subservices)) {
+        service.subservices.forEach((ss: any) => {
+          if (ss && ss.name) {
+            sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}/${slugify(ss.name)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n    <mobile:mobile/>\n  </url>\n`;
+          }
+        });
+      }
+    });
+
+    sitemap += `</urlset>`;
+    res.send(sitemap);
+  });
+
+  // Product Categories Sitemap
+  app.get("/sitemap-categories.xml", async (req, res) => {
+    let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+    
+    if (!baseUrl) {
+      const protocol = req.protocol;
+      const host = req.get('host');
+      baseUrl = `${protocol}://${host}`;
+    }
+    
+    // Cache for 12 hours
+    res.set('Cache-Control', 'public, max-age=43200');
+    res.type("application/xml");
+
+    const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
+    let productCategories: any[] = [];
 
     try {
       const response = await fetch(`${databaseURL}/productCategories.json`);
@@ -187,6 +346,38 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       console.error("Error fetching product categories for sitemap:", error);
     }
 
+    const today = new Date().toISOString().split('T')[0];
+
+    let sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n`;
+    sitemap += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:mobile="http://www.google.com/schemas/sitemap-mobile/1.0">\n`;
+
+    productCategories.forEach(category => {
+      if (category && category.id) {
+        sitemap += `  <url>\n    <loc>${baseUrl}/store/${category.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.8</priority>\n    <mobile:mobile/>\n  </url>\n`;
+      }
+    });
+
+    sitemap += `</urlset>`;
+    res.send(sitemap);
+  });
+
+  // Products Sitemap
+  app.get("/sitemap-products.xml", async (req, res) => {
+    let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+    
+    if (!baseUrl) {
+      const protocol = req.protocol;
+      const host = req.get('host');
+      baseUrl = `${protocol}://${host}`;
+    }
+    
+    // Cache for 6 hours (products change frequently)
+    res.set('Cache-Control', 'public, max-age=21600');
+    res.type("application/xml");
+
+    const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
+    let products: any[] = [];
+
     try {
       const response = await fetch(`${databaseURL}/products.json`);
       if (response.ok) {
@@ -199,59 +390,14 @@ Sitemap: ${baseUrl}/sitemap.xml`;
       console.error("Error fetching products for sitemap:", error);
     }
 
-    const staticPages = [
-      "",
-      "/services",
-      "/store",
-      "/track",
-      "/profile",
-      "/about",
-      "/contact",
-      "/legal/terms",
-      "/legal/privacy",
-      "/legal/refund",
-    ];
-
-    const slugify = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+    const today = new Date().toISOString().split('T')[0];
 
     let sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n`;
     sitemap += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:mobile="http://www.google.com/schemas/sitemap-mobile/1.0">\n`;
 
-    // Current date for lastmod
-    const today = new Date().toISOString().split('T')[0];
-
-    // Static pages with mobile tags
-    staticPages.forEach(page => {
-      sitemap += `  <url>\n    <loc>${baseUrl}${page || '/'}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${page === "" ? "daily" : "weekly"}</changefreq>\n    <priority>${page === "" ? "1.0" : "0.8"}</priority>\n    <mobile:mobile/>\n  </url>\n`;
-    });
-
-    // Services
-    services.forEach(service => {
-      if (service && service.id) {
-        sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n    <mobile:mobile/>\n  </url>\n`;
-        
-        // Subservices
-        if (service.subservices && Array.isArray(service.subservices)) {
-          service.subservices.forEach((ss: any) => {
-            if (ss && ss.name) {
-              sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}/${slugify(ss.name)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.6</priority>\n    <mobile:mobile/>\n  </url>\n`;
-            }
-          });
-        }
-      }
-    });
-
-    // Product Categories
-    productCategories.forEach(category => {
-      if (category && category.id) {
-        sitemap += `  <url>\n    <loc>${baseUrl}/store/${category.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>weekly</changefreq>\n    <priority>0.7</priority>\n    <mobile:mobile/>\n  </url>\n`;
-      }
-    });
-
-    // Products
     products.forEach(product => {
       if (product && product.id && product.category) {
-        sitemap += `  <url>\n    <loc>${baseUrl}/store/${product.category}/${product.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.6</priority>\n    <mobile:mobile/>\n  </url>\n`;
+        sitemap += `  <url>\n    <loc>${baseUrl}/store/${product.category}/${product.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.7</priority>\n    <mobile:mobile/>\n  </url>\n`;
       }
     });
 
