@@ -1,76 +1,15 @@
 {
   "short_name": "ICC",
-  "name": "India Cyber Cafe - Digital Services",
-  "description": "India Cyber Cafe provides expert digital services, CSC services, online form filling, and government document assistance.",
-  "scope": "/",
-  "start_url": "/",
-  "display": "standalone",
-  "orientation": "portrait-primary",
-  "theme_color": "#FF9933",
-  "background_color": "#ffffff",
-  "screenshots": [
-    {
-      "src": "/screenshot-1.png",
-      "sizes": "540x720",
-      "type": "image/png",
-      "form_factor": "narrow"
-    },
-    {
-      "src": "/screenshot-2.png",
-      "sizes": "1280x720",
-      "type": "image/png",
-      "form_factor": "wide"
-    }
-  ],
+  "name": "India Cyber Cafe",
   "icons": [
     {
-      "src": "https://b.indiacybercafe.com/logo-192.png",
+      "src": "http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png",
       "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "any"
-    },
-    {
-      "src": "https://b.indiacybercafe.com/logo-512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "any"
-    },
-    {
-      "src": "https://b.indiacybercafe.com/logo-maskable-192.png",
-      "type": "image/png",
-      "sizes": "192x192",
-      "purpose": "maskable"
-    },
-    {
-      "src": "https://b.indiacybercafe.com/logo-maskable-512.png",
-      "type": "image/png",
-      "sizes": "512x512",
-      "purpose": "maskable"
+      "sizes": "512x512"
     }
   ],
-  "categories": ["business", "productivity"],
-  "screenshots": [],
-  "shortcuts": [
-    {
-      "name": "Apply for Services",
-      "short_name": "Apply",
-      "description": "Apply for government services quickly",
-      "url": "/services",
-      "icons": [{ "src": "https://b.indiacybercafe.com/logo-96.png", "sizes": "96x96" }]
-    },
-    {
-      "name": "Track Order",
-      "short_name": "Track",
-      "description": "Track your application status",
-      "url": "/track",
-      "icons": [{ "src": "https://b.indiacybercafe.com/logo-96.png", "sizes": "96x96" }]
-    },
-    {
-      "name": "Store",
-      "short_name": "Store",
-      "description": "Browse our products and services",
-      "url": "/store",
-      "icons": [{ "src": "https://b.indiacybercafe.com/logo-96.png", "sizes": "96x96" }]
-    }
-  ]
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#FF9933",
+  "background_color": "#ffffff"
 }
