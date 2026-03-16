@@ -99,37 +99,37 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
   };
 
   return (
-    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-[2000] flex items-center justify-center p-2 sm:p-4">
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-white rounded-3xl w-full max-w-4xl relative overflow-hidden shadow-2xl flex flex-col max-h-[95vh]"
+        className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-2xl sm:max-w-4xl relative overflow-hidden shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[95vh]"
       >
-        <div className="p-6 bg-primary text-white flex justify-between items-center">
-          <h3 className="text-xl font-bold">Service Builder</h3>
-          <button onClick={onClose} className="hover:rotate-90 transition-all">
-            <IconRenderer name="x" className="w-6 h-6" />
+        <div className="p-4 sm:p-6 bg-primary text-white flex justify-between items-center sticky top-0 z-10">
+          <h3 className="text-lg sm:text-xl font-bold">Service Builder</h3>
+          <button onClick={onClose} className="hover:rotate-90 transition-all p-1 hover:bg-white/20 rounded-lg">
+            <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-8 space-y-8">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             <div className="space-y-2">
-              <label className="block font-bold text-navy">Service Name</label>
-              <input type="text" className="input-field" value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Passport Application" />
+              <label className="block font-bold text-navy text-sm sm:text-base">Service Name</label>
+              <input type="text" className="input-field text-sm" value={name} onChange={e => setName(e.target.value)} placeholder="e.g., Passport Application" />
             </div>
             <div className="space-y-2">
-              <label className="block font-bold text-navy">Icon</label>
-              <div className="flex gap-2 mb-2">
+              <label className="block font-bold text-navy text-sm sm:text-base">Icon</label>
+              <div className="flex gap-2 mb-2 flex-wrap">
                 <button 
                   onClick={() => setIconType('class')}
-                  className={`text-xs font-bold px-3 py-1 rounded ${iconType === 'class' ? 'bg-primary text-white' : 'bg-slate-200 text-slate-700'}`}
+                  className={`text-xs font-bold px-3 py-2 sm:py-1 rounded-lg transition-all ${iconType === 'class' ? 'bg-primary text-white shadow-md' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
                 >
                   Icon Class
                 </button>
                 <button 
                   onClick={() => setIconType('url')}
-                  className={`text-xs font-bold px-3 py-1 rounded ${iconType === 'url' ? 'bg-primary text-white' : 'bg-slate-200 text-slate-700'}`}
+                  className={`text-xs font-bold px-3 py-2 sm:py-1 rounded-lg transition-all ${iconType === 'url' ? 'bg-primary text-white shadow-md' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
                 >
                   Image/GIF/MP4 URL
                 </button>
@@ -137,26 +137,26 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
               {iconType === 'class' ? (
                 <input 
                   type="text" 
-                  className="input-field" 
+                  className="input-field text-sm" 
                   value={icon} 
                   onChange={e => setIcon(e.target.value)} 
                   placeholder="e.g., fingerprint, file-text, shield" 
                 />
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   <input 
                     type="text" 
-                    className="input-field" 
+                    className="input-field text-sm" 
                     value={icon} 
                     onChange={e => setIcon(e.target.value)} 
                     placeholder="e.g., https://example.com/icon.png or https://example.com/animation.gif" 
                   />
                   {icon && (
-                    <div className="bg-slate-100 rounded-lg p-3 flex items-center justify-center min-h-20 border border-slate-200">
+                    <div className="bg-slate-100 rounded-xl p-3 sm:p-4 flex items-center justify-center min-h-24 sm:min-h-32 border-2 border-slate-200 overflow-hidden">
                       {icon.toLowerCase().endsWith('.mp4') ? (
-                        <video src={icon} className="max-w-full max-h-20 rounded" muted autoPlay loop />
+                        <video src={icon} className="max-w-full max-h-24 sm:max-h-32 rounded-lg" muted autoPlay loop />
                       ) : (
-                        <img src={icon} alt="Preview" className="max-w-full max-h-20 rounded object-contain" />
+                        <img src={icon} alt="Preview" className="max-w-full max-h-24 sm:max-h-32 rounded object-contain" />
                       )}
                     </div>
                   )}
@@ -166,42 +166,44 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
           </div>
 
           <div className="space-y-2">
-            <label className="block font-bold text-navy">Description</label>
-            <textarea className="input-field min-h-[80px]" value={description} onChange={e => setDescription(e.target.value)} placeholder="Brief description of the service" />
+            <label className="block font-bold text-navy text-sm sm:text-base">Description</label>
+            <textarea className="input-field text-sm min-h-20 sm:min-h-24" value={description} onChange={e => setDescription(e.target.value)} placeholder="Brief description of the service" />
           </div>
 
           {/* Sub-Services */}
           <div className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h4 className="font-bold text-navy">Sub-Services & Charges</h4>
-              <button onClick={handleAddSubService} className="btn-outline py-2 px-4 text-sm flex items-center gap-2"><IconRenderer name="plus" className="w-4 h-4" /> Add Sub-Service</button>
+            <div className="flex justify-between items-center gap-2 flex-wrap">
+              <h4 className="font-bold text-navy text-sm sm:text-base">Sub-Services & Charges</h4>
+              <button onClick={handleAddSubService} className="btn-outline py-2 px-3 sm:px-4 text-xs sm:text-sm flex items-center gap-2 inline-flex"><IconRenderer name="plus" className="w-4 h-4" /> <span className="hidden sm:inline">Add</span> Sub-Service</button>
             </div>
             <div className="space-y-4">
               {subservices.map((ss, i) => (
-                <div key={i} className="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-4">
-                  <div className="flex gap-3 items-center">
-                    <input type="text" className="input-field py-2" placeholder="Sub-service name" value={ss.name} onChange={e => {
+                <div key={i} className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-5 rounded-xl sm:rounded-2xl border-2 border-slate-200 hover:border-primary/40 space-y-4 transition-all">
+                  <div className="flex gap-2 sm:gap-3 items-center flex-col sm:flex-row">
+                    <input type="text" className="input-field py-2 text-sm flex-1" placeholder="Sub-service name" value={ss.name} onChange={e => {
                       const newSS = [...subservices];
                       newSS[i].name = e.target.value;
                       setSubservices(newSS);
                     }} />
-                    <input type="number" className="input-field py-2 w-32" placeholder="Charge" value={ss.charge} onChange={e => {
+                    <input type="number" className="input-field py-2 text-sm w-full sm:w-32" placeholder="Charge" value={ss.charge} onChange={e => {
                       const newSS = [...subservices];
                       newSS[i].charge = parseFloat(e.target.value);
                       setSubservices(newSS);
                     }} />
-                    <input type="number" className="input-field py-2 w-32" placeholder="Orig. Price" value={ss.originalCharge || ''} onChange={e => {
+                    <input type="number" className="input-field py-2 text-sm w-full sm:w-32" placeholder="Orig. Price" value={ss.originalCharge || ''} onChange={e => {
                       const newSS = [...subservices];
                       newSS[i].originalCharge = parseFloat(e.target.value);
                       setSubservices(newSS);
                     }} />
-                    <button onClick={() => setSubservices(subservices.filter((_, idx) => idx !== i))} className="text-red-500 hover:scale-110 transition-all"><IconRenderer name="trash" className="w-5 h-5" /></button>
+                    <button onClick={() => setSubservices(subservices.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 hover:scale-110 transition-all p-2 rounded-lg hover:bg-red-50 w-full sm:w-auto">
+                      <IconRenderer name="trash" className="w-5 h-5 mx-auto sm:mx-0" />
+                    </button>
                   </div>
 
                   {/* Sub-service image/background */}
-                  <div className="space-y-3 bg-white rounded-lg p-4 border border-slate-100">
-                    <div className="flex justify-between items-center">
-                      <h5 className="text-sm font-bold text-navy/70 uppercase tracking-wider">Sub-Service Display Image</h5>
+                  <div className="space-y-3 bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border-2 border-slate-100 hover:border-primary/30 transition-all">
+                    <div className="flex justify-between items-center gap-2 flex-wrap">
+                      <h5 className="text-xs font-bold text-navy/70 uppercase tracking-wider">Sub-Service Display Image</h5>
                       <div className="flex gap-2">
                         <button 
                           onClick={() => {
@@ -209,9 +211,9 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                             newSS[i].imageType = newSS[i].imageType === 'url' ? 'class' : 'url';
                             setSubservices(newSS);
                           }}
-                          className={`text-xs font-bold px-2 py-1 rounded transition-all ${ss.imageType === 'url' ? 'bg-primary text-white' : 'bg-slate-200 text-slate-700'}`}
+                          className={`text-xs font-bold px-2 py-1.5 rounded-lg transition-all ${ss.imageType === 'url' ? 'bg-primary text-white shadow-md' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
                         >
-                          {ss.imageType === 'url' ? 'Image/Video' : 'Icon Class'}
+                          {ss.imageType === 'url' ? '🖼️ Image/Video' : '🎨 Icon Class'}
                         </button>
                       </div>
                     </div>
@@ -220,7 +222,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                       <div className="space-y-2">
                         <input 
                           type="text" 
-                          className="input-field text-sm" 
+                          className="input-field text-xs sm:text-sm" 
                           value={ss.image || ''} 
                           onChange={e => {
                             const newSS = [...subservices];
@@ -230,11 +232,11 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                           placeholder="e.g., https://example.com/image.jpg or https://example.com/video.mp4" 
                         />
                         {ss.image && (
-                          <div className="bg-slate-100 rounded-lg p-3 flex items-center justify-center min-h-40 border border-slate-200 overflow-hidden">
+                          <div className="bg-slate-100 rounded-lg p-2 sm:p-3 flex items-center justify-center min-h-32 sm:min-h-40 border-2 border-slate-200 overflow-hidden">
                             {ss.image.toLowerCase().endsWith('.mp4') ? (
-                              <video src={ss.image} className="max-w-full max-h-40 rounded" muted autoPlay loop />
+                              <video src={ss.image} className="max-w-full max-h-32 sm:max-h-40 rounded" muted autoPlay loop />
                             ) : (
-                              <img src={ss.image} alt="Preview" className="max-w-full max-h-40 rounded object-cover" />
+                              <img src={ss.image} alt="Preview" className="max-w-full max-h-32 sm:max-h-40 rounded object-cover" />
                             )}
                           </div>
                         )}
@@ -242,7 +244,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                     ) : (
                       <input 
                         type="text" 
-                        className="input-field text-sm" 
+                        className="input-field text-xs sm:text-sm" 
                         value={ss.image || ''} 
                         onChange={e => {
                           const newSS = [...subservices];
@@ -255,13 +257,13 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                   </div>
                   
                   {/* Sub-service specific fields */}
-                  <div className="pl-6 border-l-2 border-primary/20 space-y-3">
-                    <div className="flex justify-between items-center gap-2">
-                      <h5 className="text-sm font-bold text-navy/70 uppercase tracking-wider">Sub-Service Fields</h5>
+                  <div className="pl-3 sm:pl-6 border-l-4 border-primary/30 space-y-3 bg-primary/5 p-3 sm:p-4 rounded-lg sm:rounded-xl">
+                    <div className="flex justify-between items-center gap-2 flex-wrap">
+                      <h5 className="text-xs font-bold text-navy/70 uppercase tracking-wider">Sub-Service Fields</h5>
                       <div className="flex gap-2">
                         <button 
                           onClick={() => handleToggleJsonModeSub(i)}
-                          className={`text-xs font-bold px-2 py-1 rounded transition-all ${jsonModeSubs[i] ? 'bg-blue-600 text-white' : 'bg-slate-300 text-slate-700 hover:bg-slate-400'}`}
+                          className={`text-xs font-bold px-2.5 py-1.5 rounded-lg transition-all ${jsonModeSubs[i] ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-300 text-slate-700 hover:bg-slate-400'}`}
                         >
                           {jsonModeSubs[i] ? '📝 JSON' : '📝 JSON'}
                         </button>
@@ -273,9 +275,9 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                               newSS[i].fields!.push({ label: '', type: 'text' });
                               setSubservices(newSS);
                             }}
-                            className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+                            className="text-xs font-bold text-primary hover:underline flex items-center gap-1 px-2.5 py-1.5 rounded-lg hover:bg-white/60"
                           >
-                            <IconRenderer name="plus" className="w-3 h-3" /> Add Field
+                            <IconRenderer name="plus" className="w-3 h-3" /> Field
                           </button>
                         )}
                       </div>
@@ -283,14 +285,14 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
 
                     {/* JSON Mode for Sub-Service Fields */}
                     {jsonModeSubs[i] ? (
-                      <div className="space-y-2 bg-slate-900 p-3 rounded-lg border border-slate-700">
+                      <div className="space-y-2 bg-slate-900 p-2 sm:p-3 rounded-lg border-2 border-slate-700">
                         <textarea 
-                          className="w-full h-48 bg-slate-800 text-white font-mono text-xs p-2 rounded border border-slate-600 focus:border-primary focus:outline-none" 
+                          className="w-full h-40 sm:h-48 bg-slate-800 text-white font-mono text-xs p-2 rounded border border-slate-600 focus:border-primary focus:outline-none" 
                           value={subFieldsJson[i] || '[]'}
                           onChange={e => setSubFieldsJson({ ...subFieldsJson, [i]: e.target.value })}
                           placeholder={`Example:\n[\n  {"label": "Document", "type": "file"}\n]`}
                         />
-                        <p className="text-xs text-slate-400">Edit JSON and toggle mode again to apply</p>
+                        <p className="text-xs text-slate-400 italic">Edit & toggle mode to apply</p>
                       </div>
                     ) : (
                       <>
@@ -299,7 +301,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                           <label className="text-xs font-bold text-navy/50 uppercase">Payment Methods</label>
                           <div className="flex flex-wrap gap-2">
                             {['cash', 'razorpay', 'pay_after_work', 'free'].map(m => (
-                              <label key={m} className="flex items-center gap-1 text-xs bg-white px-2 py-1 rounded border border-slate-200 cursor-pointer hover:border-primary transition-all">
+                              <label key={m} className="flex items-center gap-2 text-xs bg-white px-2.5 py-1.5 rounded-lg border-2 border-slate-200 hover:border-primary cursor-pointer transition-all hover:shadow-sm">
                                 <input 
                                   type="checkbox" 
                                   checked={ss.paymentMethods.includes(m)}
@@ -313,7 +315,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                     setSubservices(newSS);
                                   }}
                                 />
-                                <span className="capitalize">{m.replace(/_/g, ' ')}</span>
+                                <span className="capitalize text-xs">{m.replace(/_/g, ' ')}</span>
                               </label>
                             ))}
                           </div>
@@ -322,14 +324,14 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                         {ss.fields && ss.fields.length > 0 ? (
                           <div className="space-y-2">
                             {ss.fields.map((f, fi) => (
-                              <div key={fi} className="space-y-2 bg-white rounded-lg p-3 border border-slate-100">
-                                <div className="flex gap-2 items-center">
-                                  <input type="text" className="input-field py-1 text-sm" placeholder="Field Label" value={f.label} onChange={e => {
+                              <div key={fi} className="space-y-2 bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border-2 border-slate-100 hover:border-primary/30 transition-all">
+                                <div className="flex gap-2 items-center flex-col sm:flex-row">
+                                  <input type="text" className="input-field py-1 text-xs sm:text-sm flex-1" placeholder="Field Label" value={f.label} onChange={e => {
                                     const newSS = [...subservices];
                                     newSS[i].fields![fi].label = e.target.value;
                                     setSubservices(newSS);
                                   }} />
-                                  <select className="input-field py-1 text-sm w-32" value={f.type} onChange={e => {
+                                  <select className="input-field py-1 text-xs sm:text-sm sm:w-32 w-full" value={f.type} onChange={e => {
                                     const newSS = [...subservices];
                                     newSS[i].fields![fi].type = e.target.value as any;
                                     setSubservices(newSS);
@@ -351,7 +353,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
 
                                 {/* Dropdown Options for Sub-Service Fields */}
                                 {f.type === 'select' && (
-                                  <div className="ml-4 pl-3 border-l-2 border-primary/30 space-y-2">
+                                  <div className="ml-3 sm:ml-4 pl-3 sm:pl-3 border-l-4 border-primary/30 space-y-2 bg-primary/5 p-2 sm:p-3 rounded-lg">
                                     <label className="block text-xs font-bold text-navy/70 uppercase tracking-wider">Options</label>
                                     <div className="space-y-1">
                                       {(f.options || []).map((opt, optIdx) => (
@@ -375,9 +377,9 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                               newSS[i].fields![fi].options = newSS[i].fields![fi].options?.filter((_, idx) => idx !== optIdx) || [];
                                               setSubservices(newSS);
                                             }}
-                                            className="text-red-400 hover:text-red-600"
+                                            className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-all"
                                           >
-                                            <IconRenderer name="x" className="w-3 h-3" />
+                                            <IconRenderer name="x" className="w-4 h-4" />
                                           </button>
                                         </div>
                                       ))}
@@ -390,7 +392,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                         newSS[i].fields![fi].options!.push('');
                                         setSubservices(newSS);
                                       }}
-                                      className="text-xs font-bold text-primary hover:underline flex items-center gap-1"
+                                      className="text-xs font-bold text-primary hover:underline flex items-center gap-1 mt-2 px-2 py-1 rounded hover:bg-white/60"
                                     >
                                       <IconRenderer name="plus" className="w-3 h-3" /> Add Option
                                     </button>
@@ -412,43 +414,43 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
 
           {/* Main Fields */}
           <div className="space-y-4">
-            <div className="flex justify-between items-center gap-4">
-              <h4 className="font-bold text-navy">Main Form Fields (Default)</h4>
-              <div className="flex gap-2">
+            <div className="flex justify-between items-center gap-2 sm:gap-4 flex-wrap">
+              <h4 className="font-bold text-navy text-sm sm:text-base">Main Form Fields (Default)</h4>
+              <div className="flex gap-2 flex-wrap">
                 <button 
                   onClick={handleToggleJsonModeMain}
-                  className={`text-xs font-bold px-3 py-2 rounded transition-all ${jsonModeMain ? 'bg-blue-600 text-white' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
+                  className={`text-xs font-bold px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-lg transition-all ${jsonModeMain ? 'bg-blue-600 text-white shadow-md' : 'bg-slate-200 text-slate-700 hover:bg-slate-300'}`}
                 >
-                  {jsonModeMain ? '📝 JSON Mode (ON)' : '📝 JSON Mode'}
+                  {jsonModeMain ? '📝 JSON (ON)' : '📝 JSON'}
                 </button>
                 {!jsonModeMain && (
-                  <button onClick={handleAddField} className="btn-outline py-2 px-4 text-sm flex items-center gap-2"><IconRenderer name="plus" className="w-4 h-4" /> Add Field</button>
+                  <button onClick={handleAddField} className="btn-outline py-1.5 sm:py-2 px-2.5 sm:px-4 text-xs sm:text-sm flex items-center gap-2"><IconRenderer name="plus" className="w-4 h-4" /> <span className="hidden sm:inline">Add</span> Field</button>
                 )}
               </div>
             </div>
 
             {jsonModeMain ? (
-              <div className="space-y-2 bg-slate-900 p-4 rounded-xl border border-slate-700">
+              <div className="space-y-2 bg-slate-900 p-3 sm:p-4 rounded-lg sm:rounded-xl border-2 border-slate-700">
                 <label className="block text-xs font-bold text-white uppercase tracking-wider">JSON Format</label>
                 <textarea 
-                  className="w-full h-64 bg-slate-800 text-white font-mono text-xs p-3 rounded border border-slate-600 focus:border-primary focus:outline-none" 
+                  className="w-full h-40 sm:h-64 bg-slate-800 text-white font-mono text-xs p-2 sm:p-3 rounded border border-slate-600 focus:border-primary focus:outline-none" 
                   value={mainFieldsJson}
                   onChange={e => setMainFieldsJson(e.target.value)}
-                  placeholder={`Example:\n[\n  {\n    "label": "Full Name",\n    "type": "text"\n  },\n  {\n    "label": "Email",\n    "type": "email"\n  }\n]`}
+                  placeholder={`Example:\n[\n  {\n    "label": "Full Name",\n    "type": "text"\n  }\n]`}
                 />
-                <p className="text-xs text-slate-400">Edit JSON and toggle mode again to apply changes</p>
+                <p className="text-xs text-slate-400 italic">Edit & toggle mode to apply</p>
               </div>
             ) : (
               <div className="space-y-3">
                 {fields.map((f, i) => (
-                  <div key={i} className="space-y-2 bg-slate-50 p-4 rounded-xl border border-slate-100">
-                    <div className="flex gap-3 items-center">
-                      <input type="text" className="input-field py-2" placeholder="Field Label" value={f.label} onChange={e => {
+                  <div key={i} className="space-y-2 bg-slate-50 p-4 sm:p-5 rounded-xl sm:rounded-2xl border-2 border-slate-100 hover:border-primary/30 transition-all">
+                    <div className="flex gap-2 sm:gap-3 items-center flex-col sm:flex-row">
+                      <input type="text" className="input-field py-2 text-sm flex-1" placeholder="Field Label" value={f.label} onChange={e => {
                         const newFields = [...fields];
                         newFields[i].label = e.target.value;
                         setFields(newFields);
                       }} />
-                      <select className="input-field py-2 w-48" value={f.type} onChange={e => {
+                      <select className="input-field py-2 text-sm w-full sm:w-48" value={f.type} onChange={e => {
                         const newFields = [...fields];
                         newFields[i].type = e.target.value as any;
                         setFields(newFields);
@@ -461,19 +463,21 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                         <option value="textarea">Textarea</option>
                         <option value="select">Select Dropdown</option>
                       </select>
-                      <button onClick={() => setFields(fields.filter((_, idx) => idx !== i))} className="text-red-500 hover:scale-110 transition-all"><IconRenderer name="trash" className="w-5 h-5" /></button>
+                      <button onClick={() => setFields(fields.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 hover:scale-110 transition-all p-2 rounded-lg hover:bg-red-50 w-full sm:w-auto">
+                        <IconRenderer name="trash" className="w-5 h-5 mx-auto sm:mx-0" />
+                      </button>
                     </div>
 
                     {/* Dropdown Options Editor - Show when field type is 'select' */}
                     {f.type === 'select' && (
-                      <div className="ml-4 pl-4 border-l-2 border-primary/30 space-y-2">
+                      <div className="ml-3 sm:ml-4 pl-3 border-l-4 border-primary/30 space-y-2 bg-primary/5 p-2 sm:p-3 rounded-lg">
                         <label className="block text-xs font-bold text-navy/70 uppercase tracking-wider">Dropdown Options</label>
                         <div className="space-y-2">
                           {(f.options || []).map((opt, optIdx) => (
                             <div key={optIdx} className="flex gap-2 items-center">
                               <input 
                                 type="text" 
-                                className="input-field py-1 text-sm flex-1" 
+                                className="input-field py-1 text-xs sm:text-sm flex-1" 
                                 placeholder="Option value"
                                 value={opt}
                                 onChange={e => {
@@ -490,7 +494,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                   newFields[i].options = newFields[i].options?.filter((_, idx) => idx !== optIdx) || [];
                                   setFields(newFields);
                                 }}
-                                className="text-red-400 hover:text-red-600 transition-colors"
+                                className="text-red-400 hover:text-red-600 transition-colors p-1 rounded hover:bg-red-50"
                               >
                                 <IconRenderer name="x" className="w-4 h-4" />
                               </button>
@@ -505,7 +509,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                             newFields[i].options!.push('');
                             setFields(newFields);
                           }}
-                          className="text-xs font-bold text-primary hover:underline flex items-center gap-1 mt-2"
+                          className="text-xs font-bold text-primary hover:underline flex items-center gap-1 mt-2 px-2 py-1 rounded hover:bg-white/60"
                         >
                           <IconRenderer name="plus" className="w-3 h-3" /> Add Option
                         </button>
@@ -517,7 +521,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
             )}
           </div>
 
-          <button onClick={handleSave} className="btn-primary w-full py-4 text-lg">Save Service</button>
+          <button onClick={handleSave} className="btn-primary w-full py-3 sm:py-4 text-base sm:text-lg font-bold sticky bottom-0 rounded-b-2xl sm:rounded-b-3xl">Save Service</button>
         </div>
       </motion.div>
     </div>
