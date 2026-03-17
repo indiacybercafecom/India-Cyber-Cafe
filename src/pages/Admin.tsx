@@ -4,6 +4,7 @@ import { Application, UserProfile, Service, PaymentGateway, Product, ProductCate
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
 import { utils, writeFile } from 'xlsx';
+import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GatewayModal } from '../components/GatewayModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { ProductModal } from '../components/ProductModal';
@@ -618,40 +619,42 @@ export function Admin({
       )}
 
       {tab === 'services' && (
-        <div className="space-y-4">
-          <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
-            <div className="relative w-full max-w-md">
-              <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Search services..." 
-                className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
-                value={searchServices}
-                onChange={e => setSearchServices(e.target.value)}
-              />
-            </div>
-            <button onClick={onAddService} className="w-full md:w-auto btn-primary flex items-center justify-center gap-2 px-8">
-              <IconRenderer name="plus" className="w-5 h-5" />
-              Create Service
-            </button>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            {filteredServices.map(s => (
-              <div key={s.id} className="bg-white p-6 rounded-2xl shadow-md border-2 border-transparent hover:border-primary transition-all group relative">
-                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
-                  <button onClick={() => onEditService(s)} className="p-2 bg-primary text-white rounded-lg hover:scale-110 transition-all"><IconRenderer name="user-pen" className="w-4 h-4" /></button>
-                  <button onClick={() => handleDeleteService(s.id)} className="p-2 bg-red-500 text-white rounded-lg hover:scale-110 transition-all"><IconRenderer name="trash" className="w-4 h-4" /></button>
-                </div>
-                <IconRenderer name={s.icon} className="w-12 h-12 text-primary mb-4" />
-                <h3 className="text-lg font-bold text-navy">{s.name}</h3>
-                <p className="text-slate-400 text-sm mt-2 line-clamp-2">{s.description}</p>
+        <ErrorBoundary>
+          <div className="space-y-4">
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+              <div className="relative w-full max-w-md">
+                <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input 
+                  type="text" 
+                  placeholder="Search services..." 
+                  className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all"
+                  value={searchServices}
+                  onChange={e => setSearchServices(e.target.value)}
+                />
               </div>
-            ))}
-            {filteredServices.length === 0 && (
-              <div className="col-span-full p-10 text-center text-slate-400 italic">No services found.</div>
-            )}
+              <button onClick={onAddService} className="w-full md:w-auto btn-primary flex items-center justify-center gap-2 px-8">
+                <IconRenderer name="plus" className="w-5 h-5" />
+                Create Service
+              </button>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredServices.map(s => (
+                <div key={s.id} className="bg-white p-6 rounded-2xl shadow-md border-2 border-transparent hover:border-primary transition-all group relative">
+                  <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-all">
+                    <button onClick={() => onEditService(s)} className="p-2 bg-primary text-white rounded-lg hover:scale-110 transition-all"><IconRenderer name="user-pen" className="w-4 h-4" /></button>
+                    <button onClick={() => handleDeleteService(s.id)} className="p-2 bg-red-500 text-white rounded-lg hover:scale-110 transition-all"><IconRenderer name="trash" className="w-4 h-4" /></button>
+                  </div>
+                  <IconRenderer name={s.icon} className="w-12 h-12 text-primary mb-4" />
+                  <h3 className="text-lg font-bold text-navy">{s.name}</h3>
+                  <p className="text-slate-400 text-sm mt-2 line-clamp-2">{s.description}</p>
+                </div>
+              ))}
+              {filteredServices.length === 0 && (
+                <div className="col-span-full p-10 text-center text-slate-400 italic">No services found.</div>
+              )}
+            </div>
           </div>
-        </div>
+        </ErrorBoundary>
       )}
 
       {tab === 'payments' && (
