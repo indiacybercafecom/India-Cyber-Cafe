@@ -410,34 +410,82 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                             </div>
                           ) : (
                             ss.fields && ss.fields.length > 0 ? (
-                              <div className="space-y-2 max-h-40 overflow-y-auto">
+                              <div className="space-y-2 max-h-48 overflow-y-auto">
                                 {ss.fields.map((f, fi) => (
-                                  <div key={fi} className="flex gap-2 items-center text-xs">
-                                    <input 
-                                      type="text" 
-                                      className="input-field py-1 text-xs flex-1" 
-                                      placeholder="Label" 
-                                      value={f.label} 
-                                      onChange={e => {
+                                  <div key={fi} className="space-y-2 bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border-2 border-slate-100 hover:border-primary/30 transition-all">
+                                    <div className="flex gap-2 items-center flex-col sm:flex-row">
+                                      <input type="text" className="input-field py-1 text-xs sm:text-sm flex-1" placeholder="Field Label" value={f.label} onChange={e => {
                                         const newSS = [...subservices];
                                         newSS[i].fields![fi].label = e.target.value;
                                         setSubservices(newSS);
-                                      }} 
-                                    />
-                                    <select className="input-field py-1 text-xs w-24" value={f.type} onChange={e => {
-                                      const newSS = [...subservices];
-                                      newSS[i].fields![fi].type = e.target.value as any;
-                                      setSubservices(newSS);
-                                    }}>
-                                      <option value="text">Text</option>
-                                      <option value="email">Email</option>
-                                      <option value="file">File</option>
-                                    </select>
-                                    <button onClick={() => {
-                                      const newSS = [...subservices];
-                                      newSS[i].fields = newSS[i].fields!.filter((_, idx) => idx !== fi);
-                                      setSubservices(newSS);
-                                    }} className="text-red-400 hover:text-red-600"><IconRenderer name="x" className="w-4 h-4" /></button>
+                                      }} />
+                                      <select className="input-field py-1 text-xs sm:text-sm sm:w-40 w-full" value={f.type} onChange={e => {
+                                        const newSS = [...subservices];
+                                        newSS[i].fields![fi].type = e.target.value as any;
+                                        setSubservices(newSS);
+                                      }}>
+                                        <option value="text">Text</option>
+                                        <option value="email">Email</option>
+                                        <option value="phone">Phone</option>
+                                        <option value="date">Date</option>
+                                        <option value="file">File Upload</option>
+                                        <option value="textarea">Textarea</option>
+                                        <option value="select">Select Dropdown</option>
+                                      </select>
+                                      <button onClick={() => {
+                                        const newSS = [...subservices];
+                                        newSS[i].fields = newSS[i].fields!.filter((_, idx) => idx !== fi);
+                                        setSubservices(newSS);
+                                      }} className="text-red-400 hover:text-red-600"><IconRenderer name="x" className="w-4 h-4" /></button>
+                                    </div>
+
+                                    {/* Dropdown Options for Sub-Service Fields */}
+                                    {f.type === 'select' && (
+                                      <div className="ml-3 sm:ml-4 pl-3 sm:pl-3 border-l-4 border-primary/30 space-y-2 bg-primary/5 p-2 sm:p-3 rounded-lg">
+                                        <label className="block text-xs font-bold text-navy/70 uppercase tracking-wider">Options</label>
+                                        <div className="space-y-1 max-h-24 overflow-y-auto">
+                                          {(f.options || []).map((opt, optIdx) => (
+                                            <div key={optIdx} className="flex gap-2 items-center">
+                                              <input 
+                                                type="text" 
+                                                className="input-field py-1 text-xs flex-1" 
+                                                placeholder="Option value"
+                                                value={opt}
+                                                onChange={e => {
+                                                  const newSS = [...subservices];
+                                                  if (!newSS[i].fields![fi].options) newSS[i].fields![fi].options = [];
+                                                  newSS[i].fields![fi].options![optIdx] = e.target.value;
+                                                  setSubservices(newSS);
+                                                }}
+                                              />
+                                              <button 
+                                                type="button"
+                                                onClick={() => {
+                                                  const newSS = [...subservices];
+                                                  newSS[i].fields![fi].options = newSS[i].fields![fi].options?.filter((_, idx) => idx !== optIdx) || [];
+                                                  setSubservices(newSS);
+                                                }}
+                                                className="text-red-400 hover:text-red-600 p-1 rounded hover:bg-red-50 transition-all"
+                                              >
+                                                <IconRenderer name="x" className="w-4 h-4" />
+                                              </button>
+                                            </div>
+                                          ))}
+                                        </div>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const newSS = [...subservices];
+                                            if (!newSS[i].fields![fi].options) newSS[i].fields![fi].options = [];
+                                            newSS[i].fields![fi].options!.push('');
+                                            setSubservices(newSS);
+                                          }}
+                                          className="text-xs font-bold text-primary hover:underline flex items-center gap-1 mt-2 px-2 py-1 rounded hover:bg-white/60"
+                                        >
+                                          <IconRenderer name="plus" className="w-3 h-3" /> Add Option
+                                        </button>
+                                      </div>
+                                    )}
                                   </div>
                                 ))}
                               </div>
