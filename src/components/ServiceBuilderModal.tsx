@@ -410,7 +410,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                             </div>
                           ) : (
                             ss.fields && ss.fields.length > 0 ? (
-                              <div className="space-y-2 max-h-48 overflow-y-auto">
+                              <div className="space-y-3">
                                 {ss.fields.map((f, fi) => (
                                   <div key={fi} className="space-y-2 bg-white rounded-lg sm:rounded-xl p-3 sm:p-4 border-2 border-slate-100 hover:border-primary/30 transition-all">
                                     <div className="flex gap-2 items-center flex-col sm:flex-row">
@@ -419,7 +419,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                         newSS[i].fields![fi].label = e.target.value;
                                         setSubservices(newSS);
                                       }} />
-                                      <select className="input-field py-1 text-xs sm:text-sm sm:w-40 w-full" value={f.type} onChange={e => {
+                                      <select className="input-field py-1 text-xs sm:text-sm w-full sm:w-48" value={f.type} onChange={e => {
                                         const newSS = [...subservices];
                                         newSS[i].fields![fi].type = e.target.value as any;
                                         setSubservices(newSS);
@@ -443,7 +443,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                     {f.type === 'select' && (
                                       <div className="ml-3 sm:ml-4 pl-3 sm:pl-3 border-l-4 border-primary/30 space-y-2 bg-primary/5 p-2 sm:p-3 rounded-lg">
                                         <label className="block text-xs font-bold text-navy/70 uppercase tracking-wider">Options</label>
-                                        <div className="space-y-1 max-h-24 overflow-y-auto">
+                                        <div className="space-y-1">
                                           {(f.options || []).map((opt, optIdx) => (
                                             <div key={optIdx} className="flex gap-2 items-center">
                                               <input 
