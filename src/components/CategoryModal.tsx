@@ -142,7 +142,7 @@ export function CategoryModal({ category, onClose, onSave }: CategoryModalProps)
             <div className="p-3 sm:p-4 bg-slate-50 rounded-2xl">
               <p className="text-xs text-slate-600 font-bold mb-3">Preview</p>
               <div className="flex items-center gap-3 p-3 bg-white rounded-lg border border-slate-200">
-                <IconRenderer name={formData.icon} className="w-5 sm:w-6 h-5 sm:h-6 text-navy flex-shrink-0" />
+                <IconRenderer name={formData.icon || 'layers'} className="w-5 sm:w-6 h-5 sm:h-6 text-navy flex-shrink-0" />
                 <div className="min-w-0">
                   <p className="font-bold text-navy text-sm line-clamp-1">{formData.name || 'Category Name'}</p>
                   <p className="text-xs text-slate-500 line-clamp-1">{formData.description || 'Category description'}</p>

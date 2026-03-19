@@ -76,7 +76,7 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
                 onClick={() => { onNavigate(item.id); onClose(); }}
                 className="w-full flex items-center gap-3 p-3 rounded-xl text-slate-600 font-semibold transition-all hover:bg-primary/10 hover:text-primary hover:translate-x-1 border-l-4 border-transparent hover:border-primary text-sm"
               >
-                <IconRenderer name={item.icon} className="w-5 h-5 opacity-70" />
+                <IconRenderer name={item.icon || 'layers'} className="w-5 h-5 opacity-70" />
                 {item.label}
               </button>
             </li>

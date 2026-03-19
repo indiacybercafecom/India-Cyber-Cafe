@@ -114,7 +114,7 @@ export const Icons = {
 
 export function IconRenderer({ name, className }: { name: string; className?: string }) {
   // Map font-awesome names to Lucide icons where possible
-  const lowerName = name.toLowerCase();
+  const lowerName = (name || '').toLowerCase();
   
   if (lowerName.includes('fingerprint')) return <Icons.Fingerprint className={className} />;
   if (lowerName.includes('id-card')) return <Icons.IdCard className={className} />;

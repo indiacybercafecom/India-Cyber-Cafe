@@ -80,7 +80,7 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
                 muted
               />
             ) : (
-              <IconRenderer name={stat.icon} className="w-6 h-6 sm:w-10 sm:h-10 text-primary mx-auto mb-2 sm:mb-4" />
+              <IconRenderer name={stat.icon || 'layers'} className="w-6 h-6 sm:w-10 sm:h-10 text-primary mx-auto mb-2 sm:mb-4" />
             )}
             <h3 className="text-xl sm:text-3xl font-bold text-navy mb-1">{stat.count}</h3>
             <p className="text-[10px] sm:text-sm text-slate-500 font-medium uppercase tracking-wider">{stat.label}</p>
@@ -158,7 +158,7 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
           ].map((feature, i) => (
             <div key={i} className="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl text-center shadow-md border-t-4 border-primary hover:-translate-y-2 active:translate-y-0 active:scale-95 transition-all">
               <div className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 lg:mb-6">
-                <IconRenderer name={feature.icon} className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primary" />
+                <IconRenderer name={feature.icon || 'layers'} className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primary" />
               </div>
               <h3 className="text-sm sm:text-base lg:text-xl font-bold text-navy mb-1 sm:mb-2 lg:mb-3">{feature.title}</h3>
               <p className="text-[10px] sm:text-sm lg:text-base text-slate-600 leading-tight sm:leading-relaxed">{feature.desc}</p>
@@ -278,7 +278,7 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
               <div className="w-6 h-6 sm:w-12 sm:h-12 bg-linear-to-br from-primary to-primary-dark text-white rounded-full flex items-center justify-center font-bold text-xs sm:text-xl shadow-lg z-10">
                 {step.num}
               </div>
-              <IconRenderer name={step.icon} className="w-5 h-5 sm:w-10 sm:h-10 text-primary" />
+              <IconRenderer name={step.icon || 'layers'} className="w-5 h-5 sm:w-10 sm:h-10 text-primary" />
               <h3 className="font-bold text-navy text-[10px] sm:text-base">{step.title}</h3>
               <p className="text-[8px] sm:text-sm text-slate-500 hidden sm:block">{step.desc}</p>
               {i < 4 && (

@@ -403,7 +403,7 @@ export function Admin({
               tab === t.id ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-navy'
             }`}
           >
-            <IconRenderer name={t.icon} className="w-4 h-4" />
+            <IconRenderer name={t.icon || 'layers'} className="w-4 h-4" />
             {t.label}
           </button>
         ))}
@@ -644,7 +644,7 @@ export function Admin({
                     <button onClick={() => onEditService(s)} className="p-2 bg-primary text-white rounded-lg hover:scale-110 transition-all"><IconRenderer name="user-pen" className="w-4 h-4" /></button>
                     <button onClick={() => handleDeleteService(s.id)} className="p-2 bg-red-500 text-white rounded-lg hover:scale-110 transition-all"><IconRenderer name="trash" className="w-4 h-4" /></button>
                   </div>
-                  <IconRenderer name={s.icon} className="w-12 h-12 text-primary mb-4" />
+                  <IconRenderer name={s.icon || 'layers'} className="w-12 h-12 text-primary mb-4" />
                   <h3 className="text-lg font-bold text-navy">{s.name}</h3>
                   <p className="text-slate-400 text-sm mt-2 line-clamp-2">{s.description}</p>
                 </div>
@@ -749,7 +749,7 @@ export function Admin({
                 {productCategories.map(cat => (
                   <div key={cat.id} className="bg-white p-4 rounded-xl border border-slate-200 hover:border-navy transition-all group">
                     <div className="flex items-start justify-between mb-3">
-                      <IconRenderer name={cat.icon} className="w-6 h-6 text-navy" />
+                      <IconRenderer name={cat.icon || 'layers'} className="w-6 h-6 text-navy" />
                       <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-all">
                         <button
                           onClick={() => { setSelectedCategory(cat); setIsCategoryModalOpen(true); }}
