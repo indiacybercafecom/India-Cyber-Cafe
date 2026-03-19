@@ -101,7 +101,7 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
         status: 'processing',
         date: now.toISOString(),
         notes: [],
-        paymentStatus: (selectedSubService?.paymentMethods.includes('free') || selectedSubService?.paymentMethods.includes('cash')) ? 'completed' : 'pending'
+        paymentStatus: (selectedSubService?.paymentMethods?.includes('free') || selectedSubService?.paymentMethods?.includes('cash')) ? 'completed' : 'pending'
       };
 
       if (selectedSubService) {
@@ -310,13 +310,13 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
                 // Reset form data when sub-service changes
                 setFormData({});
                 setFiles({});
-                if (sub) {
-                  navigate(`/services/${service.id}/${sub.name.toLowerCase().replace(/\s+/g, '-')}`);
+                if (sub && sub.name) {
+                  navigate(`/services/${service.id}/${(sub.name || '').toLowerCase().replace(/\s+/g, '-')}`);
                 }
               }}
             >
               <option value="-1">-- Choose a sub-service --</option>
-              {service.subservices.map((ss, i) => (
+              {(service.subservices || []).map((ss, i) => (
                 <option key={i} value={i}>{ss.name}</option>
               ))}
             </select>
@@ -345,10 +345,10 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
                 : 'aspect-square'
             }`}>
               {selectedSubService.imageType === 'url' && selectedSubService.image ? (
-                selectedSubService.image.toLowerCase().endsWith('.mp4') ? (
+                (selectedSubService.image || '').toLowerCase().endsWith('.mp4') ? (
                   <video src={selectedSubService.image} className="w-full h-full object-contain" muted autoPlay loop />
                 ) : (
-                  <img src={selectedSubService.image} alt={selectedSubService.name} className="w-full h-full object-contain" />
+                  <img src={selectedSubService.image} alt={selectedSubService.name || 'Sub-service'} className="w-full h-full object-contain" />
                 )
               ) : (
                 <IconRenderer name={selectedSubService.image || 'file-text'} className="w-10 h-10 sm:w-14 sm:h-14 md:w-16 md:h-16 text-primary" />

@@ -19,8 +19,8 @@ export function Store({ products, categories, onSelectProduct }: StoreProps) {
   // Filter and sort products
   const filteredProducts = useMemo(() => {
     let filtered = products.filter(p => {
-      const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        p.shortDescription.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesSearch = (p.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (p.shortDescription || '').toLowerCase().includes(searchTerm.toLowerCase());
       const matchesCategory = selectedCategory === 'all' || p.category === selectedCategory;
       return matchesSearch && matchesCategory && p.inStock;
     });

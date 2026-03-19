@@ -41,9 +41,9 @@ export function Track({ applications, orders = [], user, gateways, onViewDetails
 
   const filteredApps = applications.filter(app => {
     const matchesSearch = 
-      app.id.toLowerCase().includes(search.toLowerCase()) ||
-      app.serviceName.toLowerCase().includes(search.toLowerCase()) ||
-      (app.subserviceName && app.subserviceName.toLowerCase().includes(search.toLowerCase()));
+      (app.id || '').toLowerCase().includes(search.toLowerCase()) ||
+      (app.serviceName || '').toLowerCase().includes(search.toLowerCase()) ||
+      ((app.subserviceName && app.subserviceName.toLowerCase()) || '').includes(search.toLowerCase());
     
     const matchesFilter = filterStatus === 'all' || app.status === filterStatus;
     const matchesType = filterType === 'all' || filterType === 'applications';
@@ -53,9 +53,9 @@ export function Track({ applications, orders = [], user, gateways, onViewDetails
 
   const filteredOrders = userOrders.filter(order => {
     const matchesSearch = 
-      order.id.toLowerCase().includes(search.toLowerCase()) ||
-      order.deliveryAddress.name.toLowerCase().includes(search.toLowerCase()) ||
-      order.items.some(item => item.productName.toLowerCase().includes(search.toLowerCase()));
+      (order.id || '').toLowerCase().includes(search.toLowerCase()) ||
+      ((order.deliveryAddress?.name || '')).toLowerCase().includes(search.toLowerCase()) ||
+      (order.items || []).some(item => (item.productName || '').toLowerCase().includes(search.toLowerCase()));
     
     const matchesFilter = filterStatus === 'all' || order.orderStatus === filterStatus || order.paymentStatus === filterStatus;
     const matchesType = filterType === 'all' || filterType === 'orders';

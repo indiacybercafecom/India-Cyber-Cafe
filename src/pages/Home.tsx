@@ -120,17 +120,17 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
                     : 'w-12 h-12 sm:w-16 sm:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full group-hover:rotate-12 overflow-hidden'
                 }`}>
                   {service.iconType === 'url' && service.icon ? (
-                    service.icon.toLowerCase().endsWith('.mp4') ? (
+                    (service.icon || '').toLowerCase().endsWith('.mp4') ? (
                       <video src={service.icon} className="w-full h-full object-cover" muted autoPlay loop />
                     ) : (
-                      <img src={service.icon} alt={service.name} className="w-full h-full object-cover" />
+                      <img src={service.icon} alt={service.name || 'Service'} className="w-full h-full object-cover" />
                     )
                   ) : (
-                    <IconRenderer name={service.icon} className="w-6 h-6 sm:w-8 sm:h-8 text-navy group-hover:text-primary transition-all" />
+                    <IconRenderer name={service.icon || 'layers'} className="w-6 h-6 sm:w-8 sm:h-8 text-navy group-hover:text-primary transition-all" />
                   )}
                 </div>
-                <h3 className="text-base sm:text-lg font-bold text-navy mb-1">{service.name}</h3>
-                <p className="text-slate-500 text-[10px] sm:text-xs line-clamp-2">{service.description}</p>
+                <h3 className="text-base sm:text-lg font-bold text-navy mb-1">{service.name || 'Service'}</h3>
+                <p className="text-slate-500 text-[10px] sm:text-xs line-clamp-2">{service.description || ''}</p>
               </div>
             ))}
             {filteredServices.length === 0 && searchTerm && (

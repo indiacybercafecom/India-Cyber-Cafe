@@ -256,7 +256,7 @@ export function Admin({
         ID: s.id,
         Name: s.name,
         Description: s.description,
-        SubServices: s.subservices.map(ss => `${ss.name} (₹${ss.charge})`).join(', ')
+        SubServices: (s.subservices || []).map(ss => `${ss.name} (₹${ss.charge})`).join(', ')
       }));
       const ws = utils.json_to_sheet(data);
       utils.book_append_sheet(wb, ws, "Services");

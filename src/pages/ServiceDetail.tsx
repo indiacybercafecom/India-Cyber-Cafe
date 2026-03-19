@@ -28,9 +28,9 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
   return (
     <div className="space-y-8 sm:space-y-12">
       <SEO 
-        title={`${service.name} Services`}
-        description={service.description}
-        keywords={`${service.name}, ${service.subservices.map(ss => ss.name).join(', ')}, India Cyber Cafe`}
+        title={`${service.name || 'Service'} Services`}
+        description={service.description || ''}
+        keywords={`${service.name || 'Service'}, ${(service.subservices || []).map(ss => ss.name).join(', ')}, India Cyber Cafe`}
         url={`https://b.indiacybercafe.com/services/${service.id}`}
       />
       <div className="flex flex-col sm:flex-row items-center gap-6 bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
@@ -40,13 +40,13 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
             : 'w-20 h-20 sm:w-24 sm:h-24 bg-linear-to-br from-primary/10 to-navy/10 rounded-full'
         }`}>
           {service.iconType === 'url' && service.icon ? (
-            service.icon.toLowerCase().endsWith('.mp4') ? (
+            (service.icon || '').toLowerCase().endsWith('.mp4') ? (
               <video src={service.icon} className="w-full h-full object-cover" muted autoPlay loop />
             ) : (
-              <img src={service.icon} alt={service.name} className="w-full h-full object-cover" />
+              <img src={service.icon} alt={service.name || 'Service'} className="w-full h-full object-cover" />
             )
           ) : (
-            <IconRenderer name={service.icon} className="w-10 h-10 sm:w-12 sm:h-12 text-navy" />
+            <IconRenderer name={service.icon || 'layers'} className="w-10 h-10 sm:w-12 sm:h-12 text-navy" />
           )}
         </div>
         <div className="text-center sm:text-left space-y-2">
@@ -58,7 +58,7 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
       <div className="space-y-6">
         <h3 className="text-2xl font-bold text-navy px-2">Select a Sub-Service</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
-          {service.subservices.map((ss, i) => (
+          {(service.subservices || []).map((ss, i) => (
             <div 
               key={i} 
               className="bg-white rounded-2xl shadow-md border border-slate-100 hover:border-primary hover:shadow-xl transition-all cursor-pointer group overflow-hidden flex flex-col h-full"
@@ -105,7 +105,7 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
                 </div>
                 
                 <div className="flex flex-wrap gap-2 mt-auto">
-                  {ss.paymentMethods.map((pm, idx) => (
+                  {(ss.paymentMethods || []).map((pm, idx) => (
                     <span key={idx} className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 px-2 py-1 rounded">
                       {pm.replace(/_/g, ' ')}
                     </span>

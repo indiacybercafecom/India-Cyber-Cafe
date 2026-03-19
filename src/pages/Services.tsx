@@ -54,13 +54,13 @@ export function Services({ services }: ServicesProps) {
                 : 'w-12 h-12 sm:w-16 sm:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full group-hover:rotate-12 active:rotate-12 overflow-hidden mx-auto'
             }`}>
               {service.iconType === 'url' && service.icon ? (
-                service.icon.toLowerCase().endsWith('.mp4') ? (
+                (service.icon || '').toLowerCase().endsWith('.mp4') ? (
                   <video src={service.icon} className="w-full h-full object-contain bg-slate-100" muted autoPlay loop />
                 ) : (
-                  <img src={service.icon} alt={service.name} className="w-full h-full object-contain bg-slate-100" />
+                  <img src={service.icon} alt={service.name || 'Service'} className="w-full h-full object-contain bg-slate-100" />
                 )
               ) : (
-                <IconRenderer name={service.icon} className="w-5 h-5 sm:w-8 sm:h-8 text-navy group-hover:text-primary active:text-primary transition-all" />
+                <IconRenderer name={service.icon || 'layers'} className="w-5 h-5 sm:w-8 sm:h-8 text-navy group-hover:text-primary active:text-primary transition-all" />
               )}
             </div>
             <h3 className="text-base sm:text-lg font-bold text-navy mb-1 sm:mb-2 line-clamp-2">{service.name}</h3>

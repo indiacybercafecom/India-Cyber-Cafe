@@ -100,13 +100,13 @@ export function StoreProduct({ products, reviews, user, onAddReview }: StoreProd
           {/* Category & Title */}
           <div>
             <p className="text-primary text-xs sm:text-sm font-semibold uppercase tracking-wider mb-2">
-              {product.name.split(' ')[0]}
+              {(product.name || '').split(' ')[0]}
             </p>
             <h1 className="text-2xl sm:text-3xl lg:text-4xl font-bold text-navy mb-2">
-              {product.name}
+              {product.name || 'Product'}
             </h1>
             <p className="text-slate-600 text-sm sm:text-base">
-              {product.shortDescription}
+              {product.shortDescription || ''}
             </p>
           </div>
 
