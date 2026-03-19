@@ -129,15 +129,16 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-2xl sm:max-w-4xl relative overflow-hidden shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[95vh]"
+        style={{ maxHeight: 'calc(100vh - 2rem)' }}
       >
-        <div className="p-4 sm:p-6 bg-primary text-white flex justify-between items-center sticky top-0 z-10">
+        <div className="p-4 sm:p-6 bg-primary text-white flex justify-between items-center flex-shrink-0 z-10">
           <h3 className="text-lg sm:text-xl font-bold">Service Builder</h3>
           <button onClick={onClose} className="hover:rotate-90 transition-all p-1 hover:bg-white/20 rounded-lg">
             <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8">
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 md:p-8 space-y-6 sm:space-y-8 min-h-0">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6">
             <div className="space-y-2">
               <label className="block font-bold text-navy text-sm sm:text-base">Service Name</label>
@@ -611,8 +612,9 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
             )}
           </div>
 
-          <button onClick={handleSave} className="btn-primary w-full py-3 sm:py-4 text-base sm:text-lg font-bold sticky bottom-0 rounded-b-2xl sm:rounded-b-3xl">Save Service</button>
         </div>
+
+        <button onClick={handleSave} className="btn-primary w-full py-3 sm:py-4 text-base sm:text-lg font-bold flex-shrink-0 rounded-b-2xl sm:rounded-b-3xl">Save Service</button>
       </motion.div>
     </div>
   );
