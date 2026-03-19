@@ -24,8 +24,8 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
     .slice(0, 3);
 
   const filteredServices = services.filter(s => 
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.description.toLowerCase().includes(searchTerm.toLowerCase())
+    (s.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.description || '').toLowerCase().includes(searchTerm.toLowerCase())
   ).slice(0, 3);
 
   return (

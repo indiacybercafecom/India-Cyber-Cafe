@@ -314,17 +314,17 @@ export function Admin({
 
   // Filtered Lists
   const filteredApps = applications.filter(app => 
-    app.id.toLowerCase().includes(searchApps.toLowerCase()) ||
-    app.name.toLowerCase().includes(searchApps.toLowerCase()) ||
-    app.email.toLowerCase().includes(searchApps.toLowerCase()) ||
-    app.serviceName.toLowerCase().includes(searchApps.toLowerCase())
+    (app.id || '').toLowerCase().includes(searchApps.toLowerCase()) ||
+    (app.name || '').toLowerCase().includes(searchApps.toLowerCase()) ||
+    (app.email || '').toLowerCase().includes(searchApps.toLowerCase()) ||
+    (app.serviceName || '').toLowerCase().includes(searchApps.toLowerCase())
   );
 
   const filteredUsers = users
     .filter(u => 
-      (u.name.toLowerCase().includes(searchUsers.toLowerCase()) ||
-       u.email.toLowerCase().includes(searchUsers.toLowerCase()) ||
-       (u.phone && u.phone.includes(searchUsers))) &&
+      ((u.name || '').toLowerCase().includes(searchUsers.toLowerCase()) ||
+       (u.email || '').toLowerCase().includes(searchUsers.toLowerCase()) ||
+       ((u.phone || '').includes(searchUsers))) &&
       (userRoleFilter === 'all' || u.role === userRoleFilter)
     )
     .sort((a, b) => {
@@ -333,18 +333,18 @@ export function Admin({
     });
 
   const filteredServices = services.filter(s => 
-    s.name.toLowerCase().includes(searchServices.toLowerCase()) ||
-    s.description.toLowerCase().includes(searchServices.toLowerCase())
+    (s.name || '').toLowerCase().includes(searchServices.toLowerCase()) ||
+    (s.description || '').toLowerCase().includes(searchServices.toLowerCase())
   );
 
   const filteredGateways = gateways.filter(g => 
-    g.name.toLowerCase().includes(searchPayments.toLowerCase()) ||
-    g.type.toLowerCase().includes(searchPayments.toLowerCase())
+    (g.name || '').toLowerCase().includes(searchPayments.toLowerCase()) ||
+    (g.type || '').toLowerCase().includes(searchPayments.toLowerCase())
   );
 
   const filteredProducts = products.filter(p =>
-    p.name.toLowerCase().includes(searchProducts.toLowerCase()) ||
-    p.shortDescription.toLowerCase().includes(searchProducts.toLowerCase())
+    (p.name || '').toLowerCase().includes(searchProducts.toLowerCase()) ||
+    (p.shortDescription || '').toLowerCase().includes(searchProducts.toLowerCase())
   );
 
   const filteredOrders = (orders && Array.isArray(orders) ? orders : [])

@@ -108,14 +108,15 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
   };
 
   const handleSave = () => {
-    if (!name) return showToast('Name is required', 'error');
+    if (!name || !name.trim()) return showToast('Service name is required', 'error');
+    if (!description || !description.trim()) return showToast('Service description is required', 'error');
     
     const newService: Service = {
       id: service?.id || name.toLowerCase().replace(/ /g, '-'),
-      name,
+      name: name.trim(),
       icon,
       iconType,
-      description,
+      description: description.trim(),
       fields,
       subservices,
       css

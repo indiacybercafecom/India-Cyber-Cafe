@@ -13,9 +13,9 @@ export function Services({ services }: ServicesProps) {
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredServices = services.filter(s => 
-    s.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.description.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    s.subservices.some(ss => ss.name.toLowerCase().includes(searchTerm.toLowerCase()))
+    (s.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.description || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (s.subservices || []).some(ss => (ss.name || '').toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
   return (
