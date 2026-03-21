@@ -1,15 +1,33 @@
 {
   "short_name": "ICC",
   "name": "India Cyber Cafe",
+  "description": "Your trusted digital services partner. Apply for government services, access digital documents, and shop online.",
   "icons": [
     {
-      "src": "http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png",
+      "src": "https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png",
       "type": "image/png",
-      "sizes": "512x512"
+      "sizes": "512x512",
+      "purpose": "any"
+    },
+    {
+      "src": "https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png",
+      "type": "image/png",
+      "sizes": "192x192",
+      "purpose": "maskable"
     }
   ],
-  "start_url": ".",
+  "start_url": "https://b.indiacybercafe.com/",
+  "scope": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "theme_color": "#FF9933",
-  "background_color": "#ffffff"
+  "background_color": "#ffffff",
+  "categories": ["lifestyle", "business", "utilities"],
+  "screenshots": [
+    {
+      "src": "https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png",
+      "sizes": "540x720",
+      "type": "image/png"
+    }
+  ]
 }

@@ -49,10 +49,48 @@ export function StoreProduct({ products, reviews, user, onAddReview }: StoreProd
   return (
     <div className="space-y-6 sm:space-y-10">
       <SEO
-        title={`${product.name} - India Cyber Cafe Store`}
-        description={seoDescription}
+        title={`${product.name} - Premium Quality, ₹${product.discountedPrice || product.price} | India Cyber Cafe`}
+        description={`${seoDescription} Check reviews, delivery info, and custom printing options. Buy now with secure payment.`}
         url={`https://b.indiacybercafe.com/store/${categoryId}/${productId}`}
-        keywords={product.seoKeywords || product.name}
+        keywords={product.seoKeywords || `${product.name}, buy online, ${product.category}`}
+        image={product.images?.[0] || "https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png"}
+        ogType="product"
+        structuredData={{
+          "@context": "https://schema.org",
+          "@type": "Product",
+          "name": product.name,
+          "description": product.longDescription,
+          "image": product.images || [],
+          "brand": {
+            "@type": "Brand",
+            "name": "India Cyber Cafe"
+          },
+          "offers": {
+            "@type": "Offer",
+            "url": `https://b.indiacybercafe.com/store/${categoryId}/${productId}`,
+            "priceCurrency": "INR",
+            "price": (product.discountedPrice || product.price).toString(),
+            "availability": product.inStock ? "https://schema.org/InStock" : "https://schema.org/OutOfStock",
+            "inventoryLevel": product.inStock ? "10+" : "0"
+          },
+          "aggregateRating": product.ratings?.count > 0 ? {
+            "@type": "AggregateRating",
+            "ratingValue": product.ratings.average.toString(),
+            "reviewCount": product.ratings.count
+          } : undefined,
+          "review": productReviews.slice(0, 5).map(r => ({
+            "@type": "Review",
+            "author": {
+              "@type": "Person",
+              "name": r.userName
+            },
+            "reviewRating": {
+              "@type": "Rating",
+              "ratingValue": r.rating
+            },
+            "reviewBody": r.text
+          }))
+        }}
       />
 
       {/* Back Button */}

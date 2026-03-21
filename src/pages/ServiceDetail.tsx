@@ -28,10 +28,36 @@ export function ServiceDetail({ services }: ServiceDetailProps) {
   return (
     <div className="space-y-8 sm:space-y-12">
       <SEO 
-        title={`${service.name || 'Service'} Services`}
-        description={service.description || ''}
-        keywords={`${service.name || 'Service'}, ${(service.subservices || []).map(ss => ss.name).join(', ')}, India Cyber Cafe`}
+        title={`${service.name || 'Service'} - Government Services Apply Online`}
+        description={`${service.description || 'Comprehensive service'} at India Cyber Cafe. ${service.subservices?.length || 0} sub-services available. Fastest processing, secure & reliable.`}
+        keywords={`${service.name || 'Service'}, ${(service.subservices || []).map(ss => ss.name).join(', ')}, Apply Online, Digital India, Government Service`}
         url={`https://b.indiacybercafe.com/services/${service.id}`}
+        ogType="article"
+        structuredData={{
+          "@context": "https://schema.org",
+          "@type": "Service",
+          "name": service.name,
+          "description": service.description,
+          "provider": {
+            "@type": "Organization",
+            "name": "India Cyber Cafe",
+            "url": "https://b.indiacybercafe.com"
+          },
+          "areaServed": "IN",
+          "hasOfferCatalog": {
+            "@type": "OfferCatalog",
+            "name": `${service.name} Sub-Services`,
+            "itemListElement": (service.subservices || []).map(ss => ({
+              "@type": "Offer",
+              "itemOffered": {
+                "@type": "Service",
+                "name": ss.name,
+                "price": ss.charge.toString(),
+                "priceCurrency": "INR"
+              }
+            }))
+          }
+        }}
       />
       <div className="flex flex-col sm:flex-row items-center gap-6 bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
         <div className={`flex items-center justify-center shrink-0 overflow-hidden ${

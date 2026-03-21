@@ -4,6 +4,7 @@ import { auth, rtdb } from '../firebase';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { ref, get, query, orderByChild, equalTo } from 'firebase/database';
 import { showToast } from '../components/Toast';
+import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
 import { motion } from 'motion/react';
 import { UserProfile } from '../types';
@@ -85,7 +86,15 @@ export function Login({ user }: LoginProps) {
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center p-4">
+    <>
+      <SEO
+        title="Login - Sign In to Your Account | India Cyber Cafe"
+        description="Login to your India Cyber Cafe account to track applications, manage orders, and access digital services. Secure login with email."
+        url="https://b.indiacybercafe.com/login"
+        keywords="login, sign in, user login, account access, digital services"
+        ogType="website"
+      />
+      <div className="min-h-[80vh] flex items-center justify-center p-4">
       <motion.div 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -156,5 +165,6 @@ export function Login({ user }: LoginProps) {
         </div>
       </motion.div>
     </div>
+    </>
   );
 }

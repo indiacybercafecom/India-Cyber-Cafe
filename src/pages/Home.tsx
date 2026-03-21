@@ -31,8 +31,24 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
   return (
     <div className="space-y-8 sm:space-y-12">
       <SEO 
-        title="India Cyber Cafe - Digital Seva Simplified"
-        description="Apply for Government Services, Jobs & Documents online with India's trusted digital partner. Fast, secure, and reliable digital services."
+        title="India Cyber Cafe - Digital Seva Simplified | CSC, Online Services"
+        description={`Apply for Government Services, Jobs & Documents online with India's trusted digital partner. ${services.length} services available. Fast, secure, and reliable digital solutions.`}
+        keywords="Digital Seva, CSC Services, Online Application, Government Services, Pan Card, Aadhaar, Passport, Cyber Cafe, Digital India"
+        ogType="website"
+        structuredData={{
+          "@context": "https://schema.org",
+          "@type": "WebSite",
+          "name": "India Cyber Cafe",
+          "url": "https://b.indiacybercafe.com",
+          "potentialAction": {
+            "@type": "SearchAction",
+            "target": {
+              "@type": "EntryPoint",
+              "urlTemplate": "https://b.indiacybercafe.com/services?search={search_term_string}"
+            },
+            "query-input": "required name=search_term_string"
+          }
+        }}
       />
       {/* Hero Section */}
       <section className="bg-white p-6 sm:p-10 lg:p-12 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 md:gap-10 border border-slate-100">

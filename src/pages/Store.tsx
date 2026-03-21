@@ -44,10 +44,30 @@ export function Store({ products, categories, onSelectProduct }: StoreProps) {
   return (
     <div className="space-y-6 sm:space-y-10">
       <SEO
-        title="Store - India Cyber Cafe"
-        description={seoDescription}
+        title={`Online Store - Premium Products | India Cyber Cafe${searchTerm ? ` - Search: ${searchTerm}` : ''}`}
+        description={`${seoDescription} Shop premium products with custom printing support. ${products.length} products available with fast delivery across India.`}
         url="https://b.indiacybercafe.com/store"
-        keywords="custom prints, products, store, india cyber cafe"
+        keywords="shop online, custom products, digital products, printing services, india cyber cafe store"
+        ogType="website"
+        structuredData={{
+          "@context": "https://schema.org",
+          "@type": "CollectionPage",
+          "name": "India Cyber Cafe Store",
+          "description": "Online store with premium products and custom printing services",
+          "url": "https://b.indiacybercafe.com/store",
+          "mainEntity": {
+            "@type": "ItemList",
+            "name": "Available Products",
+            "numberOfItems": products.length,
+            "url": "https://b.indiacybercafe.com/store",
+            "itemListElement": filteredProducts.slice(0, 10).map((product, index) => ({
+              "@type": "ListItem",
+              "position": index + 1,
+              "url": `https://b.indiacybercafe.com/store/${product.category}/${product.id}`,
+              "name": product.name
+            }))
+          }
+        }}
       />
 
       {/* Header */}

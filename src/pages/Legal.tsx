@@ -1,5 +1,6 @@
 import { useParams, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
+import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
 
 export function Legal() {
@@ -129,7 +130,15 @@ export function Legal() {
   const page = content[type as keyof typeof content] || content.about;
 
   return (
-    <div className="max-w-4xl mx-auto py-12 px-4">
+    <>
+      <SEO
+        title={`${page.title} - India Cyber Cafe`}
+        description={`${page.title} for India Cyber Cafe digital services platform. Understand our policies and guidelines.`}
+        url={`https://b.indiacybercafe.com/legal/${type}`}
+        keywords={`${type}, legal, terms, conditions, privacy, policy`}
+        ogType="article"
+      />
+      <div className="max-w-4xl mx-auto py-12 px-4">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -167,6 +176,7 @@ export function Legal() {
           </div>
         </div>
       </motion.div>
-    </div>
+      </div>
+    </>
   );
 }

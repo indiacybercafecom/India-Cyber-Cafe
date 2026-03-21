@@ -21,9 +21,29 @@ export function Services({ services }: ServicesProps) {
   return (
     <div className="space-y-6 sm:space-y-10">
       <SEO 
-        title="All Services"
-        description="Explore all digital services provided by India Cyber Cafe. From government documents to job applications, we handle it all."
+        title="All Services - Digital Applications & Government Documents"
+        description={`Browse ${services.length} digital services. Apply for government documents, online forms, pan, aadhaar, passport and more at India Cyber Cafe.`}
         url="https://b.indiacybercafe.com/services"
+        keywords="Digital Services, Government Documents, Online Application, Pan Card, Aadhaar, Passport, CSC Services"
+        ogType="website"
+        structuredData={{
+          "@context": "https://schema.org",
+          "@type": "BreadcrumbList",
+          "itemListElement": [
+            {
+              "@type": "ListItem",
+              "position": 1,
+              "name": "Home",
+              "item": "https://b.indiacybercafe.com"
+            },
+            {
+              "@type": "ListItem",
+              "position": 2,
+              "name": "Services",
+              "item": "https://b.indiacybercafe.com/services"
+            }
+          ]
+        }}
       />
       <div className="text-center space-y-1 sm:space-y-2 md:space-y-3 px-2 sm:px-4">
         <h2 className="text-lg sm:text-2xl md:text-4xl font-bold text-navy line-clamp-2">Select Service</h2>

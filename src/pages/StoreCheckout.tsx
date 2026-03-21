@@ -683,8 +683,11 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
   return (
     <div className="space-y-6 sm:space-y-10">
       <SEO
-        title={`Checkout - ${product.name} - India Cyber Cafe`}
-        description="Complete your purchase with secure payment"
+        title={`Checkout - ${product.name} | Secure Payment - India Cyber Cafe`}
+        description={`Secure checkout for ${product.name}. Total: ₹${total}. Fast delivery, custom printing, multiple payment options.`}
+        url={`https://b.indiacybercafe.com/store/${categoryId}/${product.id}/checkout`}
+        keywords="checkout, secure payment, online purchase, razorpay, cash on delivery"
+        ogType="website"
       />
 
       {/* Header */}

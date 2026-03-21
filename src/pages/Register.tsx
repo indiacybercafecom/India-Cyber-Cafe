@@ -4,6 +4,7 @@ import { auth, rtdb } from '../firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
 import { ref, set } from 'firebase/database';
 import { showToast } from '../components/Toast';
+import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
 import { motion } from 'motion/react';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
@@ -64,7 +65,15 @@ export function Register({ user }: RegisterProps) {
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center p-4">
+    <>
+      <SEO
+        title="Register - Create Account | India Cyber Cafe"
+        description="Create your free account at India Cyber Cafe to apply for government services, track applications, and access our store. Secure registration."
+        url="https://b.indiacybercafe.com/register"
+        keywords="register, create account, sign up, user registration, digital services"
+        ogType="website"
+      />
+      <div className="min-h-[80vh] flex items-center justify-center p-4">
       <motion.div 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -153,5 +162,6 @@ export function Register({ user }: RegisterProps) {
         </div>
       </motion.div>
     </div>
+    </>
   );
 }

@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { rtdb } from '../firebase';
 import { ref, get, query, orderByChild, equalTo } from 'firebase/database';
 import { showToast } from '../components/Toast';
+import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
 import { motion } from 'motion/react';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
@@ -63,7 +64,15 @@ export function ForgotPassword() {
   };
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center p-4">
+    <>
+      <SEO
+        title="Forgot Password - Reset Your Account | India Cyber Cafe"
+        description="Recover your India Cyber Cafe account by entering your registered email or phone number. Reset your password securely."
+        url="https://b.indiacybercafe.com/forgot-password"
+        keywords="forgot password, reset password, account recovery, password reset"
+        ogType="website"
+      />
+      <div className="min-h-[80vh] flex items-center justify-center p-4">
       <motion.div 
         initial={{ y: 20, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
@@ -118,5 +127,6 @@ export function ForgotPassword() {
         </div>
       </motion.div>
     </div>
+    </>
   );
 }

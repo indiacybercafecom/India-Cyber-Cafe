@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Application, PaymentGateway, UserProfile, Order } from '../types';
 import { IconRenderer } from '../components/Icons';
+import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
 import { utils, writeFile } from 'xlsx';
 import { OrderDetailModal } from '../components/OrderDetailModal';
@@ -120,6 +121,14 @@ export function Track({ applications, orders = [], user, gateways, onViewDetails
 
   return (
     <div className="space-y-6 sm:space-y-8">
+      <SEO
+        title="Track Applications & Orders - India Cyber Cafe"
+        description="Track the status of your government service applications and product orders in real-time. Monitor your submissions with instant updates."
+        url="https://b.indiacybercafe.com/track"
+        keywords="Track Application, Order Status, Application Number, Order Tracking, Digital Services"
+        ogType="website"
+      />
+      
       <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
         <div className="text-center sm:text-left space-y-1">
           <h2 className="text-3xl sm:text-4xl font-bold text-navy">My Applications & Orders</h2>

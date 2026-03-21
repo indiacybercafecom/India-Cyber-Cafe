@@ -4,6 +4,7 @@ import { auth, rtdb } from '../firebase';
 import { ref as dbRef, update } from 'firebase/database';
 import { updatePassword } from 'firebase/auth';
 import { showToast } from '../components/Toast';
+import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
 import { sendEmail, emailTemplates } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
@@ -96,7 +97,15 @@ export function Profile({ user }: ProfileProps) {
   };
 
   return (
-    <div className="max-w-xl mx-auto bg-white p-6 sm:p-10 rounded-3xl shadow-xl space-y-6 sm:space-y-10">
+    <>
+      <SEO
+        title="My Profile - Account Settings | India Cyber Cafe"
+        description="Manage your India Cyber Cafe profile, update personal information, change password, and update delivery address."
+        url="https://b.indiacybercafe.com/profile"
+        keywords="profile, account settings, user profile, personal information, delivery address"
+        ogType="website"
+      />
+      <div className="max-w-xl mx-auto bg-white p-6 sm:p-10 rounded-3xl shadow-xl space-y-6 sm:space-y-10">
       <div className="text-center space-y-4 sm:space-y-6">
         <div className="relative inline-block group">
           <div className="relative">
@@ -289,6 +298,7 @@ export function Profile({ user }: ProfileProps) {
           {loading ? 'Saving...' : 'Save Changes'}
         </button>
       </form>
-    </div>
+      </div>
+    </>
   );
 }
