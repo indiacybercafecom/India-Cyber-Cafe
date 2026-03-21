@@ -29,9 +29,11 @@
     <meta property="og:image:height" content="630" />
     <meta property="og:site_name" content="India Cyber Cafe" />
 
-    <!-- Favicon (HTTPS) -->
-    <link rel="icon" type="image/png" sizes="32x32" href="https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" />
-    <link rel="apple-touch-icon" href="https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" />
+    <!-- Favicon Configuration (Self-hosted, no external service dependency) -->
+    <!-- Primary favicon using inline SVG data URI - eliminates external gstatic 404 errors -->
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'><rect fill='%23FF9933' width='180' height='180'/><text x='50%' y='50%' font-size='90' font-weight='bold' fill='%23ffffff' text-anchor='middle' dy='.3em'>ICC</text></svg>" />
+    <!-- Manifest for PWA icons and metadata -->
+    <link rel="manifest" href="/manifest.json" />
 
     <!-- Twitter -->
     <meta property="twitter:card" content="summary_large_image" />
