@@ -3,13 +3,13 @@ import { useNavigate } from 'react-router-dom';
 import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
-import { utils, writeFile } from 'xlsx';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GatewayModal } from '../components/GatewayModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { ProductModal } from '../components/ProductModal';
 import { CategoryModal } from '../components/CategoryModal';
 import { OrderManageModal } from '../components/OrderManageModal';
+import { exportDataComprehensive } from '../services/exportService';
 
 interface AdminProps {
   applications: Application[];
@@ -84,6 +84,7 @@ export function Admin({
   const [isOrderDetailModalOpen, setIsOrderDetailModalOpen] = useState(false);
   const [selectedReview, setSelectedReview] = useState<ProductReview | null>(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState<'excel' | 'json'>('excel');
   
   // Search States
   const [searchApps, setSearchApps] = useState('');
@@ -219,63 +220,26 @@ export function Admin({
     });
   };
 
-  const exportToExcel = (type: 'apps' | 'users' | 'services' | 'payments' | 'all' = 'apps') => {
-    const wb = utils.book_new();
-
-    if (type === 'apps' || type === 'all') {
-      const data = applications.map(app => ({
-        ID: app.id,
-        User: app.name,
-        Email: app.email,
-        Service: app.serviceName,
-        SubService: app.subserviceName || 'N/A',
-        Charge: app.charge,
-        Status: app.status,
-        Date: new Date(app.date).toLocaleString('en-IN'),
-        AssignedTo: app.assignedTo || 'Unassigned'
-      }));
-      const ws = utils.json_to_sheet(data);
-      utils.book_append_sheet(wb, ws, "Applications");
+  const exportToExcel = (type: 'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders' | 'reviews' | 'all' = 'apps') => {
+    try {
+      exportDataComprehensive(type, {
+        applications,
+        users,
+        services,
+        gateways,
+        products,
+        productCategories,
+        orders,
+        productReviews
+      }, {
+        format: exportFormat
+      });
+      
+      const formatName = exportFormat === 'json' ? 'JSON' : 'Excel';
+      showToast(`Export ${type} as ${formatName} successful!`, 'success');
+    } catch (error: any) {
+      showToast(error.message || 'Export failed', 'error');
     }
-
-    if (type === 'users' || type === 'all') {
-      const data = users.map(u => ({
-        UID: u.uid,
-        Name: u.name,
-        Email: u.email,
-        Phone: u.phone || 'N/A',
-        Role: u.role,
-        Joined: new Date(u.createdAt).toLocaleString('en-IN')
-      }));
-      const ws = utils.json_to_sheet(data);
-      utils.book_append_sheet(wb, ws, "Users");
-    }
-
-    if (type === 'services' || type === 'all') {
-      const data = services.map(s => ({
-        ID: s.id,
-        Name: s.name,
-        Description: s.description,
-        SubServices: (s.subservices || []).map(ss => `${ss.name} (₹${ss.charge})`).join(', ')
-      }));
-      const ws = utils.json_to_sheet(data);
-      utils.book_append_sheet(wb, ws, "Services");
-    }
-
-    if (type === 'payments' || type === 'all') {
-      const data = gateways.map(g => ({
-        ID: g.id,
-        Name: g.name,
-        Type: g.type,
-        Active: g.active ? 'Yes' : 'No',
-        Description: g.description
-      }));
-      const ws = utils.json_to_sheet(data);
-      utils.book_append_sheet(wb, ws, "Gateways");
-    }
-
-    writeFile(wb, `ICC_Data_${type}_${Date.now()}.xlsx`);
-    showToast(`Export ${type} successful!`);
   };
 
   const handleDeleteApp = (id: string) => {
@@ -374,12 +338,20 @@ export function Admin({
 
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <h2 className="text-4xl font-bold text-navy">Admin Panel</h2>
-        <div className="flex gap-2">
-          <button onClick={() => exportToExcel('all')} className="bg-navy text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-navy-light transition-all shadow-lg">
+        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
+          <select 
+            value={exportFormat}
+            onChange={e => setExportFormat(e.target.value as 'excel' | 'json')}
+            className="px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white font-medium text-navy text-sm"
+          >
+            <option value="excel">📊 Export as Excel (.xlsx)</option>
+            <option value="json">📋 Export as JSON (.json)</option>
+          </select>
+          <button onClick={() => exportToExcel('all')} className="bg-navy text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-navy-light transition-all shadow-lg whitespace-nowrap">
             <IconRenderer name="file-export" className="w-5 h-5" />
             Export All Data
           </button>
-          <button onClick={() => exportToExcel(tab)} className="bg-green-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-600/20">
+          <button onClick={() => exportToExcel(tab)} className="bg-green-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 whitespace-nowrap">
             <IconRenderer name="excel" className="w-5 h-5" />
             Export {tab.charAt(0).toUpperCase() + tab.slice(1)}
           </button>
