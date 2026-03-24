@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
 import { Service, Product } from '../types';
 import { ServiceSkeleton } from '../components/Skeleton';
 import { SEO } from '../components/SEO';
+import { CallbackModal } from '../components/CallbackModal';
 
 interface HomeProps {
   onNavigate: (page: string) => void;
@@ -16,6 +17,16 @@ interface HomeProps {
 export function Home({ onNavigate, services, products = [], onSelectService, loading }: HomeProps) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
+  const [isCallbackModalOpen, setIsCallbackModalOpen] = useState(false);
+
+  // Show callback modal after 2 seconds on mount
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsCallbackModalOpen(true);
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   // Get popular products (in stock, filtered)
   const popularProducts = products
@@ -30,6 +41,11 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
 
   return (
     <div className="space-y-8 sm:space-y-12">
+      <CallbackModal 
+        isOpen={isCallbackModalOpen} 
+        onClose={() => setIsCallbackModalOpen(false)} 
+      />
+      
       <SEO 
         title="India Cyber Cafe - Digital Seva Simplified | CSC, Online Services"
         description={`Apply for Government Services, Jobs & Documents online with India's trusted digital partner. ${services.length} services available. Fast, secure, and reliable digital solutions.`}

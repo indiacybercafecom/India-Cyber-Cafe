@@ -873,4 +873,39 @@ export const emailTemplates = {
       <p>Best Regards,<br/><strong>India Cyber Cafe System</strong></p>
     `
   ),
+
+  // ============= CALLBACK REQUEST TEMPLATE =============
+  
+  callbackRequest: (mobileNumber: string) => baseTemplate(
+    '📞 New Call Back Request',
+    `
+      <p>Hello Admin,</p>
+      <p>A new instant service assistance request has been received from the website.</p>
+      
+      <div style="background: #e8f4f8; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #FF9933;">
+        <p style="margin: 5px 0;"><strong>📱 Mobile Number:</strong> <span style="font-size: 18px; font-weight: bold; color: #FF9933;">${mobileNumber}</span></p>
+        <p style="margin: 5px 0;"><strong>📅 Request Date & Time:</strong> ${new Date().toLocaleString('en-IN')}</p>
+        <p style="margin: 5px 0;"><strong>📋 Request Type:</strong> Instant Service Assistance</p>
+        <p style="margin: 5px 0;"><strong>🌐 Source:</strong> Home Page Popup</p>
+      </div>
+
+      <p style="margin-top: 20px; font-weight: bold; color: #333;">Action Required:</p>
+      <ol style="color: #555; line-height: 1.8; padding-left: 20px;">
+        <li>Contact the customer at the provided mobile number</li>
+        <li>Offer instant service assistance</li>
+        <li>Document the interaction</li>
+        <li>Follow up if the customer doesn't respond</li>
+      </ol>
+
+      <p style="margin-top: 20px; background: #f0f8ff; padding: 15px; border-radius: 8px; border-left: 4px solid #2b6df6;">
+        <strong>💡 Priority:</strong> High - Customer actively seeking assistance from home page
+      </p>
+
+      <p style="margin-top: 15px; color: #666; font-size: 13px;">
+        <strong>Response Time:</strong> Aim to contact within 2-5 minutes for best conversion.
+      </p>
+
+      <p>Best Regards,<br/><strong>India Cyber Cafe System</strong></p>
+    `
+  ),
 };
