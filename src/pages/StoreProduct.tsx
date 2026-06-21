@@ -4,30 +4,73 @@ import { IconRenderer } from '../components/Icons';
 import { Product, ProductReview, UserProfile } from '../types';
 import { SEO } from '../components/SEO';
 import { ReviewSection } from '../components/ReviewSection';
+import { StoreProductDetailSkeleton } from '../components/Skeleton';
+import { useLoadingState } from '../hooks/useLoadingState';
 
 interface StoreProductProps {
   products: Product[];
   reviews: ProductReview[];
   user: UserProfile | null;
+  isLoading?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
   onAddReview: (review: Omit<ProductReview, 'id'>) => Promise<void>;
 }
 
-export function StoreProduct({ products, reviews, user, onAddReview }: StoreProductProps) {
+export function StoreProduct({ products, reviews, user, isLoading = false, error = null, onRetry, onAddReview }: StoreProductProps) {
   const { productId, categoryId } = useParams<{ productId: string; categoryId: string }>();
   const navigate = useNavigate();
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
+  
+  // Use loading state hook for smooth UX with minimum skeleton display duration
+  const displayLoading = useLoadingState(isLoading, 1000);
 
   const product = products.find(p => p.id === productId);
 
+  // Show loading skeleton
+  if (displayLoading) {
+    return <StoreProductDetailSkeleton />;
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <div className="text-center py-20">
+        <IconRenderer name="alert-circle" className="w-16 h-16 text-red-400 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold text-slate-600 mb-2">Failed to Load Product</h2>
+        <p className="text-slate-500 text-sm mb-6">
+          {error.message || 'An error occurred while loading the product details.'}
+        </p>
+        <button
+          onClick={onRetry}
+          className="btn-primary inline-flex items-center gap-2 mr-3"
+        >
+          <IconRenderer name="refresh-cw" className="w-4 h-4" />
+          Retry
+        </button>
+        <button
+          onClick={() => navigate('/store')}
+          className="btn-secondary"
+        >
+          Back to Store
+        </button>
+      </div>
+    );
+  }
+
+  // Show product not found only after loading is complete
   if (!product) {
     return (
       <div className="text-center py-20">
-        <IconRenderer name="alert-circle" className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+        <IconRenderer name="package-x" className="w-16 h-16 text-slate-300 mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-slate-600 mb-2">Product Not Found</h2>
+        <p className="text-slate-500 text-sm mb-6">
+          The product you're looking for doesn't exist or has been removed.
+        </p>
         <button
           onClick={() => navigate('/store')}
-          className="btn-primary mt-4"
+          className="btn-primary"
         >
           Back to Store
         </button>

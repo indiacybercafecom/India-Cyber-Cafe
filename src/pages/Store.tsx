@@ -3,18 +3,27 @@ import { useNavigate } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
 import { Product, ProductCategory } from '../types';
 import { SEO } from '../components/SEO';
+import { StoreSkeleton } from '../components/Skeleton';
+import { useLoadingState } from '../hooks/useLoadingState';
 
 interface StoreProps {
   products: Product[];
   categories: ProductCategory[];
+  isLoading?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
   onSelectProduct?: (product: Product) => void;
 }
 
-export function Store({ products, categories, onSelectProduct }: StoreProps) {
+export function Store({ products, categories, isLoading = false, error = null, onRetry, onSelectProduct }: StoreProps) {
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const [sortBy, setSortBy] = useState<'name' | 'price-low' | 'price-high' | 'newest'>('name');
+  
+  // Use loading state hook for smooth UX with minimum skeleton display duration
+  // Show loading state if products are still loading
+  const displayLoading = useLoadingState(isLoading, 1000);
 
   // Filter and sort products
   const filteredProducts = useMemo(() => {
@@ -134,11 +143,75 @@ export function Store({ products, categories, onSelectProduct }: StoreProps) {
 
       {/* Results Count */}
       <div className="text-sm text-slate-500">
-        Showing {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''}
+        {!displayLoading && filteredProducts.length > 0 && (
+          <>
+            Showing {filteredProducts.length} product{filteredProducts.length !== 1 ? 's' : ''}
+          </>
+        )}
       </div>
 
-      {/* Products Grid */}
-      {filteredProducts.length > 0 ? (
+      {/* Loading State - Show skeleton loaders */}
+      {displayLoading && (
+        <StoreSkeleton />
+      )}
+
+      {/* Error State - Show when loading fails */}
+      {!displayLoading && error && (
+        <div className="text-center py-20">
+          <IconRenderer name="alert-circle" className="w-16 h-16 text-red-400 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-slate-600 mb-2">Failed to Load Products</h3>
+          <p className="text-slate-500 text-sm mb-6">
+            {error.message || 'An error occurred while loading products. Please try again.'}
+          </p>
+          <button
+            onClick={onRetry}
+            className="btn-primary inline-flex items-center gap-2"
+          >
+            <IconRenderer name="refresh-cw" className="w-4 h-4" />
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Empty State - Show only when loading is done and no products exist */}
+      {!displayLoading && !error && filteredProducts.length === 0 && products.length === 0 && (
+        <div className="text-center py-20">
+          <IconRenderer name="inbox" className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-slate-600 mb-2">No Products Available</h3>
+          <p className="text-slate-500 text-sm mb-6">
+            We don't have any products in our store right now. Please check back soon!
+          </p>
+          <button
+            onClick={() => navigate('/')}
+            className="btn-primary"
+          >
+            Back to Home
+          </button>
+        </div>
+      )}
+
+      {/* Filtered Empty State - Show when filters result in no products */}
+      {!displayLoading && !error && filteredProducts.length === 0 && products.length > 0 && (
+        <div className="text-center py-20">
+          <IconRenderer name="search" className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+          <h3 className="text-lg font-semibold text-slate-600 mb-2">No Products Found</h3>
+          <p className="text-slate-500 text-sm mb-6">
+            Try adjusting your search or category filters to find what you're looking for.
+          </p>
+          <button
+            onClick={() => {
+              setSearchTerm('');
+              setSelectedCategory('all');
+            }}
+            className="btn-primary"
+          >
+            Clear Filters
+          </button>
+        </div>
+      )}
+
+      {/* Products Grid - Show only when not loading and products exist */}
+      {!displayLoading && !error && filteredProducts.length > 0 && (
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 sm:gap-5 lg:gap-6">
           {filteredProducts.map(product => (
             <div
@@ -212,12 +285,6 @@ export function Store({ products, categories, onSelectProduct }: StoreProps) {
               </div>
             </div>
           ))}
-        </div>
-      ) : (
-        <div className="text-center py-20">
-          <IconRenderer name="search" className="w-12 h-12 text-slate-300 mx-auto mb-4" />
-          <h3 className="text-lg font-semibold text-slate-600 mb-2">No products found</h3>
-          <p className="text-slate-500 text-sm">Try adjusting your search or category filters</p>
         </div>
       )}
     </div>

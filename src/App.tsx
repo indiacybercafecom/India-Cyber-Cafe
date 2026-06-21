@@ -63,6 +63,7 @@ function AppContent() {
     orders,
     productReviews,
     loading: dataLoading,
+    loadingState,
     addService,
     updateService,
     deleteService,
@@ -229,7 +230,7 @@ function AppContent() {
               ) : <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} />
             } />
             {/* Store Routes */}
-            <Route path="/store" element={<Store products={products} categories={productCategories} />} />
+            <Route path="/store" element={<Store products={products} categories={productCategories} isLoading={loadingState.products} />} />
             <Route path="/store/order-confirmation" element={<OrderConfirmation />} />
             <Route path="/store/:categoryId/:productId/checkout" element={
               <StoreCheckout 
@@ -243,6 +244,7 @@ function AppContent() {
                 products={products} 
                 reviews={productReviews}
                 user={user}
+                isLoading={loadingState.products}
                 onAddReview={addProductReview}
               />
             } />

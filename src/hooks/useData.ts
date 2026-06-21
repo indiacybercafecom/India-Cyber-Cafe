@@ -228,6 +228,7 @@ export function useData() {
 
     // Products - only fetch if needed to sync
     if (needsSyncProducts) {
+      setLoadingState(prev => ({ ...prev, products: true }));
       const productsRef = ref(rtdb, 'products');
       const unsubProducts = onValue(productsRef, (snapshot) => {
         const data = snapshot.val();
@@ -238,18 +239,24 @@ export function useData() {
         setProducts(mergedProducts);
         cacheManager.set('products', mergedProducts);
         syncManager.updateSync('products');
+        setLoadingState(prev => ({ ...prev, products: false }));
         productsLoaded = true;
         checkLoading();
       }, (error) => {
         console.error('Error fetching products:', error);
+        setLoadingState(prev => ({ ...prev, products: false }));
         productsLoaded = true;
         checkLoading();
       });
       unsubscribers.push(unsubProducts);
+    } else {
+      // If no sync needed, mark products as not loading
+      setLoadingState(prev => ({ ...prev, products: false }));
     }
 
     // Product Categories - only fetch if needed to sync
     if (needsSyncCategories) {
+      setLoadingState(prev => ({ ...prev, productCategories: true }));
       const categoriesRef = ref(rtdb, 'productCategories');
       const unsubCategories = onValue(categoriesRef, (snapshot) => {
         const data = snapshot.val();
@@ -260,14 +267,20 @@ export function useData() {
         setProductCategories(mergedCategories);
         cacheManager.set('productCategories', mergedCategories);
         syncManager.updateSync('productCategories');
+        setLoadingState(prev => ({ ...prev, productCategories: false }));
         categoriesLoaded = true;
         checkLoading();
       }, (error) => {
         console.error('Error fetching product categories:', error);
+        setLoadingState(prev => ({ ...prev, productCategories: false }));
         categoriesLoaded = true;
         checkLoading();
       });
       unsubscribers.push(unsubCategories);
+    } else {
+      // If no sync needed, mark categories as not loading
+      setLoadingState(prev => ({ ...prev, productCategories: false }));
+    }
     }
 
     // Orders - only fetch if needed to sync
@@ -314,6 +327,7 @@ export function useData() {
 
     // Product Reviews - only fetch if needed to sync
     if (needsSyncReviews) {
+      setLoadingState(prev => ({ ...prev, productReviews: true }));
       const reviewsRef = ref(rtdb, 'productReviews');
       const unsubReviews = onValue(reviewsRef, (snapshot) => {
         const data = snapshot.val();
@@ -330,14 +344,19 @@ export function useData() {
           cacheManager.set('productReviews', cachedReviews);
         }
         syncManager.updateSync('productReviews');
+        setLoadingState(prev => ({ ...prev, productReviews: false }));
         reviewsLoaded = true;
         checkLoading();
       }, (error) => {
         console.error('Error fetching product reviews:', error);
+        setLoadingState(prev => ({ ...prev, productReviews: false }));
         reviewsLoaded = true;
         checkLoading();
       });
       unsubscribers.push(unsubReviews);
+    } else {
+      // If no sync needed, mark reviews as not loading
+      setLoadingState(prev => ({ ...prev, productReviews: false }));
     }
 
     return () => {
@@ -556,6 +575,7 @@ export function useData() {
     orders,
     productReviews,
     loading,
+    loadingState,
     addApplication,
     updateApplication,
     deleteApplication,
