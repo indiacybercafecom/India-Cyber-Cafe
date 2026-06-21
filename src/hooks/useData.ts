@@ -281,7 +281,6 @@ export function useData() {
       // If no sync needed, mark categories as not loading
       setLoadingState(prev => ({ ...prev, productCategories: false }));
     }
-    }
 
     // Orders - only fetch if needed to sync
     if (needsSyncOrders) {
