@@ -125,7 +125,7 @@ export function OrderConfirmation() {
           <p className="text-sm font-semibold text-blue-900 mb-2">Questions?</p>
           <div className="text-xs text-blue-800 space-y-1">
             <p>📧 Email: support@indiacybercafe.com</p>
-            <p>📞 Phone: +91 XXXXX XXXXX</p>
+            <p>📞 Phone: +91 9203251821</p>
             <p>⏰ Available 24/7</p>
           </div>
         </div>
