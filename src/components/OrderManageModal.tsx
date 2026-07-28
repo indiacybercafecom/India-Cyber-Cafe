@@ -334,9 +334,9 @@ export function OrderManageModal({
                           )}
                         </div>
                         <div className="text-right ml-3">
-                          <p className="font-bold text-navy text-sm sm:text-lg">₹{(item as any).price}</p>
-                          {(item as any).discountedPrice && (item as any).discountedPrice > 0 && (
-                            <p className="text-xs sm:text-sm text-slate-500 line-through">₹{(item as any).discountedPrice}</p>
+                          <p className="font-bold text-navy text-sm sm:text-lg">₹{((item as any).discountedPrice && (item as any).discountedPrice > 0) ? (item as any).discountedPrice : (item as any).price}</p>
+                          {((item as any).discountedPrice && (item as any).discountedPrice > 0 && (item as any).price > (item as any).discountedPrice) && (
+                            <p className="text-xs sm:text-sm text-slate-500 line-through">₹{(item as any).price}</p>
                           )}
                         </div>
                       </div>
