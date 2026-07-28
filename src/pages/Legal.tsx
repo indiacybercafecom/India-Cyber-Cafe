@@ -113,7 +113,7 @@ export function Legal() {
         },
         {
           heading: "Email Support",
-          text: "icc@b.indiacybercafe.com\nicc@indiacybercafe.com"
+          text: "indiacybercafe.com@gmail.com\nicc@indiacybercafe.com"
         },
         {
           heading: "Phone",
