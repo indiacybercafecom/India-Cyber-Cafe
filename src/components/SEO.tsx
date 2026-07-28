@@ -16,7 +16,7 @@ export function SEO({
   title = "India Cyber Cafe - Digital Seva Simplified", 
   description = "Apply for Government Services, Jobs & Documents online with India's trusted digital partner. Fast, secure, and reliable digital services.",
   keywords = "India Cyber Cafe, Digital Seva, Government Services, Online Application, CSC, Digital India",
-  image = "https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png",
+  image = "https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png",
   url = "https://b.indiacybercafe.com",
   type = "website",
   author = "India Cyber Cafe",
@@ -58,6 +58,9 @@ export function SEO({
       
       {/* Canonical URL */}
       <link rel="canonical" href={secureUrl} />
+      <link rel="icon" href={secureImageUrl} />
+      <link rel="shortcut icon" href={secureImageUrl} />
+      <link rel="apple-touch-icon" href={secureImageUrl} />
 
       {/* Additional SEO tags */}
       <meta name="mobile-web-app-capable" content="yes" />
