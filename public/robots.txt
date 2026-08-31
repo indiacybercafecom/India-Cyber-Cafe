@@ -1,0 +1,47 @@
+# Robots.txt for India Cyber Cafe
+# Allow all bots to crawl the website
+
+User-agent: *
+Allow: /
+Allow: /index.html
+Allow: /services
+Allow: /store
+Allow: /login
+Allow: /register
+Allow: /apply
+Allow: /track
+Allow: /profile
+Allow: /admin
+Allow: /operator
+Allow: /legal
+Allow: /forgot-password
+Allow: /order-confirmation
+Allow: /service-detail
+Allow: /store-checkout
+Allow: /store-product
+
+# Disallow admin-only paths
+Disallow: /admin/
+Disallow: /operator/
+
+# Prevent access to sensitive data
+Disallow: /api/
+Disallow: /*.env
+Disallow: /*.config.js
+Disallow: /*.config.ts
+
+# Sitemap location
+Sitemap: https://b.indiacybercafe.com/sitemap.xml
+
+# Crawl delay for all bots (optional, no delay for faster crawling)
+Crawl-delay: 0
+
+# Specific rules for Googlebot
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 0
+
+# Specific rules for Bingbot
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 1

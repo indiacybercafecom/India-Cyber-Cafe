@@ -11,13 +11,21 @@
     <meta name="keywords" content="Cyber Cafe, CSC, India Cyber Cafe, Online Form, Digital Services, Pan Card, Aadhaar, Passport, Online Application, Digital India" />
     <meta name="author" content="India Cyber Cafe" />
     <meta name="image" content="https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" />
+    <meta name="google" content="notranslate" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="rating" content="general" />
+    <meta name="distribution" content="global" />
+    <meta name="revisit-after" content="7 days" />
+    <link rel="alternate" hreflang="en-IN" href="https://b.indiacybercafe.com/" />
     
     <!-- Preconnect to critical origins -->
     <link rel="preconnect" href="https://indiacybercafe.com" />
     <link rel="preconnect" href="https://checkout.razorpay.com" />
     <link rel="preconnect" href="https://unpkg.com" />
+    <link rel="preconnect" href="https://india-cyber-cafe-default-rtdb.firebaseio.com" />
     <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
     <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link rel="dns-prefetch" href="https://www.google-analytics.com" />
 
     <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website" />
@@ -47,9 +55,25 @@
     <meta name="theme-color" content="#FF9933" />
     <meta name="msapplication-TileColor" content="#FF9933" />
 
-    <!-- Razorpay Checkout - Preloaded for faster payment experience -->
+    <!-- Razorpay Checkout - Deferred loading for better SEO -->
     <link rel="preload" href="https://checkout.razorpay.com/v1/checkout.js" as="script" />
-    <script defer src="https://checkout.razorpay.com/v1/checkout.js"></script>
+    <script async src="https://checkout.razorpay.com/v1/checkout.js"></script>
+
+    <!-- Schema.org for Google - WebSite -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "name": "India Cyber Cafe",
+      "url": "https://b.indiacybercafe.com",
+      "description": "Digital services provider for government forms, CSC services, and online applications",
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "https://b.indiacybercafe.com/services?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    }
+    </script>
 
     <!-- Schema.org for Google - LocalBusiness -->
     <script type="application/ld+json">
@@ -91,9 +115,49 @@
       "url": "https://b.indiacybercafe.com",
       "logo": "https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png",
       "description": "Your trusted partner for digital services in India",
+      "foundingDate": "2020",
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "telephone": "+91-9203251821",
+        "contactType": "Customer Service"
+      },
       "sameAs": [
         "https://facebook.com/indiacybercafe",
         "https://twitter.com/indiacybercafe"
+      ]
+    }
+    </script>
+
+    <!-- Schema.org - BreadcrumbList -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "Home",
+          "item": "https://b.indiacybercafe.com"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Services",
+          "item": "https://b.indiacybercafe.com/services"
+        },
+        {
+          "@type": "ListItem",
+          "position": 3,
+          "name": "Store",
+          "item": "https://b.indiacybercafe.com/store"
+        },
+        {
+          "@type": "ListItem",
+          "position": 4,
+          "name": "Apply",
+          "item": "https://b.indiacybercafe.com/apply"
+        }
       ]
     }
     </script>
