@@ -13,7 +13,7 @@ import { UserProfile } from '../types';
  *
  * This prevents Home from being blocked while waiting for user profile
  */
-export function useAuth() {
+export function useAuth(loadProfile = true) {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -35,7 +35,7 @@ export function useAuth() {
       }
 
       // STEP 2: Load profile data separately in background
-      if (firebaseUser) {
+      if (firebaseUser && loadProfile) {
         setProfileLoading(true);
         const userRef = ref(rtdb, `users/${firebaseUser.uid}`);
 
@@ -97,7 +97,7 @@ export function useAuth() {
       authUnsubscribe();
       if (userUnsubscribe) userUnsubscribe();
     };
-  }, []);
+  }, [loadProfile]);
 
   return { user, authUser, loading, profileLoading };
 }

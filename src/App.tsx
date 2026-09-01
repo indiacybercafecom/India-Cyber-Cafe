@@ -56,9 +56,15 @@ const preloadPages = () => {
 };
 
 function AppContent() {
-  const { user, authUser, loading: authLoading, profileLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const isAdminRoute = location.pathname === '/admin';
+  const isOperatorRoute = location.pathname === '/operator';
+  const isTrackRoute = location.pathname.startsWith('/track');
+  const isApplyRoute = location.pathname.startsWith('/services/') && location.pathname.split('/').length >= 4;
+  const isCheckoutRoute = location.pathname.startsWith('/store/') && location.pathname.endsWith('/checkout');
+  const requiresProfile = isAdminRoute || isOperatorRoute || isTrackRoute || isApplyRoute || isCheckoutRoute || location.pathname === '/profile';
+  const { user, authUser, loading: authLoading, profileLoading } = useAuth(requiresProfile);
 
   // Home/public data (loaded always, cache-first)
   const { services, addService, updateService, deleteService } = useServices();
@@ -66,13 +72,34 @@ function AppContent() {
   const { productCategories, addProductCategory, updateProductCategory, deleteProductCategory } = useProductCategories();
 
   // User-specific data (loaded only when user is authenticated)
-  const userApplications = useApplications(user?.uid || null, user?.role === 'operator' ? user?.email : undefined);
-  const userOrders = useOrders(user?.uid);
+  const userApplications = useApplications(
+    isTrackRoute && user && user.role !== 'admin'
+      ? { mode: 'user', uid: user.uid }
+      : isOperatorRoute && user?.role === 'operator' && user.email
+        ? { mode: 'operator', uid: user.uid, operatorEmail: user.email }
+        : { mode: 'disabled' }
+  );
+  const userOrders = useOrders(
+    isTrackRoute && user && user.role !== 'admin'
+      ? { mode: 'user', uid: user.uid }
+      : { mode: 'disabled' }
+  );
 
   // Admin-only data (loaded only when user is admin)
-  const adminApplications = useApplications(user?.role === 'admin' ? undefined : null);
-  const adminUsers = useUsers();
-  const gateways = useGateways();
+  const adminApplications = useApplications(
+    isAdminRoute && user?.role === 'admin' ? { mode: 'admin' } : { mode: 'disabled' }
+  );
+  const adminUsers = useUsers(isAdminRoute && user?.role === 'admin');
+  const gateways = useGateways(
+    (isAdminRoute && user?.role === 'admin') ||
+    (isApplyRoute && !!user) ||
+    isCheckoutRoute ||
+    (isTrackRoute && !!user)
+  );
+  const adminOrders = useOrders(
+    isAdminRoute && user?.role === 'admin' ? { mode: 'admin' } : { mode: 'disabled' }
+  );
+  const adminReviews = useProductReviews(undefined, isAdminRoute && user?.role === 'admin');
   
   // Local state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -86,10 +113,10 @@ function AppContent() {
 
   // Determine which data to use based on user role
   const applications = user?.role === 'admin' ? adminApplications.applications : userApplications.applications;
-  const orders = user ? userOrders.orders : [];
+  const orders = user?.role === 'admin' ? adminOrders.orders : userOrders.orders;
   const users = user?.role === 'admin' ? adminUsers.users : [];
   const applicationsLoading = user?.role === 'admin' ? adminApplications.loading : userApplications.loading;
-  const ordersLoading = userOrders.loading;
+  const ordersLoading = user?.role === 'admin' ? adminOrders.loading : userOrders.loading;
   const usersLoading = adminUsers.loading;
 
   // Back button handling for modals and sidebar
@@ -322,7 +349,7 @@ function AppContent() {
                   <PageSkeleton />
                 ) : user?.role === 'operator' ? (
                   <Operator
-                    applications={adminApplications.applications}
+                    applications={userApplications.applications}
                     user={user}
                     onViewApp={setSelectedApp}
                   />
@@ -346,7 +373,7 @@ function AppContent() {
                     products={products}
                     productCategories={productCategories}
                     orders={orders}
-                    productReviews={[]}
+                    productReviews={adminReviews.productReviews}
                     onViewApp={setSelectedApp}
                     onDeleteApp={adminApplications.deleteApplication}
                     onEditService={(s) => {
@@ -373,18 +400,15 @@ function AppContent() {
                     onAddProduct={() => {}}
                     onDeleteProduct={deleteProduct}
                     onViewOrder={setSelectedApp as any}
-                    onUpdateOrder={async (id: string, data: any) => {
-                      // Admin order update
-                    }}
-                    onDeleteOrder={async (id: string) => {
-                      // Admin order delete
-                    }}
+                    onUpdateOrder={adminOrders.updateOrder}
+                    onDeleteOrder={adminOrders.deleteOrder}
                     onAddCategory={addProductCategory}
                     onUpdateCategory={updateProductCategory}
                     onDeleteCategory={deleteProductCategory}
                     onDeleteProductReview={async (id: string) => {
                       // Admin review delete
                     }}
+                    onUpdateProductReview={adminReviews.updateProductReview}
                     currentUser={user}
                   />
                 ) : (

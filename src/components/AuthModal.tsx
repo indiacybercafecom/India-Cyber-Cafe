@@ -113,7 +113,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       sendEmail(sanitizedEmail, 'Welcome to India Cyber Cafe', emailTemplates.registration(sanitizedName));
       
       // Notify All Admins
-      sendEmailToAllAdmins('New User Registered - India Cyber Cafe', emailTemplates.adminUserRegistered(sanitizedName, sanitizedEmail, new Date().toLocaleString()));
+      sendEmailToAllAdmins('New User Registered - India Cyber Cafe', emailTemplates.adminUserRegistered(sanitizedName, sanitizedEmail, sanitizedPhone, new Date().toLocaleString()));
 
       showToast(`Account Created Successfully as ${role}!`);
       onClose();

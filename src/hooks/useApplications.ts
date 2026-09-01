@@ -17,33 +17,40 @@ const PAGINATION_LIMIT = 50;
 
 /**
  * Hook for loading applications data
- * - Without uid: loads all applications (admin use)
- * - With uid: loads only applications belonging to that user
- * - Optional operatorEmail: also includes applications assigned to that operator
+ * - disabled: does not subscribe
+ * - user: loads only applications belonging to that user
+ * - admin: loads all applications
+ * - operator: loads the user's applications and applications assigned to them
  * Real-time updates are maintained for the current filter
  * 
  * If uid is null, does not subscribe (useful for conditional loading)
  */
-export function useApplications(uid?: string | null, operatorEmail?: string) {
+export type ApplicationLoadOptions =
+  | { mode: 'disabled' }
+  | { mode: 'user'; uid: string }
+  | { mode: 'admin' }
+  | { mode: 'operator'; uid: string; operatorEmail: string };
+
+export function useApplications(options: ApplicationLoadOptions) {
   const [applications, setApplications] = useState<Application[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(options.mode !== 'disabled');
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    // Don't subscribe if uid is explicitly null (used to conditionally disable loading)
-    if (uid === null) {
+    if (options.mode === 'disabled') {
       setApplications([]);
       setLoading(false);
       return;
     }
 
     let unsubscribe: (() => void) | null = null;
+    let assignedUnsubscribe: (() => void) | null = null;
 
     const loadApplications = () => {
       try {
         setLoading(true);
 
-        if (uid === undefined) {
+        if (options.mode === 'admin') {
           // Admin: load all applications
           const appsRef = query(ref(rtdb, 'applications'), orderByChild('date'));
           unsubscribe = onValue(
@@ -79,7 +86,8 @@ export function useApplications(uid?: string | null, operatorEmail?: string) {
               setLoading(false);
             }
           );
-        } else if (uid) {
+        } else if (options.mode === 'user' || options.mode === 'operator') {
+          const uid = options.uid;
           // User: load only their applications
           const appsRef = query(
             ref(rtdb, 'applications'),
@@ -103,13 +111,13 @@ export function useApplications(uid?: string | null, operatorEmail?: string) {
                 }
 
                 // If user is operator, also include applications assigned to them
-                if (operatorEmail) {
+                if (options.mode === 'operator') {
                   const appsRef2 = query(
                     ref(rtdb, 'applications'),
                     orderByChild('assignedTo'),
-                    equalTo(operatorEmail)
+                    equalTo(options.operatorEmail)
                   );
-                  onValue(
+                  assignedUnsubscribe = onValue(
                     appsRef2,
                     (snapshot2) => {
                       const data2 = snapshot2.val();
@@ -127,7 +135,9 @@ export function useApplications(uid?: string | null, operatorEmail?: string) {
                             merged.push(app);
                           }
                         }
-                        setApplications(merged.sort((a, b) => (b.date || 0) - (a.date || 0)));
+                        setApplications(merged.sort((a, b) =>
+                          new Date(b.date).getTime() - new Date(a.date).getTime()
+                        ));
                       } else {
                         setApplications(apps);
                       }
@@ -170,8 +180,13 @@ export function useApplications(uid?: string | null, operatorEmail?: string) {
 
     return () => {
       if (unsubscribe) unsubscribe();
+      if (assignedUnsubscribe) assignedUnsubscribe();
     };
-  }, [uid, operatorEmail]);
+  }, [
+    options.mode,
+    options.mode === 'user' || options.mode === 'operator' ? options.uid : null,
+    options.mode === 'operator' ? options.operatorEmail : null,
+  ]);
 
   const addApplication = async (app: Omit<Application, 'id'>) => {
     const newAppRef = push(ref(rtdb, 'applications'));

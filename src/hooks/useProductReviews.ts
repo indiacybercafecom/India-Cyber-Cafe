@@ -10,13 +10,13 @@ const PAGINATION_LIMIT = 100;
  * On-demand loading - loads only when needed (StoreProduct page)
  * Optionally filter by productId
  */
-export function useProductReviews(productId?: string) {
+export function useProductReviews(productId?: string, loadAll = false) {
   const [productReviews, setProductReviews] = useState<ProductReview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    if (!productId) {
+    if (!productId && !loadAll) {
       setLoading(false);
       return;
     }
@@ -41,7 +41,7 @@ export function useProductReviews(productId?: string) {
                     id,
                     ...val,
                   } as ProductReview))
-                  .filter((r) => r.productId === productId)
+                  .filter((r) => loadAll || r.productId === productId)
                   .slice(0, PAGINATION_LIMIT);
               }
 
@@ -74,7 +74,7 @@ export function useProductReviews(productId?: string) {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [productId]);
+  }, [productId, loadAll]);
 
   const addProductReview = async (review: Omit<ProductReview, 'id'>) => {
     const newRef = push(ref(rtdb, 'productReviews'));

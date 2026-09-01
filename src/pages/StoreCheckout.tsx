@@ -310,7 +310,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
     // AND if an existing account was NOT found
     if (!user || !user.uid) {
       if (!createGuestAccount && !existingUserFound) {
-        showToast('⚠️ Without an account, you won\'t be able to track your order. We recommend creating one.', 'warning');
+        showToast('⚠️ Without an account, you won\'t be able to track your order. We recommend creating one.', 'info');
       }
     }
 

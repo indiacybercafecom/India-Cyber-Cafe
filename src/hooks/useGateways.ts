@@ -8,12 +8,18 @@ import { PaymentGateway } from '../types';
  * On-demand loading - loads only when explicitly needed (during Apply/Checkout)
  * Not cached globally - each instance maintains its own state
  */
-export function useGateways() {
+export function useGateways(enabled = false) {
   const [gateways, setGateways] = useState<PaymentGateway[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setGateways([]);
+      setLoading(false);
+      return;
+    }
+
     let unsubscribe: (() => void) | null = null;
 
     const loadGateways = () => {
@@ -62,7 +68,7 @@ export function useGateways() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, []);
+  }, [enabled]);
 
   const addGateway = async (gateway: PaymentGateway) => {
     const newRef = push(ref(rtdb, 'gateways'));

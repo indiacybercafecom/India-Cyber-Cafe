@@ -39,6 +39,7 @@ interface AdminProps {
   onUpdateCategory?: (id: string, category: Partial<ProductCategory>) => Promise<void>;
   onDeleteCategory?: (id: string) => Promise<void>;
   onDeleteProductReview?: (id: string) => Promise<void>;
+  onUpdateProductReview?: (id: string, data: Partial<ProductReview>) => Promise<void>;
   currentUser?: UserProfile;
 }
 
@@ -70,7 +71,8 @@ export function Admin({
   onUpdateCategory,
   onDeleteCategory,
   onDeleteProductReview,
-  currentUser
+  currentUser,
+  onUpdateProductReview
 }: AdminProps) {
   const navigate = useNavigate();
   const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders' | 'reviews'>('apps');
@@ -1328,9 +1330,9 @@ export function Admin({
                 onClick={async () => {
                   if (selectedReview) {
                     const currentHelpful = selectedReview.helpful || 0;
-                    await updateProductReview(selectedReview.id, { 
+                    await onUpdateProductReview?.(selectedReview.id, { 
                       helpful: currentHelpful + 1,
-                      helpfulBy: [...(selectedReview.helpfulBy || []), user?.uid || 'admin']
+                      helpfulBy: [...(selectedReview.helpfulBy || []), currentUser?.uid || 'admin']
                     });
                     setSelectedReview({ ...selectedReview, helpful: currentHelpful + 1 });
                     showToast('Marked as helpful!', 'success');

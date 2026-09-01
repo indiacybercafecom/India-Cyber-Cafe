@@ -10,12 +10,18 @@ const PAGINATION_LIMIT = 200;
  * Loads all user profiles from the database
  * Real-time updates are maintained
  */
-export function useUsers() {
+export function useUsers(enabled = false) {
   const [users, setUsers] = useState<UserProfile[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
+    if (!enabled) {
+      setUsers([]);
+      setLoading(false);
+      return;
+    }
+
     let unsubscribe: (() => void) | null = null;
 
     const loadUsers = () => {
@@ -68,7 +74,7 @@ export function useUsers() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, []);
+  }, [enabled]);
 
   const updateUser = async (uid: string, data: Partial<UserProfile>) => {
     return await update(ref(rtdb, `users/${uid}`), data);

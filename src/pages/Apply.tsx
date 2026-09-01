@@ -100,7 +100,7 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
         uid: user.uid,
         email: sanitizedEmail,
         name: user.name.trim(),
-        serviceName: user.serviceName?.trim() || service.name.trim(),
+        serviceName: service.name.trim(),
         serviceId: service.id,
         details: sanitizedDetails,
         status: 'processing',

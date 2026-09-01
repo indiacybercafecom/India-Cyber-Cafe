@@ -31,8 +31,9 @@ export const lazyLoad = {
     }
 
     return new Promise((resolve) => {
+      let unsubscribe: (() => void) | null = null;
       try {
-        const unsubscribe = onValue(ref(rtdb, collectionName), (snapshot) => {
+        unsubscribe = onValue(ref(rtdb, collectionName), (snapshot) => {
           const data = snapshot.val();
 
           if (!data) {
@@ -58,10 +59,12 @@ export const lazyLoad = {
           unsubscribe();
         }, (error) => {
           console.error(`Error loading ${collectionName}:`, error);
+          if (unsubscribe) unsubscribe();
           resolve([]);
         });
       } catch (error) {
         console.error(`Error loading ${collectionName}:`, error);
+        if (unsubscribe) unsubscribe();
         resolve([]);
       }
     });
@@ -72,16 +75,19 @@ export const lazyLoad = {
    */
   async loadItem(collectionName: string, itemId: string): Promise<any | null> {
     return new Promise((resolve) => {
+      let unsubscribe: (() => void) | null = null;
       try {
-        const unsubscribe = onValue(ref(rtdb, `${collectionName}/${itemId}`), (snapshot) => {
+        unsubscribe = onValue(ref(rtdb, `${collectionName}/${itemId}`), (snapshot) => {
           resolve(snapshot.val());
-          unsubscribe();
+          if (unsubscribe) unsubscribe();
         }, (error) => {
           console.error(`Error loading ${collectionName}/${itemId}:`, error);
+          if (unsubscribe) unsubscribe();
           resolve(null);
         });
       } catch (error) {
         console.error(`Error loading ${collectionName}/${itemId}:`, error);
+        if (unsubscribe) unsubscribe();
         resolve(null);
       }
     });

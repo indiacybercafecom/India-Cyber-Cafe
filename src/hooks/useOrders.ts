@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ref, onValue, update, remove, push, set } from 'firebase/database';
+import { ref, onValue, update, remove, push, set, query, orderByChild, equalTo } from 'firebase/database';
 import { rtdb } from '../firebase';
 import { Order } from '../types';
 
@@ -7,20 +7,27 @@ const PAGINATION_LIMIT = 100;
 
 /**
  * Hook for loading orders data
- * - Without uid: loads all orders (admin use)
- * - With uid: loads only orders belonging to that user
+ * - disabled: does not subscribe
+ * - user: loads only orders belonging to that user
+ * - admin: loads all orders
  * Real-time updates are maintained for the current filter
  * 
  * If uid is null, does not subscribe (useful for conditional loading)
  */
-export function useOrders(uid?: string | null) {
+export type OrderLoadOptions =
+  | { mode: 'disabled' }
+  | { mode: 'user'; uid: string }
+  | { mode: 'admin' };
+
+export function useOrders(options?: OrderLoadOptions | null) {
+  const mode = options?.mode ?? 'disabled';
+  const userUid = options?.mode === 'user' ? options.uid : null;
   const [orders, setOrders] = useState<Order[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(mode !== 'disabled');
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    // Don't subscribe if uid is explicitly null (used to conditionally disable loading)
-    if (uid === null) {
+    if (mode === 'disabled') {
       setOrders([]);
       setLoading(false);
       return;
@@ -32,7 +39,9 @@ export function useOrders(uid?: string | null) {
       try {
         setLoading(true);
 
-        const ordersRef = ref(rtdb, 'orders');
+        const ordersRef = userUid
+          ? query(ref(rtdb, 'orders'), orderByChild('uid'), equalTo(userUid))
+          : ref(rtdb, 'orders');
         unsubscribe = onValue(
           ordersRef,
           (snapshot) => {
@@ -75,12 +84,7 @@ export function useOrders(uid?: string | null) {
                   .slice(0, PAGINATION_LIMIT);
               }
 
-              // Filter by user if uid provided
-              const filtered = uid
-                ? orders.filter((o) => o.uid === uid)
-                : orders;
-
-              setOrders(filtered);
+              setOrders(orders);
               setError(null);
               setLoading(false);
             } catch (err) {
@@ -109,7 +113,7 @@ export function useOrders(uid?: string | null) {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [uid]);
+  }, [mode, userUid]);
 
   const addOrder = async (order: Omit<Order, 'id'> | Order) => {
     // Validate that uid is not undefined (Firebase doesn't allow undefined values)
