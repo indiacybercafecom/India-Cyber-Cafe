@@ -10,7 +10,7 @@ import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { storage } from '../firebase';
 import { update, ref as dbRef } from 'firebase/database';
 import { generateOrderId } from '../utils/orderIdGenerator';
-import { getRazorpayKeyId, verifyRazorpayPayment } from '../services/razorpayService';
+import { getRazorpayKeyId, loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
 import { generateRandomPassword, findUserByEmail, findUserByPhone, createGuestAccount as createGuestAccountInDB } from '../services/guestCheckoutService';
 import { sendWelcomeEmail, sendOrderConfirmationEmail, sendAdminOrderNotification } from '../services/emailService';
 import { sanitizeAddress, sanitizeOrderItems, sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
@@ -518,8 +518,8 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
 
           const razorpayOrderId = orderData.orderId;
 
-          // Check if Razorpay is available
-          if (!window.Razorpay) {
+          const scriptLoaded = await loadRazorpayScript();
+          if (!scriptLoaded || !window.Razorpay) {
             console.error('❌ Razorpay window object not found');
             showToast('❌ Payment system not available. Please refresh the page.', 'error');
             setSubmitting(false);

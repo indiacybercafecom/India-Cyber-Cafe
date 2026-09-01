@@ -93,7 +93,6 @@ function AppContent() {
   const gateways = useGateways(
     (isAdminRoute && user?.role === 'admin') ||
     (isApplyRoute && !!user) ||
-    isCheckoutRoute ||
     (isTrackRoute && !!user)
   );
   const adminOrders = useOrders(

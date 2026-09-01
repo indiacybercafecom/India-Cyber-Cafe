@@ -35,8 +35,12 @@ declare global {
   }
 }
 
+let razorpayScriptPromise: Promise<boolean> | null = null;
+
 export const loadRazorpayScript = (): Promise<boolean> => {
-  return new Promise((resolve) => {
+  if (razorpayScriptPromise) return razorpayScriptPromise;
+
+  razorpayScriptPromise = new Promise((resolve) => {
     if (document.getElementById('razorpay-script')) {
       resolve(true);
       return;
@@ -47,9 +51,14 @@ export const loadRazorpayScript = (): Promise<boolean> => {
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.async = true;
     script.onload = () => resolve(true);
-    script.onerror = () => resolve(false);
+    script.onerror = () => {
+      razorpayScriptPromise = null;
+      resolve(false);
+    };
     document.body.appendChild(script);
   });
+
+  return razorpayScriptPromise;
 };
 
 export const initiateRazorpayPayment = async (options: RazorpayOptions) => {

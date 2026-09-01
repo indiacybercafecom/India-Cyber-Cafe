@@ -6,6 +6,7 @@ import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
 import { utils, writeFile } from 'xlsx';
 import { OrderDetailModal } from '../components/OrderDetailModal';
+import { loadRazorpayScript } from '../services/razorpayService';
 
 interface TrackProps {
   applications: Application[];
@@ -82,6 +83,12 @@ export function Track({ applications, orders = [], user, gateways, onViewDetails
   };
 
   const handlePay = async (app: Application) => {
+    const scriptLoaded = await loadRazorpayScript();
+    if (!scriptLoaded || !window.Razorpay) {
+      showToast('Payment system not available. Please try again.', 'error');
+      return;
+    }
+
     const razorpayGateway = gateways.find(g => g.type === 'razorpay' && g.active);
     const key = razorpayGateway?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd';
 

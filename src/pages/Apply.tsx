@@ -8,7 +8,7 @@ import { ref as dbRef, set } from 'firebase/database';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
 import { SEO } from '../components/SEO';
-import { verifyRazorpayPayment } from '../services/razorpayService';
+import { loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
 import { sanitizeFormData, sanitizeUserProfile, sanitizeEmail } from '../utils/sanitizer';
 
 interface ApplyProps {
@@ -176,8 +176,8 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
 
             const razorpayOrderId = orderData.orderId;
 
-            // Check if Razorpay is available
-            if (!window.Razorpay) {
+            const scriptLoaded = await loadRazorpayScript();
+            if (!scriptLoaded || !window.Razorpay) {
               console.error('❌ Razorpay window object not found');
               showToast('❌ Payment system not available. Please refresh the page.', 'error');
               setLoading(false);
