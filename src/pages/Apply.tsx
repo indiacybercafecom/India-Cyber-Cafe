@@ -9,7 +9,7 @@ import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/ema
 import { uploadFile } from '../services/uploadService';
 import { SEO } from '../components/SEO';
 import { verifyRazorpayPayment } from '../services/razorpayService';
-import { sanitizeApplicationDetails, sanitizeUserProfile, deepSanitize, sanitizeEmail } from '../utils/sanitizer';
+import { sanitizeFormData, sanitizeUserProfile, sanitizeEmail } from '../utils/sanitizer';
 
 interface ApplyProps {
   services: Service[];
@@ -92,8 +92,8 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
       const randomStr = Math.floor(1000 + Math.random() * 9000).toString(); // 4 random digits
       const appId = `ICC-${dateStr}-${timeStr}-${randomStr}`;
 
-      // Sanitize all form data before saving
-      const sanitizedDetails = sanitizeApplicationDetails({ ...formData, ...uploadedFiles });
+      // Sanitize all form data before saving - convert display labels to valid database keys
+      const sanitizedDetails = sanitizeFormData({ ...formData, ...uploadedFiles });
       const sanitizedEmail = sanitizeEmail(user.email);
 
       const application: any = {
