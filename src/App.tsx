@@ -63,8 +63,8 @@ function AppContent() {
   const isTrackRoute = location.pathname.startsWith('/track');
   const isApplyRoute = location.pathname.startsWith('/services/') && location.pathname.split('/').length >= 4;
   const isCheckoutRoute = location.pathname.startsWith('/store/') && location.pathname.endsWith('/checkout');
-  const requiresProfile = isAdminRoute || isOperatorRoute || isTrackRoute || isApplyRoute || isCheckoutRoute || location.pathname === '/profile';
-  const { user, authUser, loading: authLoading, profileLoading } = useAuth(requiresProfile);
+  const { user, authUser, loading: authLoading, profileLoading, profileError } = useAuth();
+  const profileUnavailable = !!authUser && !profileLoading && (!user || !!profileError);
 
   // Home/public data (loaded always, cache-first)
   const { services, addService, updateService, deleteService } = useServices();
@@ -197,6 +197,7 @@ function AppContent() {
 
       <Navbar
         user={user}
+        authUser={authUser}
         loading={authLoading}
         onLoginClick={() => navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)}
         onMenuClick={() => setIsSidebarOpen(true)}
@@ -232,7 +233,7 @@ function AppContent() {
                 />
               }
             />
-            <Route path="/login" element={<Login user={user} />} />
+            <Route path="/login" element={<Login user={user} authUser={authUser} authLoading={authLoading} />} />
             <Route path="/register" element={<Register user={user} />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/legal/:type" element={<Legal />} />
@@ -247,13 +248,19 @@ function AppContent() {
             <Route
               path="/services/:serviceId/:subserviceName"
               element={
-                user ? (
+                authLoading || (authUser && profileLoading) ? (
+                  <PageSkeleton />
+                ) : profileUnavailable ? (
+                  <Navigate to="/" />
+                ) : authUser && user ? (
                   <Apply
                     services={services}
                     user={user}
                     gateways={gateways.gateways}
                     onSuccess={() => navigate('/track')}
                   />
+                ) : authUser ? (
+                  <Navigate to="/" />
                 ) : (
                   <Navigate
                     to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
@@ -276,7 +283,17 @@ function AppContent() {
             <Route
               path="/store/:categoryId/:productId/checkout"
               element={
-                <StoreCheckout products={products} user={user} onAddOrder={userOrders.addOrder} />
+                authLoading || (authUser && profileLoading) ? (
+                  <PageSkeleton />
+                ) : profileUnavailable ? (
+                  <Navigate to="/" />
+                ) : authUser && user ? (
+                  <StoreCheckout products={products} user={user} onAddOrder={userOrders.addOrder} />
+                ) : authUser ? (
+                  <Navigate to="/" />
+                ) : (
+                  <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} />
+                )
               }
             />
             {/* StoreProduct - products + reviews for specific product */}
@@ -293,7 +310,11 @@ function AppContent() {
             <Route
               path="/track"
               element={
-                user ? (
+                authLoading || (authUser && profileLoading) ? (
+                  <PageSkeleton />
+                ) : profileUnavailable ? (
+                  <Navigate to="/" />
+                ) : authUser && user ? (
                   <Track
                     applications={applications}
                     orders={orders}
@@ -302,6 +323,8 @@ function AppContent() {
                     onViewDetails={setSelectedApp}
                     onUpdateApp={userApplications.updateApplication}
                   />
+                ) : authUser ? (
+                  <Navigate to="/" />
                 ) : (
                   <Navigate
                     to={`/login?redirect=${encodeURIComponent('/track')}`}
@@ -312,7 +335,11 @@ function AppContent() {
             <Route
               path="/track/:applicationId"
               element={
-                user ? (
+                authLoading || (authUser && profileLoading) ? (
+                  <PageSkeleton />
+                ) : profileUnavailable ? (
+                  <Navigate to="/" />
+                ) : authUser && user ? (
                   <Track
                     applications={applications}
                     orders={orders}
@@ -321,6 +348,8 @@ function AppContent() {
                     onViewDetails={setSelectedApp}
                     onUpdateApp={userApplications.updateApplication}
                   />
+                ) : authUser ? (
+                  <Navigate to="/" />
                 ) : (
                   <Navigate
                     to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
@@ -333,8 +362,14 @@ function AppContent() {
               element={
                 authLoading ? (
                   <PageSkeleton />
+                ) : authUser && profileLoading ? (
+                  <PageSkeleton />
+                ) : profileUnavailable ? (
+                  <Navigate to="/" />
                 ) : user ? (
                   <Profile user={user} />
+                ) : authUser ? (
+                  <Navigate to="/" />
                 ) : (
                   <Navigate to="/" />
                 )
@@ -346,12 +381,18 @@ function AppContent() {
               element={
                 authLoading ? (
                   <PageSkeleton />
+                ) : authUser && profileLoading ? (
+                  <PageSkeleton />
+                ) : profileUnavailable ? (
+                  <Navigate to="/" />
                 ) : user?.role === 'operator' ? (
                   <Operator
                     applications={userApplications.applications}
                     user={user}
                     onViewApp={setSelectedApp}
                   />
+                ) : authUser ? (
+                  <Navigate to="/" />
                 ) : (
                   <Navigate to="/" />
                 )
@@ -363,6 +404,10 @@ function AppContent() {
               element={
                 authLoading ? (
                   <PageSkeleton />
+                ) : authUser && profileLoading ? (
+                  <PageSkeleton />
+                ) : profileUnavailable ? (
+                  <Navigate to="/" />
                 ) : user?.role === 'admin' ? (
                   <Admin
                     applications={adminApplications.applications}
@@ -410,6 +455,8 @@ function AppContent() {
                     onUpdateProductReview={adminReviews.updateProductReview}
                     currentUser={user}
                   />
+                ) : authUser ? (
+                  <Navigate to="/" />
                 ) : (
                   <Navigate to="/" />
                 )

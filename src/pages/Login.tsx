@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { auth, rtdb } from '../firebase';
-import { signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithEmailAndPassword, User as FirebaseUser } from 'firebase/auth';
 import { ref, get, query, orderByChild, equalTo } from 'firebase/database';
 import { showToast } from '../components/Toast';
 import { SEO } from '../components/SEO';
@@ -12,9 +12,11 @@ import { sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
 
 interface LoginProps {
   user: UserProfile | null;
+  authUser: FirebaseUser | null;
+  authLoading: boolean;
 }
 
-export function Login({ user }: LoginProps) {
+export function Login({ authUser, authLoading }: LoginProps) {
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -25,10 +27,10 @@ export function Login({ user }: LoginProps) {
   const redirectPath = searchParams.get('redirect') || '/';
 
   useEffect(() => {
-    if (user) {
+    if (!authLoading && authUser) {
       navigate(redirectPath, { replace: true });
     }
-  }, [user, navigate, redirectPath]);
+  }, [authUser, authLoading, navigate, redirectPath]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,7 +59,6 @@ export function Login({ user }: LoginProps) {
 
       await signInWithEmailAndPassword(auth, loginEmail, sanitizedPassword);
       showToast('Login Successful!');
-      navigate(redirectPath);
     } catch (error: any) {
       let message = 'An unexpected error occurred. Please try again.';
       

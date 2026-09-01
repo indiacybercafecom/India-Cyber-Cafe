@@ -1,15 +1,17 @@
+import { User as FirebaseUser } from 'firebase/auth';
 import { UserProfile } from '../types';
 import { IconRenderer } from './Icons';
 
 interface NavbarProps {
   user: UserProfile | null;
+  authUser: FirebaseUser | null;
   loading?: boolean;
   onLoginClick: () => void;
   onMenuClick: () => void;
   onLogoClick: () => void;
 }
 
-export function Navbar({ user, loading, onLoginClick, onMenuClick, onLogoClick }: NavbarProps) {
+export function Navbar({ user, authUser, loading, onLoginClick, onMenuClick, onLogoClick }: NavbarProps) {
   return (
     <nav className="fixed top-0 w-full h-[60px] sm:h-[70px] glass flex justify-between items-center px-[5%] shadow-sm z-[1000]">
       <div className="flex items-center cursor-pointer transition-transform hover:scale-105" onClick={onLogoClick}>
@@ -24,7 +26,7 @@ export function Navbar({ user, loading, onLoginClick, onMenuClick, onLogoClick }
       <div className="flex items-center gap-2 sm:gap-4">
         {loading ? (
           <div className="w-24 h-10 bg-slate-100 animate-pulse rounded-full" />
-        ) : !user ? (
+        ) : !authUser ? (
           <button 
             className="btn-outline px-4 sm:px-6 py-1.5 sm:py-2 rounded-full text-sm sm:text-base font-semibold"
             onClick={onLoginClick}
@@ -37,8 +39,8 @@ export function Navbar({ user, loading, onLoginClick, onMenuClick, onLogoClick }
             onClick={onMenuClick}
           >
             <img 
-              src={user.avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} 
-              alt={user.name}
+              src={user?.avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} 
+              alt={user?.name || authUser.displayName || authUser.email || 'Profile'}
               className="w-[32px] h-[32px] sm:w-[40px] sm:h-[40px] rounded-full border-2 border-white shadow-sm group-hover:border-primary transition-all"
               referrerPolicy="no-referrer"
             />

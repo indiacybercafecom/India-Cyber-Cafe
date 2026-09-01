@@ -13,11 +13,12 @@ import { UserProfile } from '../types';
  *
  * This prevents Home from being blocked while waiting for user profile
  */
-export function useAuth(loadProfile = true) {
+export function useAuth() {
   const [authUser, setAuthUser] = useState<User | null>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState<Error | null>(null);
 
   useEffect(() => {
     let userUnsubscribe: (() => void) | null = null;
@@ -34,8 +35,9 @@ export function useAuth(loadProfile = true) {
         userUnsubscribe = null;
       }
 
-      // STEP 2: Load profile data separately in background
-      if (firebaseUser && loadProfile) {
+      // STEP 2: Always load the profile separately in the background.
+      if (firebaseUser) {
+        setProfileError(null);
         setProfileLoading(true);
         const userRef = ref(rtdb, `users/${firebaseUser.uid}`);
 
@@ -84,11 +86,14 @@ export function useAuth(loadProfile = true) {
           },
           (error) => {
             console.error('Profile listener error:', error);
+            setProfileError(error);
             setProfileLoading(false);
           }
         );
       } else {
+        // Only a real Firebase sign-out clears the application profile.
         setUser(null);
+        setProfileError(null);
         setProfileLoading(false);
       }
     });
@@ -97,7 +102,7 @@ export function useAuth(loadProfile = true) {
       authUnsubscribe();
       if (userUnsubscribe) userUnsubscribe();
     };
-  }, [loadProfile]);
+  }, []);
 
-  return { user, authUser, loading, profileLoading };
+  return { user, authUser, loading, profileLoading, profileError };
 }
