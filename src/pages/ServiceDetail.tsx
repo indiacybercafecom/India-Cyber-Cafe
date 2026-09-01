@@ -3,18 +3,37 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Service } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { SEO } from '../components/SEO';
+import { ServiceDetailSkeleton } from '../components/Skeleton';
 
 interface ServiceDetailProps {
   services: Service[];
+  isLoading?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
 }
 
-export function ServiceDetail({ services }: ServiceDetailProps) {
+export function ServiceDetail({ services, isLoading = false, error = null, onRetry }: ServiceDetailProps) {
   const { serviceId } = useParams<{ serviceId: string }>();
   const navigate = useNavigate();
   
   const service = services.find(s => s.id === serviceId);
 
   const slugify = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+
+  if (isLoading) {
+    return <ServiceDetailSkeleton />;
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-20">
+        <IconRenderer name="alert-circle" className="w-16 h-16 text-red-400 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold text-slate-600 mb-2">Failed to Load Services</h2>
+        <p className="text-slate-500 text-sm mb-6">{error.message || 'An error occurred while loading services.'}</p>
+        <button onClick={onRetry} className="btn-primary">Retry</button>
+      </div>
+    );
+  }
 
   if (!service) {
     return (

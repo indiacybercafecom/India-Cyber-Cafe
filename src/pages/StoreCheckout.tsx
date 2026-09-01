@@ -14,20 +14,26 @@ import { getRazorpayKeyId, loadRazorpayScript, verifyRazorpayPayment } from '../
 import { generateRandomPassword, findUserByEmail, findUserByPhone, createGuestAccount as createGuestAccountInDB } from '../services/guestCheckoutService';
 import { sendWelcomeEmail, sendOrderConfirmationEmail, sendAdminOrderNotification } from '../services/emailService';
 import { sanitizeAddress, sanitizeOrderItems, sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
+import { StoreProductDetailSkeleton } from '../components/Skeleton';
+import { useLoadingState } from '../hooks/useLoadingState';
 
 interface StoreCheckoutProps {
   products: Product[];
   user: UserProfile | null;
   onAddOrder: (order: Omit<Order, 'id'>) => Promise<void>;
+  isLoading?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
 }
 
-export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps) {
+export function StoreCheckout({ products, user, onAddOrder, isLoading = false, error = null, onRetry }: StoreCheckoutProps) {
   const { productId, categoryId } = useParams<{ productId: string; categoryId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const quantity = location.state?.quantity || 1;
 
   const product = products.find(p => p.id === productId);
+  const displayLoading = useLoadingState(isLoading, 1000);
 
   const [customImageFile, setCustomImageFile] = useState<File | null>(null);
   const [customImageUrl, setCustomImageUrl] = useState<string>('');
@@ -71,6 +77,20 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       setAddress({ ...user.address });
     }
   }, [user?.uid]);
+
+  if (displayLoading) {
+    return <StoreProductDetailSkeleton />;
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-20">
+        <h2 className="text-2xl font-bold text-slate-600 mb-2">Failed to Load Product</h2>
+        <p className="text-slate-500 text-sm mb-6">{error.message || 'An error occurred while loading the product.'}</p>
+        <button onClick={onRetry} className="btn-primary">Retry</button>
+      </div>
+    );
+  }
 
   if (!product) {
     return (

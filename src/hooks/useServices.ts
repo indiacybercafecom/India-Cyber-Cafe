@@ -14,6 +14,7 @@ export function useServices() {
   const [services, setServices] = useState<Service[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
@@ -31,7 +32,7 @@ export function useServices() {
     const SYNC_THRESHOLD = 5 * 60 * 1000; // 5 minutes
 
     // Only fetch from Firebase if sync is needed
-    if (now - lastSync > SYNC_THRESHOLD) {
+    if (retryCount > 0 || now - lastSync > SYNC_THRESHOLD) {
       const servicesRef = ref(rtdb, 'services');
       unsubscribe = onValue(
         servicesRef,
@@ -71,7 +72,13 @@ export function useServices() {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, []);
+  }, [retryCount]);
+
+  const retry = () => {
+    setError(null);
+    setLoading(true);
+    setRetryCount((count) => count + 1);
+  };
 
   const addService = async (service: Service) => {
     await set(ref(rtdb, `services/${service.id}`), service);
@@ -104,6 +111,7 @@ export function useServices() {
     services,
     loading,
     error,
+    retry,
     addService,
     updateService,
     deleteService,

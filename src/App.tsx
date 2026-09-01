@@ -67,8 +67,8 @@ function AppContent() {
   const profileUnavailable = !!authUser && !profileLoading && (!user || !!profileError);
 
   // Home/public data (loaded always, cache-first)
-  const { services, addService, updateService, deleteService } = useServices();
-  const { products, addProduct, updateProduct, deleteProduct } = useProducts();
+  const { services, loading: servicesLoading, error: servicesError, retry: retryServices, addService, updateService, deleteService } = useServices();
+  const { products, loading: productsLoading, error: productsError, retry: retryProducts, addProduct, updateProduct, deleteProduct } = useProducts();
   const { productCategories, addProductCategory, updateProductCategory, deleteProductCategory } = useProductCategories();
 
   // User-specific data (loaded only when user is authenticated)
@@ -243,7 +243,7 @@ function AppContent() {
             <Route path="/refund-policy" element={<Navigate to="/legal/refund" />} />
             {/* Services - public data only */}
             <Route path="/services" element={<Services services={services} />} />
-            <Route path="/services/:serviceId" element={<ServiceDetail services={services} />} />
+            <Route path="/services/:serviceId" element={<ServiceDetail services={services} isLoading={servicesLoading} error={servicesError} onRetry={retryServices} />} />
             {/* Apply - services + gateways loaded on demand */}
             <Route
               path="/services/:serviceId/:subserviceName"
@@ -255,6 +255,9 @@ function AppContent() {
                 ) : authUser && user ? (
                   <Apply
                     services={services}
+                    isLoading={servicesLoading}
+                    error={servicesError}
+                    onRetry={retryServices}
                     user={user}
                     gateways={gateways.gateways}
                     onSuccess={() => navigate('/track')}
@@ -275,7 +278,9 @@ function AppContent() {
                 <Store
                   products={products}
                   categories={productCategories}
-                  isLoading={false}
+                  isLoading={productsLoading}
+                  error={productsError}
+                  onRetry={retryProducts}
                 />
               }
             />
@@ -288,7 +293,14 @@ function AppContent() {
                 ) : profileUnavailable ? (
                   <Navigate to="/" />
                 ) : authUser && user ? (
-                  <StoreCheckout products={products} user={user} onAddOrder={userOrders.addOrder} />
+                  <StoreCheckout
+                    products={products}
+                    user={user}
+                    onAddOrder={userOrders.addOrder}
+                    isLoading={productsLoading}
+                    error={productsError}
+                    onRetry={retryProducts}
+                  />
                 ) : authUser ? (
                   <Navigate to="/" />
                 ) : (
@@ -303,6 +315,9 @@ function AppContent() {
                 <StoreProductRoute
                   products={products}
                   user={user}
+                  isLoading={productsLoading}
+                  error={productsError}
+                  onRetry={retryProducts}
                 />
               }
             />
@@ -534,7 +549,7 @@ function AppContent() {
 }
 
 // Component to handle StoreProduct route with proper review loading
-function StoreProductRoute({ products, user }: { products: any[]; user: UserProfile | null }) {
+function StoreProductRoute({ products, user, isLoading, error, onRetry }: { products: any[]; user: UserProfile | null; isLoading: boolean; error: Error | null; onRetry: () => void }) {
   const { productId } = useParams<{ productId: string }>();
   const { productReviews, addProductReview } = useProductReviews(productId);
 
@@ -543,7 +558,9 @@ function StoreProductRoute({ products, user }: { products: any[]; user: UserProf
       products={products}
       reviews={productReviews}
       user={user}
-      isLoading={false}
+      isLoading={isLoading}
+      error={error}
+      onRetry={onRetry}
       onAddReview={addProductReview}
     />
   );

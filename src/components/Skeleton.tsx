@@ -47,6 +47,30 @@ export function ServiceSkeleton() {
   );
 }
 
+export function ServiceDetailSkeleton() {
+  return (
+    <div className="space-y-8 sm:space-y-12 animate-pulse">
+      <div className="flex flex-col sm:flex-row items-center gap-6 bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
+        <Skeleton className="w-20 h-20 sm:w-24 sm:h-24 rounded-full shrink-0" />
+        <div className="w-full space-y-3">
+          <Skeleton className="h-10 w-2/3" />
+          <Skeleton className="h-5 w-full max-w-2xl" />
+        </div>
+      </div>
+      <Skeleton className="h-8 w-64" />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        {[1, 2, 3, 4, 5, 6].map(i => (
+          <div key={i} className="bg-white rounded-2xl shadow-md border border-slate-100 p-6 space-y-4">
+            <Skeleton className="h-6 w-3/4" />
+            <Skeleton className="h-5 w-1/3" />
+            <Skeleton className="h-5 w-1/2" />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // Store Product Card Skeleton
 export function StoreProductCardSkeleton() {
   return (

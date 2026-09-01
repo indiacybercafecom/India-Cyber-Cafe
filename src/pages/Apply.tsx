@@ -10,15 +10,19 @@ import { uploadFile } from '../services/uploadService';
 import { SEO } from '../components/SEO';
 import { loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
 import { sanitizeFormData, sanitizeUserProfile, sanitizeEmail } from '../utils/sanitizer';
+import { PageSkeleton } from '../components/Skeleton';
 
 interface ApplyProps {
   services: Service[];
   user: UserProfile;
   gateways: PaymentGateway[];
   onSuccess: () => void;
+  isLoading?: boolean;
+  error?: Error | null;
+  onRetry?: () => void;
 }
 
-export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
+export function Apply({ services, user, gateways, onSuccess, isLoading = false, error = null, onRetry }: ApplyProps) {
   const { serviceId, subserviceName } = useParams<{ serviceId: string; subserviceName: string }>();
   const navigate = useNavigate();
   
@@ -45,6 +49,21 @@ export function Apply({ services, user, gateways, onSuccess }: ApplyProps) {
       }
     }
   }, [service, subserviceName]);
+
+  if (isLoading) {
+    return <PageSkeleton />;
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-20">
+        <IconRenderer name="alert-circle" className="w-16 h-16 text-red-400 mx-auto mb-4" />
+        <h2 className="text-2xl font-bold text-slate-600 mb-2">Failed to Load Services</h2>
+        <p className="text-slate-500 text-sm mb-6">{error.message || 'An error occurred while loading services.'}</p>
+        <button onClick={onRetry} className="btn-primary">Retry</button>
+      </div>
+    );
+  }
 
   if (!service) {
     return (
