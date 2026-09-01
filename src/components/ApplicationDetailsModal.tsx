@@ -7,6 +7,7 @@ import { ref as dbRef, update } from 'firebase/database';
 import { motion, AnimatePresence } from 'motion/react';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
+import { trimWhitespace } from '../utils/sanitizer';
 
 interface ApplicationDetailsModalProps {
   app: Application | null;
@@ -95,33 +96,37 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
         attachmentUrl = await uploadFile(noteFile, 'notes');
       }
 
+      // Sanitize note text before saving
+      const sanitizedNoteText = trimWhitespace(noteText);
+      const sanitizedStatus = trimWhitespace(newStatus);
+
       const newNote: any = {
-        type: newStatus ? 'status' : 'note',
-        by: currentUser.name,
+        type: sanitizedStatus ? 'status' : 'note',
+        by: currentUser.name.trim(),
         email: currentUser.email,
-        text: noteText || (newStatus ? `Status updated to ${newStatus}` : ''),
+        text: sanitizedNoteText || (sanitizedStatus ? `Status updated to ${sanitizedStatus}` : ''),
         time: new Date().toLocaleString(),
       };
 
-      if (newStatus) newNote.status = newStatus;
+      if (sanitizedStatus) newNote.status = sanitizedStatus;
       if (attachmentUrl) newNote.attachment = attachmentUrl;
       if (noteFile?.name) newNote.attachmentName = noteFile.name;
 
       const updatedNotes = [...(app.notes || []), newNote];
       const updates: any = { notes: updatedNotes };
-      if (newStatus) updates.status = newStatus;
+      if (sanitizedStatus) updates.status = sanitizedStatus;
 
       await update(dbRef(rtdb, `applications/${app.id}`), updates);
 
       // Email logic
-      if (newStatus) {
-        sendEmail(app.email, `Status Update: ${app.serviceName}`, emailTemplates.statusUpdate(app.name, app.serviceName, newStatus));
+      if (sanitizedStatus) {
+        sendEmail(app.email, `Status Update: ${app.serviceName}`, emailTemplates.statusUpdate(app.name, app.serviceName, sanitizedStatus));
         // Notify all admins about status update
-        sendEmailToAllAdmins(`[Admin Alert] Status Updated: ${app.serviceName}`, emailTemplates.statusUpdate(app.name, app.serviceName, newStatus));
-      } else if (noteText) {
-        sendEmail(app.email, `New Update: ${app.serviceName}`, emailTemplates.noteAdded(app.name, app.serviceName, noteText));
+        sendEmailToAllAdmins(`[Admin Alert] Status Updated: ${app.serviceName}`, emailTemplates.statusUpdate(app.name, app.serviceName, sanitizedStatus));
+      } else if (sanitizedNoteText) {
+        sendEmail(app.email, `New Update: ${app.serviceName}`, emailTemplates.noteAdded(app.name, app.serviceName, sanitizedNoteText));
         // Notify all admins about new note
-        sendEmailToAllAdmins(`[Admin Alert] New Note Added: ${app.serviceName}`, emailTemplates.noteAdded(app.name, app.serviceName, `Note from ${currentUser.name}: ${noteText}`));
+        sendEmailToAllAdmins(`[Admin Alert] New Note Added: ${app.serviceName}`, emailTemplates.noteAdded(app.name, app.serviceName, `Note from ${currentUser.name}: ${sanitizedNoteText}`));
       }
 
       showToast('Update added successfully!');

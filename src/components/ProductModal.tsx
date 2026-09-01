@@ -4,6 +4,7 @@ import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { generateSlug } from '../utils/slugGenerator';
+import { trimWhitespace, deepSanitize } from '../utils/sanitizer';
 
 interface ProductModalProps {
   product?: Product;
@@ -121,15 +122,28 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
 
     setLoading(true);
     try {
+      // Sanitize all product data before saving
+      const sanitizedData = {
+        ...formData,
+        name: trimWhitespace(formData.name),
+        shortDescription: trimWhitespace(formData.shortDescription),
+        longDescription: trimWhitespace(formData.longDescription),
+        customImageInstructions: trimWhitespace(formData.customImageInstructions),
+        turnaroundTime: trimWhitespace(formData.turnaroundTime),
+        seoTitle: trimWhitespace(formData.seoTitle),
+        seoDescription: trimWhitespace(formData.seoDescription),
+        seoKeywords: trimWhitespace(formData.seoKeywords)
+      };
+
       // Generate ID as slug from product name (only for new products)
       if (!product) {
-        formData.id = generateSlug(formData.name);
+        sanitizedData.id = generateSlug(sanitizedData.name);
       }
       
       // Generate permalink from product name
-      formData.permalink = generateSlug(formData.name);
+      sanitizedData.permalink = generateSlug(sanitizedData.name);
       
-      await onSave(formData);
+      await onSave(sanitizedData);
       showToast(product ? 'Product updated successfully!' : 'Product added successfully!', 'success');
       onClose();
     } catch (error: any) {

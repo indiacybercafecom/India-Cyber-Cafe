@@ -8,6 +8,7 @@ import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
 import { sendEmail, emailTemplates } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
+import { sanitizeAddress, sanitizePhone, trimWhitespace } from '../utils/sanitizer';
 
 interface ProfileProps {
   user: UserProfile;
@@ -74,13 +75,23 @@ export function Profile({ user }: ProfileProps) {
     e.preventDefault();
     setLoading(true);
     try {
-      const updates: any = { name, phone, address };
+      // Sanitize all profile data before updating
+      const sanitizedName = trimWhitespace(name);
+      const sanitizedPhone = sanitizePhone(phone);
+      const sanitizedAddress = sanitizeAddress(address);
+      const sanitizedNewPass = trimWhitespace(newPass);
+
+      const updates: any = { 
+        name: sanitizedName, 
+        phone: sanitizedPhone, 
+        address: sanitizedAddress 
+      };
       await update(dbRef(rtdb, `users/${user.uid}`), updates);
 
-      if (newPass) {
+      if (sanitizedNewPass) {
         const currentUser = auth.currentUser;
         if (currentUser) {
-          await updatePassword(currentUser, newPass);
+          await updatePassword(currentUser, sanitizedNewPass);
           showToast('Password updated!');
         }
       }
@@ -88,7 +99,7 @@ export function Profile({ user }: ProfileProps) {
       showToast('Profile updated successfully!');
       
       // Send notification email
-      sendEmail(user.email, 'Profile Details Updated - India Cyber Cafe', emailTemplates.profileUpdated(name, 'Name, Phone & Address'));
+      sendEmail(user.email, 'Profile Details Updated - India Cyber Cafe', emailTemplates.profileUpdated(sanitizedName, 'Name, Phone & Address'));
     } catch (error: any) {
       showToast(error.message, 'error');
     } finally {

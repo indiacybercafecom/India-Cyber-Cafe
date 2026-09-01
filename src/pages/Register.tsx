@@ -9,6 +9,7 @@ import { IconRenderer } from '../components/Icons';
 import { motion } from 'motion/react';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
 import { UserProfile } from '../types';
+import { sanitizeUserProfile, sanitizeEmail, sanitizePhone } from '../utils/sanitizer';
 
 interface RegisterProps {
   user: UserProfile | null;
@@ -36,24 +37,36 @@ export function Register({ user }: RegisterProps) {
     e.preventDefault();
     setLoading(true);
     try {
-      const { user } = await createUserWithEmailAndPassword(auth, email, password);
-      const role = email.toLowerCase() === 'indiacybercafe.com@gmail.com' ? 'admin' : 'user';
+      // Sanitize all user inputs before any processing
+      const sanitizedEmail = sanitizeEmail(email);
+      const sanitizedName = name.trim();
+      const sanitizedPhone = sanitizePhone(phone);
+      const sanitizedPassword = password.trim();
+
+      const { user } = await createUserWithEmailAndPassword(auth, sanitizedEmail, sanitizedPassword);
+      const role = sanitizedEmail === 'indiacybercafe.com@gmail.com' ? 'admin' : 'user';
       
-      await set(ref(rtdb, `users/${user.uid}`), {
+      // Create user profile with sanitized data
+      const userProfile: UserProfile = {
         uid: user.uid,
-        name,
-        email,
-        phone,
-        password, // Storing password as requested by admin (Security Note: Usually not recommended)
+        name: sanitizedName,
+        email: sanitizedEmail,
+        phone: sanitizedPhone,
+        password: sanitizedPassword, // Storing password as requested by admin (Security Note: Usually not recommended)
         role: role,
         avatar: "https://cdn-icons-png.flaticon.com/512/149/149071.png",
         createdAt: Date.now()
-      });
+      };
 
-      sendEmail(email, 'Welcome to India Cyber Cafe', emailTemplates.registration(name));
+      // Deep sanitize the entire profile object
+      const sanitizedProfile = sanitizeUserProfile(userProfile);
+
+      await set(ref(rtdb, `users/${user.uid}`), sanitizedProfile);
+
+      sendEmail(sanitizedEmail, 'Welcome to India Cyber Cafe', emailTemplates.registration(sanitizedName));
       
       // Notify All Admins
-      sendEmailToAllAdmins('New User Registered - India Cyber Cafe', emailTemplates.adminUserRegistered(name, email, phone, new Date().toLocaleString()));
+      sendEmailToAllAdmins('New User Registered - India Cyber Cafe', emailTemplates.adminUserRegistered(sanitizedName, sanitizedEmail, sanitizedPhone, new Date().toLocaleString()));
 
       showToast(`Account Created Successfully as ${role}!`);
       navigate(redirectPath);

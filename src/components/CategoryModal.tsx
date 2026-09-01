@@ -3,6 +3,7 @@ import { ProductCategory } from '../types';
 import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
 import { generateSlug } from '../utils/slugGenerator';
+import { trimWhitespace } from '../utils/sanitizer';
 
 interface CategoryModalProps {
   category?: ProductCategory;
@@ -53,10 +54,17 @@ export function CategoryModal({ category, onClose, onSave }: CategoryModalProps)
 
     setLoading(true);
     try {
-      if (!formData.id) {
-        formData.id = generateSlug(formData.name);
+      // Sanitize category data before saving
+      const sanitizedData = {
+        ...formData,
+        name: trimWhitespace(formData.name),
+        description: trimWhitespace(formData.description)
+      };
+
+      if (!sanitizedData.id) {
+        sanitizedData.id = generateSlug(sanitizedData.name);
       }
-      await onSave(formData);
+      await onSave(sanitizedData);
       showToast(category ? 'Category updated successfully!' : 'Category added successfully!', 'success');
       onClose();
     } catch (error: any) {

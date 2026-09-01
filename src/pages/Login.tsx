@@ -8,6 +8,7 @@ import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
 import { motion } from 'motion/react';
 import { UserProfile } from '../types';
+import { sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
 
 interface LoginProps {
   user: UserProfile | null;
@@ -33,21 +34,28 @@ export function Login({ user }: LoginProps) {
     e.preventDefault();
     setLoading(true);
     try {
-      let loginEmail = identifier;
-      const isPhone = /^\+?[\d\s-]{10,}$/.test(identifier);
+      // Sanitize input before processing
+      const sanitizedIdentifier = trimWhitespace(identifier);
+      const sanitizedPassword = trimWhitespace(password);
+
+      let loginEmail = sanitizedIdentifier;
+      const isPhone = /^\+?[\d\s-]{10,}$/.test(sanitizedIdentifier);
       
       if (isPhone) {
         const usersRef = ref(rtdb, 'users');
-        const snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(identifier)));
+        const snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(sanitizedIdentifier)));
         if (snapshot.exists()) {
           const userData = Object.values(snapshot.val())[0] as any;
-          loginEmail = userData.email;
+          loginEmail = sanitizeEmail(userData.email);
         } else {
           throw new Error('No account found with this phone number.');
         }
+      } else {
+        // Sanitize email if identifier is an email
+        loginEmail = sanitizeEmail(sanitizedIdentifier);
       }
 
-      await signInWithEmailAndPassword(auth, loginEmail, password);
+      await signInWithEmailAndPassword(auth, loginEmail, sanitizedPassword);
       showToast('Login Successful!');
       navigate(redirectPath);
     } catch (error: any) {

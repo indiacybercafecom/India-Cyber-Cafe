@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
 import { sendEmail, emailTemplates } from '../services/emailService';
+import { sanitizePhone } from '../utils/sanitizer';
 
 interface CallbackModalProps {
   isOpen: boolean;
@@ -30,10 +31,11 @@ export function CallbackModal({ isOpen, onClose }: CallbackModalProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    const trimmedMobile = mobile.trim();
+    // Sanitize phone input
+    const sanitizedMobile = sanitizePhone(mobile);
 
     // Validate
-    if (!validateMobile(trimmedMobile)) {
+    if (!validateMobile(sanitizedMobile)) {
       showToast('कृपया वैध 10 अंकों का मोबाइल नंबर डालें', 'error');
       return;
     }
@@ -45,7 +47,7 @@ export function CallbackModal({ isOpen, onClose }: CallbackModalProps) {
       await sendEmail(
         'indiacybercafe.com@gmail.com',
         `New Call Back Request - ${new Date().toLocaleString('en-IN')}`,
-        emailTemplates.callbackRequest(trimmedMobile)
+        emailTemplates.callbackRequest(sanitizedMobile)
       );
 
       showToast('आपकी रिक्वेस्ट भेज दी गई है। हम कुछ ही मिनटों में संपर्क करेंगे।', 'success');

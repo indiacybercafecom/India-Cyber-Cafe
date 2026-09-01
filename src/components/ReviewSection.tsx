@@ -5,6 +5,7 @@ import { IconRenderer } from './Icons';
 import { ProductReview, UserProfile } from '../types';
 import { showToast } from './Toast';
 import { sendReviewConfirmationEmail, sendAdminReviewNotification } from '../services/emailService';
+import { trimWhitespace } from '../utils/sanitizer';
 
 interface ReviewSectionProps {
   reviews: ProductReview[];
@@ -104,10 +105,10 @@ export function ReviewSection({ reviews, productId, productName = 'Product', use
       const review: Omit<ProductReview, 'id'> = {
         productId,
         uid: user.uid,
-        userName: user.name,
+        userName: trimWhitespace(user.name),
         userEmail: user.email, // Store reviewer email
         rating,
-        text: text.trim(),
+        text: trimWhitespace(text),
         images: imageUrls, // Upload to Firebase Storage
         date: new Date().toISOString(),
         helpful: 0,
@@ -117,11 +118,11 @@ export function ReviewSection({ reviews, productId, productName = 'Product', use
       await onAddReview(review);
 
       // Send confirmation email to customer
-      await sendReviewConfirmationEmail(user.email, user.name, productName)
+      await sendReviewConfirmationEmail(user.email, trimWhitespace(user.name), productName)
         .catch(err => console.error('Review confirmation email error:', err));
 
       // Send admin notification about new review
-      await sendAdminReviewNotification(productName, user.name, rating, text.trim())
+      await sendAdminReviewNotification(productName, trimWhitespace(user.name), rating, trimWhitespace(text))
         .catch(err => console.error('Admin review notification error:', err));
 
       showToast('Review submitted successfully!', 'success');

@@ -13,6 +13,7 @@ import { generateOrderId } from '../utils/orderIdGenerator';
 import { getRazorpayKeyId, verifyRazorpayPayment } from '../services/razorpayService';
 import { generateRandomPassword, findUserByEmail, findUserByPhone, createGuestAccount as createGuestAccountInDB } from '../services/guestCheckoutService';
 import { sendWelcomeEmail, sendOrderConfirmationEmail, sendAdminOrderNotification } from '../services/emailService';
+import { sanitizeAddress, sanitizeOrderItems, sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
 
 interface StoreCheckoutProps {
   products: Product[];
@@ -336,25 +337,28 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
       // Create order with generated ID
       const orderId = generateOrderId();
       
+      // Sanitize address before using it
+      const sanitizedAddress = sanitizeAddress(address);
+
       // Use either authenticated user or guest user
-      const userId = user?.uid || `guest-${address.email}-${Date.now()}`;
+      const userId = user?.uid || `guest-${sanitizedAddress.email}-${Date.now()}`;
       
       const newOrder: Order = {
         id: orderId,
         uid: userId,
-        email: address.email,
+        email: sanitizedAddress.email,
         items: [
           {
             productId: product.id,
-            productName: product.name,
+            productName: trimWhitespace(product.name),
             price: product.price,
             discountedPrice: product.discountedPrice,
             quantity,
             customImageUrl: uploadedImageUrl,
-            specialInstructions
+            specialInstructions: trimWhitespace(specialInstructions)
           }
         ],
-        deliveryAddress: address,
+        deliveryAddress: sanitizedAddress,
         subtotal,
         deliveryCharges,
         total,
@@ -374,7 +378,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         // Auto-save address to user profile if user is logged in and doesn't have address yet
         if (user && user.uid && !user.address) {
           try {
-            await update(dbRef(rtdb, `users/${user.uid}`), { address });
+            await update(dbRef(rtdb, `users/${user.uid}`), { address: sanitizedAddress });
           } catch (error) {
             console.error('Error saving address to profile:', error);
           }
@@ -382,8 +386,8 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         
         // Send order confirmation email to customer
         await sendOrderConfirmationEmail(
-          address.email,
-          address.name,
+          sanitizedAddress.email,
+          sanitizedAddress.name,
           orderId,
           newOrder.items.map(item => ({
             name: item.productName,
@@ -397,9 +401,9 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         // Send admin notification about new order
         await sendAdminOrderNotification(
           orderId,
-          address.name,
-          address.email,
-          address.phone,
+          sanitizedAddress.name,
+          sanitizedAddress.email,
+          sanitizedAddress.phone,
           newOrder.items.map(item => ({
             name: item.productName,
             quantity: item.quantity,
@@ -408,10 +412,10 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
           total,
           'cod',
           {
-            addressLine1: address.addressLine1,
-            city: address.city,
-            state: address.state,
-            pincode: address.pincode
+            addressLine1: sanitizedAddress.addressLine1,
+            city: sanitizedAddress.city,
+            state: sanitizedAddress.state,
+            pincode: sanitizedAddress.pincode
           }
         ).catch(err => console.error('Admin email send error:', err));
 
@@ -419,16 +423,16 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
         if (!user || !user.uid) {
           if (createGuestAccount) {
             try {
-              const result = await createGuestAccountInDB(address.email, address.name, address.phone);
+              const result = await createGuestAccountInDB(sanitizedAddress.email, sanitizedAddress.name, sanitizedAddress.phone);
               
               if (result.success && result.password) {
                 // Send welcome email with the generated password
-                await sendWelcomeEmail(address.email, address.name, result.password)
+                await sendWelcomeEmail(sanitizedAddress.email, sanitizedAddress.name, result.password)
                   .catch(err => console.error('Welcome email error:', err));
                 
                 // Auto-login with the generated password
                 try {
-                  await signInWithEmailAndPassword(auth, address.email, result.password);
+                  await signInWithEmailAndPassword(auth, sanitizedAddress.email, result.password);
                   showToast('✅ Order placed! Account created and logged in.', 'success');
                 } catch (loginError) {
                   console.error('Auto-login error:', loginError);
@@ -530,9 +534,9 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
             name: 'India Cyber Cafe',
             description: `Order ${orderId} - ${product.name}`,
             prefill: {
-              name: address.name,
-              email: address.email,
-              contact: address.phone
+              name: sanitizedAddress.name,
+              email: sanitizedAddress.email,
+              contact: sanitizedAddress.phone
             },
             handler: async (response: any) => {
               try {
@@ -564,7 +568,7 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                 // Auto-save address to user profile if user is logged in and doesn't have address yet
                 if (user && user.uid && !user.address) {
                   try {
-                    await update(dbRef(rtdb, `users/${user.uid}`), { address });
+                    await update(dbRef(rtdb, `users/${user.uid}`), { address: sanitizedAddress });
                   } catch (error) {
                     console.error('Error saving address to profile:', error);
                   }
@@ -572,8 +576,8 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
 
                 // Send order confirmation email to customer
                 await sendOrderConfirmationEmail(
-                  address.email,
-                  address.name,
+                  sanitizedAddress.email,
+                  sanitizedAddress.name,
                   orderId,
                   updatedOrder.items.map(item => ({
                     name: item.productName,
@@ -587,9 +591,9 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                 // Send admin notification about new order
                 await sendAdminOrderNotification(
                   orderId,
-                  address.name,
-                  address.email,
-                  address.phone,
+                  sanitizedAddress.name,
+                  sanitizedAddress.email,
+                  sanitizedAddress.phone,
                   updatedOrder.items.map(item => ({
                     name: item.productName,
                     quantity: item.quantity,
@@ -598,10 +602,10 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                   total,
                   'online',
                   {
-                    addressLine1: address.addressLine1,
-                    city: address.city,
-                    state: address.state,
-                    pincode: address.pincode
+                    addressLine1: sanitizedAddress.addressLine1,
+                    city: sanitizedAddress.city,
+                    state: sanitizedAddress.state,
+                    pincode: sanitizedAddress.pincode
                   }
                 ).catch(err => console.error('Admin email send error:', err));
 
@@ -609,16 +613,16 @@ export function StoreCheckout({ products, user, onAddOrder }: StoreCheckoutProps
                 if (!user || !user.uid) {
                   if (createGuestAccount) {
                     try {
-                      const result = await createGuestAccountInDB(address.email, address.name, address.phone);
+                      const result = await createGuestAccountInDB(sanitizedAddress.email, sanitizedAddress.name, sanitizedAddress.phone);
                       
                       if (result.success && result.password) {
                         // Send welcome email with the generated password
-                        await sendWelcomeEmail(address.email, address.name, result.password)
+                        await sendWelcomeEmail(sanitizedAddress.email, sanitizedAddress.name, result.password)
                           .catch(err => console.error('Welcome email error:', err));
                         
                         // Auto-login with the generated password
                         try {
-                          await signInWithEmailAndPassword(auth, address.email, result.password);
+                          await signInWithEmailAndPassword(auth, sanitizedAddress.email, result.password);
                           showToast('✅ Payment successful! Account created and logged in.', 'success');
                         } catch (loginError) {
                           console.error('Auto-login error:', loginError);

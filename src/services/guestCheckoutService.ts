@@ -2,6 +2,7 @@ import { rtdb } from '../firebase';
 import { ref as dbRef, query, equalTo, orderByChild, get } from 'firebase/database';
 import { auth } from '../firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
+import { sanitizeEmail, sanitizePhone, trimWhitespace } from '../utils/sanitizer';
 
 /**
  * Generate a random password
@@ -22,7 +23,7 @@ export function generateRandomPassword(length: number = 6): string {
  */
 export async function findUserByEmail(email: string) {
   try {
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = sanitizeEmail(email);
     console.log('🔎 Searching for email in database:', normalizedEmail);
     
     const usersRef = dbRef(rtdb, 'users');
@@ -37,7 +38,7 @@ export async function findUserByEmail(email: string) {
     console.log('📋 Total users in database:', Object.keys(users).length);
     
     for (const [uid, userData] of Object.entries(users)) {
-      const userEmail = userData.email ? userData.email.toLowerCase().trim() : '';
+      const userEmail = sanitizeEmail(userData.email || '');
       console.log('🔍 Comparing:', userEmail, '===', normalizedEmail, '→', userEmail === normalizedEmail);
       
       if (userEmail === normalizedEmail) {
@@ -59,7 +60,7 @@ export async function findUserByEmail(email: string) {
  */
 export async function findUserByPhone(phone: string) {
   try {
-    const normalizedPhone = phone.replace(/\D/g, ''); // Remove all non-digits
+    const normalizedPhone = sanitizePhone(phone, true); // Remove non-digits
     console.log('🔎 Searching for phone in database:', normalizedPhone);
     
     const usersRef = dbRef(rtdb, 'users');
@@ -74,7 +75,7 @@ export async function findUserByPhone(phone: string) {
     console.log('📋 Total users in database:', Object.keys(users).length);
     
     for (const [uid, userData] of Object.entries(users)) {
-      const userPhone = userData.phone ? userData.phone.replace(/\D/g, '') : '';
+      const userPhone = sanitizePhone(userData.phone || '', true);
       console.log('🔍 Comparing:', userPhone, '===', normalizedPhone, '→', userPhone === normalizedPhone);
       
       if (userPhone === normalizedPhone) {
@@ -100,25 +101,30 @@ export async function createGuestAccount(
   phone: string
 ): Promise<{ success: boolean; user?: any; password?: string; error?: string }> {
   try {
+    // Sanitize all input before creating account
+    const sanitizedEmail = sanitizeEmail(email);
+    const sanitizedName = trimWhitespace(name);
+    const sanitizedPhone = sanitizePhone(phone);
+    
     // Generate random password
     const randomPassword = generateRandomPassword(6);
     
     // Create Firebase auth user
-    const userCredential = await createUserWithEmailAndPassword(auth, email, randomPassword);
+    const userCredential = await createUserWithEmailAndPassword(auth, sanitizedEmail, randomPassword);
     const user = userCredential.user;
     
     // Update profile with name
-    await updateProfile(user, { displayName: name });
+    await updateProfile(user, { displayName: sanitizedName });
     
     // Create user document in database
     const userRef = dbRef(rtdb, `users/${user.uid}`);
     const newUser = {
       uid: user.uid,
-      email: email,
-      name: name,
-      phone: phone,
+      email: sanitizedEmail,
+      name: sanitizedName,
+      phone: sanitizedPhone,
       role: 'user',
-      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${email}`,
+      avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${sanitizedEmail}`,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
       isGuestCheckout: true // Mark as created from guest checkout

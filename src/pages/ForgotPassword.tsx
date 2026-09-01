@@ -7,6 +7,7 @@ import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
 import { motion } from 'motion/react';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
+import { trimWhitespace, sanitizeEmail, sanitizePhone } from '../utils/sanitizer';
 
 export function ForgotPassword() {
   const [identifier, setIdentifier] = useState('');
@@ -17,32 +18,38 @@ export function ForgotPassword() {
     e.preventDefault();
     setLoading(true);
     try {
-      let resetEmail = identifier;
-      const isPhone = /^\+?[\d\s-]{10,}$/.test(identifier);
+      // Sanitize identifier input
+      const sanitizedIdentifier = trimWhitespace(identifier);
+      
+      let resetEmail = sanitizedIdentifier;
+      const isPhone = /^\+?[\d\s-]{10,}$/.test(sanitizedIdentifier);
       let userName = 'User';
       let userPassword = '';
       
       // Check if user exists in database
       if (isPhone) {
         // Search by phone
+        const sanitizedPhone = sanitizePhone(sanitizedIdentifier, true);
         const usersRef = ref(rtdb, 'users');
-        const snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(identifier)));
+        const snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(sanitizedIdentifier)));
         if (snapshot.exists()) {
           const userData = Object.values(snapshot.val())[0] as any;
-          resetEmail = userData.email;
-          userName = userData.name;
+          resetEmail = sanitizeEmail(userData.email);
+          userName = userData.name.trim();
           userPassword = userData.password;
         } else {
           throw new Error('No registered account found with this phone number. Please check and try again.');
         }
       } else {
         // Search by email
+        const sanitizedEmailSearch = sanitizeEmail(sanitizedIdentifier);
         const usersRef = ref(rtdb, 'users');
-        const snapshot = await get(query(usersRef, orderByChild('email'), equalTo(identifier)));
+        const snapshot = await get(query(usersRef, orderByChild('email'), equalTo(sanitizedEmailSearch)));
         if (snapshot.exists()) {
           const userData = Object.values(snapshot.val())[0] as any;
-          userName = userData.name;
+          userName = userData.name.trim();
           userPassword = userData.password;
+          resetEmail = sanitizeEmail(userData.email);
         } else {
           throw new Error('No registered account found with this email. Please check and try again or register first.');
         }

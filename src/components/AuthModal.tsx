@@ -6,6 +6,7 @@ import { showToast } from './Toast';
 import { IconRenderer } from './Icons';
 import { motion, AnimatePresence } from 'motion/react';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
+import { sanitizeEmail, sanitizePhone, trimWhitespace, sanitizeUserProfile } from '../utils/sanitizer';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -25,25 +26,29 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     e.preventDefault();
     setLoading(true);
     try {
-      let loginEmail = email;
+      // Sanitize inputs
+      const sanitizedEmail = sanitizeEmail(email);
+      const sanitizedPassword = trimWhitespace(password);
+      
+      let loginEmail = sanitizedEmail;
       
       // Check if input is a phone number (simple check: only digits and maybe +)
-      const isPhone = /^\+?[\d\s-]{10,}$/.test(email);
+      const isPhone = /^\+?[\d\s-]{10,}$/.test(sanitizedEmail);
       
       if (isPhone) {
         // Find user with this phone number in RTDB
         const usersRef = ref(rtdb, 'users');
-        const snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(email)));
+        const snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(sanitizedEmail)));
         
         if (snapshot.exists()) {
           const userData = Object.values(snapshot.val())[0] as any;
-          loginEmail = userData.email;
+          loginEmail = sanitizeEmail(userData.email);
         } else {
           throw new Error('No account found with this phone number.');
         }
       }
 
-      await signInWithEmailAndPassword(auth, loginEmail, password);
+      await signInWithEmailAndPassword(auth, loginEmail, sanitizedPassword);
       showToast('Login Successful!');
       onClose();
     } catch (error: any) {
@@ -62,7 +67,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     if (!email) return showToast('Please enter your email', 'error');
     setLoading(true);
     try {
-      await sendPasswordResetEmail(auth, email);
+      const sanitizedEmail = sanitizeEmail(email);
+      await sendPasswordResetEmail(auth, sanitizedEmail);
       showToast('Password reset link sent to your email!');
       setView('login');
     } catch (error: any) {
@@ -76,26 +82,38 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     e.preventDefault();
     setLoading(true);
     try {
-      const { user } = await createUserWithEmailAndPassword(auth, email, password);
+      // Sanitize all inputs
+      const sanitizedEmail = sanitizeEmail(email);
+      const sanitizedName = trimWhitespace(name);
+      const sanitizedPhone = sanitizePhone(phone);
+      const sanitizedPassword = trimWhitespace(password);
+
+      const { user } = await createUserWithEmailAndPassword(auth, sanitizedEmail, sanitizedPassword);
       
       // Determine role: Specific email gets admin role automatically
-      const role = email.toLowerCase() === 'indiacybercafe.com@gmail.com' ? 'admin' : 'user';
+      const role = sanitizedEmail === 'indiacybercafe.com@gmail.com' ? 'admin' : 'user';
       
-      await set(ref(rtdb, `users/${user.uid}`), {
+      // Create sanitized user profile
+      const userProfile: any = {
         uid: user.uid,
-        name,
-        email,
-        phone,
+        name: sanitizedName,
+        email: sanitizedEmail,
+        phone: sanitizedPhone,
         role: role,
         avatar: "https://cdn-icons-png.flaticon.com/512/149/149071.png",
         createdAt: Date.now()
-      });
+      };
+
+      // Deep sanitize the entire profile
+      const sanitizedProfile = sanitizeUserProfile(userProfile);
+
+      await set(ref(rtdb, `users/${user.uid}`), sanitizedProfile);
 
       // Send Welcome Email
-      sendEmail(email, 'Welcome to India Cyber Cafe', emailTemplates.registration(name));
+      sendEmail(sanitizedEmail, 'Welcome to India Cyber Cafe', emailTemplates.registration(sanitizedName));
       
       // Notify All Admins
-      sendEmailToAllAdmins('New User Registered - India Cyber Cafe', emailTemplates.adminUserRegistered(name, email, new Date().toLocaleString()));
+      sendEmailToAllAdmins('New User Registered - India Cyber Cafe', emailTemplates.adminUserRegistered(sanitizedName, sanitizedEmail, new Date().toLocaleString()));
 
       showToast(`Account Created Successfully as ${role}!`);
       onClose();

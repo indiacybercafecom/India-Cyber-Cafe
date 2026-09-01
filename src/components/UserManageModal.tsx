@@ -7,6 +7,7 @@ import { ref, update, remove } from 'firebase/database';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { showToast } from './Toast';
 import { ConfirmationModal } from './ConfirmationModal';
+import { trimWhitespace, sanitizePhone } from '../utils/sanitizer';
 
 interface UserManageModalProps {
   user: UserProfile | null;
@@ -27,7 +28,15 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
     e.preventDefault();
     setLoading(true);
     try {
-      await update(ref(rtdb, `users/${user.uid}`), { name, role, password });
+      // Sanitize user data before updating
+      const sanitizedName = trimWhitespace(name);
+      const sanitizedPassword = trimWhitespace(password);
+
+      await update(ref(rtdb, `users/${user.uid}`), { 
+        name: sanitizedName, 
+        role, 
+        password: sanitizedPassword 
+      });
       showToast('User updated successfully!');
       onClose();
     } catch (error: any) {
