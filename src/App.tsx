@@ -1,7 +1,14 @@
-import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { useAuth } from './hooks/useAuth';
-import { useData } from './hooks/useData';
+import { useServices } from './hooks/useServices';
+import { useProducts } from './hooks/useProducts';
+import { useProductCategories } from './hooks/useProductCategories';
+import { useApplications } from './hooks/useApplications';
+import { useOrders } from './hooks/useOrders';
+import { useUsers } from './hooks/useUsers';
+import { useGateways } from './hooks/useGateways';
+import { useProductReviews } from './hooks/useProductReviews';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { AuthModal } from './components/AuthModal';
@@ -17,7 +24,7 @@ import { ConfirmationModal, LogoutChoiceModal } from './components/ConfirmationM
 import { auth } from './firebase';
 import { signOut } from 'firebase/auth';
 import { showToast } from './components/Toast';
-import { Service, Application, UserProfile, PaymentGateway } from './types';
+import { Service, Application, UserProfile } from './types';
 
 // Lazy load other pages
 const Services = lazy(() => import('./pages/Services').then(m => ({ default: m.Services })));
@@ -49,43 +56,25 @@ const preloadPages = () => {
 };
 
 function AppContent() {
-  const { user, loading: authLoading } = useAuth();
+  const { user, authUser, loading: authLoading, profileLoading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Home/public data (loaded always, cache-first)
+  const { services, addService, updateService, deleteService } = useServices();
+  const { products, addProduct, updateProduct, deleteProduct } = useProducts();
+  const { productCategories, addProductCategory, updateProductCategory, deleteProductCategory } = useProductCategories();
+
+  // User-specific data (loaded only when user is authenticated)
+  const userApplications = useApplications(user?.uid || null, user?.role === 'operator' ? user?.email : undefined);
+  const userOrders = useOrders(user?.uid);
+
+  // Admin-only data (loaded only when user is admin)
+  const adminApplications = useApplications(user?.role === 'admin' ? undefined : null);
+  const adminUsers = useUsers();
+  const gateways = useGateways();
   
-  const { 
-    services, 
-    applications, 
-    users, 
-    gateways,
-    products,
-    productCategories,
-    orders,
-    productReviews,
-    loading: dataLoading,
-    loadingState,
-    addService,
-    updateService,
-    deleteService,
-    deleteApplication,
-    updateApplication,
-    addGateway,
-    updateGateway,
-    deleteGateway,
-    addProduct,
-    updateProduct,
-    deleteProduct,
-    addProductCategory,
-    updateProductCategory,
-    deleteProductCategory,
-    addOrder,
-    updateOrder,
-    deleteOrder,
-    addProductReview,
-    updateProductReview,
-    deleteProductReview
-  } = useData();
-  
+  // Local state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [selectedApp, setSelectedApp] = useState<Application | null>(null);
@@ -95,10 +84,17 @@ function AppContent() {
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isLogoutChoiceOpen, setIsLogoutChoiceOpen] = useState(false);
 
+  // Determine which data to use based on user role
+  const applications = user?.role === 'admin' ? adminApplications.applications : userApplications.applications;
+  const orders = user ? userOrders.orders : [];
+  const users = user?.role === 'admin' ? adminUsers.users : [];
+  const applicationsLoading = user?.role === 'admin' ? adminApplications.loading : userApplications.loading;
+  const ordersLoading = userOrders.loading;
+  const usersLoading = adminUsers.loading;
+
   // Back button handling for modals and sidebar
   useEffect(() => {
     const handlePopState = (e: PopStateEvent) => {
-      // Close modals and sidebar in reverse order of opening
       if (isSidebarOpen) {
         setIsSidebarOpen(false);
       } else if (isLogoutChoiceOpen) {
@@ -120,11 +116,9 @@ function AppContent() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, [isSidebarOpen, selectedApp, isServiceBuilderOpen, selectedUser, isLogoutConfirmOpen, isLogoutChoiceOpen, isAuthModalOpen]);
 
-  // Push state when modal opens - consolidate to prevent excessive history entries
   useEffect(() => {
     const isAnyModalOpen = isSidebarOpen || !!selectedApp || isServiceBuilderOpen || !!selectedUser || isLogoutConfirmOpen || isLogoutChoiceOpen || isAuthModalOpen;
     if (isAnyModalOpen) {
-      // Only push state if the current state is not already set to modal
       if (!window.history.state?.modal) {
         window.history.pushState({ modal: true }, '');
       }
@@ -140,14 +134,13 @@ function AppContent() {
 
   // Preload pages after home page is ready
   useEffect(() => {
-    // Small delay to ensure home page is interactive first
     const timer = setTimeout(preloadPages, 2000);
     return () => clearTimeout(timer);
   }, []);
 
   const handleLogout = async () => {
     try {
-      setIsSidebarOpen(false); // Close sidebar immediately
+      setIsSidebarOpen(false);
       await signOut(auth);
       setIsLogoutConfirmOpen(false);
       setIsLogoutChoiceOpen(true);
@@ -175,16 +168,16 @@ function AppContent() {
     <div className="min-h-screen bg-slate-50">
       <ScrollToTop />
       <ToastContainer />
-      
-      <Navbar 
-        user={user} 
+
+      <Navbar
+        user={user}
         loading={authLoading}
         onLoginClick={() => navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)}
         onMenuClick={() => setIsSidebarOpen(true)}
         onLogoClick={() => navigate('/')}
       />
 
-      <Sidebar 
+      <Sidebar
         isOpen={isSidebarOpen}
         onClose={closeSidebar}
         user={user}
@@ -192,7 +185,7 @@ function AppContent() {
         onLogout={() => setIsLogoutConfirmOpen(true)}
       />
 
-      <AuthModal 
+      <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => setIsAuthModalOpen(false)}
       />
@@ -200,15 +193,19 @@ function AppContent() {
       <main className="pt-[100px] pb-20 px-[3%] sm:px-[5%] w-full max-w-[1440px] mx-auto">
         <Suspense fallback={<PageSkeleton />}>
           <Routes>
-            <Route path="/" element={
-              <Home 
-                onNavigate={(p) => navigate(`/${p === 'home' ? '' : p}`)} 
-                services={services}
-                products={products}
-                onSelectService={() => {}} 
-                loading={dataLoading}
-              />
-            } />
+            {/* Home - renders immediately with cached/public data */}
+            <Route
+              path="/"
+              element={
+                <Home
+                  onNavigate={(p) => navigate(`/${p === 'home' ? '' : p}`)}
+                  services={services}
+                  products={products}
+                  onSelectService={() => {}}
+                  loading={false}
+                />
+              }
+            />
             <Route path="/login" element={<Login user={user} />} />
             <Route path="/register" element={<Register user={user} />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
@@ -217,124 +214,192 @@ function AppContent() {
             <Route path="/contact" element={<Legal />} />
             <Route path="/payment-policy" element={<Navigate to="/legal/terms" />} />
             <Route path="/refund-policy" element={<Navigate to="/legal/refund" />} />
+            {/* Services - public data only */}
             <Route path="/services" element={<Services services={services} />} />
             <Route path="/services/:serviceId" element={<ServiceDetail services={services} />} />
-            <Route path="/services/:serviceId/:subserviceName" element={
-              user ? (
-                <Apply 
-                  services={services} 
-                  user={user} 
-                  gateways={gateways}
-                  onSuccess={() => navigate('/track')}
-                />
-              ) : <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} />
-            } />
-            {/* Store Routes */}
-            <Route path="/store" element={<Store products={products} categories={productCategories} isLoading={loadingState.products} />} />
-            <Route path="/store/order-confirmation" element={<OrderConfirmation />} />
-            <Route path="/store/:categoryId/:productId/checkout" element={
-              <StoreCheckout 
-                products={products}
-                user={user}
-                onAddOrder={addOrder}
-              />
-            } />
-            <Route path="/store/:categoryId/:productId" element={
-              <StoreProduct 
-                products={products} 
-                reviews={productReviews}
-                user={user}
-                isLoading={loadingState.products}
-                onAddReview={addProductReview}
-              />
-            } />
-            <Route path="/track" element={
-              user ? (
-                <Track 
-                  applications={applications.filter(a => a.uid === user.uid || (user.role === 'operator' && a.assignedTo === user.email))} 
-                  orders={orders}
-                  user={user}
-                  gateways={gateways}
-                  onViewDetails={setSelectedApp}
-                  onUpdateApp={updateApplication}
-                />
-              ) : <Navigate to={`/login?redirect=${encodeURIComponent('/track')}`} />
-            } />
-            <Route path="/track/:applicationId" element={
-              user ? (
-                <Track 
-                  applications={applications.filter(a => a.uid === user.uid || (user.role === 'operator' && a.assignedTo === user.email))} 
-                  orders={orders}
-                  user={user}
-                  gateways={gateways}
-                  onViewDetails={setSelectedApp}
-                  onUpdateApp={updateApplication}
-                />
-              ) : <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} />
-            } />
-            <Route path="/profile" element={authLoading ? <PageSkeleton /> : user ? <Profile user={user} /> : <Navigate to="/" />} />
-            <Route path="/operator" element={
-              authLoading ? (
-                <PageSkeleton />
-              ) : user?.role === 'operator' ? (
-                <Operator 
-                  applications={applications}
-                  user={user}
-                  onViewApp={setSelectedApp}
-                />
-              ) : <Navigate to="/" />
-            } />
-            <Route path="/admin" element={
-              authLoading ? (
-                <PageSkeleton />
-              ) : user?.role === 'admin' ? (
-                <Admin 
-                  applications={applications}
-                  users={users}
-                  services={services}
-                  gateways={gateways}
+            {/* Apply - services + gateways loaded on demand */}
+            <Route
+              path="/services/:serviceId/:subserviceName"
+              element={
+                user ? (
+                  <Apply
+                    services={services}
+                    user={user}
+                    gateways={gateways.gateways}
+                    onSuccess={() => navigate('/track')}
+                  />
+                ) : (
+                  <Navigate
+                    to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+                  />
+                )
+              }
+            />
+            {/* Store Routes - products + categories */}
+            <Route
+              path="/store"
+              element={
+                <Store
                   products={products}
-                  productCategories={productCategories}
-                  orders={orders}
-                  productReviews={productReviews}
-                  onViewApp={setSelectedApp}
-                  onDeleteApp={deleteApplication}
-                  onEditService={(s) => { setEditingService(s); setIsServiceBuilderOpen(true); }}
-                  onAddService={() => { setEditingService(null); setIsServiceBuilderOpen(true); }}
-                  onDeleteService={deleteService}
-                  onManageUser={setSelectedUser}
-                  onAddGateway={addGateway}
-                  onUpdateGateway={updateGateway}
-                  onDeleteGateway={deleteGateway}
-                  onEditProduct={async (id: string, data: any) => {
-                    const existingProduct = products.find(p => p.id === id);
-                    if (existingProduct) {
-                      await updateProduct(id, data);
-                    } else {
-                      await addProduct(data);
-                    }
-                  }}
-                  onAddProduct={() => {}}
-                  onDeleteProduct={deleteProduct}
-                  onViewOrder={setSelectedApp as any}
-                  onUpdateOrder={updateOrder}
-                  onDeleteOrder={deleteOrder}
-                  onAddCategory={addProductCategory}
-                  onUpdateCategory={updateProductCategory}
-                  onDeleteCategory={deleteProductCategory}
-                  onDeleteProductReview={deleteProductReview}
-                  currentUser={user}
+                  categories={productCategories}
+                  isLoading={false}
                 />
-              ) : <Navigate to="/" />
-            } />
+              }
+            />
+            <Route path="/store/order-confirmation" element={<OrderConfirmation />} />
+            <Route
+              path="/store/:categoryId/:productId/checkout"
+              element={
+                <StoreCheckout products={products} user={user} onAddOrder={userOrders.addOrder} />
+              }
+            />
+            {/* StoreProduct - products + reviews for specific product */}
+            <Route
+              path="/store/:categoryId/:productId"
+              element={
+                <StoreProductRoute
+                  products={products}
+                  user={user}
+                />
+              }
+            />
+            {/* Track - user applications + orders */}
+            <Route
+              path="/track"
+              element={
+                user ? (
+                  <Track
+                    applications={applications}
+                    orders={orders}
+                    user={user}
+                    gateways={gateways.gateways}
+                    onViewDetails={setSelectedApp}
+                    onUpdateApp={userApplications.updateApplication}
+                  />
+                ) : (
+                  <Navigate
+                    to={`/login?redirect=${encodeURIComponent('/track')}`}
+                  />
+                )
+              }
+            />
+            <Route
+              path="/track/:applicationId"
+              element={
+                user ? (
+                  <Track
+                    applications={applications}
+                    orders={orders}
+                    user={user}
+                    gateways={gateways.gateways}
+                    onViewDetails={setSelectedApp}
+                    onUpdateApp={userApplications.updateApplication}
+                  />
+                ) : (
+                  <Navigate
+                    to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
+                  />
+                )
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                authLoading ? (
+                  <PageSkeleton />
+                ) : user ? (
+                  <Profile user={user} />
+                ) : (
+                  <Navigate to="/" />
+                )
+              }
+            />
+            {/* Operator - all applications */}
+            <Route
+              path="/operator"
+              element={
+                authLoading ? (
+                  <PageSkeleton />
+                ) : user?.role === 'operator' ? (
+                  <Operator
+                    applications={adminApplications.applications}
+                    user={user}
+                    onViewApp={setSelectedApp}
+                  />
+                ) : (
+                  <Navigate to="/" />
+                )
+              }
+            />
+            {/* Admin - all data */}
+            <Route
+              path="/admin"
+              element={
+                authLoading ? (
+                  <PageSkeleton />
+                ) : user?.role === 'admin' ? (
+                  <Admin
+                    applications={adminApplications.applications}
+                    users={users}
+                    services={services}
+                    gateways={gateways.gateways}
+                    products={products}
+                    productCategories={productCategories}
+                    orders={orders}
+                    productReviews={[]}
+                    onViewApp={setSelectedApp}
+                    onDeleteApp={adminApplications.deleteApplication}
+                    onEditService={(s) => {
+                      setEditingService(s);
+                      setIsServiceBuilderOpen(true);
+                    }}
+                    onAddService={() => {
+                      setEditingService(null);
+                      setIsServiceBuilderOpen(true);
+                    }}
+                    onDeleteService={deleteService}
+                    onManageUser={setSelectedUser}
+                    onAddGateway={gateways.addGateway}
+                    onUpdateGateway={gateways.updateGateway}
+                    onDeleteGateway={gateways.deleteGateway}
+                    onEditProduct={async (id: string, data: any) => {
+                      const existingProduct = products.find((p) => p.id === id);
+                      if (existingProduct) {
+                        await updateProduct(id, data);
+                      } else {
+                        await addProduct(data);
+                      }
+                    }}
+                    onAddProduct={() => {}}
+                    onDeleteProduct={deleteProduct}
+                    onViewOrder={setSelectedApp as any}
+                    onUpdateOrder={async (id: string, data: any) => {
+                      // Admin order update
+                    }}
+                    onDeleteOrder={async (id: string) => {
+                      // Admin order delete
+                    }}
+                    onAddCategory={addProductCategory}
+                    onUpdateCategory={updateProductCategory}
+                    onDeleteCategory={deleteProductCategory}
+                    onDeleteProductReview={async (id: string) => {
+                      // Admin review delete
+                    }}
+                    currentUser={user}
+                  />
+                ) : (
+                  <Navigate to="/" />
+                )
+              }
+            />
             <Route path="*" element={<Navigate to="/" />} />
           </Routes>
         </Suspense>
       </main>
 
       {selectedApp && user && (
-        <ApplicationDetailsModal 
-          app={selectedApp} 
+        <ApplicationDetailsModal
+          app={selectedApp}
           onClose={() => {
             setSelectedApp(null);
             if (location.pathname.includes('/track/')) {
@@ -342,18 +407,18 @@ function AppContent() {
             } else if (window.history.state?.modal) {
               window.history.back();
             }
-          }} 
+          }}
           currentUser={user}
-          operators={users.filter(u => u.role === 'operator')}
+          operators={users.filter((u) => u.role === 'operator')}
         />
       )}
 
       {isServiceBuilderOpen && (
-        <ServiceBuilderModal 
+        <ServiceBuilderModal
           service={editingService}
-          onClose={() => { 
-            setIsServiceBuilderOpen(false); 
-            setEditingService(null); 
+          onClose={() => {
+            setIsServiceBuilderOpen(false);
+            setEditingService(null);
             if (window.history.state?.modal) window.history.back();
           }}
           onSave={handleSaveService}
@@ -361,7 +426,7 @@ function AppContent() {
       )}
 
       {selectedUser && (
-        <UserManageModal 
+        <UserManageModal
           user={selectedUser}
           onClose={() => {
             setSelectedUser(null);
@@ -372,7 +437,7 @@ function AppContent() {
 
       <Footer />
 
-      <ConfirmationModal 
+      <ConfirmationModal
         isOpen={isLogoutConfirmOpen}
         onClose={() => setIsLogoutConfirmOpen(false)}
         onConfirm={handleLogout}
@@ -382,7 +447,7 @@ function AppContent() {
         type="warning"
       />
 
-      <LogoutChoiceModal 
+      <LogoutChoiceModal
         isOpen={isLogoutChoiceOpen}
         onClose={() => setIsLogoutChoiceOpen(false)}
         onChoice={(choice) => {
@@ -398,6 +463,22 @@ function AppContent() {
   );
 }
 
+// Component to handle StoreProduct route with proper review loading
+function StoreProductRoute({ products, user }: { products: any[]; user: UserProfile | null }) {
+  const { productId } = useParams<{ productId: string }>();
+  const { productReviews, addProductReview } = useProductReviews(productId);
+
+  return (
+    <StoreProduct
+      products={products}
+      reviews={productReviews}
+      user={user}
+      isLoading={false}
+      onAddReview={addProductReview}
+    />
+  );
+}
+
 export default function App() {
   return (
     <Router>
@@ -405,3 +486,4 @@ export default function App() {
     </Router>
   );
 }
+

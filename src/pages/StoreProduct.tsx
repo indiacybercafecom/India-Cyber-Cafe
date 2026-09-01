@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
 import { Product, ProductReview, UserProfile } from '../types';
@@ -6,10 +6,11 @@ import { SEO } from '../components/SEO';
 import { ReviewSection } from '../components/ReviewSection';
 import { StoreProductDetailSkeleton } from '../components/Skeleton';
 import { useLoadingState } from '../hooks/useLoadingState';
+import { useProductReviews } from '../hooks/useProductReviews';
 
 interface StoreProductProps {
   products: Product[];
-  reviews: ProductReview[];
+  reviews?: ProductReview[];
   user: UserProfile | null;
   isLoading?: boolean;
   error?: Error | null;
@@ -17,11 +18,17 @@ interface StoreProductProps {
   onAddReview: (review: Omit<ProductReview, 'id'>) => Promise<void>;
 }
 
-export function StoreProduct({ products, reviews, user, isLoading = false, error = null, onRetry, onAddReview }: StoreProductProps) {
+export function StoreProduct({ products, reviews: externalReviews, user, isLoading = false, error = null, onRetry, onAddReview }: StoreProductProps) {
   const { productId, categoryId } = useParams<{ productId: string; categoryId: string }>();
   const navigate = useNavigate();
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
   const [quantity, setQuantity] = useState(1);
+  
+  // Load reviews for this product using the hook
+  const { productReviews: hookReviews, addProductReview } = useProductReviews(productId);
+  
+  // Use external reviews if provided, otherwise use hook reviews
+  const reviews = externalReviews || hookReviews;
   
   // Use loading state hook for smooth UX with minimum skeleton display duration
   const displayLoading = useLoadingState(isLoading, 1000);
