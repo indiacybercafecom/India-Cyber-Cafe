@@ -11,7 +11,7 @@ dotenv.config();
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
   // Initialize public data on startup (non-blocking)
   // This ensures JSON files exist or are created before the app starts handling requests
@@ -417,8 +417,19 @@ async function startServer() {
     });
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
+  const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
+  });
+
+  server.on("error", (error: NodeJS.ErrnoException) => {
+    if (error.code === "EADDRINUSE") {
+      console.error(
+        `[SERVER] Port ${PORT} is already in use. Stop the stale process or set PORT to a free port.`
+      );
+    } else {
+      console.error("[SERVER] Failed to start server:", error);
+    }
+    process.exit(1);
   });
 }
 
