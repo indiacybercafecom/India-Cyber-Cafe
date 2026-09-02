@@ -1,0 +1,562 @@
+{
+  "version": 1,
+  "generatedAt": "2026-09-02T03:34:53.056Z",
+  "services": [
+    {
+      "id": "aadhaar-ucl-opretor",
+      "name": "Aadhaar UCL Opretor",
+      "icon": "https://indiacybercafe.com/wp-content/uploads/2026/06/aadhaar-card-correction-service.webp",
+      "iconType": "url",
+      "description": "Apply for Aadhaar UCL Operator registration by submitting your personal information, Aadhaar and PAN details, address, and device information.",
+      "fields": [
+        {
+          "label": "Full Name",
+          "name": "fullName",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "label": "Father Name",
+          "name": "fatherName",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "format": "dd-mm-yyyy",
+          "label": "Date of Birth",
+          "name": "dateOfBirth",
+          "required": true,
+          "type": "date"
+        },
+        {
+          "label": "Mobile Number",
+          "name": "mobileNumber",
+          "required": true,
+          "type": "tel"
+        },
+        {
+          "label": "Email ID",
+          "name": "emailId",
+          "required": true,
+          "type": "email"
+        },
+        {
+          "label": "Full Address with Pincode",
+          "name": "fullAddress",
+          "required": true,
+          "type": "textarea"
+        },
+        {
+          "label": "Aadhaar Number",
+          "name": "aadhaarNumber",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "label": "Aadhaar Front Image",
+          "maxSize": "50MB",
+          "name": "aadhaarFrontImage",
+          "required": true,
+          "type": "file"
+        },
+        {
+          "label": "Aadhaar Back Image",
+          "maxSize": "50MB",
+          "name": "aadhaarBackImage",
+          "required": true,
+          "type": "file"
+        },
+        {
+          "label": "PAN Number",
+          "name": "panNumber",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "label": "PAN Card Image",
+          "maxSize": "50MB",
+          "name": "panCardImage",
+          "required": true,
+          "type": "file"
+        },
+        {
+          "label": "What you have device?",
+          "name": "deviceType",
+          "options": [
+            "Desktop",
+            "Laptop",
+            "Smart Phone",
+            "Finger Device"
+          ],
+          "required": true,
+          "type": "select"
+        }
+      ],
+      "subservices": [
+        {
+          "charge": 199,
+          "fields": [
+            {
+              "label": "Full Name",
+              "name": "fullName",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "label": "Father Name",
+              "name": "fatherName",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "format": "dd-mm-yyyy",
+              "label": "Date of Birth",
+              "name": "dateOfBirth",
+              "required": true,
+              "type": "date"
+            },
+            {
+              "label": "Mobile Number",
+              "name": "mobileNumber",
+              "required": true,
+              "type": "tel"
+            },
+            {
+              "label": "Email ID",
+              "name": "emailId",
+              "required": true,
+              "type": "email"
+            },
+            {
+              "label": "Full Address with Pincode",
+              "name": "fullAddress",
+              "required": true,
+              "type": "textarea"
+            },
+            {
+              "label": "Aadhaar Number",
+              "name": "aadhaarNumber",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "label": "Aadhaar Front Image",
+              "maxSize": "50MB",
+              "name": "aadhaarFrontImage",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "label": "Aadhaar Back Image",
+              "maxSize": "50MB",
+              "name": "aadhaarBackImage",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "label": "PAN Number",
+              "name": "panNumber",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "label": "PAN Card Image",
+              "maxSize": "50MB",
+              "name": "panCardImage",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "label": "What you have device?",
+              "name": "deviceType",
+              "options": [
+                "Desktop",
+                "Laptop",
+                "Smart Phone",
+                "Finger Device"
+              ],
+              "required": true,
+              "type": "select"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/06/aadhaar-card-correction-service.webp",
+          "imageType": "url",
+          "name": "Opretor ID",
+          "originalCharge": 1999,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 999,
+          "fields": [
+            {
+              "label": "Full Name",
+              "name": "fullName",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "label": "Father Name",
+              "name": "fatherName",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "format": "dd-mm-yyyy",
+              "label": "Date of Birth",
+              "name": "dateOfBirth",
+              "required": true,
+              "type": "date"
+            },
+            {
+              "label": "Mobile Number",
+              "name": "mobileNumber",
+              "required": true,
+              "type": "tel"
+            },
+            {
+              "label": "Email ID",
+              "name": "emailId",
+              "required": true,
+              "type": "email"
+            },
+            {
+              "label": "Full Address with Pincode",
+              "name": "fullAddress",
+              "required": true,
+              "type": "textarea"
+            },
+            {
+              "label": "Aadhaar Number",
+              "name": "aadhaarNumber",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "label": "Aadhaar Front Image",
+              "maxSize": "50MB",
+              "name": "aadhaarFrontImage",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "label": "Aadhaar Back Image",
+              "maxSize": "50MB",
+              "name": "aadhaarBackImage",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "label": "PAN Number",
+              "name": "panNumber",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "label": "PAN Card Image",
+              "maxSize": "50MB",
+              "name": "panCardImage",
+              "required": true,
+              "type": "file"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/06/aadhaar-card-correction-service.webp",
+          "imageType": "url",
+          "name": "Advance Opretor ID",
+          "originalCharge": 2999,
+          "paymentMethods": [
+            "razorpay",
+            "cash"
+          ]
+        }
+      ],
+      "css": ""
+    },
+    {
+      "id": "gst-services",
+      "name": "GST Services",
+      "icon": "https://indiacybercafe.com/wp-content/uploads/2026/08/gst.png",
+      "iconType": "url",
+      "description": "GST Services for businesses and professionals including GST Registration and GST Return Filing. Get reliable and affordable GST registration and GST filing assistance with proper documentation and compliance support.",
+      "fields": [
+        {
+          "label": "Full Name",
+          "name": "full_name",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "label": "Mobile Number",
+          "name": "mobile",
+          "required": true,
+          "type": "tel"
+        },
+        {
+          "label": "Email Address",
+          "name": "email",
+          "required": false,
+          "type": "email"
+        },
+        {
+          "label": "PAN Number",
+          "name": "pan",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "label": "Business / Trade Name",
+          "name": "business_name",
+          "required": true,
+          "type": "text"
+        },
+        {
+          "label": "GSTIN (if already registered)",
+          "name": "gstin",
+          "required": false,
+          "type": "text"
+        },
+        {
+          "label": "Business Type",
+          "name": "business_type",
+          "options": [
+            "Proprietorship",
+            "Partnership",
+            "LLP",
+            "Private Limited Company",
+            "Other"
+          ],
+          "required": true,
+          "type": "select"
+        },
+        {
+          "label": "Additional Details",
+          "name": "additional_details",
+          "required": false,
+          "type": "textarea"
+        },
+        {
+          "label": "Upload Documents",
+          "multiple": true,
+          "name": "documents",
+          "required": false,
+          "type": "file"
+        }
+      ],
+      "subservices": [
+        {
+          "charge": 499,
+          "fields": [
+            {
+              "label": "Full Name",
+              "name": "name",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "label": "Email Address",
+              "name": "email",
+              "required": true,
+              "type": "email"
+            },
+            {
+              "label": "Mobile Number",
+              "name": "mobile",
+              "required": true,
+              "type": "tel"
+            },
+            {
+              "label": "Company / Business Name",
+              "name": "company_name",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "label": "Company / Business Type",
+              "name": "company_type",
+              "options": [
+                "Proprietorship",
+                "Partnership",
+                "LLP",
+                "Private Limited Company",
+                "Public Limited Company",
+                "Other"
+              ],
+              "required": true,
+              "type": "select"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/08/gst-regisration.png",
+          "imageType": "url",
+          "name": "GST Registration",
+          "originalCharge": 999,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 199,
+          "fields": [
+            {
+              "label": "Full Name",
+              "name": "name",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "label": "Email Address",
+              "name": "email",
+              "required": true,
+              "type": "email"
+            },
+            {
+              "label": "Mobile Number",
+              "name": "mobile",
+              "required": true,
+              "type": "tel"
+            },
+            {
+              "label": "Company / Business Name",
+              "name": "company_name",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "label": "Company / Business Type",
+              "name": "company_type",
+              "options": [
+                "Proprietorship",
+                "Partnership",
+                "LLP",
+                "Private Limited Company",
+                "Public Limited Company",
+                "Other"
+              ],
+              "required": true,
+              "type": "select"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/08/GST-Return-Filing.png",
+          "imageType": "url",
+          "name": "GST Return Filing",
+          "originalCharge": 499,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        }
+      ],
+      "css": ""
+    },
+    {
+      "id": "super-fast-service",
+      "name": "Explore All Services",
+      "icon": "https://indiacybercafe.com/wp-content/uploads/2026/03/speedy.png",
+      "iconType": "url",
+      "description": "Need your work done urgently? Choose Super Fast Service for quick processing of all online forms and digital services. An advance payment is required to start the service. The final price will be determined based on the work. The advance amount you paid will be adjusted in the final payment.",
+      "fields": [
+        {
+          "label": "Name",
+          "type": "text"
+        },
+        {
+          "label": "Mobile Number",
+          "type": "phone"
+        },
+        {
+          "label": "Email",
+          "type": "email"
+        }
+      ],
+      "subservices": [
+        {
+          "charge": 1,
+          "fields": [
+            {
+              "label": "Select Form Type",
+              "options": [
+                "Defence Recruitment Form",
+                "Police Recruitment Form",
+                "Teacher Recruitment Form",
+                "SSC Recruitment Form",
+                "Railway Recruitment Form",
+                "Banking Recruitment Form",
+                "Entrance Exam Form",
+                "State Government Job Form",
+                "Admission Form",
+                "Scholarship Form"
+              ],
+              "type": "select"
+            },
+            {
+              "label": "Name",
+              "type": "text"
+            },
+            {
+              "label": "Mobile Number",
+              "type": "phone"
+            },
+            {
+              "label": "Email",
+              "type": "email"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/03/contact-form.png",
+          "imageType": "url",
+          "name": "Form filling fast (Instant)",
+          "originalCharge": 1000,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 1,
+          "fields": [
+            {
+              "label": "Select Service",
+              "options": [
+                "Form Filling Service",
+                "Aadhaar Card Services",
+                "PAN Card Services",
+                "Passport Services",
+                "Voter ID Services",
+                "Driving Licence Services",
+                "Ration Card Services",
+                "Ayushman Card Services",
+                "Government Certificate Services",
+                "Online Payment Services",
+                "Ticket Booking Services",
+                "Bill Payment Services",
+                "Resume / CV Making",
+                "Photo Editing",
+                "Document Printing",
+                "Document Scanning",
+                "Online Registration"
+              ],
+              "type": "select"
+            },
+            {
+              "label": "Name",
+              "type": "text"
+            },
+            {
+              "label": "Mobile Number",
+              "type": "phone"
+            },
+            {
+              "label": "Email",
+              "type": "email"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/03/ux.png",
+          "imageType": "url",
+          "name": "Fast Service (Instant work)",
+          "originalCharge": 500,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        }
+      ],
+      "css": ""
+    }
+  ]
+}

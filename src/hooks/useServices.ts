@@ -5,9 +5,16 @@ import { Service } from '../types';
 import { cacheManager } from '../utils/cacheManager';
 import { syncManager } from '../utils/syncManager';
 
+interface JSONData {
+  version: number;
+  generatedAt: string;
+  services: Service[];
+}
+
 /**
  * Hook for loading public services data
- * Cache-first strategy: loads from cache immediately, syncs in background
+ * JSON-first strategy: loads from generated JSON immediately, falls back to Firebase
+ * Auto-syncs JSON after admin CRUD operations
  * Suitable for Home, Services, ServiceDetail pages
  */
 export function useServices() {
@@ -15,61 +22,109 @@ export function useServices() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [hasJsonData, setHasJsonData] = useState(false);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
+    let isComponentMounted = true;
 
-    // STEP 1: Load from cache immediately
-    const cachedServices = cacheManager.get('services') || [];
-    if (cachedServices.length > 0) {
-      setServices(cachedServices);
-      setLoading(false);
-    }
+    const loadServices = async () => {
+      try {
+        // STEP 1: Try to load from generated JSON first (fast, static)
+        console.log('[useServices] Attempting to load from JSON...');
+        
+        try {
+          const jsonResponse = await fetch('/data/services.json', {
+            cache: 'no-store',
+          });
+          
+          if (jsonResponse.ok) {
+            const jsonData: JSONData = await jsonResponse.json();
+            if (jsonData && jsonData.services && Array.isArray(jsonData.services)) {
+              if (isComponentMounted) {
+                console.log(`[useServices] Loaded ${jsonData.services.length} services from JSON`);
+                setServices(jsonData.services);
+                cacheManager.set('services', jsonData.services);
+                setHasJsonData(true);
+                setLoading(false);
+                setError(null);
+              }
+              return; // Successfully loaded from JSON, no need for Firebase
+            }
+          }
+        } catch (jsonError) {
+          console.warn('[useServices] JSON fetch failed, falling back to Firebase:', jsonError);
+        }
 
-    // STEP 2: Check if sync is needed
-    const lastSync = syncManager.getLastSync('services');
-    const now = Date.now();
-    const SYNC_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+        // STEP 2: JSON unavailable or invalid, use Firebase as fallback
+        // Also: reload from Firebase if explicit retry or sync threshold exceeded
+        const lastSync = syncManager.getLastSync('services');
+        const now = Date.now();
+        const SYNC_THRESHOLD = 5 * 60 * 1000; // 5 minutes
 
-    // Only fetch from Firebase if sync is needed
-    if (retryCount > 0 || now - lastSync > SYNC_THRESHOLD) {
-      const servicesRef = ref(rtdb, 'services');
-      unsubscribe = onValue(
-        servicesRef,
-        (snapshot) => {
-          try {
-            const data = snapshot.val();
-            const servicesToSet = data
-              ? Object.entries(data).map(([id, val]: [string, any]) => ({
-                  id,
-                  ...val,
-                }))
-              : [];
+        if (retryCount > 0 || now - lastSync > SYNC_THRESHOLD) {
+          console.log('[useServices] Loading from Firebase...');
+          const servicesRef = ref(rtdb, 'services');
+          unsubscribe = onValue(
+            servicesRef,
+            (snapshot) => {
+              try {
+                const data = snapshot.val();
+                const servicesToSet = data
+                  ? Object.entries(data).map(([id, val]: [string, any]) => ({
+                      id,
+                      ...val,
+                    }))
+                  : [];
 
-            setServices(servicesToSet);
-            cacheManager.set('services', servicesToSet);
-            syncManager.updateSync('services');
+                if (isComponentMounted) {
+                  setServices(servicesToSet);
+                  cacheManager.set('services', servicesToSet);
+                  syncManager.updateSync('services');
+                  setLoading(false);
+                  setError(null);
+                }
+              } catch (err) {
+                const error = err instanceof Error ? err : new Error(String(err));
+                if (isComponentMounted) {
+                  setError(error);
+                  setLoading(false);
+                }
+              }
+            },
+            (err) => {
+              console.error('[useServices] Firebase error:', err);
+              const error = err instanceof Error ? err : new Error(String(err));
+              if (isComponentMounted) {
+                setError(error);
+                setLoading(false);
+              }
+            }
+          );
+        } else {
+          // No sync needed, but also no JSON loaded - use cache if available
+          const cachedServices = cacheManager.get('services');
+          if (cachedServices && cachedServices.length > 0 && isComponentMounted) {
+            console.log('[useServices] Using cached services');
+            setServices(cachedServices);
             setLoading(false);
-            setError(null);
-          } catch (err) {
-            const error = err instanceof Error ? err : new Error(String(err));
-            setError(error);
+          } else if (isComponentMounted) {
             setLoading(false);
           }
-        },
-        (err) => {
-          console.error('Error fetching services:', err);
-          const error = err instanceof Error ? err : new Error(String(err));
+        }
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        if (isComponentMounted) {
           setError(error);
           setLoading(false);
         }
-      );
-    } else {
-      // No sync needed, cached data is fresh
-      setLoading(false);
-    }
+      }
+    };
+
+    loadServices();
 
     return () => {
+      isComponentMounted = false;
       if (unsubscribe) unsubscribe();
     };
   }, [retryCount]);
@@ -80,31 +135,54 @@ export function useServices() {
     setRetryCount((count) => count + 1);
   };
 
+  const triggerJsonSync = async () => {
+    try {
+      console.log('[useServices] Triggering JSON sync...');
+      const response = await fetch('/api/sync-data/services', {
+        method: 'POST',
+      });
+      if (response.ok) {
+        console.log('[useServices] JSON sync completed');
+      } else {
+        console.warn('[useServices] JSON sync returned non-ok status:', response.status);
+      }
+    } catch (err) {
+      console.error('[useServices] Error triggering JSON sync:', err);
+      // Non-fatal: data is still updated in local state and cache
+    }
+  };
+
   const addService = async (service: Service) => {
     await set(ref(rtdb, `services/${service.id}`), service);
-    // Update cache
+    // Update local state and cache
     const updated = [...services, service];
     setServices(updated);
     cacheManager.set('services', updated);
     syncManager.updateSync('services');
+    // Sync JSON after Firebase write
+    await triggerJsonSync();
   };
 
   const updateService = async (id: string, data: Partial<Service>) => {
     await update(ref(rtdb, `services/${id}`), data);
-    // Update cache
+    // Update local state and cache
     const updated = services.map((s) => s.id === id ? { ...s, ...data } : s);
     setServices(updated);
     cacheManager.set('services', updated);
     syncManager.updateSync('services');
+    // Sync JSON after Firebase write
+    await triggerJsonSync();
   };
 
   const deleteService = async (id: string) => {
     await remove(ref(rtdb, `services/${id}`));
-    // Update cache
+    // Update local state and cache
     const updated = services.filter((s) => s.id !== id);
     setServices(updated);
     cacheManager.set('services', updated);
     syncManager.updateSync('services');
+    // Sync JSON after Firebase write
+    await triggerJsonSync();
   };
 
   return {
@@ -117,3 +195,4 @@ export function useServices() {
     deleteService,
   };
 }
+

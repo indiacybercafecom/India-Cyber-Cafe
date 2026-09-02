@@ -1,0 +1,34 @@
+{
+  "version": 1,
+  "generatedAt": "2026-09-02T03:34:54.475Z",
+  "categories": [
+    {
+      "id": "devices",
+      "name": "Devices",
+      "description": "Electronics items",
+      "icon": "package",
+      "order": 0
+    },
+    {
+      "id": "medical-books-pdf-guides",
+      "name": "Medical Books & PDF Guides",
+      "description": "Premium medical reference books, healthcare study materials, disease treatment guides, pharmacy and medical education PDFs.",
+      "icon": "shopping-bag",
+      "order": 3
+    },
+    {
+      "id": "shirts",
+      "name": "shirts",
+      "description": "Buy Shirts",
+      "icon": "shopping-bag",
+      "order": 0
+    },
+    {
+      "id": "t-shirts",
+      "name": "T-Shirts",
+      "description": "Get Costom Printed T-Shirts",
+      "icon": "shopping-bag",
+      "order": 0
+    }
+  ]
+}

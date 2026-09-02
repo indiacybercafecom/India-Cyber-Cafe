@@ -5,12 +5,20 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSync.js";
 
 dotenv.config();
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+
+  // Initialize public data on startup (non-blocking)
+  // This ensures JSON files exist or are created before the app starts handling requests
+  initializePublicDataOnStartup().catch(err => {
+    console.error("[DATA SYNC] Startup initialization error (non-fatal):", err);
+    // App continues to run; Firebase fallback will be used
+  });
 
   // Trust proxy for correct protocol and host detection behind proxies
   app.set('trust proxy', true);
@@ -311,6 +319,88 @@ async function startServer() {
         error: error.message || "Failed to verify payment"
       });
     }
+  });
+
+  // JSON Data Sync Endpoints
+  // Endpoint for manual/scheduled sync (admin only in production)
+  app.post("/api/sync-data", async (req, res) => {
+    try {
+      console.log("[DATA SYNC] Manual sync triggered from API");
+      const result = await syncAllPublicJson();
+      
+      if (result.success) {
+        res.json({
+          success: true,
+          message: "Data synchronization completed",
+          results: result.results,
+        });
+      } else {
+        res.status(202).json({
+          success: false,
+          message: "Synchronization completed with errors",
+          results: result.results,
+        });
+      }
+    } catch (error: any) {
+      console.error("[DATA SYNC] Error in sync endpoint:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  });
+
+  // Endpoint for syncing specific data type
+  // Used by admin CRUD operations (internal use)
+  app.post("/api/sync-data/:type", async (req, res) => {
+    try {
+      const { type } = req.params;
+      
+      if (!['services', 'products', 'categories'].includes(type)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid sync type",
+        });
+      }
+
+      console.log(`[DATA SYNC] Sync triggered for type: ${type}`);
+      const result = await syncDataType(type as 'services' | 'products' | 'categories');
+      
+      if (result.success) {
+        res.json({
+          success: true,
+          message: `${type} synchronized`,
+          result,
+        });
+      } else {
+        res.status(202).json({
+          success: false,
+          message: `Failed to sync ${type}`,
+          result,
+        });
+      }
+    } catch (error: any) {
+      console.error(`[DATA SYNC] Error syncing ${req.params.type}:`, error);
+      res.status(500).json({
+        success: false,
+        error: error.message,
+      });
+    }
+  });
+
+  // Health check endpoint includes sync status
+  app.get("/api/health", (req, res) => {
+    const dataDir = path.join(process.cwd(), 'public/data');
+    const hasPublicData = 
+      fs.existsSync(path.join(dataDir, 'services.json')) &&
+      fs.existsSync(path.join(dataDir, 'products.json')) &&
+      fs.existsSync(path.join(dataDir, 'product-categories.json'));
+
+    res.json({ 
+      status: "ok",
+      publicDataAvailable: hasPublicData,
+      timestamp: new Date().toISOString(),
+    });
   });
 
   // Vite middleware for development
