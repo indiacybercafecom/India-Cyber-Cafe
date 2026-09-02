@@ -41,6 +41,7 @@
 # URL Rewrite
 <IfModule mod_rewrite.c>
   RewriteEngine On
+  Options -MultiViews
 
   # Force HTTPS
   RewriteCond %{HTTPS} off
@@ -50,15 +51,8 @@
   RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
   RewriteRule ^(.*)$ https://%1%{REQUEST_URI} [L,R=301]
 
-  # Never rewrite API, JSON, and static asset requests
-  RewriteCond %{REQUEST_URI} ^/api/ [NC,OR]
-  RewriteCond %{REQUEST_URI} ^/data/ [NC,OR]
-  RewriteCond %{REQUEST_URI} ^/assets/ [NC,OR]
-  RewriteCond %{REQUEST_URI} ^/favicon [NC,OR]
-  RewriteCond %{REQUEST_URI} ^/robots\.txt$ [NC,OR]
-  RewriteCond %{REQUEST_URI} ^/sitemap\.xml$ [NC,OR]
-  RewriteCond %{REQUEST_URI} ^/manifest\.json$ [NC]
-  RewriteRule ^ - [L]
+  # Keep API, data, assets, and site metadata requests out of the SPA fallback.
+  RewriteRule ^(?:api(?:/|$)|data(?:/|$)|assets(?:/|$)|favicon(?:[^/]*)?$|manifest\.json$|robots\.txt$|sitemap\.xml$) - [L,NC]
 
   # SPA routing - serve index.html for real client routes only
   RewriteCond %{REQUEST_FILENAME} !-f
