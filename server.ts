@@ -11,7 +11,8 @@ dotenv.config();
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT || 3000);
+  const PORT = Number(process.env.PORT) || 3000;
+  const DIST_PATH = path.resolve(process.cwd(), 'dist');
 
   // Initialize public data on startup (non-blocking)
   // This ensures JSON files exist or are created before the app starts handling requests
@@ -411,9 +412,39 @@ async function startServer() {
     });
     app.use(vite.middlewares);
   } else {
-    app.use(express.static("dist"));
-    app.get("*", (req, res) => {
-      res.sendFile("dist/index.html", { root: "." });
+    const distIndex = path.join(DIST_PATH, 'index.html');
+
+    app.use(express.static(DIST_PATH, {
+      index: false,
+      extensions: ['html'],
+      maxAge: '1h',
+    }));
+
+    app.use('/assets', express.static(path.join(DIST_PATH, 'assets')));
+    app.use('/data', express.static(path.join(DIST_PATH, 'data')));
+
+    app.get(/^\/(?!api\/|data\/|assets\/|manifest\.json$|robots\.txt$|sitemap\.xml$|favicon\.?\w*$).*/, (req, res, next) => {
+      if (req.path.startsWith('/api/') || req.path.startsWith('/data/') || req.path.startsWith('/assets/')) {
+        return next();
+      }
+
+      if (req.accepts('html')) {
+        return res.sendFile(distIndex);
+      }
+
+      next();
+    });
+
+    app.get('/robots.txt', (req, res) => {
+      res.sendFile(path.join(DIST_PATH, 'robots.txt'));
+    });
+
+    app.get('/sitemap.xml', (req, res) => {
+      res.sendFile(path.join(DIST_PATH, 'sitemap.xml'));
+    });
+
+    app.get('/manifest.json', (req, res) => {
+      res.sendFile(path.join(DIST_PATH, 'manifest.json'));
     });
   }
 
