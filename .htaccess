@@ -27,6 +27,11 @@
   ExpiresByType image/svg+xml "access plus 1 year"
 </IfModule>
 
+# Serve WebAssembly with the MIME type required by instantiateStreaming.
+<IfModule mod_mime.c>
+  AddType application/wasm .wasm
+</IfModule>
+
 # Security headers
 <IfModule mod_headers.c>
   # HTTPS redirect
