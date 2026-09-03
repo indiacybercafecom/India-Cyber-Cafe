@@ -12,9 +12,10 @@ const localDotLottieWasmPlugin = () => ({
     }
 
     const localWasmUrl = '/lottie/dotlottie-player.wasm';
-    const updatedCode = code
-      .replaceAll('https://cdn.jsdelivr.net/npm/@lottiefiles/dotlottie-web@0.80.0/dist/dotlottie-player.wasm', localWasmUrl)
-      .replaceAll('https://unpkg.com/@lottiefiles/dotlottie-web@0.80.0/dist/dotlottie-player.wasm', localWasmUrl);
+    const updatedCode = code.replace(
+      /https:\/\/[^"'` ]+\/@lottiefiles\/dotlottie-web@0\.80\.0\/dist\/dotlottie-player\.wasm/g,
+      localWasmUrl,
+    );
 
     return updatedCode === code ? null : {code: updatedCode, map: null};
   },
