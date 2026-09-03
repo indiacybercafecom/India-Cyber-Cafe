@@ -136,6 +136,22 @@ export function useServices() {
     setRetryCount((count) => count + 1);
   };
 
+  const triggerJsonSync = async () => {
+    try {
+      console.log('[useServices] Triggering JSON sync...');
+      const response = await fetch('/api/sync-data/services', {
+        method: 'POST',
+      });
+      if (response.ok) {
+        console.log('[useServices] JSON sync completed');
+      } else {
+        console.warn('[useServices] JSON sync returned non-ok status:', response.status);
+      }
+    } catch (err) {
+      console.error('[useServices] Error triggering JSON sync:', err);
+    }
+  };
+
   const addService = async (service: Service) => {
     await set(ref(rtdb, `services/${service.id}`), service);
     // Update local state and cache
@@ -143,6 +159,7 @@ export function useServices() {
     setServices(updated);
     cacheManager.set('services', updated);
     syncManager.updateSync('services');
+    await triggerJsonSync();
   };
 
   const updateService = async (id: string, data: Partial<Service>) => {
@@ -152,6 +169,7 @@ export function useServices() {
     setServices(updated);
     cacheManager.set('services', updated);
     syncManager.updateSync('services');
+    await triggerJsonSync();
   };
 
   const deleteService = async (id: string) => {
@@ -161,6 +179,7 @@ export function useServices() {
     setServices(updated);
     cacheManager.set('services', updated);
     syncManager.updateSync('services');
+    await triggerJsonSync();
   };
 
   return {
