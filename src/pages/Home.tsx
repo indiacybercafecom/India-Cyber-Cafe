@@ -5,11 +5,10 @@ import { Service, Product } from '../types';
 import { ServiceSkeleton } from '../components/Skeleton';
 import { SEO } from '../components/SEO';
 import { CallbackModal } from '../components/CallbackModal';
-import { DotLottieReact } from '@lottiefiles/dotlottie-react';
-import { DotLottie } from '@lottiefiles/dotlottie-web';
+import { DotLottieReact, setWasmUrl } from '@lottiefiles/dotlottie-react';
 import { secureUrl } from '../utils/secureUrl';
 
-DotLottie.setWasmUrl('/dotlottie-player.wasm');
+setWasmUrl('/lottie/dotlottie-player.wasm');
 
 interface HomeProps {
   onNavigate: (page: string) => void;
