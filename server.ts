@@ -404,16 +404,17 @@ async function startServer() {
     });
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  // Vite middleware for development; use the built app whenever dist exists.
+  const distIndex = path.join(DIST_PATH, 'index.html');
+  const isProduction = process.env.NODE_ENV === "production" || fs.existsSync(distIndex);
+
+  if (!isProduction) {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const distIndex = path.join(DIST_PATH, 'index.html');
-
     app.use(express.static(DIST_PATH, {
       index: false,
       extensions: ['html'],
