@@ -261,12 +261,14 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                           }} />
                           <input type="number" className="input-field py-2 text-sm w-full sm:w-32" placeholder="Charge" value={ss.charge} onChange={e => {
                             const newSS = [...subservices];
-                            newSS[i].charge = parseFloat(e.target.value);
+                            const charge = parseFloat(e.target.value);
+                            newSS[i].charge = Number.isFinite(charge) ? charge : 0;
                             setSubservices(newSS);
                           }} />
                           <input type="number" className="input-field py-2 text-sm w-full sm:w-32" placeholder="Orig. Price" value={ss.originalCharge || ''} onChange={e => {
                             const newSS = [...subservices];
-                            newSS[i].originalCharge = parseFloat(e.target.value);
+                            const originalCharge = parseFloat(e.target.value);
+                            newSS[i].originalCharge = Number.isFinite(originalCharge) ? originalCharge : undefined;
                             setSubservices(newSS);
                           }} />
                           <button onClick={() => setSubservices(subservices.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 hover:scale-110 transition-all p-2 rounded-lg hover:bg-red-50 w-full sm:w-auto">
