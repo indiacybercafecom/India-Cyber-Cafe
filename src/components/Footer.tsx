@@ -8,7 +8,7 @@ export function Footer() {
         {/* Brand Section */}
         <div className="space-y-6 col-span-1 md:col-span-1">
           <img 
-            src="http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" 
+            src="https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" 
             alt="India Cyber Cafe" 
             className="h-16 brightness-0 invert"
             referrerPolicy="no-referrer"
@@ -67,7 +67,7 @@ export function Footer() {
           </ul>
           <div className="pt-4">
             <img 
-              src="http://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" 
+              src="https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" 
               alt="ICC" 
               className="h-10 opacity-30 grayscale brightness-0 invert" 
               referrerPolicy="no-referrer"

@@ -5,6 +5,7 @@ import { Service, Product } from '../types';
 import { ServiceSkeleton } from '../components/Skeleton';
 import { SEO } from '../components/SEO';
 import { CallbackModal } from '../components/CallbackModal';
+import { DotLottieReact } from '@lottiefiles/dotlottie-react';
 
 interface HomeProps {
   onNavigate: (page: string) => void;
@@ -88,8 +89,12 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
               <div className="absolute w-32 h-32 lg:w-40 lg:h-40 rounded-full border-2 border-primary/20 animate-pulse"></div>
               <div className="absolute w-24 h-24 lg:w-32 lg:h-32 rounded-full border-2 border-primary/30 animate-spin" style={{animationDuration: '8s'}}></div>
             </div>
-            {/* Lottie Animation */}
-            <dotlottie-wc src="https://lottie.host/ec4bf91c-cc73-4056-b87f-9eaedb9293d9/M8QLqGxWFm.lottie" style={{width: '300px', height: '300px'}} autoplay loop></dotlottie-wc>
+            <DotLottieReact
+              src="/hero-animation.lottie"
+              style={{ width: '300px', height: '300px' }}
+              autoplay
+              loop
+            />
           </div>
         </div>
       </section>
@@ -98,22 +103,12 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
         {[
           { icon: 'users', count: '5000+', label: 'Active Users' },
-          { videoUrl: 'https://cdn-icons-mp4.freepik.com/512/18997/18997679.mp4', count: '2500+', label: 'Applications' },
-          { videoUrl: 'https://cdn-icons-mp4.freepik.com/512/15370/15370738.mp4', count: '24/7', label: 'Support' },
+          { icon: 'clipboard-list', count: '2500+', label: 'Applications' },
+          { icon: 'headset', count: '24/7', label: 'Support' },
           { icon: 'star', count: '4.9/5', label: 'Rating' },
         ].map((stat, i) => (
           <div key={i} className="bg-white p-4 sm:p-8 rounded-2xl text-center shadow-md border-t-4 border-primary hover:-translate-y-2 active:translate-y-0 active:scale-95 transition-all">
-            {stat.videoUrl ? (
-              <video 
-                src={stat.videoUrl} 
-                className="w-6 h-6 sm:w-10 sm:h-10 mx-auto mb-2 sm:mb-4"
-                autoPlay
-                loop
-                muted
-              />
-            ) : (
-              <IconRenderer name={stat.icon || 'layers'} className="w-6 h-6 sm:w-10 sm:h-10 text-primary mx-auto mb-2 sm:mb-4" />
-            )}
+            <IconRenderer name={stat.icon || 'layers'} className="w-6 h-6 sm:w-10 sm:h-10 text-primary mx-auto mb-2 sm:mb-4" />
             <h3 className="text-xl sm:text-3xl font-bold text-navy mb-1">{stat.count}</h3>
             <p className="text-[10px] sm:text-sm text-slate-500 font-medium uppercase tracking-wider">{stat.label}</p>
           </div>
