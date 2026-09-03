@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Service } from '../types';
 import { IconRenderer } from '../components/Icons';
+import { secureUrl } from '../utils/secureUrl';
 import { SEO } from '../components/SEO';
 import { ServiceDetailSkeleton } from '../components/Skeleton';
 
@@ -86,9 +87,9 @@ export function ServiceDetail({ services, isLoading = false, error = null, onRet
         }`}>
           {service.iconType === 'url' && service.icon ? (
             (service.icon || '').toLowerCase().endsWith('.mp4') ? (
-              <video src={service.icon} className="w-full h-full object-cover" muted autoPlay loop />
+              <video src={secureUrl(service.icon)} className="w-full h-full object-cover" muted autoPlay loop />
             ) : (
-              <img src={service.icon} alt={service.name || 'Service'} className="w-full h-full object-cover" />
+              <img src={secureUrl(service.icon)} alt={service.name || 'Service'} className="w-full h-full object-cover" />
             )
           ) : (
             <IconRenderer name={service.icon || 'layers'} className="w-10 h-10 sm:w-12 sm:h-12 text-navy" />
@@ -118,9 +119,9 @@ export function ServiceDetail({ services, isLoading = false, error = null, onRet
                 }`}>
                   {ss.imageType === 'url' && ss.image ? (
                     ss.image.toLowerCase().endsWith('.mp4') ? (
-                      <video src={ss.image} className="w-full h-full object-cover" muted autoPlay loop />
+                      <video src={secureUrl(ss.image)} className="w-full h-full object-cover" muted autoPlay loop />
                     ) : (
-                      <img src={ss.image} alt={ss.name} className="w-full h-full object-cover" />
+                      <img src={secureUrl(ss.image)} alt={ss.name} className="w-full h-full object-cover" />
                     )
                   ) : (
                     <IconRenderer name={ss.image || 'file-circle-plus'} className="w-10 h-10 sm:w-12 sm:h-12 text-primary" />

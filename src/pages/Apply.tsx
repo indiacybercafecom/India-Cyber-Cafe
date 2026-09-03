@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Service, UserProfile, SubService, Application, PaymentGateway } from '../types';
 import { IconRenderer } from '../components/Icons';
+import { secureUrl } from '../utils/secureUrl';
 import { showToast } from '../components/Toast';
 import { rtdb } from '../firebase';
 import { ref as dbRef, set } from 'firebase/database';
@@ -370,9 +371,9 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
             }`}>
               {selectedSubService.imageType === 'url' && selectedSubService.image ? (
                 (selectedSubService.image || '').toLowerCase().endsWith('.mp4') ? (
-                  <video src={selectedSubService.image} className="w-full h-full object-contain" muted autoPlay loop />
+                  <video src={secureUrl(selectedSubService.image)} className="w-full h-full object-contain" muted autoPlay loop />
                 ) : (
-                  <img src={selectedSubService.image} alt={selectedSubService.name || 'Sub-service'} className="w-full h-full object-contain" />
+                  <img src={secureUrl(selectedSubService.image)} alt={selectedSubService.name || 'Sub-service'} className="w-full h-full object-contain" />
                 )
               ) : (
                 <IconRenderer name={selectedSubService.image || 'file-text'} className="w-10 h-10 sm:w-14 sm:h-14 md:w-16 md:h-16 text-primary" />

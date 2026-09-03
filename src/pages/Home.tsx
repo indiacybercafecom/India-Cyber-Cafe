@@ -6,6 +6,10 @@ import { ServiceSkeleton } from '../components/Skeleton';
 import { SEO } from '../components/SEO';
 import { CallbackModal } from '../components/CallbackModal';
 import { DotLottieReact } from '@lottiefiles/dotlottie-react';
+import { DotLottie } from '@lottiefiles/dotlottie-web';
+import { secureUrl } from '../utils/secureUrl';
+
+DotLottie.setWasmUrl('/dotlottie-player.wasm');
 
 interface HomeProps {
   onNavigate: (page: string) => void;
@@ -148,9 +152,9 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
                 }`}>
                   {service.iconType === 'url' && service.icon ? (
                     (service.icon || '').toLowerCase().endsWith('.mp4') ? (
-                      <video src={service.icon} className="w-full h-full object-cover" muted autoPlay loop />
+                      <video src={secureUrl(service.icon)} className="w-full h-full object-cover" muted autoPlay loop />
                     ) : (
-                      <img src={service.icon} alt={service.name || 'Service'} className="w-full h-full object-cover" />
+                      <img src={secureUrl(service.icon)} alt={service.name || 'Service'} className="w-full h-full object-cover" />
                     )
                   ) : (
                     <IconRenderer name={service.icon || 'layers'} className="w-6 h-6 sm:w-8 sm:h-8 text-navy group-hover:text-primary transition-all" />
@@ -213,7 +217,7 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
                   {/* Image Container */}
                   <div className="relative aspect-square overflow-hidden bg-slate-100">
                     <img
-                      src={product.images[0]}
+                      src={secureUrl(product.images[0])}
                       alt={product.name}
                       className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                     />

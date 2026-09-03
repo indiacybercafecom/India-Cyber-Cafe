@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Service } from '../types';
 import { IconRenderer } from '../components/Icons';
+import { secureUrl } from '../utils/secureUrl';
 import { SEO } from '../components/SEO';
 
 interface ServicesProps {
@@ -75,9 +76,9 @@ export function Services({ services }: ServicesProps) {
             }`}>
               {service.iconType === 'url' && service.icon ? (
                 (service.icon || '').toLowerCase().endsWith('.mp4') ? (
-                  <video src={service.icon} className="w-full h-full object-contain bg-slate-100" muted autoPlay loop />
+                  <video src={secureUrl(service.icon)} className="w-full h-full object-contain bg-slate-100" muted autoPlay loop />
                 ) : (
-                  <img src={service.icon} alt={service.name || 'Service'} className="w-full h-full object-contain bg-slate-100" />
+                  <img src={secureUrl(service.icon)} alt={service.name || 'Service'} className="w-full h-full object-contain bg-slate-100" />
                 )
               ) : (
                 <IconRenderer name={service.icon || 'layers'} className="w-5 h-5 sm:w-8 sm:h-8 text-navy group-hover:text-primary active:text-primary transition-all" />
