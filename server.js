@@ -29,6 +29,59 @@ app.set('trust proxy', true);
 // Middleware
 app.use(express.json());
 
+// Security Headers - Content Security Policy
+app.use((req, res, next) => {
+  res.setHeader(
+    'Content-Security-Policy',
+    "default-src 'self'; " +
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' " +
+      "https://apis.google.com " +
+      "https://www.googletagmanager.com " +
+      "https://checkout.razorpay.com " +
+      "https://cdn.razorpay.com " +
+      "https://india-cyber-cafe-default-rtdb.firebaseio.com " +
+      "https://*.firebaseio.com; " +
+    "script-src-elem 'self' 'unsafe-inline' " +
+      "https://apis.google.com " +
+      "https://www.googletagmanager.com " +
+      "https://checkout.razorpay.com " +
+      "https://cdn.razorpay.com " +
+      "https://india-cyber-cafe-default-rtdb.firebaseio.com " +
+      "https://*.firebaseio.com; " +
+    "worker-src 'self' blob:; " +
+    "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
+    "font-src 'self' https://fonts.gstatic.com data:; " +
+    "img-src 'self' data: blob: https://indiacybercafe.com https://cdn-icons-png.flaticon.com https://firebasestorage.googleapis.com https://api.dicebear.com https://www.google-analytics.com https://region1.google-analytics.com; " +
+    "media-src 'self'; " +
+    "connect-src 'self' " +
+      "https://firebase.googleapis.com " +
+      "https://firebaseinstallations.googleapis.com " +
+      "https://identitytoolkit.googleapis.com " +
+      "https://securetoken.googleapis.com " +
+      "https://apis.google.com " +
+      "https://www.googleapis.com " +
+      "https://india-cyber-cafe-default-rtdb.firebaseio.com " +
+      "https://*.firebaseio.com " +
+      "wss://*.firebaseio.com " +
+      "https://firebasestorage.googleapis.com " +
+      "https://www.google-analytics.com " +
+      "https://region1.google-analytics.com " +
+      "https://checkout.razorpay.com " +
+      "https://lumberjack.razorpay.com; " +
+    "frame-src 'self' " +
+      "https://checkout.razorpay.com " +
+      "https://api.razorpay.com " +
+      "https://*.firebaseapp.com " +
+      "https://accounts.google.com " +
+      "https://*.firebaseio.com"
+  );
+  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  next();
+});
+
 // Email Configuration
 const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.hostinger.com',
