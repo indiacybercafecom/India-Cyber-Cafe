@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSync";
+import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSync.ts";
 
 dotenv.config();
 
