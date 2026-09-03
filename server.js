@@ -66,8 +66,7 @@ app.use((req, res, next) => {
       "https://firebasestorage.googleapis.com " +
       "https://www.google-analytics.com " +
       "https://region1.google-analytics.com " +
-      "https://checkout.razorpay.com " +
-      "https://lumberjack.razorpay.com; " +
+      "https://checkout.razorpay.com " +      "https://api.razorpay.com " +      "https://lumberjack.razorpay.com; " +
     "frame-src 'self' " +
       "https://checkout.razorpay.com " +
       "https://api.razorpay.com " +
