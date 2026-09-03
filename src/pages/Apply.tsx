@@ -9,7 +9,7 @@ import { ref as dbRef, set } from 'firebase/database';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
 import { SEO } from '../components/SEO';
-import { loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
+import { getRazorpayKeyId, loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
 import { sanitizeFormData, sanitizeUserProfile, sanitizeEmail } from '../utils/sanitizer';
 import { PageSkeleton } from '../components/Skeleton';
 
@@ -190,11 +190,11 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
             const orderData = await orderResponse.json();
             console.log('✅ Order created on backend:', orderData);
 
-            if (!orderData.orderId) {
+            if (!orderData.order_id && !orderData.orderId) {
               throw new Error('No order ID returned from server');
             }
 
-            const razorpayOrderId = orderData.orderId;
+            const razorpayOrderId = orderData.order_id || orderData.orderId;
 
             const scriptLoaded = await loadRazorpayScript();
             if (!scriptLoaded || !window.Razorpay) {
@@ -205,7 +205,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
             }
 
             const activeRazorpay = gateways.find(g => g.type === 'razorpay' && g.active);
-            const key = activeRazorpay?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd';
+            const key = orderData.keyId || activeRazorpay?.credentials?.keyId || getRazorpayKeyId();
 
             const options = {
               key,

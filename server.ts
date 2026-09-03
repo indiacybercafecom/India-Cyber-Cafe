@@ -5,7 +5,7 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSync.ts";
+import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSync";
 
 dotenv.config();
 
@@ -204,9 +204,17 @@ async function startServer() {
     try {
       const { amount, currency = 'INR', receipt, notes = {} } = req.body;
 
-      if (!amount || amount <= 0) {
+      if (!Number.isInteger(amount) || amount <= 0) {
         return res.status(400).json({
-          error: "Invalid amount"
+          success: false,
+          error: "Amount must be a positive integer in paise"
+        });
+      }
+
+      if (currency !== 'INR' || (receipt !== undefined && typeof receipt !== 'string') || typeof notes !== 'object' || notes === null || Array.isArray(notes)) {
+        return res.status(400).json({
+          success: false,
+          error: "Invalid order details"
         });
       }
 
@@ -252,6 +260,8 @@ async function startServer() {
 
         res.json({
           success: true,
+          keyId,
+          order_id: orderData.id,
           orderId: orderData.id,
           amount: orderData.amount,
           currency: orderData.currency
@@ -298,7 +308,10 @@ async function startServer() {
         .update(body)
         .digest("hex");
 
-      const isSignatureValid = expectedSignature === razorpay_signature;
+      const expectedSignatureBuffer = Buffer.from(expectedSignature, "utf8");
+      const receivedSignatureBuffer = Buffer.from(razorpay_signature, "utf8");
+      const isSignatureValid = expectedSignatureBuffer.length === receivedSignatureBuffer.length &&
+        crypto.timingSafeEqual(expectedSignatureBuffer, receivedSignatureBuffer);
 
       if (isSignatureValid) {
         console.log(`✅ Payment verified - Order: ${razorpay_order_id}, Payment ID: ${razorpay_payment_id}`);
@@ -387,6 +400,20 @@ async function startServer() {
         error: error.message,
       });
     }
+  });
+
+  app.use('/api', (req, res) => {
+    res.status(404).json({ success: false, error: 'API endpoint not found' });
+  });
+
+  app.use((error: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+    if (req.path.startsWith('/api/')) {
+      return res.status(error.statusCode || 500).json({
+        success: false,
+        error: error.type === 'entity.parse.failed' ? 'Invalid JSON request body' : 'Internal server error'
+      });
+    }
+    next(error);
   });
 
   // Health check endpoint includes sync status

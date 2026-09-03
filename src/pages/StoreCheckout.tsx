@@ -532,11 +532,11 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
           const orderData = await orderResponse.json();
           console.log('✅ Order created on backend:', orderData);
 
-          if (!orderData.orderId) {
+          if (!orderData.order_id && !orderData.orderId) {
             throw new Error('No order ID returned from server');
           }
 
-          const razorpayOrderId = orderData.orderId;
+          const razorpayOrderId = orderData.order_id || orderData.orderId;
 
           const scriptLoaded = await loadRazorpayScript();
           if (!scriptLoaded || !window.Razorpay) {
@@ -547,9 +547,9 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
           }
           
           const options = {
-            key: getRazorpayKeyId(),
-            amount: totalInPaisa,
-            currency: 'INR',
+            key: orderData.keyId || getRazorpayKeyId(),
+            amount: orderData.amount || totalInPaisa,
+            currency: orderData.currency || 'INR',
             order_id: razorpayOrderId,
             name: 'India Cyber Cafe',
             description: `Order ${orderId} - ${product.name}`,
