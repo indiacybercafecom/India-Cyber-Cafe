@@ -5,7 +5,7 @@
     "outDir": "./dist",
     "rootDir": ".",
     "types": ["node"],
-    "allowImportingTsExtensions": true,
+    "allowImportingTsExtensions": false,
     "sourceMap": false,
     "declaration": false
   },

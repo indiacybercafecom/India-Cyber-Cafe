@@ -5,14 +5,17 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
-import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSync.ts";
+import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSync.js";
 
 dotenv.config();
 
 async function startServer() {
   const app = express();
   const PORT = Number(process.env.PORT) || 3000;
-  const DIST_PATH = path.resolve(process.cwd(), 'dist');
+  const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
+    ? process.cwd()
+    : path.resolve(process.cwd(), '..');
+  const DIST_PATH = path.join(APP_ROOT, 'dist');
 
   // Initialize public data on startup (non-blocking)
   // This ensures JSON files exist or are created before the app starts handling requests
@@ -418,7 +421,7 @@ async function startServer() {
 
   // Health check endpoint includes sync status
   app.get("/api/health", (req, res) => {
-    const dataDir = path.join(process.cwd(), 'public/data');
+    const dataDir = path.join(APP_ROOT, 'public/data');
     const hasPublicData = 
       fs.existsSync(path.join(dataDir, 'services.json')) &&
       fs.existsSync(path.join(dataDir, 'products.json')) &&
