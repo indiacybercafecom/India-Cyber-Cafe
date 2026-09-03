@@ -6,6 +6,7 @@ import { ServiceSkeleton } from '../components/Skeleton';
 import { SEO } from '../components/SEO';
 import { CallbackModal } from '../components/CallbackModal';
 import { DotLottieReact, setWasmUrl } from '@lottiefiles/dotlottie-react';
+import type { DotLottie } from '@lottiefiles/dotlottie-react';
 import { secureUrl } from '../utils/secureUrl';
 
 setWasmUrl('/lottie/dotlottie-player.wasm');
@@ -22,6 +23,21 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
   const [isCallbackModalOpen, setIsCallbackModalOpen] = useState(false);
+  const [dotLottie, setDotLottie] = useState<DotLottie | null>(null);
+  const [isAnimationLoading, setIsAnimationLoading] = useState(true);
+
+  useEffect(() => {
+    if (!dotLottie) return;
+
+    const handleAnimationReady = () => setIsAnimationLoading(false);
+    dotLottie.addEventListener('load', handleAnimationReady);
+    dotLottie.addEventListener('loadError', handleAnimationReady);
+
+    return () => {
+      dotLottie.removeEventListener('load', handleAnimationReady);
+      dotLottie.removeEventListener('loadError', handleAnimationReady);
+    };
+  }, [dotLottie]);
 
   // Show callback modal after 2 seconds on mount
   useEffect(() => {
@@ -87,16 +103,18 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
         </div>
         <div className="hidden md:flex items-center justify-center shrink-0 h-[300px] lg:h-[300px]">
           <div className="relative w-full h-full flex items-center justify-center">
-            {/* Animated background circles */}
-            <div className="absolute inset-0 flex items-center justify-center">
-              <div className="absolute w-32 h-32 lg:w-40 lg:h-40 rounded-full border-2 border-primary/20 animate-pulse"></div>
-              <div className="absolute w-24 h-24 lg:w-32 lg:h-32 rounded-full border-2 border-primary/30 animate-spin" style={{animationDuration: '8s'}}></div>
-            </div>
+            {isAnimationLoading && (
+              <div className="absolute inset-0 flex items-center justify-center" aria-hidden="true">
+                <div className="absolute w-32 h-32 lg:w-40 lg:h-40 rounded-full border-2 border-primary/20 animate-pulse"></div>
+                <div className="absolute w-24 h-24 lg:w-32 lg:h-32 rounded-full border-2 border-primary/30 animate-spin" style={{animationDuration: '8s'}}></div>
+              </div>
+            )}
             <DotLottieReact
               src="/hero-animation.lottie"
               style={{ width: '300px', height: '300px' }}
               autoplay
               loop
+              dotLottieRefCallback={setDotLottie}
             />
           </div>
         </div>
