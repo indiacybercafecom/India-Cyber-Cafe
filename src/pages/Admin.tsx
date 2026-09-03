@@ -10,6 +10,18 @@ import { ProductModal } from '../components/ProductModal';
 import { CategoryModal } from '../components/CategoryModal';
 import { OrderManageModal } from '../components/OrderManageModal';
 import { exportDataComprehensive } from '../services/exportService';
+const getEmbeddedTimestamp = (id: string | undefined): number | null => {
+  const match = id?.match(/^ICC(?:\/STORE)?-(\d{2})(\d{2})(\d{4})-(\d{2})(\d{2})(\d{2})-/);
+  if (!match) return null;
+
+  const [, day, month, year, hours, minutes, seconds] = match;
+  return Date.UTC(Number(year), Number(month) - 1, Number(day), Number(hours), Number(minutes), Number(seconds));
+};
+
+const getRecordTimestamp = (id: string | undefined, fallbackDate: string | undefined): number => {
+  const parsedFallback = fallbackDate ? Date.parse(fallbackDate) : 0;
+  return getEmbeddedTimestamp(id) ?? (Number.isNaN(parsedFallback) ? 0 : parsedFallback);
+};
 
 interface AdminProps {
   applications: Application[];
@@ -284,7 +296,7 @@ export function Admin({
     (app.name || '').toLowerCase().includes(searchApps.toLowerCase()) ||
     (app.email || '').toLowerCase().includes(searchApps.toLowerCase()) ||
     (app.serviceName || '').toLowerCase().includes(searchApps.toLowerCase())
-  );
+  ).sort((a, b) => getRecordTimestamp(b.id, b.date) - getRecordTimestamp(a.id, a.date));
 
   const filteredUsers = users
     .filter(u => 
@@ -321,10 +333,7 @@ export function Admin({
       return orderIdMatch || emailMatch;
     })
     .sort((a, b) => {
-      // Sort by creation date - most recent first
-      const dateA = a?.createdAt ? new Date(a.createdAt).getTime() : 0;
-      const dateB = b?.createdAt ? new Date(b.createdAt).getTime() : 0;
-      return dateB - dateA;
+      return getRecordTimestamp(b?.id, b?.createdAt) - getRecordTimestamp(a?.id, a?.createdAt);
     });
 
   return (
