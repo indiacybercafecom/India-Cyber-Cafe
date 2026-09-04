@@ -42,6 +42,7 @@ const Store = lazy(() => import('./pages/Store').then(m => ({ default: m.Store }
 const StoreProduct = lazy(() => import('./pages/StoreProduct').then(m => ({ default: m.StoreProduct })));
 const StoreCheckout = lazy(() => import('./pages/StoreCheckout').then(m => ({ default: m.StoreCheckout })));
 const OrderConfirmation = lazy(() => import('./pages/OrderConfirmation').then(m => ({ default: m.OrderConfirmation })));
+const PriceList = lazy(() => import('./pages/PriceList').then(m => ({ default: m.PriceList })));
 
 // Preload function
 const preloadPages = () => {
@@ -243,6 +244,7 @@ function AppContent() {
             <Route path="/refund-policy" element={<Navigate to="/legal/refund" />} />
             {/* Services - public data only */}
             <Route path="/services" element={<Services services={services} />} />
+            <Route path="/price-list" element={<PriceList services={services} products={products} categories={productCategories} />} />
             <Route path="/services/:serviceId" element={<ServiceDetail services={services} isLoading={servicesLoading} error={servicesError} onRetry={retryServices} />} />
             {/* Apply - services + gateways loaded on demand */}
             <Route

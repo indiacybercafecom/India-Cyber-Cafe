@@ -27,6 +27,13 @@
   </url>
 
   <url>
+    <loc>https://b.indiacybercafe.com/price-list</loc>
+    <lastmod>2026-09-04</lastmod>
+    <changefreq>daily</changefreq>
+    <priority>0.9</priority>
+  </url>
+
+  <url>
     <loc>https://b.indiacybercafe.com/apply</loc>
     <lastmod>2026-08-31</lastmod>
     <changefreq>monthly</changefreq>

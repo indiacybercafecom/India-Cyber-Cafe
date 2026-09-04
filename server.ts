@@ -194,6 +194,7 @@ async function startServer() {
       "/profile",
       "/about",
       "/contact",
+      "/price-list",
       "/legal/terms",
       "/legal/privacy",
       "/legal/refund",

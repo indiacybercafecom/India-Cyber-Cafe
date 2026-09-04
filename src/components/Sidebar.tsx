@@ -14,6 +14,7 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
   const menuItems = [
     { id: 'home', label: 'Home', icon: 'house' },
     { id: 'services', label: 'Services', icon: 'layer-group' },
+    { id: 'price-list', label: 'Price List', icon: 'tag' },
     { id: 'store', label: 'Store', icon: 'shopping-bag' },
     { id: 'track', label: 'My Applications', icon: 'list-check' },
     { id: 'profile', label: 'Edit Profile', icon: 'user-pen' },

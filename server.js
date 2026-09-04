@@ -205,7 +205,7 @@ app.get('/sitemap.xml', async (req, res) => {
     console.error('Error fetching products for sitemap:', error);
   }
 
-  const staticPages = ['', '/services', '/store', '/track', '/profile', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund'];
+  const staticPages = ['', '/services', '/store', '/price-list', '/track', '/profile', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund'];
 
   const slugify = (text) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
 
