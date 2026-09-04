@@ -51,6 +51,7 @@ import {
   AlertTriangle,
   LogIn,
   ShoppingBag,
+  Tag,
   Package,
   Truck,
   Inbox,
@@ -111,6 +112,7 @@ export const Icons = {
   AlertTriangle,
   LogIn,
   ShoppingBag,
+  Tag,
   Package,
   Truck,
   Inbox,
@@ -121,6 +123,10 @@ export const Icons = {
 export function IconRenderer({ name, className }: { name: string; className?: string }) {
   // Map font-awesome names to Lucide icons where possible
   const lowerName = (name || '').toLowerCase();
+
+  if (lowerName.includes('receipt-view-pricing')) {
+    return <img src="/icons/streamline-freehand--receipt-view-pricing.svg" alt="" aria-hidden="true" className={className} />;
+  }
   
   if (lowerName.includes('fingerprint')) return <Icons.Fingerprint className={className} />;
   if (lowerName.includes('id-card')) return <Icons.IdCard className={className} />;
@@ -171,6 +177,7 @@ export function IconRenderer({ name, className }: { name: string; className?: st
   if (lowerName.includes('circle-exclamation') || lowerName.includes('alert-triangle')) return <Icons.AlertTriangle className={className} />;
   if (lowerName.includes('right-to-bracket') || lowerName.includes('log-in')) return <Icons.LogIn className={className} />;
   if (lowerName.includes('shopping-bag') || lowerName.includes('shopping-cart')) return <Icons.ShoppingBag className={className} />;
+  if (lowerName.includes('tag') || lowerName.includes('price')) return <Icons.Tag className={className} />;
   if (lowerName.includes('package')) return <Icons.Package className={className} />;
   if (lowerName.includes('truck') || lowerName.includes('delivery')) return <Icons.Truck className={className} />;
   if (lowerName.includes('inbox')) return <Icons.Inbox className={className} />;

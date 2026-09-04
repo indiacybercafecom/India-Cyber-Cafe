@@ -66,14 +66,6 @@ export function Footer() {
               </a>
             </li>
           </ul>
-          <div className="pt-4">
-            <img 
-              src="https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" 
-              alt="ICC" 
-              className="h-10 opacity-30 grayscale brightness-0 invert" 
-              referrerPolicy="no-referrer"
-            />
-          </div>
         </div>
       </div>
 
