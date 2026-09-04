@@ -34,6 +34,7 @@ app.use((req, res, next) => {
   res.setHeader(
     'Content-Security-Policy',
     "default-src 'self'; " +
+    "frame-ancestors *; " +
     "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' " +
       "https://apis.google.com " +
       "https://www.googletagmanager.com " +
@@ -72,7 +73,6 @@ app.use((req, res, next) => {
       "https://accounts.google.com " +
       "https://*.firebaseio.com"
   );
-  res.setHeader('X-Frame-Options', 'SAMEORIGIN');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');

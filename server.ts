@@ -33,6 +33,7 @@ async function startServer() {
     res.setHeader(
       "Content-Security-Policy",
       "default-src 'self'; " +
+      "frame-ancestors *; " +
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' " +
           "https://apis.google.com " +
           "https://www.googletagmanager.com " +
