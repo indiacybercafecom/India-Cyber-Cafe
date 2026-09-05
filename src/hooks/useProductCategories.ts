@@ -137,20 +137,19 @@ export function useProductCategories() {
   };
 
   const triggerJsonSync = async () => {
-    try {
-      console.log('[useProductCategories] Triggering JSON sync...');
-      const response = await fetch('/api/sync-data/categories', {
-        method: 'POST',
-      });
-      if (response.ok) {
-        console.log('[useProductCategories] JSON sync completed');
-      } else {
-        console.warn('[useProductCategories] JSON sync returned non-ok status:', response.status);
-      }
-    } catch (err) {
-      console.error('[useProductCategories] Error triggering JSON sync:', err);
-      // Non-fatal: data is still updated in local state and cache
+    console.log('[useProductCategories] Triggering JSON sync...');
+    const response = await fetch('/api/sync-data/categories', {
+      method: 'POST',
+    });
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.success) {
+      const message = result?.error || result?.message || `JSON sync failed (${response.status})`;
+      console.error('[useProductCategories] JSON sync failed:', message);
+      throw new Error(message);
     }
+
+    console.log('[useProductCategories] JSON sync completed');
   };
 
   const addProductCategory = async (

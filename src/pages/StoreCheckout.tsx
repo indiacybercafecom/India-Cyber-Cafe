@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth, rtdb } from '../firebase';
@@ -59,6 +59,20 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const paymentProcessingRef = useRef(false);
+
+  useEffect(() => {
+    if (!paymentProcessing) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [paymentProcessing]);
   
   // Guest checkout states
   const [emailChecked, setEmailChecked] = useState(false); // Track if email has been checked
@@ -321,6 +335,8 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
+    if (submitting || paymentProcessingRef.current) return;
+
     if (!validateForm()) {
       showToast('Please fix the errors', 'error');
       return;
@@ -559,6 +575,10 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
               contact: sanitizedAddress.phone
             },
             handler: async (response: any) => {
+              if (paymentProcessingRef.current) return;
+              paymentProcessingRef.current = true;
+              setPaymentProcessing(true);
+
               try {
                 console.log('💳 Payment handler - received response:', response);
                 
@@ -669,12 +689,16 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
               } catch (error: any) {
                 console.error('❌ Payment verification error:', error);
                 showToast(`❌ Payment verification failed: ${error.message}`, 'error');
+                paymentProcessingRef.current = false;
+                setPaymentProcessing(false);
                 setSubmitting(false);
               }
             },
             modal: {
               ondismiss: () => {
                 console.log('⚠️ Payment modal closed by user');
+                paymentProcessingRef.current = false;
+                setPaymentProcessing(false);
                 setSubmitting(false);
                 showToast('💳 Payment cancelled. You can try again whenever you\'re ready.', 'error');
               }
@@ -687,6 +711,8 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
           rzp.open();
         } catch (error: any) {
           console.error('❌ Razorpay payment error:', error);
+          paymentProcessingRef.current = false;
+          setPaymentProcessing(false);
           showToast('❌ Failed to initiate payment: ' + (error.message || 'Please check your connection and try again'), 'error');
           setSubmitting(false);
         }
@@ -706,6 +732,14 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
 
   return (
     <div className="space-y-6 sm:space-y-10">
+      {paymentProcessing && (
+        <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm" role="alert" aria-live="assertive">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl sm:p-8">
+            <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-primary" />
+            <p className="text-base font-semibold leading-relaxed text-navy">Payment successful. Please wait while we confirm your payment and place your order. Do not refresh or go back.</p>
+          </div>
+        </div>
+      )}
       <SEO
         title={`Checkout - ${product.name} | Secure Payment - India Cyber Cafe`}
         description={`Secure checkout for ${product.name}. Total: ₹${total}. Fast delivery, custom printing, multiple payment options.`}
@@ -1151,7 +1185,7 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
             {/* Submit Button */}
             <button
               type="submit"
-              disabled={submitting || uploading}
+              disabled={submitting || uploading || paymentProcessing}
               className="w-full btn-primary py-2.5 sm:py-3 text-sm sm:text-base font-bold disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {uploading ? 'Uploading...' : submitting ? 'Processing...' : paymentMethod === 'cod' ? '🚚 Place COD Order' : '💳 Pay Now'}

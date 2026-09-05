@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Service, UserProfile, SubService, Application, PaymentGateway } from '../types';
 import { IconRenderer } from '../components/Icons';
@@ -33,7 +33,21 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [files, setFiles] = useState<Record<string, File>>({});
   const [loading, setLoading] = useState(false);
+  const [paymentProcessing, setPaymentProcessing] = useState(false);
+  const paymentProcessingRef = useRef(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+
+  useEffect(() => {
+    if (!paymentProcessing) return;
+
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [paymentProcessing]);
 
   const slugify = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
 
@@ -85,6 +99,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (loading || paymentProcessingRef.current) return;
     if (service.subservices.length > 0 && !selectedSubService) {
       showToast('Please select a sub-service', 'error');
       return;
@@ -215,6 +230,10 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
               name: 'India Cyber Cafe',
               description: `Payment for ${service.name}`,
               handler: async (response: any) => {
+                if (paymentProcessingRef.current) return;
+                paymentProcessingRef.current = true;
+                setPaymentProcessing(true);
+
                 try {
                   // Verify payment with backend using Razorpay signature
                   const verificationResult = await verifyRazorpayPayment(
@@ -235,6 +254,8 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                 await submitApp(application);
               } catch (error: any) {
                 console.error('Payment verification error:', error);
+                  paymentProcessingRef.current = false;
+                  setPaymentProcessing(false);
                 showToast(`Payment verification failed: ${error.message}`, 'error');
               }
             },
@@ -246,6 +267,8 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
               modal: {
                 ondismiss: () => {
                   console.log('⚠️ Payment modal closed by user');
+                  paymentProcessingRef.current = false;
+                  setPaymentProcessing(false);
                   setLoading(false);
                   showToast('💳 Payment cancelled. You can try again whenever you\'re ready.', 'error');
                 }
@@ -258,6 +281,8 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
             rzp.open();
           } catch (error: any) {
             console.error('❌ Razorpay payment error:', error);
+            paymentProcessingRef.current = false;
+            setPaymentProcessing(false);
             showToast(`❌ Failed to initiate payment: ${error.message}`, 'error');
             setLoading(false);
           }
@@ -290,6 +315,14 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
 
   return (
     <div className="w-full min-h-screen px-2 sm:px-4 py-4 sm:py-8 flex flex-col">
+      {paymentProcessing && (
+        <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm" role="alert" aria-live="assertive">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl sm:p-8">
+            <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-primary" />
+            <p className="text-base font-semibold leading-relaxed text-navy">Payment successful. Please wait while we confirm your payment and place your order. Do not refresh or go back.</p>
+          </div>
+        </div>
+      )}
       <div className="flex-1 max-w-2xl mx-auto w-full bg-white rounded-2xl sm:rounded-3xl shadow-xl overflow-hidden">
         <div className="p-3 sm:p-6 md:p-10 space-y-4 sm:space-y-6 md:space-y-8 max-h-screen overflow-y-auto">
           <SEO 
@@ -450,7 +483,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
 
         <button 
           type="submit" 
-          disabled={loading}
+          disabled={loading || paymentProcessing}
           className="btn-primary w-full py-2.5 sm:py-3 md:py-4 text-xs sm:text-sm md:text-base mt-4 relative overflow-hidden"
         >
           {loading ? (

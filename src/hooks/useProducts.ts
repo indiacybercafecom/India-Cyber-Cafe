@@ -28,6 +28,7 @@ export function useProducts() {
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
     let isComponentMounted = true;
+    let loadedFromJson = false;
 
     const loadProducts = async () => {
       try {
@@ -49,8 +50,8 @@ export function useProducts() {
                 setHasJsonData(true);
                 setLoading(false);
                 setError(null);
+                loadedFromJson = true;
               }
-              return; // Successfully loaded from JSON, no need for Firebase
             }
           }
         } catch (jsonError) {
@@ -63,7 +64,7 @@ export function useProducts() {
         const now = Date.now();
         const SYNC_THRESHOLD = 5 * 60 * 1000; // 5 minutes
 
-        if (retryCount > 0 || now - lastSync > SYNC_THRESHOLD) {
+        if (loadedFromJson || retryCount > 0 || now - lastSync > SYNC_THRESHOLD) {
           console.log('[useProducts] Loading from Firebase...');
           const productsRef = ref(rtdb, 'products');
           unsubscribe = onValue(
@@ -137,20 +138,19 @@ export function useProducts() {
   };
 
   const triggerJsonSync = async () => {
-    try {
-      console.log('[useProducts] Triggering JSON sync...');
-      const response = await fetch('/api/sync-data/products', {
-        method: 'POST',
-      });
-      if (response.ok) {
-        console.log('[useProducts] JSON sync completed');
-      } else {
-        console.warn('[useProducts] JSON sync returned non-ok status:', response.status);
-      }
-    } catch (err) {
-      console.error('[useProducts] Error triggering JSON sync:', err);
-      // Non-fatal: data is still updated in local state and cache
+    console.log('[useProducts] Triggering JSON sync...');
+    const response = await fetch('/api/sync-data/products', {
+      method: 'POST',
+    });
+    const result = await response.json().catch(() => null);
+
+    if (!response.ok || !result?.success) {
+      const message = result?.error || result?.message || `JSON sync failed (${response.status})`;
+      console.error('[useProducts] JSON sync failed:', message);
+      throw new Error(message);
     }
+
+    console.log('[useProducts] JSON sync completed');
   };
 
   const addProduct = async (product: Omit<Product, 'id'>) => {

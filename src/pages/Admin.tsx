@@ -41,9 +41,9 @@ interface AdminProps {
   onAddGateway: (gateway: PaymentGateway) => void;
   onUpdateGateway: (id: string, gateway: Partial<PaymentGateway>) => void;
   onDeleteGateway: (id: string) => Promise<void>;
-  onEditProduct?: (id: string, product: any) => void;
+  onEditProduct?: (id: string, product: any) => Promise<void>;
   onAddProduct?: () => void;
-  onDeleteProduct?: (id: string) => void;
+  onDeleteProduct?: (id: string) => Promise<void>;
   onViewOrder?: (order: Order) => void;
   onUpdateOrder?: (id: string, data: Partial<Order>) => Promise<void>;
   onDeleteOrder?: (id: string) => Promise<void>;
@@ -167,7 +167,7 @@ export function Admin({
       onConfirm: async () => {
         try {
           if (onDeleteProduct) {
-            onDeleteProduct(id);
+            await onDeleteProduct(id);
             showToast('Product deleted successfully');
           }
         } catch (error: any) {

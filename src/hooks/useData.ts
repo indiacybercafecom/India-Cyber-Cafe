@@ -13,7 +13,6 @@ import { rtdb } from '../firebase';
 import { Service, Application, UserProfile, PaymentGateway, Product, ProductCategory, Order, ProductReview } from '../types';
 import { cacheManager } from '../utils/cacheManager';
 import { syncManager, mergeIncrementalData } from '../utils/syncManager';
-import { generateSlug } from '../utils/slugGenerator';
 
 // Pagination limits for large datasets
 const PAGINATION_LIMITS = {
@@ -401,90 +400,6 @@ export function useData() {
     return await remove(ref(rtdb, `gateways/${id}`));
   };
 
-  // ========== STORE PRODUCTS CRUD ==========
-  const addProduct = async (product: Omit<Product, 'id'>) => {
-    // Generate slug-based ID from product name for better SEO
-    let productId = generateSlug(product.name);
-    
-    // Append timestamp if product with this slug already exists
-    const existingProduct = products.find(p => p.id === productId);
-    if (existingProduct) {
-      const timestamp = Date.now().toString().slice(-6);
-      productId = `${productId}-${timestamp}`;
-    }
-    
-    await set(ref(rtdb, `products/${productId}`), { ...product, id: productId });
-    
-    // Update local state immediately so UI reflects changes
-    const newProduct = { ...product, id: productId } as Product;
-    const updatedProducts = [...products, newProduct];
-    setProducts(updatedProducts);
-    cacheManager.set('products', updatedProducts);
-    syncManager.updateSync('products');
-  };
-
-  const updateProduct = async (id: string, data: Partial<Product>) => {
-    await update(ref(rtdb, `products/${id}`), data);
-    
-    // Update local state immediately
-    const updatedProducts = products.map(p => p.id === id ? { ...p, ...data } : p);
-    setProducts(updatedProducts);
-    cacheManager.set('products', updatedProducts);
-    syncManager.updateSync('products');
-  };
-
-  const deleteProduct = async (id: string) => {
-    await remove(ref(rtdb, `products/${id}`));
-    
-    // Update local state immediately
-    const updatedProducts = products.filter(p => p.id !== id);
-    setProducts(updatedProducts);
-    cacheManager.set('products', updatedProducts);
-    syncManager.updateSync('products');
-  };
-
-  // ========== PRODUCT CATEGORIES CRUD ==========
-  const addProductCategory = async (category: Omit<ProductCategory, 'id'>) => {
-    // Generate slug-based ID from category name for better SEO
-    let categoryId = generateSlug(category.name);
-    
-    // Append timestamp if category with this slug already exists
-    const existingCategory = productCategories.find(c => c.id === categoryId);
-    if (existingCategory) {
-      const timestamp = Date.now().toString().slice(-6);
-      categoryId = `${categoryId}-${timestamp}`;
-    }
-    
-    await set(ref(rtdb, `productCategories/${categoryId}`), { ...category, id: categoryId });
-    
-    // Update local state immediately
-    const newCategory = { ...category, id: categoryId } as ProductCategory;
-    const updatedCategories = [...productCategories, newCategory];
-    setProductCategories(updatedCategories);
-    cacheManager.set('productCategories', updatedCategories);
-    syncManager.updateSync('productCategories');
-  };
-
-  const updateProductCategory = async (id: string, data: Partial<ProductCategory>) => {
-    await update(ref(rtdb, `productCategories/${id}`), data);
-    
-    // Update local state immediately
-    const updatedCategories = productCategories.map(c => c.id === id ? { ...c, ...data } : c);
-    setProductCategories(updatedCategories);
-    cacheManager.set('productCategories', updatedCategories);
-    syncManager.updateSync('productCategories');
-  };
-
-  const deleteProductCategory = async (id: string) => {
-    await remove(ref(rtdb, `productCategories/${id}`));
-    
-    // Update local state immediately
-    const updatedCategories = productCategories.filter(c => c.id !== id);
-    setProductCategories(updatedCategories);
-    cacheManager.set('productCategories', updatedCategories);
-    syncManager.updateSync('productCategories');
-  };
-
   // ========== ORDERS CRUD ==========
   const addOrder = async (order: Omit<Order, 'id'> | Order) => {
     // Validate that uid is not undefined (Firebase doesn't allow undefined values)
@@ -584,12 +499,6 @@ export function useData() {
     addGateway,
     updateGateway,
     deleteGateway,
-    addProduct,
-    updateProduct,
-    deleteProduct,
-    addProductCategory,
-    updateProductCategory,
-    deleteProductCategory,
     addOrder,
     updateOrder,
     deleteOrder,
