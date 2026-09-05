@@ -7,7 +7,7 @@ import { showToast } from '../components/Toast';
 import { rtdb } from '../firebase';
 import { ref as dbRef, set } from 'firebase/database';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
-import { uploadFile } from '../services/uploadService';
+import { MAX_SERVICE_FILE_SIZE, uploadFile } from '../services/uploadService';
 import { SEO } from '../components/SEO';
 import { getRazorpayKeyId, loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
 import { sanitizeFormData, sanitizeUserProfile, sanitizeEmail } from '../utils/sanitizer';
@@ -31,7 +31,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
   const [selectedSubService, setSelectedSubService] = useState<SubService | null>(null);
   const [subServiceNotFound, setSubServiceNotFound] = useState(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
-  const [files, setFiles] = useState<Record<string, File>>({});
+  const [files, setFiles] = useState<Record<string, File[]>>({});
   const [loading, setLoading] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const paymentProcessingRef = useRef(false);
@@ -93,8 +93,56 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
     setFormData(prev => ({ ...prev, [label]: value }));
   };
 
-  const handleFileChange = (label: string, file: File) => {
-    setFiles(prev => ({ ...prev, [label]: file }));
+  const isAcceptedFile = (file: File, accept?: string) => {
+    if (!accept?.trim()) return true;
+
+    const fileName = file.name.toLowerCase();
+    const fileType = file.type.toLowerCase();
+    return accept.split(',').some(value => {
+      const rule = value.trim().toLowerCase();
+      if (!rule) return false;
+      if (rule.startsWith('.')) return fileName.endsWith(rule);
+      if (rule.endsWith('/*')) return fileType.startsWith(`${rule.slice(0, -1)}`);
+      return fileType === rule;
+    });
+  };
+
+  const handleFileChange = (label: string, selectedFiles: FileList | null, multiple: boolean, accept?: string) => {
+    const selected = Array.from(selectedFiles || []);
+    const validFiles = selected.filter(file => file.size <= MAX_SERVICE_FILE_SIZE);
+    const oversizedFiles = selected.filter(file => file.size > MAX_SERVICE_FILE_SIZE);
+    const invalidFiles = validFiles.filter(file => !isAcceptedFile(file, accept));
+    const acceptedFiles = validFiles.filter(file => isAcceptedFile(file, accept));
+    if (oversizedFiles.length > 0) {
+      showToast(`File "${oversizedFiles[0].name}" exceeds the 5 MB limit.`, 'error');
+    }
+    if (invalidFiles.length > 0) {
+      showToast(`File "${invalidFiles[0].name}" is not an accepted file type.`, 'error');
+    }
+
+    setFiles(prev => {
+      if (multiple) {
+        return { ...prev, [label]: [...(prev[label] || []), ...acceptedFiles] };
+      }
+      return acceptedFiles.length > 0 ? { ...prev, [label]: acceptedFiles.slice(0, 1) } : prev;
+    });
+  };
+
+  const removeFile = (label: string, fileIndex: number, inputId: string) => {
+    setFiles(prev => {
+      const remaining = (prev[label] || []).filter((_, index) => index !== fileIndex);
+      const next = { ...prev };
+      if (remaining.length > 0) next[label] = remaining;
+      else delete next[label];
+      return next;
+    });
+    const input = document.getElementById(inputId) as HTMLInputElement | null;
+    if (input) input.value = '';
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes < 1024 * 1024) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
+    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -105,19 +153,43 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
       return;
     }
 
+    const oversizedFile = Object.values(files).flat().find(file => file.size > MAX_SERVICE_FILE_SIZE);
+    if (oversizedFile) {
+      showToast(`File "${oversizedFile.name}" exceeds the 5 MB limit.`, 'error');
+      return;
+    }
+
+    const activeFields = selectedSubService?.fields && selectedSubService.fields.length > 0
+      ? selectedSubService.fields
+      : service.fields;
+    const missingRequiredFile = activeFields.find(field => (
+      field.type === 'file' && field.required !== false && !(files[field.label]?.length)
+    ));
+    if (missingRequiredFile) {
+      showToast(`${missingRequiredFile.label} is required.`, 'error');
+      return;
+    }
+
     setLoading(true);
     try {
-      const uploadedFiles: Record<string, string> = {};
+      const uploadedFiles: Record<string, string | string[]> = {};
       
       // Upload files to Firebase Storage
-      const fileEntries = Object.entries(files) as [string, File][];
-      setUploadProgress({ current: 0, total: fileEntries.length });
+      const fileEntries = Object.entries(files) as [string, File[]][];
+      setUploadProgress({ current: 0, total: fileEntries.reduce((total, [, fieldFiles]) => total + fieldFiles.length, 0) });
       
       for (let i = 0; i < fileEntries.length; i++) {
-        const [label, file] = fileEntries[i];
-        const url = await uploadFile(file, 'applications');
-        uploadedFiles[label] = url;
-        setUploadProgress({ current: i + 1, total: fileEntries.length });
+        const [label, fieldFiles] = fileEntries[i];
+        const urls: string[] = [];
+        for (const file of fieldFiles) {
+          urls.push(await uploadFile(file, 'applications', MAX_SERVICE_FILE_SIZE));
+          setUploadProgress(prev => ({ current: prev.current + 1, total: prev.total }));
+        }
+        const activeFields = selectedSubService?.fields && selectedSubService.fields.length > 0
+          ? selectedSubService.fields
+          : service.fields;
+        const field = activeFields.find(activeField => activeField.label === label);
+        uploadedFiles[label] = field?.multiple === true ? urls : urls[0];
       }
 
       // Generate ID: ICC-DDMMYYYY-HHMMSS-RRRR
@@ -429,23 +501,70 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                     type="file" 
                     required={field.required !== false}
                     accept={field.accept}
+                    multiple={field.multiple === true}
                     className="hidden" 
                     id={`file-${i}`}
-                    onChange={e => e.target.files && handleFileChange(field.label, e.target.files[0])}
+                    onChange={e => handleFileChange(field.label, e.target.files, field.multiple === true, field.accept)}
                   />
-                  <label 
-                    htmlFor={`file-${i}`}
-                    className="w-full flex flex-col items-center justify-center gap-1 p-3 sm:p-4 md:p-5 border-2 border-dashed border-slate-200 rounded-lg sm:rounded-xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all overflow-hidden"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#ff841b" className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 shrink-0">
+                  <div className={field.multiple === true ? 'space-y-2' : ''}>
+                    <label
+                      htmlFor={`file-${i}`}
+                      className="w-full flex flex-col items-center justify-center gap-1 p-3 sm:p-4 md:p-5 border-2 border-dashed border-slate-200 rounded-lg sm:rounded-xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all overflow-hidden"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="#ff841b" className="w-4 h-4 sm:w-5 sm:h-5 md:w-6 md:h-6 shrink-0">
                       <path d="M15.26 22.2503H8.73998C3.82998 22.2503 1.72998 20.1503 1.72998 15.2403V15.1103C1.72998 10.6703 3.47998 8.53027 7.39998 8.16027C7.79998 8.13027 8.17998 8.43027 8.21998 8.84027C8.25998 9.25027 7.95998 9.62027 7.53998 9.66027C4.39998 9.95027 3.22998 11.4303 3.22998 15.1203V15.2503C3.22998 19.3203 4.66998 20.7603 8.73998 20.7603H15.26C19.33 20.7603 20.77 19.3203 20.77 15.2503V15.1203C20.77 11.4103 19.58 9.93027 16.38 9.66027C15.97 9.62027 15.66 9.26027 15.7 8.85027C15.74 8.44027 16.09 8.13027 16.51 8.17027C20.49 8.51027 22.27 10.6603 22.27 15.1303V15.2603C22.27 20.1503 20.17 22.2503 15.26 22.2503Z" fill="#ff841b"/>
                       <path d="M12 15.7501C11.59 15.7501 11.25 15.4101 11.25 15.0001V3.62012C11.25 3.21012 11.59 2.87012 12 2.87012C12.41 2.87012 12.75 3.21012 12.75 3.62012V15.0001C12.75 15.4101 12.41 15.7501 12 15.7501Z" fill="#ff841b"/>
                       <path d="M15.3501 6.60043C15.1601 6.60043 14.9701 6.53043 14.8201 6.38043L12.0001 3.56043L9.18009 6.38043C8.89009 6.67043 8.41009 6.67043 8.12009 6.38043C7.83009 6.09043 7.83009 5.61043 8.12009 5.32043L11.4701 1.97043C11.7601 1.68043 12.2401 1.68043 12.5301 1.97043L15.8801 5.32043C16.1701 5.61043 16.1701 6.09043 15.8801 6.38043C15.7401 6.53043 15.5401 6.60043 15.3501 6.60043Z" fill="#ff841b"/>
-                    </svg>
-                    <span className="text-[10px] sm:text-xs md:text-sm text-slate-500 font-medium text-center line-clamp-2 px-1 max-w-full">
-                      {files[field.label] ? files[field.label].name.substring(0, 20) + (files[field.label].name.length > 20 ? '...' : '') : (Object.prototype.hasOwnProperty.call(field, 'placeholder') ? field.placeholder : 'Click to upload')}
-                    </span>
-                  </label>
+                      </svg>
+                      <span className="text-[10px] sm:text-xs md:text-sm text-slate-500 font-medium text-center line-clamp-2 px-1 max-w-full">
+                        {files[field.label]?.length
+                          ? field.multiple === true ? `${files[field.label].length} file(s) selected` : files[field.label][0].name.substring(0, 20) + (files[field.label][0].name.length > 20 ? '...' : '')
+                          : (Object.prototype.hasOwnProperty.call(field, 'placeholder') ? field.placeholder : 'Click to upload')}
+                      </span>
+                    </label>
+                    {field.multiple === true && files[field.label]?.length > 0 && (
+                      <div className="space-y-1">
+                        {files[field.label].map((file, fileIndex) => (
+                          <div key={`${file.name}-${file.lastModified}-${fileIndex}`} className="flex items-center gap-2 p-2 bg-slate-50 rounded-lg border border-slate-200 text-xs text-slate-500 min-w-0">
+                            <span className="truncate flex-1" title={file.name}>{file.name}</span>
+                            <span className="shrink-0 text-slate-400">{formatFileSize(file.size)}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeFile(field.label, fileIndex, `file-${i}`)}
+                              className="text-red-500 hover:text-red-700 font-bold shrink-0 px-1"
+                              aria-label={`Remove ${file.name}`}
+                            >
+                              X
+                            </button>
+                          </div>
+                        ))}
+                        {field.multiple === true && <div className="flex items-center gap-3">
+                          <button
+                            type="button"
+                            onClick={() => document.getElementById(`file-${i}`)?.click()}
+                            className="text-primary font-bold hover:underline text-xs"
+                          >
+                            Add More Files
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setFiles(prev => {
+                                const next = { ...prev };
+                                delete next[field.label];
+                                return next;
+                              });
+                              const input = document.getElementById(`file-${i}`) as HTMLInputElement | null;
+                              if (input) input.value = '';
+                            }}
+                            className="text-slate-500 font-bold hover:underline text-xs"
+                          >
+                            Clear All
+                          </button>
+                        </div>}
+                      </div>
+                    )}
+                  </div>
                 </div>
               ) : field.type === 'textarea' ? (
                 <textarea 

@@ -1,8 +1,14 @@
 import { storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
-export async function uploadFile(file: File, category: string = 'general'): Promise<string> {
+export const MAX_SERVICE_FILE_SIZE = 5 * 1024 * 1024;
+
+export async function uploadFile(file: File, category: string = 'general', maxSizeBytes?: number): Promise<string> {
   try {
+    if (maxSizeBytes !== undefined && file.size > maxSizeBytes) {
+      throw new Error(`File "${file.name}" exceeds the ${Math.round(maxSizeBytes / (1024 * 1024))} MB limit.`);
+    }
+
     // Generate a unique filename to prevent overwriting and maintain organization
     const randomString = Math.random().toString(36).substring(2, 14);
     const timestamp = Date.now();

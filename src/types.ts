@@ -20,6 +20,7 @@ export interface ServiceField {
   placeholder?: string;
   help_text?: string;
   accept?: string;
+  multiple?: boolean;
 }
 
 export interface SubService {

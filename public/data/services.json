@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-05T04:32:47.920Z",
+  "generatedAt": "2026-09-05T14:33:09.251Z",
   "services": [
     {
       "id": "aadhaar-ucl-opretor",
@@ -440,6 +440,185 @@
           "imageType": "url",
           "name": "GST Return Filing",
           "originalCharge": 499,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        }
+      ],
+      "css": ""
+    },
+    {
+      "id": "pan-card",
+      "name": "PAN Card",
+      "icon": "https://indiacybercafe.com/wp-content/uploads/2026/09/pan-card.png",
+      "iconType": "url",
+      "description": "Apply for PAN Card online with easy assistance. Get help for New PAN Card application, PAN Card Correction/Change, PAN Card Reprint and other PAN card services through India Cyber Cafe.",
+      "fields": [
+        {
+          "label": "Mobile Number",
+          "type": "phone"
+        }
+      ],
+      "subservices": [
+        {
+          "charge": 199,
+          "fields": [
+            {
+              "label": "Mobile Number",
+              "name": "mobile_number",
+              "required": true,
+              "type": "phone"
+            },
+            {
+              "accept": "image/*,.pdf",
+              "label": "Aadhaar Card Front",
+              "name": "aadhaar_front",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/*,.pdf",
+              "label": "Aadhaar Card Back",
+              "name": "aadhaar_back",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/*,.pdf",
+              "help_text": "Aadhaar Card is not accepted as Date of Birth proof.",
+              "label": "Date of Birth Proof",
+              "name": "date_of_birth_proof",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/*",
+              "label": "Passport Size Photo",
+              "name": "photo",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/*",
+              "label": "Signature",
+              "name": "signature",
+              "required": true,
+              "type": "file"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/new-pan-card.png",
+          "imageType": "url",
+          "name": "Apply New PAN Card",
+          "originalCharge": 299,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 199,
+          "fields": [
+            {
+              "label": "Mobile Number",
+              "name": "mobile_number",
+              "required": true,
+              "type": "phone"
+            },
+            {
+              "accept": "image/*,.pdf",
+              "label": "Old PAN Card",
+              "name": "old_pan_card",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/*,.pdf",
+              "label": "Aadhaar Card Front",
+              "name": "aadhaar_front",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/*,.pdf",
+              "label": "Aadhaar Card Back",
+              "name": "aadhaar_back",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/*,.pdf",
+              "help_text": "Aadhaar Card is not accepted as Date of Birth proof.",
+              "label": "Date of Birth Proof",
+              "name": "date_of_birth_proof",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/*",
+              "label": "Passport Size Photo",
+              "name": "photo",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/*",
+              "label": "Signature",
+              "name": "signature",
+              "required": true,
+              "type": "file"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/correction-pan-card.png",
+          "imageType": "url",
+          "name": "PAN Card Correction / Change",
+          "originalCharge": 299,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 79,
+          "fields": [
+            {
+              "help_text": "Enter your 12-digit Aadhaar number.",
+              "label": "Aadhaar Number",
+              "name": "aadhaar_number",
+              "placeholder": "Enter 12-digit Aadhaar Number",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "help_text": "Re-enter Aadhaar number for confirmation.",
+              "label": "Confirm Aadhaar Number",
+              "name": "confirm_aadhaar_number",
+              "placeholder": "Re-enter 12-digit Aadhaar Number",
+              "required": false,
+              "type": "text"
+            },
+            {
+              "accept": "image/*,.pdf",
+              "help_text": "Upload one Aadhaar Card file. Maximum size: 5 MB.",
+              "label": "Aadhaar Card",
+              "multiple": false,
+              "name": "aadhaar_card",
+              "placeholder": "Upload Aadhaar Card",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/*,.pdf",
+              "help_text": "Upload multiple Aadhaar Card files if required. Maximum size: 5 MB per file.",
+              "label": "Aadhaar Card Documents",
+              "multiple": true,
+              "name": "aadhaar_documents",
+              "placeholder": "Upload Aadhaar Card Documents",
+              "required": false,
+              "type": "file"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/aadhaar-to-pan-number.png",
+          "imageType": "url",
+          "name": "Aadhaar to Pan Number Find",
+          "originalCharge": 199,
           "paymentMethods": [
             "razorpay"
           ]
