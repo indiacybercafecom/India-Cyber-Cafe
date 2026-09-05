@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-02T03:34:54.475Z",
+  "generatedAt": "2026-09-05T04:34:20.796Z",
   "categories": [
     {
       "id": "devices",
@@ -18,7 +18,7 @@
     },
     {
       "id": "shirts",
-      "name": "shirts",
+      "name": "Shirts",
       "description": "Buy Shirts",
       "icon": "shopping-bag",
       "order": 0

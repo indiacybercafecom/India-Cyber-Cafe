@@ -28,6 +28,7 @@ export function useProductCategories() {
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
     let isComponentMounted = true;
+    let loadedFromJson = false;
 
     const loadCategories = async () => {
       try {
@@ -49,8 +50,8 @@ export function useProductCategories() {
                 setHasJsonData(true);
                 setLoading(false);
                 setError(null);
+                loadedFromJson = true;
               }
-              return; // Successfully loaded from JSON, no need for Firebase
             }
           }
         } catch (jsonError) {
@@ -63,7 +64,7 @@ export function useProductCategories() {
         const now = Date.now();
         const SYNC_THRESHOLD = 5 * 60 * 1000; // 5 minutes
 
-        if (retryCount > 0 || now - lastSync > SYNC_THRESHOLD) {
+        if (loadedFromJson || retryCount > 0 || now - lastSync > SYNC_THRESHOLD) {
           console.log('[useProductCategories] Loading from Firebase...');
           const categoriesRef = ref(rtdb, 'productCategories');
           unsubscribe = onValue(

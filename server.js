@@ -5,6 +5,7 @@ import path from 'path';
 import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
+import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from './src/server/dataSyncRuntime.js';
 
 // Load environment variables
 dotenv.config();
@@ -22,6 +23,10 @@ console.log('PORT:', PORT);
 console.log('DIST_PATH:', DIST_PATH);
 
 const app = express();
+
+initializePublicDataOnStartup().catch(error => {
+  console.error('[DATA SYNC] Startup initialization error:', error);
+});
 
 // Trust proxy for correct protocol and host detection behind proxies
 app.set('trust proxy', true);
@@ -390,19 +395,24 @@ app.post('/api/verify-razorpay-payment', (req, res) => {
 });
 
 // ============================================================================
-// DATA SYNC ROUTES (Stub for production - can be implemented if needed)
+// DATA SYNC ROUTES
 // ============================================================================
 
-app.post('/api/sync-data', (req, res) => {
-  console.log('[DATA SYNC] Manual sync triggered from API');
-  res.json({
-    success: true,
-    message: 'Data synchronization completed',
-    results: {}
-  });
+app.post('/api/sync-data', async (req, res) => {
+  try {
+    console.log('[DATA SYNC] Manual sync triggered from API');
+    const result = await syncAllPublicJson();
+    if (result.success) {
+      return res.json({ success: true, message: 'Data synchronization completed', results: result.results });
+    }
+    return res.status(202).json({ success: false, message: 'Synchronization completed with errors', results: result.results });
+  } catch (error) {
+    console.error('[DATA SYNC] Error in sync endpoint:', error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
 });
 
-app.post('/api/sync-data/:type', (req, res) => {
+app.post('/api/sync-data/:type', async (req, res) => {
   const { type } = req.params;
 
   if (!['services', 'products', 'categories'].includes(type)) {
@@ -413,11 +423,16 @@ app.post('/api/sync-data/:type', (req, res) => {
   }
 
   console.log(`[DATA SYNC] Sync triggered for type: ${type}`);
-  res.json({
-    success: true,
-    message: `${type} synchronized`,
-    result: {}
-  });
+  try {
+    const result = await syncDataType(type);
+    if (result.success) {
+      return res.json({ success: true, message: `${type} synchronized`, result });
+    }
+    return res.status(202).json({ success: false, message: `Failed to sync ${type}`, result });
+  } catch (error) {
+    console.error(`[DATA SYNC] Error syncing ${type}:`, error);
+    return res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // API 404 handler
@@ -429,6 +444,9 @@ app.use('/api', (req, res) => {
 // STATIC FILE SERVING
 // ============================================================================
 
+// Serve synchronized public data before the dist fallback so runtime syncs are visible immediately.
+app.use('/data', express.static(path.join(APP_ROOT, 'public/data')));
+
 // Serve static files from dist
 app.use(express.static(DIST_PATH, {
   index: false,
@@ -436,7 +454,6 @@ app.use(express.static(DIST_PATH, {
 }));
 
 app.use('/assets', express.static(path.join(DIST_PATH, 'assets')));
-app.use('/data', express.static(path.join(DIST_PATH, 'data')));
 
 // ============================================================================
 // SPA FALLBACK - Serve index.html for frontend routes

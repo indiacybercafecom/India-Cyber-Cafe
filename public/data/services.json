@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-03T08:03:53.737Z",
+  "generatedAt": "2026-09-05T04:32:47.920Z",
   "services": [
     {
       "id": "aadhaar-ucl-opretor",
@@ -345,7 +345,7 @@
       ],
       "subservices": [
         {
-          "charge": 1,
+          "charge": 499,
           "fields": [
             {
               "label": "Full Name",
