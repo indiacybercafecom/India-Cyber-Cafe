@@ -8,7 +8,7 @@ const firebaseConfig = {
   apiKey: "AIzaSyAMTND9rIAw-76Oey3c7c43-TW2t6mxEfw",
   authDomain: "india-cyber-cafe.firebaseapp.com",
   projectId: "india-cyber-cafe",
-  storageBucket: "india-cyber-cafe.firebasestorage.app",
+  storageBucket: "india-cyber-cafe-free",
   messagingSenderId: "927739510475",
   appId: "1:927739510475:web:c73e8f269c80c1f892254e",
   measurementId: "G-HKXGED0EB0",
