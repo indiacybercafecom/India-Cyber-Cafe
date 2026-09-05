@@ -16,6 +16,10 @@ export interface ServiceField {
   label: string;
   type: 'text' | 'email' | 'phone' | 'date' | 'checkbox' | 'select' | 'file' | 'textarea';
   options?: string[];
+  required?: boolean;
+  placeholder?: string;
+  help_text?: string;
+  accept?: string;
 }
 
 export interface SubService {

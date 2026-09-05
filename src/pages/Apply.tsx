@@ -369,7 +369,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                 setFormData({});
                 setFiles({});
                 if (sub && sub.name) {
-                  navigate(`/services/${service.id}/${(sub.name || '').toLowerCase().replace(/\s+/g, '-')}`);
+                  navigate(`/services/${service.id}/${slugify(sub.name)}`);
                 }
               }}
             >
@@ -422,12 +422,13 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
             ? selectedSubService.fields 
             : service.fields).map((field, i) => (
             <div key={i} className="space-y-1 sm:space-y-2 w-full">
-              <label className="block font-bold text-navy text-xs sm:text-sm md:text-base truncate">{field.label} *</label>
+              <label className="block font-bold text-navy text-xs sm:text-sm md:text-base truncate">{field.label}{field.required !== false && <span className="text-red-500"> *</span>}</label>
               {field.type === 'file' ? (
                 <div className="relative w-full">
                   <input 
                     type="file" 
-                    required
+                    required={field.required !== false}
+                    accept={field.accept}
                     className="hidden" 
                     id={`file-${i}`}
                     onChange={e => e.target.files && handleFileChange(field.label, e.target.files[0])}
@@ -442,24 +443,25 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                       <path d="M15.3501 6.60043C15.1601 6.60043 14.9701 6.53043 14.8201 6.38043L12.0001 3.56043L9.18009 6.38043C8.89009 6.67043 8.41009 6.67043 8.12009 6.38043C7.83009 6.09043 7.83009 5.61043 8.12009 5.32043L11.4701 1.97043C11.7601 1.68043 12.2401 1.68043 12.5301 1.97043L15.8801 5.32043C16.1701 5.61043 16.1701 6.09043 15.8801 6.38043C15.7401 6.53043 15.5401 6.60043 15.3501 6.60043Z" fill="#ff841b"/>
                     </svg>
                     <span className="text-[10px] sm:text-xs md:text-sm text-slate-500 font-medium text-center line-clamp-2 px-1 max-w-full">
-                      {files[field.label] ? files[field.label].name.substring(0, 20) + (files[field.label].name.length > 20 ? '...' : '') : 'Click to upload'}
+                      {files[field.label] ? files[field.label].name.substring(0, 20) + (files[field.label].name.length > 20 ? '...' : '') : (Object.prototype.hasOwnProperty.call(field, 'placeholder') ? field.placeholder : 'Click to upload')}
                     </span>
                   </label>
                 </div>
               ) : field.type === 'textarea' ? (
                 <textarea 
-                  required
-                  placeholder={`Enter ${field.label.toLowerCase()}`}
+                  required={field.required !== false}
+                  placeholder={Object.prototype.hasOwnProperty.call(field, 'placeholder') ? field.placeholder : `Enter ${field.label.toLowerCase()}`}
                   className="input-field min-h-[70px] sm:min-h-[80px] md:min-h-[100px] text-[11px] sm:text-xs md:text-sm resize-vertical w-full"
                   onChange={e => handleInputChange(field.label, e.target.value)}
                 />
               ) : field.type === 'select' ? (
                 <select 
-                  required
+                  required={field.required !== false}
+                  aria-label={field.label}
                   className="input-field text-xs sm:text-sm w-full"
                   onChange={e => handleInputChange(field.label, e.target.value)}
                 >
-                  <option value="">Select {field.label}</option>
+                  <option value="">{Object.prototype.hasOwnProperty.call(field, 'placeholder') ? field.placeholder : `Select ${field.label}`}</option>
                   {field.options?.map((opt, idx) => (
                     <option key={idx} value={opt}>{opt}</option>
                   ))}
@@ -467,11 +469,14 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
               ) : (
                 <input 
                   type={field.type} 
-                  required
-                  placeholder={`Enter ${field.label.toLowerCase()}`}
+                  required={field.required !== false}
+                  placeholder={Object.prototype.hasOwnProperty.call(field, 'placeholder') ? field.placeholder : `Enter ${field.label.toLowerCase()}`}
                   className="input-field text-xs sm:text-sm w-full"
                   onChange={e => handleInputChange(field.label, e.target.value)}
                 />
+              )}
+              {field.help_text !== undefined && (
+                <p className="text-xs text-slate-500">{field.help_text}</p>
               )}
             </div>
           ))

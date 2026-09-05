@@ -92,6 +92,12 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
     setJsonModeSubs({ ...jsonModeSubs, [index]: !jsonModeSubs[index] });
   };
 
+  const parseFieldsJson = (value: string): ServiceField[] => {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) throw new Error('Must be an array');
+    return parsed;
+  };
+
   const handleMediaError = (key: string) => {
     setMediaErrors({ ...mediaErrors, [key]: true });
   };
@@ -110,15 +116,31 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
   const handleSave = () => {
     if (!name || !name.trim()) return showToast('Service name is required', 'error');
     if (!description || !description.trim()) return showToast('Service description is required', 'error');
-    
+
+    let fieldsToSave = fields;
+    let subservicesToSave = subservices;
+    try {
+      if (jsonModeMain) fieldsToSave = parseFieldsJson(mainFieldsJson);
+      if (Object.values(jsonModeSubs).some(Boolean)) {
+        subservicesToSave = subservices.map((subservice, index) => (
+          jsonModeSubs[index]
+            ? { ...subservice, fields: parseFieldsJson(subFieldsJson[index] || '[]') }
+            : subservice
+        ));
+      }
+    } catch (error) {
+      showToast('❌ Invalid JSON format', 'error');
+      return;
+    }
+
     const newService: Service = {
       id: service?.id || name.toLowerCase().replace(/ /g, '-'),
       name: name.trim(),
       icon,
       iconType,
       description: description.trim(),
-      fields,
-      subservices,
+      fields: fieldsToSave,
+      subservices: subservicesToSave,
       css
     };
     onSave(newService);
@@ -436,6 +458,18 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                         <option value="textarea">Textarea</option>
                                         <option value="select">Select Dropdown</option>
                                       </select>
+                                      <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                                        <input
+                                          type="checkbox"
+                                          checked={f.required !== false}
+                                          onChange={e => {
+                                            const newSS = [...subservices];
+                                            newSS[i].fields![fi].required = e.target.checked;
+                                            setSubservices(newSS);
+                                          }}
+                                        />
+                                        Required
+                                      </label>
                                       <button onClick={() => {
                                         const newSS = [...subservices];
                                         newSS[i].fields = newSS[i].fields!.filter((_, idx) => idx !== fi);
@@ -557,6 +591,18 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                         <option value="textarea">Textarea</option>
                         <option value="select">Select Dropdown</option>
                       </select>
+                      <label className="flex items-center gap-1 text-xs whitespace-nowrap">
+                        <input
+                          type="checkbox"
+                          checked={f.required !== false}
+                          onChange={e => {
+                            const newFields = [...fields];
+                            newFields[i].required = e.target.checked;
+                            setFields(newFields);
+                          }}
+                        />
+                        Required
+                      </label>
                       <button onClick={() => setFields(fields.filter((_, idx) => idx !== i))} className="text-red-500 hover:text-red-700 hover:scale-110 transition-all p-2 rounded-lg hover:bg-red-50 w-full sm:w-auto">
                         <IconRenderer name="trash" className="w-5 h-5 mx-auto sm:mx-0" />
                       </button>
