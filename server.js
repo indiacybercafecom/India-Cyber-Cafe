@@ -101,7 +101,6 @@ const transporter = nodemailer.createTransport({
 // ============================================================================
 // API ROUTES - Define these BEFORE the SPA fallback
 // ============================================================================
-
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   const dataDir = path.join(APP_ROOT, 'public/data');
@@ -146,7 +145,6 @@ app.post('/api/send-email', async (req, res) => {
   }
 });
 
-// Robots.txt Route
 app.get('/robots.txt', (req, res) => {
   let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, '') : '';
   if (!baseUrl) {
@@ -158,8 +156,62 @@ app.get('/robots.txt', (req, res) => {
   res.send(`User-agent: *\nAllow: /\nSitemap: ${baseUrl}/sitemap.xml`);
 });
 
+const getSitemapBaseUrl = (req) => process.env.APP_URL
+  ? process.env.APP_URL.replace(/\/$/, '')
+  : `${req.protocol}://${req.get('host')}`;
+
+const escapeSitemapXml = (value) => String(value).replace(/[<>&'\"]/g, character => ({
+  '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;'
+}[character]));
+
+const loadSitemapData = async () => {
+  const databaseURL = 'https://india-cyber-cafe-default-rtdb.firebaseio.com';
+  const localFiles = {
+    services: 'services.json',
+    productCategories: 'product-categories.json',
+    products: 'products.json'
+  };
+  const readCollection = async (name) => {
+    let remoteItems = [];
+    try {
+      const response = await fetch(`${databaseURL}/${name}.json`);
+      if (response.ok) {
+        const data = await response.json();
+        remoteItems = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
+      }
+    } catch (error) {
+      console.error(`Error fetching ${name} for sitemap:`, error);
+    }
+    try {
+      const localData = JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'public/data', localFiles[name]), 'utf8'));
+      const localItems = localData?.[name === 'productCategories' ? 'categories' : name] || [];
+      const merged = new Map([...localItems, ...remoteItems].filter(item => item?.id).map(item => [item.id, item]));
+      return [...merged.values()];
+    } catch (error) {
+      return remoteItems;
+    }
+  };
+  const [services, productCategories, products] = await Promise.all([
+    readCollection('services'), readCollection('productCategories'), readCollection('products')
+  ]);
+  return { services, productCategories, products };
+};
+
+const createSitemapXml = (urls) => {
+  const today = new Date().toISOString().split('T')[0];
+  const entries = urls.map(({ url, priority = '0.8' }) => `  <url>\n    <loc>${escapeSitemapXml(url)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>${priority}</priority>\n  </url>`).join('\n');
+  return `<?xml version="1.0" encoding="UTF-8"?>\n<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries}\n</urlset>`;
+};
+
+const slugifySitemap = text => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
+
 // Sitemap Route
 app.get('/sitemap.xml', async (req, res) => {
+  const baseUrl = getSitemapBaseUrl(req);
+  const names = ['page-sitemap.xml', 'service-sitemap.xml', 'subservice-sitemap.xml', 'product-sitemap.xml'];
+  const entries = names.map(name => `  <sitemap>\n    <loc>${escapeSitemapXml(`${baseUrl}/${name}`)}</loc>\n    <lastmod>${new Date().toISOString()}</lastmod>\n  </sitemap>`).join('\n');
+  return res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>\n<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries}\n</sitemapindex>`);
+  /*
   let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, '') : '';
 
   if (!baseUrl) {
@@ -251,7 +303,35 @@ app.get('/sitemap.xml', async (req, res) => {
 
   sitemap += `</urlset>`;
   res.type('application/xml');
-  res.send(sitemap);
+  res.send(sitemap); */
+});
+
+app.get('/page-sitemap.xml', (req, res) => {
+  const baseUrl = getSitemapBaseUrl(req);
+  const pages = ['', '/services', '/store', '/price-list', '/track', '/profile', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund'];
+  res.type('application/xml').send(createSitemapXml(pages.map(url => ({ url: `${baseUrl}${url}`, priority: url === '' ? '1.0' : '0.8' }))));
+});
+
+app.get('/service-sitemap.xml', async (req, res) => {
+  const baseUrl = getSitemapBaseUrl(req);
+  const { services } = await loadSitemapData();
+  const urls = services.filter(service => service && service.id).map(service => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}`, priority: '0.7' }));
+  res.type('application/xml').send(createSitemapXml(urls));
+});
+
+app.get('/subservice-sitemap.xml', async (req, res) => {
+  const baseUrl = getSitemapBaseUrl(req);
+  const { services } = await loadSitemapData();
+  const urls = services.flatMap(service => (service?.subservices || []).filter(ss => ss && ss.name).map(ss => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}/${slugifySitemap(ss.name)}`, priority: '0.6' })));
+  res.type('application/xml').send(createSitemapXml(urls));
+});
+
+app.get('/product-sitemap.xml', async (req, res) => {
+  const baseUrl = getSitemapBaseUrl(req);
+  const { productCategories, products } = await loadSitemapData();
+  const categoryUrls = productCategories.filter(category => category && category.id).map(category => ({ url: `${baseUrl}/store/${encodeURIComponent(category.id)}`, priority: '0.7' }));
+  const productUrls = products.filter(product => product && product.id && product.category).map(product => ({ url: `${baseUrl}/store/${encodeURIComponent(product.category)}/${encodeURIComponent(product.id)}`, priority: '0.6' }));
+  res.type('application/xml').send(createSitemapXml([...categoryUrls, ...productUrls]));
 });
 
 // ============================================================================
