@@ -474,6 +474,26 @@ export const emailTemplates = {
     `
   ),
 
+  directPaymentReceived: (paymentId: string, amount: number, razorpayPaymentId: string, razorpayOrderId: string, paymentDate: string) => baseTemplate(
+    '💰 Direct Payment Received - Admin Alert',
+    `
+      <p>Hello Admin,</p>
+      <p>A payment was successfully completed from the public <strong>/pay</strong> page.</p>
+      <div style="background: #e8f4f8; padding: 15px; border-radius: 8px; margin: 15px 0; border-left: 4px solid #28a745;">
+        <p style="margin: 5px 0;"><strong>Status:</strong> <span style="background: #28a745; padding: 2px 8px; border-radius: 3px; color: white;">COMPLETED</span></p>
+        <p style="margin: 5px 0;"><strong>Amount:</strong> ₹${amount.toFixed(2)} INR</p>
+        <p style="margin: 5px 0;"><strong>Pay ID:</strong> <code style="background: #f0f0f0; padding: 2px 5px; border-radius: 3px;">${paymentId}</code></p>
+        <p style="margin: 5px 0;"><strong>Razorpay Payment ID:</strong> <code style="background: #f0f0f0; padding: 2px 5px; border-radius: 3px;">${razorpayPaymentId}</code></p>
+        <p style="margin: 5px 0;"><strong>Razorpay Order ID:</strong> <code style="background: #f0f0f0; padding: 2px 5px; border-radius: 3px;">${razorpayOrderId}</code></p>
+        <p style="margin: 5px 0;"><strong>Payment Date:</strong> ${paymentDate}</p>
+        <p style="margin: 5px 0;"><strong>Payment Source:</strong> Public /pay page</p>
+        <p style="margin: 5px 0;"><strong>Customer Account:</strong> Guest payment (no login required)</p>
+      </div>
+      <p>Please reconcile this payment with your Razorpay dashboard.</p>
+      <p>Best Regards,<br/><strong>India Cyber Cafe System</strong></p>
+    `
+  ),
+
   // ============= OPERATOR TEMPLATES =============
 
   operatorNewAssignment: (operatorName: string, userName: string, userEmail: string, serviceName: string, appId: string) => baseTemplate(
