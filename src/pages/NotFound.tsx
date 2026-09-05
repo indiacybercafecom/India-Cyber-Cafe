@@ -7,7 +7,7 @@ export function NotFound() {
   const navigate = useNavigate();
 
   return (
-    <section className="bg-white px-4 sm:px-10 lg:px-12 py-0 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-3 sm:gap-6 md:gap-2 border border-slate-100 min-h-0">
+    <section className="bg-white px-4 sm:px-10 lg:px-12 py-4 sm:py-0 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-3 sm:gap-6 md:gap-2 border border-slate-100 min-h-0">
       <div className="order-2 flex flex-col items-center md:order-1 md:items-start flex-1 space-y-2 sm:space-y-5 text-center md:text-left">
         <p className="text-primary font-bold text-sm sm:text-base">404 ERROR</p>
         <h1 className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-navy leading-tight">
