@@ -24,10 +24,11 @@ export function NotFound() {
           Go to Home
         </button>
       </div>
-      <div className="order-1 flex items-center justify-center shrink-0 w-full md:order-2 md:w-[500px] lg:w-[560px] h-[145px] sm:h-[340px] lg:h-[440px] md:pr-1">
+      <div className="order-1 flex items-center justify-center shrink-0 w-full md:order-2 md:w-[500px] lg:w-[560px] h-[190px] sm:h-[360px] md:h-[400px] lg:h-[440px] md:pr-1">
         <DotLottieReact
           src="/page-not-found-404.lottie"
-          style={{ width: '100%', height: '100%', maxWidth: '560px', maxHeight: '560px', objectFit: 'contain' }}
+          className="w-[125%] h-[125%] max-w-none max-h-none lg:w-full lg:h-full lg:max-w-[560px] lg:max-h-[560px]"
+          style={{ objectFit: 'contain' }}
           autoplay
           loop
         />
