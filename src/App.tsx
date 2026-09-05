@@ -14,6 +14,7 @@ import { Sidebar } from './components/Sidebar';
 import { AuthModal } from './components/AuthModal';
 import { ToastContainer } from './components/Toast';
 import { Home } from './pages/Home';
+import { NotFound } from './pages/NotFound';
 import { PageSkeleton } from './components/Skeleton';
 import { Footer } from './components/Footer';
 import { ScrollToTop } from './components/ScrollToTop';
@@ -244,6 +245,7 @@ function AppContent() {
             <Route path="/payment-policy" element={<Navigate to="/legal/terms" />} />
             <Route path="/refund-policy" element={<Navigate to="/legal/refund" />} />
             <Route path="/pay" element={<Pay />} />
+            <Route path="/404" element={<NotFound />} />
             {/* Services - public data only */}
             <Route path="/services" element={<Services services={services} />} />
             <Route path="/price-list" element={<PriceList services={services} products={products} categories={productCategories} />} />
@@ -481,7 +483,7 @@ function AppContent() {
                 )
               }
             />
-            <Route path="*" element={<Navigate to="/" />} />
+            <Route path="*" element={<NotFound />} />
           </Routes>
         </Suspense>
       </main>
