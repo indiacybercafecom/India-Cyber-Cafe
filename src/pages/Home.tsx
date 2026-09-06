@@ -209,15 +209,19 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
         <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 lg:gap-8">
           {[
             { icon: 'shield-check', title: '100% Secure', desc: 'Encrypted & protected data' },
-            { icon: 'zap', title: 'Lightning Fast', desc: 'Instant processing' },
+            { iconUrl: '/icons/bi--rocket-takeoff.svg', title: 'Lightning Fast', desc: 'Instant processing' },
             { icon: 'smartphone', title: 'Mobile Friendly', desc: 'Access anywhere' },
-            { icon: 'headset', title: 'Expert Support', desc: '24/7 Professional help' },
+            { iconUrl: '/icons/bx--support.svg', title: 'Expert Support', desc: '24/7 Professional help' },
             { icon: 'check-circle', title: 'Easy Process', desc: 'Simple steps' },
             { icon: 'clock', title: 'Real-time Updates', desc: 'Instant notifications' },
           ].map((feature, i) => (
             <div key={i} className="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl text-center shadow-md border-t-4 border-primary hover:-translate-y-2 active:translate-y-0 active:scale-95 transition-all">
               <div className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 lg:mb-6">
-                <IconRenderer name={feature.icon || 'layers'} className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primary" />
+                {feature.iconUrl ? (
+                  <img src={feature.iconUrl} alt="" aria-hidden="true" className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8" />
+                ) : (
+                  <IconRenderer name={feature.icon || 'layers'} className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primary" />
+                )}
               </div>
               <h3 className="text-sm sm:text-base lg:text-xl font-bold text-navy mb-1 sm:mb-2 lg:mb-3">{feature.title}</h3>
               <p className="text-[10px] sm:text-sm lg:text-base text-slate-600 leading-tight sm:leading-relaxed">{feature.desc}</p>
@@ -328,7 +332,7 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
         <div className="grid grid-cols-3 sm:grid-cols-3 lg:flex lg:flex-row items-center justify-between gap-4 sm:gap-8">
           {[
             { num: 1, icon: 'user-plus', title: 'Register', desc: 'Account' },
-            { num: 2, icon: 'file-text', title: 'Select', desc: 'Service' },
+            { num: 2, iconUrl: '/icons/grommet-icons--select.svg', title: 'Select', desc: 'Service' },
             { num: 3, icon: 'user-pen', title: 'Fill', desc: 'Info' },
             { num: 4, icon: 'paper-plane', title: 'Submit', desc: 'Apply' },
             { num: 5, icon: 'eye', title: 'Track', desc: 'Status' },
@@ -337,7 +341,11 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
               <div className="w-6 h-6 sm:w-12 sm:h-12 bg-linear-to-br from-primary to-primary-dark text-white rounded-full flex items-center justify-center font-bold text-xs sm:text-xl shadow-lg z-10">
                 {step.num}
               </div>
-              <IconRenderer name={step.icon || 'layers'} className="w-5 h-5 sm:w-10 sm:h-10 text-primary" />
+              {step.iconUrl ? (
+                <img src={step.iconUrl} alt="" aria-hidden="true" className="w-5 h-5 sm:w-10 sm:h-10" />
+              ) : (
+                <IconRenderer name={step.icon || 'layers'} className="w-5 h-5 sm:w-10 sm:h-10 text-primary" />
+              )}
               <h3 className="font-bold text-navy text-[10px] sm:text-base">{step.title}</h3>
               <p className="text-[8px] sm:text-sm text-slate-500 hidden sm:block">{step.desc}</p>
               {i < 4 && (
