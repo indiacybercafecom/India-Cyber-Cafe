@@ -165,9 +165,9 @@ export function Track({ applications, orders = [], user, gateways, onViewDetails
         </div>
         <div className="flex gap-2 sm:gap-4">
           <div className="relative flex-1 sm:w-48">
-            <IconRenderer name="filter" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
             <SelectDropdown
-              className="w-full pl-11 pr-8 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all appearance-none bg-white text-sm sm:text-base"
+              className="w-full px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all appearance-none bg-white text-sm sm:text-base"
+              leadingIcon="filter"
               value={filterType}
               onChange={value => setFilterType(value as 'all' | 'applications' | 'orders')}
               options={[
@@ -178,9 +178,9 @@ export function Track({ applications, orders = [], user, gateways, onViewDetails
             />
           </div>
           <div className="relative flex-1 sm:w-48">
-            <IconRenderer name="filter" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
             <SelectDropdown
-              className="w-full pl-11 pr-8 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all appearance-none bg-white text-sm sm:text-base"
+              className="w-full px-4 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all appearance-none bg-white text-sm sm:text-base"
+              leadingIcon="filter"
               value={filterStatus}
               onChange={setFilterStatus}
               options={[

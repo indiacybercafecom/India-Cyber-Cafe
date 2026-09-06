@@ -15,6 +15,7 @@ interface SelectDropdownProps {
   placeholder?: string;
   ariaLabel?: string;
   disabled?: boolean;
+  leadingIcon?: string;
 }
 
 export function SelectDropdown({
@@ -26,6 +27,7 @@ export function SelectDropdown({
   placeholder,
   ariaLabel,
   disabled = false,
+  leadingIcon,
 }: SelectDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -61,7 +63,10 @@ export function SelectDropdown({
         aria-haspopup="listbox"
         className={`w-full flex items-center justify-between gap-3 text-left ${className} ${disabled ? 'opacity-60 cursor-not-allowed' : ''}`}
       >
-        <span className={!selectedOption ? 'text-slate-400' : ''}>{displayLabel}</span>
+        <span className="flex min-w-0 items-center gap-2">
+          {leadingIcon && <IconRenderer name={leadingIcon} className="w-4 h-4 shrink-0 text-slate-400" />}
+          <span className={!selectedOption ? 'text-slate-400' : ''}>{displayLabel}</span>
+        </span>
         <IconRenderer name={isOpen ? 'chevron-up' : 'chevron-down'} className="w-4 h-4 shrink-0 text-slate-500" />
       </button>
 
