@@ -14,7 +14,8 @@ export interface UserProfile {
 
 export interface ServiceField {
   label: string;
-  type: 'text' | 'email' | 'phone' | 'date' | 'checkbox' | 'select' | 'file' | 'textarea';
+  name?: string;
+  type: 'text' | 'email' | 'phone' | 'date' | 'checkbox' | 'select' | 'multiselect' | 'file' | 'textarea';
   options?: string[];
   required?: boolean;
   placeholder?: string;

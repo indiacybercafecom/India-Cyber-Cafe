@@ -162,6 +162,15 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
     const activeFields = selectedSubService?.fields && selectedSubService.fields.length > 0
       ? selectedSubService.fields
       : service.fields;
+    const missingRequiredMultiselect = activeFields.find(field => (
+      field.type === 'multiselect' &&
+      field.required !== false &&
+      (!Array.isArray(formData[field.name || field.label]) || formData[field.name || field.label].length === 0)
+    ));
+    if (missingRequiredMultiselect) {
+      showToast(`${missingRequiredMultiselect.label} is required.`, 'error');
+      return;
+    }
     const missingRequiredFile = activeFields.find(field => (
       field.type === 'file' && field.required !== false && !(files[field.label]?.length)
     ));
@@ -573,6 +582,19 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                   className="input-field min-h-[70px] sm:min-h-[80px] md:min-h-[100px] text-[11px] sm:text-xs md:text-sm resize-vertical w-full"
                   onChange={e => handleInputChange(field.label, e.target.value)}
                 />
+              ) : field.type === 'multiselect' ? (
+                <select
+                  multiple
+                  required={field.required !== false}
+                  aria-label={field.label}
+                  className="input-field text-xs sm:text-sm w-full min-h-24"
+                  value={Array.isArray(formData[field.name || field.label]) ? formData[field.name || field.label] : []}
+                  onChange={e => handleInputChange(field.name || field.label, Array.from(e.target.selectedOptions, option => option.value))}
+                >
+                  {field.options?.map((opt, idx) => (
+                    <option key={idx} value={opt}>{opt}</option>
+                  ))}
+                </select>
               ) : field.type === 'select' ? (
                 <select 
                   required={field.required !== false}

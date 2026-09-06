@@ -457,6 +457,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                         <option value="file">File Upload</option>
                                         <option value="textarea">Textarea</option>
                                         <option value="select">Select Dropdown</option>
+                                        <option value="multiselect">Multi-select</option>
                                       </select>
                                       <label className="flex items-center gap-1 text-xs whitespace-nowrap">
                                         <input
@@ -478,7 +479,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                     </div>
 
                                     {/* Dropdown Options for Sub-Service Fields */}
-                                    {f.type === 'select' && (
+                                    {(f.type === 'select' || f.type === 'multiselect') && (
                                       <div className="ml-3 sm:ml-4 pl-3 sm:pl-3 border-l-4 border-primary/30 space-y-2 bg-primary/5 p-2 sm:p-3 rounded-lg">
                                         <label className="block text-xs font-bold text-navy/70 uppercase tracking-wider">Options</label>
                                         <div className="space-y-1">
@@ -590,6 +591,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                         <option value="file">File Upload</option>
                         <option value="textarea">Textarea</option>
                         <option value="select">Select Dropdown</option>
+                        <option value="multiselect">Multi-select</option>
                       </select>
                       <label className="flex items-center gap-1 text-xs whitespace-nowrap">
                         <input
@@ -609,7 +611,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                     </div>
 
                     {/* Dropdown Options Editor - Show when field type is 'select' */}
-                    {f.type === 'select' && (
+                    {(f.type === 'select' || f.type === 'multiselect') && (
                       <div className="ml-3 sm:ml-4 pl-3 border-l-4 border-primary/30 space-y-2 bg-primary/5 p-2 sm:p-3 rounded-lg">
                         <label className="block text-xs font-bold text-navy/70 uppercase tracking-wider">Dropdown Options</label>
                         <div className="space-y-2">
