@@ -99,6 +99,7 @@ export function Admin({
   const [selectedReview, setSelectedReview] = useState<ProductReview | null>(null);
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<'excel' | 'json'>('excel');
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   
   // Search States
   const [searchApps, setSearchApps] = useState('');
@@ -340,24 +341,13 @@ export function Admin({
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <h2 className="text-4xl font-bold text-navy">Admin Panel</h2>
-        <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
-          <select 
-            value={exportFormat}
-            onChange={e => setExportFormat(e.target.value as 'excel' | 'json')}
-            className="px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white font-medium text-navy text-sm"
-          >
-            <option value="excel">📊 Export as Excel (.xlsx)</option>
-            <option value="json">📋 Export as JSON (.json)</option>
-          </select>
-          <button onClick={() => exportToExcel('all')} className="bg-navy text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-navy-light transition-all shadow-lg whitespace-nowrap">
-            <IconRenderer name="file-export" className="w-5 h-5" />
-            Export All Data
-          </button>
-          <button onClick={() => exportToExcel(tab)} className="bg-green-600 text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-600/20 whitespace-nowrap">
-            <IconRenderer name="excel" className="w-5 h-5" />
-            Export {tab.charAt(0).toUpperCase() + tab.slice(1)}
-          </button>
-        </div>
+        <button
+          onClick={() => setIsExportModalOpen(true)}
+          className="bg-navy text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-navy-light transition-all shadow-lg whitespace-nowrap"
+        >
+          <IconRenderer name="file-export" className="w-5 h-5" />
+          Export
+        </button>
       </div>
 
       <div className="flex flex-wrap gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
@@ -1226,6 +1216,55 @@ export function Admin({
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {isExportModalOpen && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[2000] flex items-center justify-center p-2 sm:p-4">
+          <div className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-lg relative overflow-hidden shadow-2xl flex flex-col max-h-[98vh] sm:max-h-[95vh]">
+            <div className="p-4 sm:p-6 bg-white border-b border-slate-100 flex justify-between items-center">
+              <h3 className="text-xl sm:text-2xl font-bold text-navy">Export Data</h3>
+              <button
+                onClick={() => setIsExportModalOpen(false)}
+                className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-full transition-all"
+                aria-label="Close export dialog"
+              >
+                <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
+              </button>
+            </div>
+
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+              <div>
+                <label htmlFor="export-format" className="block text-sm font-bold text-navy mb-2">File format</label>
+                <select
+                  id="export-format"
+                  value={exportFormat}
+                  onChange={e => setExportFormat(e.target.value as 'excel' | 'json')}
+                  className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white font-medium text-navy text-sm"
+                >
+                  <option value="excel">Excel (.xlsx)</option>
+                  <option value="json">JSON (.json)</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  onClick={() => { exportToExcel('all'); setIsExportModalOpen(false); }}
+                  className="bg-navy text-white px-4 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-navy-light transition-all shadow-lg"
+                >
+                  <IconRenderer name="file-export" className="w-5 h-5" />
+                  Export All Data
+                </button>
+                <button
+                  onClick={() => { exportToExcel(tab); setIsExportModalOpen(false); }}
+                  className="bg-green-600 text-white px-4 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-600/20"
+                >
+                  <IconRenderer name="excel" className="w-5 h-5" />
+                  Export {tab.charAt(0).toUpperCase() + tab.slice(1)}
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
