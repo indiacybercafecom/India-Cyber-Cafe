@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { PaymentGateway } from '../types';
 import { IconRenderer } from './Icons';
+import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { motion } from 'motion/react';
 
@@ -70,17 +71,18 @@ export function GatewayModal({ gateway, onClose, onSave }: GatewayModalProps) {
 
               <div>
                 <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-2">Gateway Type *</label>
-                <select 
+                <SelectDropdown
                   className="w-full px-4 py-3 rounded-xl border border-slate-300 focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all text-sm" 
                   value={type} 
-                  onChange={e => setType(e.target.value as any)}
-                >
-                  <option value="razorpay">Razorpay</option>
-                  <option value="stripe">Stripe</option>
-                  <option value="paypal">PayPal</option>
-                  <option value="cashfree">Cashfree</option>
-                  <option value="custom">Custom/Other</option>
-                </select>
+                  onChange={value => setType(value as any)}
+                  options={[
+                    { value: 'razorpay', label: 'Razorpay' },
+                    { value: 'stripe', label: 'Stripe' },
+                    { value: 'paypal', label: 'PayPal' },
+                    { value: 'cashfree', label: 'Cashfree' },
+                    { value: 'custom', label: 'Custom/Other' },
+                  ]}
+                />
               </div>
 
               <div>

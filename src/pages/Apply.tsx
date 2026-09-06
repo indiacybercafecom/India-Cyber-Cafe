@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Service, UserProfile, SubService, Application, PaymentGateway } from '../types';
 import { IconRenderer } from '../components/Icons';
+import { SelectDropdown } from '../components/SelectDropdown';
 import { secureUrl } from '../utils/secureUrl';
 import { showToast } from '../components/Toast';
 import { rtdb } from '../firebase';
@@ -439,12 +440,11 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
             {service.subservices.length > 0 && (
               <div className="space-y-1 sm:space-y-2">
                 <label className="block font-bold text-navy text-sm sm:text-base truncate">Select Sub-Service *</label>
-            <select 
-              required
+            <SelectDropdown
               className="input-field"
-              value={service.subservices.findIndex(ss => ss.name === selectedSubService?.name)}
-              onChange={(e) => {
-                const sub = service.subservices[parseInt(e.target.value)];
+              value={String(service.subservices.findIndex(ss => ss.name === selectedSubService?.name))}
+              onChange={(value) => {
+                const sub = service.subservices[parseInt(value)];
                 setSelectedSubService(sub);
                 // Reset form data when sub-service changes
                 setFormData({});
@@ -453,12 +453,11 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                   navigate(`/services/${service.id}/${slugify(sub.name)}`);
                 }
               }}
-            >
-              <option value="-1">-- Choose a sub-service --</option>
-              {(service.subservices || []).map((ss, i) => (
-                <option key={i} value={i}>{ss.name}</option>
-              ))}
-            </select>
+              options={[
+                { value: '-1', label: '-- Choose a sub-service --' },
+                ...(service.subservices || []).map((ss, i) => ({ value: String(i), label: ss.name })),
+              ]}
+            />
             {selectedSubService && (
               <div className="flex items-center gap-2 sm:gap-3 mt-2 flex-wrap">
                 <span className="text-primary font-bold text-lg sm:text-xl">₹{selectedSubService.charge}</span>
@@ -616,17 +615,16 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                   })}
                 </div>
               ) : field.type === 'select' ? (
-                <select 
-                  required={field.required !== false}
+                <SelectDropdown
                   aria-label={field.label}
                   className="input-field text-xs sm:text-sm w-full"
-                  onChange={e => handleInputChange(field.label, e.target.value)}
-                >
-                  <option value="">{Object.prototype.hasOwnProperty.call(field, 'placeholder') ? field.placeholder : `Select ${field.label}`}</option>
-                  {field.options?.map((opt, idx) => (
-                    <option key={idx} value={opt}>{opt}</option>
-                  ))}
-                </select>
+                  value={formData[field.name || field.label] || ''}
+                  onChange={value => handleInputChange(field.name || field.label, value)}
+                  options={[
+                    { value: '', label: Object.prototype.hasOwnProperty.call(field, 'placeholder') ? field.placeholder as string : `Select ${field.label}` },
+                    ...(field.options || []).map(opt => ({ value: opt, label: opt })),
+                  ]}
+                />
               ) : (
                 <input 
                   type={field.type} 

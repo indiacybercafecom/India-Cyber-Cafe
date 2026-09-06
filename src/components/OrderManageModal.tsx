@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Order, UserProfile, OrderItem, OrderAddress } from '../types';
 import { IconRenderer } from './Icons';
+import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { rtdb } from '../firebase';
 import { ref as dbRef, update, remove } from 'firebase/database';
@@ -413,32 +414,28 @@ export function OrderManageModal({
               <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 sm:p-5 rounded-lg sm:rounded-xl border border-slate-200 space-y-3">
                 <div>
                   <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-2">Order Status</label>
-                  <select 
+                  <SelectDropdown
                     value={newOrderStatus} 
-                    onChange={(e) => setNewOrderStatus(e.target.value as any)}
+                    onChange={value => setNewOrderStatus(value as any)}
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-slate-300 rounded-lg sm:rounded-xl focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all bg-white font-medium text-sm"
-                  >
-                    {ORDER_STATUSES.map(status => (
-                      <option key={status} value={status}>
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
-                      </option>
-                    ))}
-                  </select>
+                    options={ORDER_STATUSES.map(status => ({
+                      value: status,
+                      label: status.charAt(0).toUpperCase() + status.slice(1),
+                    }))}
+                  />
                 </div>
 
                 <div>
                   <label className="block text-xs sm:text-sm font-bold text-slate-700 mb-2">Payment Status</label>
-                  <select 
+                  <SelectDropdown
                     value={newPaymentStatus} 
-                    onChange={(e) => setNewPaymentStatus(e.target.value as any)}
+                    onChange={value => setNewPaymentStatus(value as any)}
                     className="w-full px-3 sm:px-4 py-2 sm:py-3 border-2 border-slate-300 rounded-lg sm:rounded-xl focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all bg-white font-medium text-sm"
-                  >
-                    {PAYMENT_STATUSES.map(status => (
-                      <option key={status} value={status}>
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
-                      </option>
-                    ))}
-                  </select>
+                    options={PAYMENT_STATUSES.map(status => ({
+                      value: status,
+                      label: status.charAt(0).toUpperCase() + status.slice(1),
+                    }))}
+                  />
                 </div>
 
                 <button 

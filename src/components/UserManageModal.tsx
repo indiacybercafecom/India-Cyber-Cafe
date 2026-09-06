@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { UserProfile, UserRole } from '../types';
 import { IconRenderer } from './Icons';
+import { SelectDropdown } from './SelectDropdown';
 import { motion } from 'motion/react';
 import { auth, rtdb } from '../firebase';
 import { ref, update, remove } from 'firebase/database';
@@ -108,15 +109,16 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
             </div>
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-400 uppercase">Role</label>
-              <select 
+              <SelectDropdown
                 className="input-field py-2" 
                 value={role} 
-                onChange={e => setRole(e.target.value as UserRole)}
-              >
-                <option value="user">User</option>
-                <option value="operator">Operator</option>
-                <option value="admin">Admin</option>
-              </select>
+                onChange={value => setRole(value as UserRole)}
+                options={[
+                  { value: 'user', label: 'User' },
+                  { value: 'operator', label: 'Operator' },
+                  { value: 'admin', label: 'Admin' },
+                ]}
+              />
             </div>
             <div className="space-y-1 relative">
               <label className="text-xs font-bold text-slate-400 uppercase">Password</label>

@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Application, PaymentGateway, UserProfile, Order } from '../types';
 import { IconRenderer } from '../components/Icons';
+import { SelectDropdown } from '../components/SelectDropdown';
 import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
 import { utils, writeFile } from 'xlsx';
@@ -165,39 +166,35 @@ export function Track({ applications, orders = [], user, gateways, onViewDetails
         <div className="flex gap-2 sm:gap-4">
           <div className="relative flex-1 sm:w-48">
             <IconRenderer name="filter" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-            <select 
+            <SelectDropdown
               className="w-full pl-11 pr-8 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all appearance-none bg-white text-sm sm:text-base"
               value={filterType}
-              onChange={e => setFilterType(e.target.value as 'all' | 'applications' | 'orders')}
-            >
-              <option value="all">All Items</option>
-              <option value="applications">Applications</option>
-              <option value="orders">Orders</option>
-            </select>
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-              <IconRenderer name="chevron-down" className="w-3 h-3" />
-            </div>
+              onChange={value => setFilterType(value as 'all' | 'applications' | 'orders')}
+              options={[
+                { value: 'all', label: 'All Items' },
+                { value: 'applications', label: 'Applications' },
+                { value: 'orders', label: 'Orders' },
+              ]}
+            />
           </div>
           <div className="relative flex-1 sm:w-48">
             <IconRenderer name="filter" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-            <select 
+            <SelectDropdown
               className="w-full pl-11 pr-8 py-2.5 sm:py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all appearance-none bg-white text-sm sm:text-base"
               value={filterStatus}
-              onChange={e => setFilterStatus(e.target.value)}
-            >
-              <option value="all">All Status</option>
-              <option value="processing">Processing</option>
-              <option value="clarification">Clarification</option>
-              <option value="completed">Completed</option>
-              <option value="rejected">Rejected</option>
-              <option value="pending">Pending</option>
-              <option value="shipped">Shipped</option>
-              <option value="delivered">Delivered</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-            <div className="absolute right-4 top-1/2 -translate-y-1/2 pointer-events-none text-slate-400">
-              <IconRenderer name="chevron-down" className="w-3 h-3" />
-            </div>
+              onChange={setFilterStatus}
+              options={[
+                { value: 'all', label: 'All Status' },
+                { value: 'processing', label: 'Processing' },
+                { value: 'clarification', label: 'Clarification' },
+                { value: 'completed', label: 'Completed' },
+                { value: 'rejected', label: 'Rejected' },
+                { value: 'pending', label: 'Pending' },
+                { value: 'shipped', label: 'Shipped' },
+                { value: 'delivered', label: 'Delivered' },
+                { value: 'cancelled', label: 'Cancelled' },
+              ]}
+            />
           </div>
         </div>
       </div>

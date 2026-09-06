@@ -1,6 +1,7 @@
 import { useState, useRef } from 'react';
 import { Application, UserProfile, ApplicationNote } from '../types';
 import { IconRenderer } from './Icons';
+import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { rtdb } from '../firebase';
 import { ref as dbRef, update } from 'firebase/database';
@@ -299,17 +300,18 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                 
                 <div className="p-3 sm:p-4 bg-blue-50/50 rounded-xl border border-blue-100 space-y-1.5 sm:space-y-2">
                   <label className="text-[10px] sm:text-xs font-bold text-navy">Update Status (Optional):</label>
-                  <select 
+                  <SelectDropdown
                     className="w-full p-2 sm:p-3 rounded-lg border border-slate-200 bg-white text-xs sm:text-sm outline-none"
                     value={newStatus}
-                    onChange={e => setNewStatus(e.target.value)}
-                  >
-                    <option value="">No Status Change</option>
-                    <option value="processing">Processing</option>
-                    <option value="clarification">Clarification</option>
-                    <option value="completed">Completed</option>
-                    <option value="rejected">Rejected</option>
-                  </select>
+                    onChange={setNewStatus}
+                    options={[
+                      { value: '', label: 'No Status Change' },
+                      { value: 'processing', label: 'Processing' },
+                      { value: 'clarification', label: 'Clarification' },
+                      { value: 'completed', label: 'Completed' },
+                      { value: 'rejected', label: 'Rejected' },
+                    ]}
+                  />
                 </div>
 
                 <div 
@@ -344,16 +346,15 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
             <div className="space-y-4 sm:space-y-6 pt-4 border-t border-slate-100">
               <div className="space-y-1.5 sm:space-y-2">
                 <label className="text-xs sm:text-sm font-bold text-navy">Assign to Operator:</label>
-                <select 
+                <SelectDropdown
                   className="w-full p-2.5 sm:p-3 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm outline-none"
                   value={app.assignedTo || ''}
-                  onChange={(e) => handleAssign(e.target.value)}
-                >
-                  <option value="">Unassigned</option>
-                  {operators.map(op => (
-                    <option key={op.uid} value={op.email}>{op.name} ({op.email})</option>
-                  ))}
-                </select>
+                  onChange={handleAssign}
+                  options={[
+                    { value: '', label: 'Unassigned' },
+                    ...operators.map(op => ({ value: op.email, label: `${op.name} (${op.email})` })),
+                  ]}
+                />
               </div>
 
               <div className="space-y-2 sm:space-y-3">

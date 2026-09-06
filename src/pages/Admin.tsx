@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview } from '../types';
 import { IconRenderer } from '../components/Icons';
+import { SelectDropdown } from '../components/SelectDropdown';
 import { showToast } from '../components/Toast';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { GatewayModal } from '../components/GatewayModal';
@@ -1373,15 +1374,15 @@ export function Admin({
             <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
               <div>
                 <label htmlFor="export-format" className="block text-sm font-bold text-navy mb-2">File format</label>
-                <select
-                  id="export-format"
+                <SelectDropdown
                   value={exportFormat}
-                  onChange={e => setExportFormat(e.target.value as 'excel' | 'json')}
+                  onChange={value => setExportFormat(value as 'excel' | 'json')}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white font-medium text-navy text-sm"
-                >
-                  <option value="excel">Excel (.xlsx)</option>
-                  <option value="json">JSON (.json)</option>
-                </select>
+                  options={[
+                    { value: 'excel', label: 'Excel (.xlsx)' },
+                    { value: 'json', label: 'JSON (.json)' },
+                  ]}
+                />
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Service, ServiceField, SubService } from '../types';
 import { IconRenderer } from './Icons';
+import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { motion } from 'motion/react';
 
@@ -445,20 +446,20 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                         newSS[i].fields![fi].label = e.target.value;
                                         setSubservices(newSS);
                                       }} />
-                                      <select className="input-field py-1 text-xs sm:text-sm w-full sm:w-48" value={f.type} onChange={e => {
+                                      <SelectDropdown className="input-field py-1 text-xs sm:text-sm w-full sm:w-48" value={f.type} onChange={value => {
                                         const newSS = [...subservices];
-                                        newSS[i].fields![fi].type = e.target.value as any;
+                                        newSS[i].fields![fi].type = value as any;
                                         setSubservices(newSS);
-                                      }}>
-                                        <option value="text">Text</option>
-                                        <option value="email">Email</option>
-                                        <option value="phone">Phone</option>
-                                        <option value="date">Date</option>
-                                        <option value="file">File Upload</option>
-                                        <option value="textarea">Textarea</option>
-                                        <option value="select">Select Dropdown</option>
-                                        <option value="multiselect">Multi-select</option>
-                                      </select>
+                                      }} options={[
+                                        { value: 'text', label: 'Text' },
+                                        { value: 'email', label: 'Email' },
+                                        { value: 'phone', label: 'Phone' },
+                                        { value: 'date', label: 'Date' },
+                                        { value: 'file', label: 'File Upload' },
+                                        { value: 'textarea', label: 'Textarea' },
+                                        { value: 'select', label: 'Select Dropdown' },
+                                        { value: 'multiselect', label: 'Multi-select' },
+                                      ]} />
                                       <label className="flex items-center gap-1 text-xs whitespace-nowrap">
                                         <input
                                           type="checkbox"
@@ -579,20 +580,20 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                         newFields[i].label = e.target.value;
                         setFields(newFields);
                       }} />
-                      <select className="input-field py-2 text-sm w-full sm:w-48" value={f.type} onChange={e => {
+                      <SelectDropdown className="input-field py-2 text-sm w-full sm:w-48" value={f.type} onChange={value => {
                         const newFields = [...fields];
-                        newFields[i].type = e.target.value as any;
+                        newFields[i].type = value as any;
                         setFields(newFields);
-                      }}>
-                        <option value="text">Text</option>
-                        <option value="email">Email</option>
-                        <option value="phone">Phone</option>
-                        <option value="date">Date</option>
-                        <option value="file">File Upload</option>
-                        <option value="textarea">Textarea</option>
-                        <option value="select">Select Dropdown</option>
-                        <option value="multiselect">Multi-select</option>
-                      </select>
+                      }} options={[
+                        { value: 'text', label: 'Text' },
+                        { value: 'email', label: 'Email' },
+                        { value: 'phone', label: 'Phone' },
+                        { value: 'date', label: 'Date' },
+                        { value: 'file', label: 'File Upload' },
+                        { value: 'textarea', label: 'Textarea' },
+                        { value: 'select', label: 'Select Dropdown' },
+                        { value: 'multiselect', label: 'Multi-select' },
+                      ]} />
                       <label className="flex items-center gap-1 text-xs whitespace-nowrap">
                         <input
                           type="checkbox"

@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
+import { SelectDropdown } from '../components/SelectDropdown';
 import { Product, ProductCategory } from '../types';
 import { SEO } from '../components/SEO';
 import { StoreSkeleton } from '../components/Skeleton';
@@ -129,16 +130,18 @@ export function Store({ products, categories, isLoading = false, error = null, o
         </div>
 
         {/* Sort Dropdown */}
-        <select
+        <SelectDropdown
           value={sortBy}
-          onChange={e => setSortBy(e.target.value as any)}
+          onChange={value => setSortBy(value as any)}
+          containerClassName="w-auto"
           className="px-3 sm:px-4 py-2 bg-white border border-slate-200 rounded-lg text-xs sm:text-sm font-medium text-slate-700 focus:outline-none focus:border-primary"
-        >
-          <option value="name">Sort: Name</option>
-          <option value="price-low">Price: Low to High</option>
-          <option value="price-high">Price: High to Low</option>
-          <option value="newest">Newest First</option>
-        </select>
+          options={[
+            { value: 'name', label: 'Sort: Name' },
+            { value: 'price-low', label: 'Price: Low to High' },
+            { value: 'price-high', label: 'Price: High to Low' },
+            { value: 'newest', label: 'Newest First' },
+          ]}
+        />
       </div>
 
       {/* Results Count */}

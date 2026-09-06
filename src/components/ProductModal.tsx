@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Product, ProductCategory } from '../types';
 import { IconRenderer } from './Icons';
+import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { generateSlug } from '../utils/slugGenerator';
@@ -179,16 +180,16 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
 
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-1">Category *</label>
-              <select
+              <SelectDropdown
                 value={formData.category}
-                onChange={e => setFormData({ ...formData, category: e.target.value })}
+                onChange={value => setFormData({ ...formData, category: value })}
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all"
-              >
-                <option value="">Select a category</option>
-                {categories.map(cat => (
-                  <option key={cat.id} value={cat.id}>{cat.name}</option>
-                ))}
-              </select>
+                placeholder="Select a category"
+                options={[
+                  { value: '', label: 'Select a category' },
+                  ...categories.map(cat => ({ value: cat.id, label: cat.name })),
+                ]}
+              />
             </div>
 
             <div>
@@ -262,14 +263,15 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
 
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1">Stock Status</label>
-                <select
+                <SelectDropdown
                   value={formData.inStock ? 'in' : 'out'}
-                  onChange={e => setFormData({ ...formData, inStock: e.target.value === 'in' })}
+                  onChange={value => setFormData({ ...formData, inStock: value === 'in' })}
                   className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all"
-                >
-                  <option value="in">In Stock</option>
-                  <option value="out">Out of Stock</option>
-                </select>
+                  options={[
+                    { value: 'in', label: 'In Stock' },
+                    { value: 'out', label: 'Out of Stock' },
+                  ]}
+                />
               </div>
             </div>
           </div>

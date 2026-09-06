@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Order, UserProfile, ApplicationNote } from '../types';
 import { IconRenderer } from './Icons';
+import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { rtdb } from '../firebase';
 import { ref as dbRef, update } from 'firebase/database';
@@ -225,18 +226,16 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Update Order Status</label>
                   <div className="flex gap-2">
-                    <select
+                    <SelectDropdown
                       value={newStatus}
-                      onChange={(e) => setNewStatus(e.target.value)}
+                      onChange={setNewStatus}
+                      containerClassName="flex-1"
                       className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none"
-                    >
-                      <option value="">Select Status</option>
-                      {ORDER_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {status.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: '', label: 'Select Status' },
+                        ...ORDER_STATUSES.map(status => ({ value: status, label: status.toUpperCase() })),
+                      ]}
+                    />
                     <button
                       onClick={handleUpdateStatus}
                       disabled={loading || !newStatus}
@@ -251,18 +250,16 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
                 <div>
                   <label className="block text-sm font-bold text-slate-700 mb-2">Update Payment Status</label>
                   <div className="flex gap-2">
-                    <select
+                    <SelectDropdown
                       value={newPaymentStatus}
-                      onChange={(e) => setNewPaymentStatus(e.target.value)}
+                      onChange={setNewPaymentStatus}
+                      containerClassName="flex-1"
                       className="flex-1 px-3 py-2 rounded-lg border border-slate-200 text-sm focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none"
-                    >
-                      <option value="">Select Status</option>
-                      {PAYMENT_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {status.toUpperCase()}
-                        </option>
-                      ))}
-                    </select>
+                      options={[
+                        { value: '', label: 'Select Status' },
+                        ...PAYMENT_STATUSES.map(status => ({ value: status, label: status.toUpperCase() })),
+                      ]}
+                    />
                     <button
                       onClick={handleUpdatePaymentStatus}
                       disabled={loading || !newPaymentStatus}
