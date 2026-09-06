@@ -128,7 +128,9 @@ export function Admin({
   const [exportFormat, setExportFormat] = useState<'excel' | 'json'>('excel');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [isSectionDropdownOpen, setIsSectionDropdownOpen] = useState(false);
+  const [isRoleDropdownOpen, setIsRoleDropdownOpen] = useState(false);
   const sectionDropdownRef = useRef<HTMLDivElement>(null);
+  const roleDropdownRef = useRef<HTMLDivElement>(null);
 
   const sectionOptions = [
     { id: 'apps', label: 'Applications', icon: 'clipboard-list' },
@@ -154,9 +156,15 @@ export function Admin({
       if (sectionDropdownRef.current && !sectionDropdownRef.current.contains(event.target as Node)) {
         setIsSectionDropdownOpen(false);
       }
+      if (roleDropdownRef.current && !roleDropdownRef.current.contains(event.target as Node)) {
+        setIsRoleDropdownOpen(false);
+      }
     };
     const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsSectionDropdownOpen(false);
+      if (event.key === 'Escape') {
+        setIsSectionDropdownOpen(false);
+        setIsRoleDropdownOpen(false);
+      }
     };
 
     document.addEventListener('mousedown', handleOutsideClick);
@@ -567,7 +575,7 @@ export function Admin({
 
       {tab === 'users' && (
         <div className="space-y-4">
-          <div className="flex flex-col sm:flex-row gap-4">
+          <div className="w-full flex flex-col sm:flex-row gap-4 justify-between">
             <div className="relative flex-1 max-w-md">
               <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
               <input 
@@ -578,16 +586,55 @@ export function Admin({
                 onChange={e => setSearchUsers(e.target.value)}
               />
             </div>
-            <select 
-              value={userRoleFilter}
-              onChange={e => setUserRoleFilter(e.target.value as any)}
-              className="px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white font-medium text-navy"
-            >
-              <option value="all">All Roles</option>
-              <option value="user">Users</option>
-              <option value="operator">Operators</option>
-              <option value="admin">Admins</option>
-            </select>
+            <div ref={roleDropdownRef} className="relative w-full sm:w-40 sm:ml-auto sm:self-end">
+              <button
+                type="button"
+                onClick={() => setIsRoleDropdownOpen(isOpen => !isOpen)}
+                aria-expanded={isRoleDropdownOpen}
+                aria-haspopup="listbox"
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white font-bold text-navy flex items-center justify-between gap-3"
+              >
+                <span>{userRoleFilter === 'all' ? 'All Roles' : userRoleFilter === 'user' ? 'Users' : userRoleFilter === 'operator' ? 'Operators' : 'Admins'}</span>
+                <span
+                  aria-hidden="true"
+                  className={`h-2 w-2 shrink-0 border-r-2 border-b-2 border-slate-500 transition-transform ${isRoleDropdownOpen ? 'rotate-[225deg] -translate-y-0.5' : 'rotate-45 -translate-y-0.5'}`}
+                />
+              </button>
+
+              {isRoleDropdownOpen && (
+                <div
+                  role="listbox"
+                  aria-label="Filter users by role"
+                  className="absolute top-full left-0 right-0 mt-2 z-50 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+                >
+                  {[
+                    { value: 'all', label: 'All Roles' },
+                    { value: 'user', label: 'Users' },
+                    { value: 'operator', label: 'Operators' },
+                    { value: 'admin', label: 'Admins' },
+                  ].map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      role="option"
+                      aria-selected={userRoleFilter === option.value}
+                      onClick={() => {
+                        setUserRoleFilter(option.value as typeof userRoleFilter);
+                        setIsRoleDropdownOpen(false);
+                      }}
+                      className={`w-full px-3 py-2.5 rounded-lg text-left text-sm font-semibold transition-colors ${
+                        userRoleFilter === option.value ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50 hover:text-navy'
+                      }`}
+                    >
+                      <span className="flex items-center justify-between gap-3">
+                        {option.label}
+                        {userRoleFilter === option.value && <IconRenderer name="check" className="w-4 h-4 text-primary" />}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
             <div className="overflow-x-auto hidden sm:block">
