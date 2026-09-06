@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview } from '../types';
 import { IconRenderer } from '../components/Icons';
@@ -100,6 +100,37 @@ export function Admin({
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState<'excel' | 'json'>('excel');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isSectionDropdownOpen, setIsSectionDropdownOpen] = useState(false);
+  const sectionDropdownRef = useRef<HTMLDivElement>(null);
+
+  const sectionOptions = [
+    { id: 'apps', label: 'Applications', icon: 'clipboard-list' },
+    { id: 'users', label: 'Users', icon: 'users' },
+    { id: 'services', label: 'Services', icon: 'layers' },
+    { id: 'products', label: 'Store', icon: 'shopping-bag' },
+    { id: 'orders', label: 'Orders', icon: 'package' },
+    { id: 'reviews', label: 'Reviews', icon: 'star' },
+    { id: 'payments', label: 'Payments', icon: 'credit-card' },
+  ] as const;
+  const selectedSection = sectionOptions.find(option => option.id === tab) || sectionOptions[0];
+
+  useEffect(() => {
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (sectionDropdownRef.current && !sectionDropdownRef.current.contains(event.target as Node)) {
+        setIsSectionDropdownOpen(false);
+      }
+    };
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsSectionDropdownOpen(false);
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, []);
   
   // Search States
   const [searchApps, setSearchApps] = useState('');
@@ -341,36 +372,58 @@ export function Admin({
     <div className="space-y-8">
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <h2 className="text-4xl font-bold text-navy">Admin Panel</h2>
-        <button
-          onClick={() => setIsExportModalOpen(true)}
-          className="bg-navy text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-navy-light transition-all shadow-lg whitespace-nowrap"
-        >
-          <IconRenderer name="file-export" className="w-5 h-5" />
-          Export
-        </button>
-      </div>
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+          <div ref={sectionDropdownRef} className="relative min-w-52">
+            <button
+              type="button"
+              onClick={() => setIsSectionDropdownOpen(isOpen => !isOpen)}
+              aria-expanded={isSectionDropdownOpen}
+              aria-haspopup="listbox"
+              className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all bg-white font-bold text-navy text-sm flex items-center justify-between gap-3"
+            >
+              <span className="flex items-center gap-2">
+                <IconRenderer name={selectedSection.icon} className="w-4 h-4 text-primary" />
+                {selectedSection.label}
+              </span>
+              <IconRenderer name={isSectionDropdownOpen ? 'chevron-up' : 'chevron-down'} className="w-4 h-4 text-slate-500" />
+            </button>
 
-      <div className="flex flex-wrap gap-2 p-1 bg-slate-100 rounded-2xl w-fit">
-        {[
-          { id: 'apps', label: 'Applications', icon: 'clipboard-list' },
-          { id: 'users', label: 'Users', icon: 'users' },
-          { id: 'services', label: 'Services', icon: 'layers' },
-          { id: 'products', label: 'Store', icon: 'shopping-bag' },
-          { id: 'orders', label: 'Orders', icon: 'package' },
-          { id: 'reviews', label: 'Reviews', icon: 'star' },
-          { id: 'payments', label: 'Payments', icon: 'credit-card' },
-        ].map(t => (
+            {isSectionDropdownOpen && (
+              <div
+                role="listbox"
+                aria-label="Admin sections"
+                className="absolute top-full left-0 right-0 mt-2 z-50 rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl"
+              >
+                {sectionOptions.map(option => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    role="option"
+                    aria-selected={tab === option.id}
+                    onClick={() => {
+                      setTab(option.id as typeof tab);
+                      setIsSectionDropdownOpen(false);
+                    }}
+                    className={`w-full px-3 py-2.5 rounded-lg flex items-center gap-3 text-left text-sm font-semibold transition-colors ${
+                      tab === option.id ? 'bg-primary/10 text-primary' : 'text-slate-600 hover:bg-slate-50 hover:text-navy'
+                    }`}
+                  >
+                    <IconRenderer name={option.icon} className="w-4 h-4" />
+                    <span className="flex-1">{option.label}</span>
+                    {tab === option.id && <IconRenderer name="check" className="w-4 h-4" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <button
-            key={t.id}
-            onClick={() => setTab(t.id as any)}
-            className={`flex items-center gap-2 px-6 py-3 rounded-xl font-bold transition-all ${
-              tab === t.id ? 'bg-white text-primary shadow-sm' : 'text-slate-500 hover:text-navy'
-            }`}
+            onClick={() => setIsExportModalOpen(true)}
+            className="bg-navy text-white px-6 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-navy-light transition-all shadow-lg whitespace-nowrap"
           >
-            <IconRenderer name={t.icon || 'layers'} className="w-4 h-4" />
-            {t.label}
+            <IconRenderer name="file-export" className="w-5 h-5" />
+            Export
           </button>
-        ))}
+        </div>
       </div>
 
       {tab === 'apps' && (
