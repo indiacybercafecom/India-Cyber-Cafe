@@ -16,6 +16,7 @@ import { ToastContainer } from './components/Toast';
 import { Home } from './pages/Home';
 import { NotFound } from './pages/NotFound';
 import { PageSkeleton } from './components/Skeleton';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Footer } from './components/Footer';
 import { ScrollToTop } from './components/ScrollToTop';
 import { ApplicationDetailsModal } from './components/ApplicationDetailsModal';
@@ -221,8 +222,9 @@ function AppContent() {
       />
 
       <main className="pt-[100px] pb-20 px-[3%] sm:px-[5%] w-full max-w-[1440px] mx-auto">
-        <Suspense fallback={<PageSkeleton />}>
-          <Routes>
+        <ErrorBoundary>
+          <Suspense fallback={<PageSkeleton />}>
+            <Routes>
             {/* Home - renders immediately with cached/public data */}
             <Route
               path="/"
@@ -488,8 +490,9 @@ function AppContent() {
               }
             />
             <Route path="*" element={<NotFound />} />
-          </Routes>
-        </Suspense>
+            </Routes>
+          </Suspense>
+        </ErrorBoundary>
       </main>
 
       {selectedApp && user && (

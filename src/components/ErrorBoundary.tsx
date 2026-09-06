@@ -23,6 +23,15 @@ export class ErrorBoundary extends Component<Props, State> {
 
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('ErrorBoundary caught an error:', error, errorInfo);
+
+    const errorMessage = error.message || '';
+    const isStaleChunkError = /dynamically imported module|importing a module script failed|loading chunk|chunkloaderror/i.test(errorMessage);
+    const reloadKey = 'icc:stale-chunk-reloaded';
+
+    if (isStaleChunkError && !sessionStorage.getItem(reloadKey)) {
+      sessionStorage.setItem(reloadKey, '1');
+      window.location.reload();
+    }
   }
 
   public render() {

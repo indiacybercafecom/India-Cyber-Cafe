@@ -1198,7 +1198,11 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                 <span>Secure Payment</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-600">
-                <IconRenderer name="zap" className="w-4 h-4 text-primary" />
+                <span
+                  aria-hidden="true"
+                  className="w-4 h-4 bg-primary"
+                  style={{ WebkitMaskImage: 'url(/icons/bi--rocket-takeoff.svg)', maskImage: 'url(/icons/bi--rocket-takeoff.svg)', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskPosition: 'center', maskPosition: 'center', WebkitMaskSize: 'contain', maskSize: 'contain' }}
+                />
                 <span>Fast Delivery</span>
               </div>
             </div>

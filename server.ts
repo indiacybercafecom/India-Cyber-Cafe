@@ -478,9 +478,17 @@ async function startServer() {
       index: false,
       extensions: ['html'],
       maxAge: '1h',
+      setHeaders: (res, filePath) => {
+        if (path.basename(filePath) === 'index.html') {
+          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+        }
+      },
     }));
 
-    app.use('/assets', express.static(path.join(DIST_PATH, 'assets')));
+    app.use('/assets', express.static(path.join(DIST_PATH, 'assets'), {
+      maxAge: '1y',
+      immutable: true,
+    }));
     app.use('/data', express.static(path.join(DIST_PATH, 'data')));
 
     app.get(/^\/(?!api\/|data\/|assets\/|manifest\.json$|robots\.txt$|sitemap\.xml$|favicon\.?\w*$).*/, (req, res, next) => {

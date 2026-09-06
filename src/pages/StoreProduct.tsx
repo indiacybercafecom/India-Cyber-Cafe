@@ -315,7 +315,11 @@ export function StoreProduct({ products, reviews: externalReviews, user, isLoadi
               <span className="text-xs sm:text-sm text-slate-600">Quality Assured</span>
             </div>
             <div className="flex items-center gap-2">
-              <IconRenderer name="zap" className="w-4 h-4 text-primary" />
+              <span
+                aria-hidden="true"
+                className="w-4 h-4 bg-primary"
+                style={{ WebkitMaskImage: 'url(/icons/bi--rocket-takeoff.svg)', maskImage: 'url(/icons/bi--rocket-takeoff.svg)', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskPosition: 'center', maskPosition: 'center', WebkitMaskSize: 'contain', maskSize: 'contain' }}
+              />
               <span className="text-xs sm:text-sm text-slate-600">Fast Delivery</span>
             </div>
             <div className="flex items-center gap-2">
