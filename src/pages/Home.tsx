@@ -218,7 +218,11 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
             <div key={i} className="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl text-center shadow-md border-t-4 border-primary hover:-translate-y-2 active:translate-y-0 active:scale-95 transition-all">
               <div className="w-10 h-10 sm:w-12 sm:h-12 lg:w-16 lg:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full flex items-center justify-center mx-auto mb-3 sm:mb-4 lg:mb-6">
                 {feature.iconUrl ? (
-                  <img src={feature.iconUrl} alt="" aria-hidden="true" className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8" />
+                  <span
+                    aria-hidden="true"
+                    className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 bg-primary"
+                    style={{ WebkitMaskImage: `url(${feature.iconUrl})`, maskImage: `url(${feature.iconUrl})`, WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskPosition: 'center', maskPosition: 'center', WebkitMaskSize: 'contain', maskSize: 'contain' }}
+                  />
                 ) : (
                   <IconRenderer name={feature.icon || 'layers'} className="w-5 h-5 sm:w-6 sm:h-6 lg:w-8 lg:h-8 text-primary" />
                 )}
@@ -342,7 +346,11 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
                 {step.num}
               </div>
               {step.iconUrl ? (
-                <img src={step.iconUrl} alt="" aria-hidden="true" className="w-5 h-5 sm:w-10 sm:h-10" />
+                <span
+                  aria-hidden="true"
+                  className="w-5 h-5 sm:w-10 sm:h-10 bg-primary"
+                  style={{ WebkitMaskImage: `url(${step.iconUrl})`, maskImage: `url(${step.iconUrl})`, WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskPosition: 'center', maskPosition: 'center', WebkitMaskSize: 'contain', maskSize: 'contain' }}
+                />
               ) : (
                 <IconRenderer name={step.icon || 'layers'} className="w-5 h-5 sm:w-10 sm:h-10 text-primary" />
               )}
