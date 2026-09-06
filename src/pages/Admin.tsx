@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { showToast } from '../components/Toast';
@@ -87,7 +87,34 @@ export function Admin({
   onUpdateProductReview
 }: AdminProps) {
   const navigate = useNavigate();
-  const [tab, setTab] = useState<'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders' | 'reviews'>('apps');
+  const location = useLocation();
+  type AdminTab = 'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders' | 'reviews';
+  const tabFromPath = (pathname: string): AdminTab => {
+    const section = pathname.split('/')[2];
+    const sectionMap: Record<string, AdminTab> = {
+      applications: 'apps',
+      users: 'users',
+      services: 'services',
+      store: 'products',
+      orders: 'orders',
+      reviews: 'reviews',
+      payments: 'payments',
+    };
+    return sectionMap[section] || 'apps';
+  };
+  const pathFromTab = (nextTab: AdminTab) => {
+    const sectionMap: Record<AdminTab, string> = {
+      apps: 'applications',
+      users: 'users',
+      services: 'services',
+      products: 'store',
+      orders: 'orders',
+      reviews: 'reviews',
+      payments: 'payments',
+    };
+    return `/admin/${sectionMap[nextTab]}`;
+  };
+  const [tab, setTab] = useState<AdminTab>(() => tabFromPath(location.pathname));
   const [selectedGateway, setSelectedGateway] = useState<PaymentGateway | null>(null);
   const [isGatewayModalOpen, setIsGatewayModalOpen] = useState(false);
   const [selectedProduct, setSelectedProduct] = useState<Product | null>(null);
@@ -113,6 +140,14 @@ export function Admin({
     { id: 'payments', label: 'Payments', icon: 'credit-card' },
   ] as const;
   const selectedSection = sectionOptions.find(option => option.id === tab) || sectionOptions[0];
+
+  useEffect(() => {
+    const nextTab = tabFromPath(location.pathname);
+    setTab(nextTab);
+    if (location.pathname === '/admin' || !location.pathname.startsWith('/admin/')) {
+      navigate('/admin/applications', { replace: true });
+    }
+  }, [location.pathname, navigate]);
 
   useEffect(() => {
     const handleOutsideClick = (event: MouseEvent) => {
@@ -401,7 +436,9 @@ export function Admin({
                     role="option"
                     aria-selected={tab === option.id}
                     onClick={() => {
-                      setTab(option.id as typeof tab);
+                      const nextTab = option.id as AdminTab;
+                      setTab(nextTab);
+                      navigate(pathFromTab(nextTab));
                       setIsSectionDropdownOpen(false);
                     }}
                     className={`w-full px-3 py-2.5 rounded-lg flex items-center gap-3 text-left text-sm font-semibold transition-colors ${

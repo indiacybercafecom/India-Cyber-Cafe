@@ -61,7 +61,7 @@ const preloadPages = () => {
 function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
-  const isAdminRoute = location.pathname === '/admin';
+  const isAdminRoute = location.pathname === '/admin' || location.pathname.startsWith('/admin/');
   const isOperatorRoute = location.pathname === '/operator';
   const isTrackRoute = location.pathname.startsWith('/track');
   const isApplyRoute = location.pathname.startsWith('/services/') && location.pathname.split('/').length >= 4;
@@ -422,6 +422,10 @@ function AppContent() {
             {/* Admin - all data */}
             <Route
               path="/admin"
+              element={<Navigate to="/admin/applications" replace />}
+            />
+            <Route
+              path="/admin/:section"
               element={
                 authLoading ? (
                   <PageSkeleton />
