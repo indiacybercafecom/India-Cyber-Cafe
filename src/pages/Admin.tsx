@@ -338,15 +338,6 @@ export function Admin({
 
   return (
     <div className="space-y-8">
-      {/* Security Notice */}
-      <div className="bg-navy/5 border-l-4 border-navy p-4 rounded-r-xl flex items-center gap-4">
-        <IconRenderer name="shield-check" className="w-6 h-6 text-navy" />
-        <div>
-          <p className="text-sm font-bold text-navy">Super Admin Protection Active</p>
-          <p className="text-xs text-slate-500">The account <span className="font-bold">indiacybercafe.com@gmail.com</span> has permanent administrative privileges.</p>
-        </div>
-      </div>
-
       <div className="flex flex-col md:flex-row justify-between items-center gap-4">
         <h2 className="text-4xl font-bold text-navy">Admin Panel</h2>
         <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
