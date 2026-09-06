@@ -1372,7 +1372,7 @@ export function Admin({
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[2000] flex items-center justify-center p-2 sm:p-4">
           <div className="bg-white rounded-xl sm:rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
             {/* Header */}
-            <div className="bg-gradient-to-r from-yellow-400 to-amber-400 p-4 sm:p-6 flex items-start justify-between flex-shrink-0">
+            <div className="p-4 sm:p-6 bg-white border-b border-slate-100 flex items-start justify-between flex-shrink-0">
               <div className="flex-1">
                 <h2 className="text-xl sm:text-2xl font-bold text-navy mb-2">Customer Review</h2>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -1388,9 +1388,9 @@ export function Admin({
               </div>
               <button 
                 onClick={() => { setIsReviewModalOpen(false); setSelectedReview(null); }}
-                className="p-1.5 sm:p-2 hover:bg-white/20 rounded-full transition-all flex-shrink-0"
+                className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-full transition-all flex-shrink-0"
               >
-                <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6 text-navy" />
+                <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
               </button>
             </div>
 

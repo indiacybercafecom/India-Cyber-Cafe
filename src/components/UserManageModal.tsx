@@ -77,16 +77,16 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[2000] flex items-center justify-center p-2 sm:p-4">
       <motion.div 
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-white rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl max-h-[90vh] flex flex-col sm:max-h-[80vh]"
+        className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl flex flex-col max-h-[98vh] sm:max-h-[95vh]"
       >
-        <div className="sticky top-0 z-10 p-4 sm:p-6 bg-navy text-white flex justify-between items-center">
-          <h3 className="text-xl sm:text-2xl font-bold">Manage User</h3>
-          <button onClick={onClose} className="hover:rotate-90 transition-all">
-            <IconRenderer name="x" className="w-6 h-6" />
+        <div className="p-4 sm:p-6 bg-white border-b border-slate-100 flex justify-between items-center">
+          <h3 className="text-xl sm:text-2xl font-bold text-navy">Manage User</h3>
+          <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-full transition-all">
+            <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
           </button>
         </div>
 

@@ -36,13 +36,13 @@ export function GatewayModal({ gateway, onClose, onSave }: GatewayModalProps) {
       <motion.div 
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
-        className="bg-white rounded-xl sm:rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl max-h-[92vh] flex flex-col"
+        className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl flex flex-col max-h-[98vh] sm:max-h-[95vh]"
       >
         {/* Header */}
-        <div className="sticky top-0 z-10 p-3 sm:p-6 bg-gradient-to-r from-navy to-blue-700 text-white flex justify-between items-center flex-shrink-0">
-          <h3 className="text-lg sm:text-xl font-bold">{gateway ? 'Edit Gateway' : 'Add Gateway'}</h3>
-          <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-white/20 rounded-lg transition-all flex-shrink-0">
-            <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6" />
+        <div className="p-4 sm:p-6 bg-white border-b border-slate-100 flex justify-between items-center flex-shrink-0">
+          <h3 className="text-xl sm:text-2xl font-bold text-navy">{gateway ? 'Edit Gateway' : 'Add Gateway'}</h3>
+          <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-full transition-all flex-shrink-0">
+            <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
           </button>
         </div>
 

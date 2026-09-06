@@ -233,30 +233,30 @@ export function OrderManageModal({
 
   return (
     <motion.div 
-      className="fixed inset-0 bg-black/50 z-[2000] flex items-center justify-center p-2 sm:p-4"
+      className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[2000] flex items-center justify-center p-2 sm:p-4"
       onClick={onClose}
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
     >
       <motion.div 
-        className="bg-white rounded-xl sm:rounded-2xl shadow-2xl max-w-2xl w-full max-h-[92vh] overflow-hidden flex flex-col"
+        className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl max-w-2xl w-full max-h-[98vh] sm:max-h-[95vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
         initial={{ scale: 0.95, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         exit={{ scale: 0.95, opacity: 0 }}
       >
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-gradient-to-r from-navy via-navy-dark to-navy text-white px-4 sm:px-6 py-3 sm:py-4 flex justify-between items-center border-b border-white/10 flex-shrink-0">
+        <div className="p-4 sm:p-6 bg-white border-b border-slate-100 flex justify-between items-center flex-shrink-0">
           <div>
-            <p className="text-xs sm:text-sm font-bold opacity-90">Order ID</p>
-            <h2 className="text-lg sm:text-2xl font-bold">{order.id}</h2>
+            <p className="text-xs sm:text-sm font-bold text-slate-500">Order ID</p>
+            <h2 className="text-xl sm:text-2xl font-bold text-navy">{order.id}</h2>
           </div>
           <button 
             onClick={onClose}
-            className="p-2 hover:bg-white/20 rounded-lg transition-all"
+            className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-full transition-all"
           >
-            <IconRenderer name="x" className="w-6 h-6" />
+            <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
           </button>
         </div>
 
