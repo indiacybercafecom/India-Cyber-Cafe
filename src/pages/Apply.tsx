@@ -583,18 +583,38 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                   onChange={e => handleInputChange(field.label, e.target.value)}
                 />
               ) : field.type === 'multiselect' ? (
-                <select
-                  multiple
-                  required={field.required !== false}
-                  aria-label={field.label}
-                  className="input-field text-xs sm:text-sm w-full min-h-24"
-                  value={Array.isArray(formData[field.name || field.label]) ? formData[field.name || field.label] : []}
-                  onChange={e => handleInputChange(field.name || field.label, Array.from(e.target.selectedOptions, option => option.value))}
-                >
-                  {field.options?.map((opt, idx) => (
-                    <option key={idx} value={opt}>{opt}</option>
-                  ))}
-                </select>
+                <div className="space-y-2" role="group" aria-label={field.label}>
+                  {(field.options || []).map((opt, idx) => {
+                    const fieldKey = field.name || field.label;
+                    const selectedValues = Array.isArray(formData[fieldKey]) ? formData[fieldKey] : [];
+                    const optionId = `multiselect-${i}-${idx}`;
+
+                    return (
+                      <label
+                        key={`${opt}-${idx}`}
+                        htmlFor={optionId}
+                        className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white cursor-pointer hover:border-primary hover:bg-primary/5 transition-all"
+                      >
+                        <input
+                          id={optionId}
+                          type="checkbox"
+                          checked={selectedValues.includes(opt)}
+                          onChange={e => {
+                            setFormData(prev => {
+                              const currentValues = Array.isArray(prev[fieldKey]) ? prev[fieldKey] : [];
+                              const nextValues = e.target.checked
+                                ? [...currentValues, opt]
+                                : currentValues.filter(value => value !== opt);
+                              return { ...prev, [fieldKey]: nextValues };
+                            });
+                          }}
+                          className="h-4 w-4 shrink-0 accent-primary"
+                        />
+                        <span className="text-xs sm:text-sm text-navy font-medium">{opt}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               ) : field.type === 'select' ? (
                 <select 
                   required={field.required !== false}
