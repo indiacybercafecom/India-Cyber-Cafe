@@ -134,10 +134,10 @@ export function Admin({
 
   const sectionOptions = [
     { id: 'apps', label: 'Applications', icon: 'clipboard-list' },
+    { id: 'orders', label: 'Orders', icon: 'package' },
     { id: 'users', label: 'Users', icon: 'users' },
     { id: 'services', label: 'Services', icon: 'layers' },
     { id: 'products', label: 'Store', icon: 'shopping-bag' },
-    { id: 'orders', label: 'Orders', icon: 'package' },
     { id: 'reviews', label: 'Reviews', icon: 'star' },
     { id: 'payments', label: 'Payments', icon: 'credit-card' },
   ] as const;
