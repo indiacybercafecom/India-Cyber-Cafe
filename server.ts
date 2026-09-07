@@ -65,7 +65,8 @@ async function startServer() {
           "https://www.google-analytics.com " +
           "https://region1.google-analytics.com " +
           "https://*.razorpay.com " +
-          "wss://*.razorpay.com; " +
+          "wss://*.razorpay.com " +
+          "blob:; " +
         "frame-src 'self' " +
           "https://*.razorpay.com " +
           "https://*.firebaseapp.com " +
