@@ -98,14 +98,6 @@ export function useDocuments(includeInactive = false) {
             console.warn('[useDocuments] JSON fetch failed, falling back to Firebase:', jsonError);
           }
 
-          if (documentsLoadedFromJson && categoriesLoadedFromJson) {
-            if (isMounted) {
-              setLoading(false);
-              setError(null);
-            }
-            return;
-          }
-
           const lastSync = syncManager.getLastSync('documents');
           const now = Date.now();
           const SYNC_THRESHOLD = 5 * 60 * 1000;
