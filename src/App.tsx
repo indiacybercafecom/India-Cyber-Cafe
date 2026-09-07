@@ -9,6 +9,7 @@ import { useOrders } from './hooks/useOrders';
 import { useUsers } from './hooks/useUsers';
 import { useGateways } from './hooks/useGateways';
 import { useProductReviews } from './hooks/useProductReviews';
+import { useDocuments } from './hooks/useDocuments';
 import { Navbar } from './components/Navbar';
 import { Sidebar } from './components/Sidebar';
 import { AuthModal } from './components/AuthModal';
@@ -75,6 +76,7 @@ function AppContent() {
   const { services, loading: servicesLoading, error: servicesError, retry: retryServices, addService, updateService, deleteService } = useServices();
   const { products, loading: productsLoading, error: productsError, retry: retryProducts, addProduct, updateProduct, deleteProduct } = useProducts();
   const { productCategories, addProductCategory, updateProductCategory, deleteProductCategory } = useProductCategories();
+  const { documents, categories: documentCategories, saveDocument, deleteDocument, saveCategory: saveDocumentCategory, deleteCategory: deleteDocumentCategory } = useDocuments(isAdminRoute && user?.role === 'admin');
 
   // User-specific data (loaded only when user is authenticated)
   const userApplications = useApplications(
@@ -445,6 +447,8 @@ function AppContent() {
                     gateways={gateways.gateways}
                     products={products}
                     productCategories={productCategories}
+                    documents={documents}
+                    documentCategories={documentCategories}
                     orders={orders}
                     productReviews={adminReviews.productReviews}
                     onViewApp={setSelectedApp}
@@ -482,6 +486,10 @@ function AppContent() {
                       // Admin review delete
                     }}
                     onUpdateProductReview={adminReviews.updateProductReview}
+                    onSaveDocument={saveDocument}
+                    onDeleteDocument={deleteDocument}
+                    onSaveDocumentCategory={saveDocumentCategory}
+                    onDeleteDocumentCategory={deleteDocumentCategory}
                     currentUser={user}
                   />
                 ) : authUser ? (

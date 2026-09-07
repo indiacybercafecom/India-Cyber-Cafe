@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview } from '../types';
+import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview, FormDocument, DocumentCategory } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { SelectDropdown } from '../components/SelectDropdown';
 import { showToast } from '../components/Toast';
@@ -9,6 +9,8 @@ import { GatewayModal } from '../components/GatewayModal';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { ProductModal } from '../components/ProductModal';
 import { CategoryModal } from '../components/CategoryModal';
+import { DocumentModal } from '../components/DocumentModal';
+import { DocumentCategoryModal } from '../components/DocumentCategoryModal';
 import { OrderManageModal } from '../components/OrderManageModal';
 import { exportDataComprehensive } from '../services/exportService';
 const getEmbeddedTimestamp = (id: string | undefined): number | null => {
@@ -31,6 +33,8 @@ interface AdminProps {
   gateways: PaymentGateway[];
   products?: Product[];
   productCategories?: ProductCategory[];
+  documents?: FormDocument[];
+  documentCategories?: DocumentCategory[];
   orders?: Order[];
   productReviews?: ProductReview[];
   onViewApp: (app: Application) => void;
@@ -51,6 +55,10 @@ interface AdminProps {
   onAddCategory?: (category: ProductCategory) => Promise<void>;
   onUpdateCategory?: (id: string, category: Partial<ProductCategory>) => Promise<void>;
   onDeleteCategory?: (id: string) => Promise<void>;
+  onSaveDocument?: (data: Omit<FormDocument, 'id'>, id?: string) => Promise<void>;
+  onDeleteDocument?: (id: string) => Promise<void>;
+  onSaveDocumentCategory?: (category: DocumentCategory, id?: string) => Promise<void>;
+  onDeleteDocumentCategory?: (id: string) => Promise<void>;
   onDeleteProductReview?: (id: string) => Promise<void>;
   onUpdateProductReview?: (id: string, data: Partial<ProductReview>) => Promise<void>;
   currentUser?: UserProfile;
@@ -63,6 +71,8 @@ export function Admin({
   gateways,
   products = [],
   productCategories = [],
+  documents = [],
+  documentCategories = [],
   orders = [],
   productReviews = [],
   onViewApp, 
@@ -83,13 +93,17 @@ export function Admin({
   onAddCategory,
   onUpdateCategory,
   onDeleteCategory,
+  onSaveDocument,
+  onDeleteDocument,
+  onSaveDocumentCategory,
+  onDeleteDocumentCategory,
   onDeleteProductReview,
   currentUser,
   onUpdateProductReview
 }: AdminProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  type AdminTab = 'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders' | 'reviews';
+  type AdminTab = 'apps' | 'users' | 'services' | 'payments' | 'products' | 'documents' | 'orders' | 'reviews';
   const tabFromPath = (pathname: string): AdminTab => {
     const section = pathname.split('/')[2];
     const sectionMap: Record<string, AdminTab> = {
@@ -97,6 +111,7 @@ export function Admin({
       users: 'users',
       services: 'services',
       store: 'products',
+      pdfs: 'documents',
       orders: 'orders',
       reviews: 'reviews',
       payments: 'payments',
@@ -109,6 +124,7 @@ export function Admin({
       users: 'users',
       services: 'services',
       products: 'store',
+      documents: 'pdfs',
       orders: 'orders',
       reviews: 'reviews',
       payments: 'payments',
@@ -139,6 +155,7 @@ export function Admin({
     { id: 'users', label: 'Users', icon: 'users' },
     { id: 'services', label: 'Services', icon: 'layers' },
     { id: 'products', label: 'Store', icon: 'shopping-bag' },
+    { id: 'documents', label: 'PDFs', icon: 'file-text' },
     { id: 'reviews', label: 'Reviews', icon: 'star' },
     { id: 'payments', label: 'Payments', icon: 'credit-card' },
   ] as const;
@@ -182,8 +199,13 @@ export function Admin({
   const [searchServices, setSearchServices] = useState('');
   const [searchPayments, setSearchPayments] = useState('');
   const [searchProducts, setSearchProducts] = useState('');
+  const [searchDocuments, setSearchDocuments] = useState('');
   const [searchOrders, setSearchOrders] = useState('');
   const [searchReviews, setSearchReviews] = useState('');
+  const [selectedDocument, setSelectedDocument] = useState<FormDocument | null>(null);
+  const [isDocumentModalOpen, setIsDocumentModalOpen] = useState(false);
+  const [selectedDocumentCategory, setSelectedDocumentCategory] = useState<DocumentCategory | null>(null);
+  const [isDocumentCategoryModalOpen, setIsDocumentCategoryModalOpen] = useState(false);
   const [userRoleFilter, setUserRoleFilter] = useState<'all' | 'user' | 'operator' | 'admin'>('all');
 
   // Confirmation Modal State
@@ -272,6 +294,32 @@ export function Admin({
     });
   };
 
+  const handleDeleteDocument = (id: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete PDF',
+      message: 'Are you sure you want to delete this PDF? This action cannot be undone.',
+      type: 'danger',
+      onConfirm: async () => {
+        try { await onDeleteDocument?.(id); showToast('PDF deleted successfully'); }
+        catch (error: any) { showToast(error.message || 'Failed to delete PDF', 'error'); }
+      }
+    });
+  };
+
+  const handleDeleteDocumentCategory = (id: string) => {
+    setConfirmConfig({
+      isOpen: true,
+      title: 'Delete PDF Category',
+      message: 'Are you sure you want to delete this PDF category?',
+      type: 'danger',
+      onConfirm: async () => {
+        try { await onDeleteDocumentCategory?.(id); showToast('PDF category deleted successfully'); }
+        catch (error: any) { showToast(error.message || 'Failed to delete PDF category', 'error'); }
+      }
+    });
+  };
+
   const handleDeleteOrder = (id: string) => {
     setConfirmConfig({
       isOpen: true,
@@ -310,7 +358,7 @@ export function Admin({
     });
   };
 
-  const exportToExcel = (type: 'apps' | 'users' | 'services' | 'payments' | 'products' | 'orders' | 'reviews' | 'all' = 'apps') => {
+  const exportToExcel = (type: 'apps' | 'users' | 'services' | 'payments' | 'products' | 'documents' | 'orders' | 'reviews' | 'all' = 'apps') => {
     try {
       exportDataComprehensive(type, {
         applications,
@@ -319,6 +367,8 @@ export function Admin({
         gateways,
         products,
         productCategories,
+        documents,
+        documentCategories,
         orders,
         productReviews
       }, {
@@ -399,6 +449,12 @@ export function Admin({
   const filteredProducts = products.filter(p =>
     (p.name || '').toLowerCase().includes(searchProducts.toLowerCase()) ||
     (p.shortDescription || '').toLowerCase().includes(searchProducts.toLowerCase())
+  );
+
+  const filteredDocuments = documents.filter(document =>
+    document.name.toLowerCase().includes(searchDocuments.toLowerCase()) ||
+    document.description.toLowerCase().includes(searchDocuments.toLowerCase()) ||
+    document.category.toLowerCase().includes(searchDocuments.toLowerCase())
   );
 
   const filteredOrders = (orders && Array.isArray(orders) ? orders : [])
@@ -1010,6 +1066,17 @@ export function Admin({
         </div>
       )}
 
+      {tab === 'documents' && (
+        <div className="space-y-4">
+          <div className="flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
+            <div className="relative w-full max-w-md"><IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" /><input type="text" placeholder="Search PDFs..." className="w-full rounded-xl border border-slate-200 py-3 pl-11 pr-4 outline-none transition-all focus:border-primary focus:ring-2 focus:ring-primary/20" value={searchDocuments} onChange={event => setSearchDocuments(event.target.value)} /></div>
+            <div className="flex flex-wrap gap-3"><button onClick={() => { setSelectedDocumentCategory(null); setIsDocumentCategoryModalOpen(true); }} className="btn-outline flex items-center justify-center gap-2 px-6 py-3 text-sm"><IconRenderer name="layers" className="h-4 w-4" />Manage Categories</button><button onClick={() => { setSelectedDocument(null); setIsDocumentModalOpen(true); }} className="btn-primary flex items-center justify-center gap-2 px-8 py-3 text-sm"><IconRenderer name="plus" className="h-4 w-4" />Add PDF</button></div>
+          </div>
+          {documentCategories.length > 0 && <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5"><>{documentCategories.map(category => <div key={category.id} className="group rounded-xl border border-slate-200 bg-white p-4 hover:border-navy"><div className="flex items-start justify-between"><IconRenderer name="file-text" className="h-6 w-6 text-navy" /><span className="flex gap-1 opacity-0 transition-all group-hover:opacity-100"><button onClick={() => { setSelectedDocumentCategory(category); setIsDocumentCategoryModalOpen(true); }} className="p-1 text-blue-600"><IconRenderer name="user-pen" className="h-3 w-3" /></button><button onClick={() => handleDeleteDocumentCategory(category.id)} className="p-1 text-red-600"><IconRenderer name="trash" className="h-3 w-3" /></button></span></div><p className="mt-2 line-clamp-2 text-xs font-bold text-navy">{category.name}</p></div>)}</></div>}
+          {filteredDocuments.length === 0 ? <div className="rounded-3xl bg-white p-20 text-center shadow-xl"><IconRenderer name="file-text" className="mx-auto mb-4 h-16 w-16 text-slate-300" /><h3 className="mb-2 text-2xl font-bold text-slate-700">No PDFs Yet</h3><p className="mb-6 text-slate-400">Add PDFs to make them available on the public Forms & Documents page.</p><button onClick={() => { setSelectedDocument(null); setIsDocumentModalOpen(true); }} className="btn-primary mx-auto flex items-center justify-center gap-2 px-8 py-3"><IconRenderer name="plus" className="h-5 w-5" />Add First PDF</button></div> : <div className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">{filteredDocuments.map(document => <article key={document.id} className={`rounded-2xl border bg-white p-5 shadow-sm ${document.active ? 'border-slate-200' : 'border-slate-200 opacity-60'}`}><div className="flex items-start justify-between gap-3"><IconRenderer name="file-text" className="h-10 w-10 text-primary" /><span className={`badge ${document.active ? 'bg-green-500' : 'bg-slate-400'}`}>{document.active ? 'Active' : 'Hidden'}</span></div><p className="mt-4 text-xs font-bold uppercase tracking-wider text-primary">{document.category}</p><h3 className="mt-1 text-lg font-bold text-navy">{document.name}</h3><p className="mt-2 line-clamp-2 text-sm text-slate-500">{document.description}</p><div className="mt-5 flex gap-2"><button onClick={() => { setSelectedDocument(document); setIsDocumentModalOpen(true); }} className="btn-outline flex-1 px-3 py-2 text-xs">Edit</button><button onClick={() => handleDeleteDocument(document.id)} className="rounded-lg p-2 text-red-500 hover:bg-red-50"><IconRenderer name="trash" className="h-4 w-4" /></button></div></article>)}</div>}
+        </div>
+      )}
+
       {tab === 'orders' && (
         <div className="space-y-4">
           <div className="relative max-w-md">
@@ -1240,6 +1307,23 @@ export function Admin({
               showToast(error.message || 'Failed to save category', 'error');
             }
           }}
+        />
+      )}
+
+      {isDocumentModalOpen && (
+        <DocumentModal
+          document={selectedDocument}
+          categories={documentCategories}
+          onClose={() => { setIsDocumentModalOpen(false); setSelectedDocument(null); }}
+          onSave={async (data, id) => { await onSaveDocument?.(data, id); }}
+        />
+      )}
+
+      {isDocumentCategoryModalOpen && (
+        <DocumentCategoryModal
+          category={selectedDocumentCategory}
+          onClose={() => { setIsDocumentCategoryModalOpen(false); setSelectedDocumentCategory(null); }}
+          onSave={async category => { await onSaveDocumentCategory?.(category, selectedDocumentCategory?.id); }}
         />
       )}
 

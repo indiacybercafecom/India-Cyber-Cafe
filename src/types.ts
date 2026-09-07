@@ -136,6 +136,28 @@ export interface Product {
   paymentMethods?: ('online' | 'cod' | 'both')[]; // Payment methods: online (Razorpay), cash on delivery, or both
 }
 
+export interface DocumentCategory {
+  id: string;
+  name: string;
+  description?: string;
+  icon?: string;
+  order?: number;
+}
+
+export interface FormDocument {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  previewUrl: string;
+  downloadUrl: string;
+  fileType: 'PDF';
+  thumbnailUrl?: string;
+  active: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface OrderItem {
   productId: string;
   productName: string;

@@ -1,5 +1,5 @@
 import { utils, writeFile, WorkBook } from 'xlsx';
-import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview } from '../types';
+import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview, FormDocument, DocumentCategory } from '../types';
 
 /**
  * Comprehensive Export Service
@@ -245,7 +245,7 @@ export interface ExportOptions {
 }
 
 export const exportDataComprehensive = (
-  type: 'apps' | 'users' | 'services' | 'payments' | 'products' | 'categories' | 'orders' | 'reviews' | 'all',
+  type: 'apps' | 'users' | 'services' | 'payments' | 'products' | 'categories' | 'documents' | 'orders' | 'reviews' | 'all',
   data: {
     applications?: Application[];
     users?: UserProfile[];
@@ -253,6 +253,8 @@ export const exportDataComprehensive = (
     gateways?: PaymentGateway[];
     products?: Product[];
     productCategories?: ProductCategory[];
+    documents?: FormDocument[];
+    documentCategories?: DocumentCategory[];
     orders?: Order[];
     productReviews?: ProductReview[];
   },

@@ -2,66 +2,26 @@ import { useMemo, useState } from 'react';
 import { IconRenderer } from '../components/Icons';
 import { SEO } from '../components/SEO';
 import { SelectDropdown } from '../components/SelectDropdown';
-
-export const documentCategories = [
-  'Government Forms',
-  'Applications',
-  'Affidavit & Declaration',
-  'Resume/CV',
-  'Biodata',
-  'Education',
-  'Jobs',
-  'Banking',
-  'Aadhaar/PAN',
-  'Vehicle',
-  'Legal',
-  'Business',
-  'Undertaking',
-  'Other',
-] as const;
-
-export interface FormDocument {
-  id: string;
-  name: string;
-  description: string;
-  category: (typeof documentCategories)[number];
-  previewUrl: string;
-  downloadUrl: string;
-  fileType: 'PDF';
-}
-
-const sampleDriveFileId = '1HzmXcOlSft17NdUgK7w7CFszRryP8M2K';
-const sampleDrivePreviewUrl = `https://drive.google.com/file/d/${sampleDriveFileId}/preview`;
-const sampleDriveDownloadUrl = `https://drive.google.com/uc?export=download&id=${sampleDriveFileId}`;
-
-// This collection can later be replaced by a Firebase/Storage query without changing the card UI.
-export const sampleDocuments: FormDocument[] = [
-  {
-    id: 'sample-government-form',
-    name: 'Sample Government Form',
-    description: 'Example PDF document for testing the Forms & Documents library.',
-    category: 'Government Forms',
-    previewUrl: sampleDrivePreviewUrl,
-    downloadUrl: sampleDriveDownloadUrl,
-    fileType: 'PDF',
-  },
-];
+import { useDocuments, defaultDocumentCategories } from '../hooks/useDocuments';
 
 export function FormsDocuments() {
+  const { documents, categories, loading, error } = useDocuments();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState<'All' | (typeof documentCategories)[number]>('All');
+  const [selectedCategory, setSelectedCategory] = useState('All');
   const normalizedSearch = searchTerm.trim().toLowerCase();
+  const categoryNames = categories.length > 0 ? [...categories].sort((a, b) => (a.order || 0) - (b.order || 0)).map(category => category.name) : defaultDocumentCategories;
 
-  const filteredDocuments = useMemo(() => sampleDocuments.filter(document => {
+  const filteredDocuments = useMemo(() => documents.filter(document => {
+    if (document.active === false) return false;
     const matchesCategory = selectedCategory === 'All' || document.category === selectedCategory;
     const matchesSearch = !normalizedSearch || [document.name, document.description, document.category]
       .some(value => value.toLowerCase().includes(normalizedSearch));
     return matchesCategory && matchesSearch;
-  }), [normalizedSearch, selectedCategory]);
+  }), [documents, normalizedSearch, selectedCategory]);
 
   const categoryOptions = [
     { value: 'All', label: 'All Categories' },
-    ...documentCategories.map(category => ({ value: category, label: category })),
+    ...categoryNames.map(category => ({ value: category, label: category })),
   ];
 
   return (
@@ -114,7 +74,7 @@ export function FormsDocuments() {
           <span className="text-right text-xs font-semibold text-slate-500">{filteredDocuments.length} document{filteredDocuments.length === 1 ? '' : 's'}</span>
         </div>
 
-        {filteredDocuments.length > 0 ? (
+        {loading ? <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500">Loading PDFs...</div> : error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-10 text-center text-red-700">Unable to load PDFs right now.</div> : filteredDocuments.length > 0 ? (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {filteredDocuments.map(document => (
               <article key={document.id} className="flex flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/10">
