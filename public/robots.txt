@@ -11,6 +11,7 @@ Allow: /register
 Allow: /apply
 Allow: /track
 Allow: /profile
+Allow: /forms-documents
 Allow: /admin
 Allow: /operator
 Allow: /legal

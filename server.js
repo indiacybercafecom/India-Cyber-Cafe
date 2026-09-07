@@ -308,7 +308,7 @@ app.get('/sitemap.xml', async (req, res) => {
 
 app.get('/page-sitemap.xml', (req, res) => {
   const baseUrl = getSitemapBaseUrl(req);
-  const pages = ['', '/services', '/store', '/price-list', '/track', '/profile', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund'];
+  const pages = ['', '/services', '/store', '/price-list', '/forms-documents', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund', '/legal/disclaimer'];
   res.type('application/xml').send(createSitemapXml(pages.map(url => ({ url: `${baseUrl}${url}`, priority: url === '' ? '1.0' : '0.8' }))));
 });
 
