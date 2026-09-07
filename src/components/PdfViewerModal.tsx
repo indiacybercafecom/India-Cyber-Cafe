@@ -34,39 +34,63 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [fetching, setFetching] = useState(true);
   const [rendering, setRendering] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    const loadingTask = pdfjsLib.getDocument({ url: sourceUrl, withCredentials: false });
+    let objectUrl: string | null = null;
+    let loadingTask: ReturnType<typeof pdfjsLib.getDocument> | null = null;
 
     setLoading(true);
+    setFetching(true);
     setError(null);
     setPageNumber(1);
     setPageCount(0);
     setZoom(1);
     setRotation(0);
 
-    loadingTask.promise.then(pdf => {
-      if (cancelled) {
-        return;
-      }
-      pdfRef.current = pdf;
-      setPageCount(pdf.numPages);
-      setLoading(false);
-    }).catch(loadError => {
-      if (!cancelled) {
+    const loadPdf = async () => {
+      try {
+        const response = await fetch(`/api/pdf-proxy?url=${encodeURIComponent(sourceUrl)}`, {
+          headers: { Accept: 'application/pdf' },
+        });
+        if (!response.ok) throw new Error(response.status === 403 ? 'permission denied' : `PDF fetch failed: ${response.status}`);
+
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.toLowerCase().includes('application/pdf')) throw new Error('The server did not return a PDF file.');
+
+        const pdfBlob = await response.blob();
+        if (cancelled) return;
+
+        objectUrl = URL.createObjectURL(new Blob([pdfBlob], { type: 'application/pdf' }));
+        loadingTask = pdfjsLib.getDocument({ url: objectUrl, withCredentials: false });
+        const pdf = await loadingTask.promise;
+        if (cancelled) return;
+
+        pdfRef.current = pdf;
+        setPageCount(pdf.numPages);
+        setFetching(false);
         setLoading(false);
-        setError(getPdfErrorMessage(loadError));
+      } catch (loadError) {
+        if (!cancelled) {
+          setFetching(false);
+          setLoading(false);
+          setError(getPdfErrorMessage(loadError));
+        }
       }
-    });
+    };
+
+    void loadPdf();
 
     return () => {
       cancelled = true;
       renderTaskRef.current?.cancel();
+      if (loadingTask) void loadingTask.destroy();
+      if (pdfRef.current) pdfRef.current.cleanup();
       pdfRef.current = null;
-      void loadingTask.destroy();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
     };
   }, [sourceUrl]);
 
@@ -130,20 +154,13 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const printFrame = window.document.createElement('iframe');
-    printFrame.style.position = 'fixed';
-    printFrame.style.right = '0';
-    printFrame.style.bottom = '0';
-    printFrame.style.width = '0';
-    printFrame.style.height = '0';
-    printFrame.style.border = '0';
-    printFrame.srcdoc = `<html><head><title>${title}</title></head><body style="margin:0;text-align:center"><img src="${canvas.toDataURL('image/png')}" style="max-width:100%;height:auto" /></body></html>`;
-    printFrame.onload = () => {
-      printFrame.contentWindow?.focus();
-      printFrame.contentWindow?.print();
-      window.setTimeout(() => printFrame.remove(), 1000);
-    };
-    window.document.body.appendChild(printFrame);
+    const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+    if (!printWindow) return;
+    printWindow.document.write(`<html><head><title>${title}</title></head><body style="margin:0;text-align:center"><img src="${canvas.toDataURL('image/png')}" style="max-width:100%;height:auto" /></body></html>`);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+    printWindow.close();
   };
 
   return (
@@ -179,7 +196,7 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
         </div>
 
         <main className="relative min-h-0 flex-1 overflow-auto bg-slate-700 p-3 sm:p-6">
-          {(loading || rendering) && <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-700/80 text-sm font-semibold text-white"><LoaderCircle className="mr-2 h-5 w-5 animate-spin" />{loading ? 'Loading PDF...' : 'Rendering page...'}</div>}
+          {(fetching || loading || rendering) && <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-700/80 text-sm font-semibold text-white"><LoaderCircle className="mr-2 h-5 w-5 animate-spin" />{fetching ? 'Loading PDF...' : rendering ? 'Rendering page...' : 'Preparing PDF...'}</div>}
           {error ? <div className="flex min-h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl bg-white p-6 text-center shadow-xl"><FileWarning className="mx-auto h-10 w-10 text-red-500" /><h3 className="mt-3 text-lg font-bold text-navy">Unable to preview PDF</h3><p className="mt-2 text-sm leading-relaxed text-slate-500">{error}</p><a href={downloadUrl} download={`${title}.pdf`} target="_blank" rel="noopener noreferrer" className="btn-primary mx-auto mt-5 inline-flex items-center gap-2"><Download className="h-4 w-4" />Download PDF</a></div></div> : <div className="flex min-h-full min-w-full items-start justify-center"><canvas ref={canvasRef} className="bg-white shadow-xl" /></div>}
         </main>
       </div>

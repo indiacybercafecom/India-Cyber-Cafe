@@ -121,6 +121,40 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  app.get("/api/pdf-proxy", async (req, res) => {
+    const source = typeof req.query.url === "string" ? req.query.url : "";
+    if (!source) return res.status(400).json({ success: false, error: "PDF URL is required" });
+
+    try {
+      const sourceUrl = new URL(source);
+      if (sourceUrl.protocol !== "https:") {
+        return res.status(400).json({ success: false, error: "Only HTTPS PDF URLs are supported" });
+      }
+
+      const response = await fetch(sourceUrl);
+      if (!response.ok) {
+        return res.status(response.status === 401 || response.status === 403 ? 403 : 502).json({
+          success: false,
+          error: "Unable to access PDF source",
+        });
+      }
+
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.toLowerCase().includes("text/html")) {
+        return res.status(403).json({ success: false, error: "PDF source is not publicly accessible" });
+      }
+
+      const bytes = Buffer.from(await response.arrayBuffer());
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Length", bytes.length.toString());
+      res.setHeader("Cache-Control", "private, max-age=300");
+      return res.send(bytes);
+    } catch (error: any) {
+      console.error("PDF proxy error:", error.message);
+      return res.status(502).json({ success: false, error: "Unable to fetch PDF" });
+    }
+  });
+
   // Sitemap and Robots.txt
   app.get("/robots.txt", (req, res) => {
     let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
