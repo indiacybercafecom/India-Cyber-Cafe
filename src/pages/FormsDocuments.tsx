@@ -1,13 +1,24 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
 import { SEO } from '../components/SEO';
 import { SelectDropdown } from '../components/SelectDropdown';
 import { useDocuments } from '../hooks/useDocuments';
+import { generateSlug } from '../utils/slugGenerator';
+import { FormDocument } from '../types';
 
-export function FormsDocuments() {
+interface FormsDocumentsProps {
+  categorySlug?: string;
+}
+
+export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
   const { documents, categories, loading, error } = useDocuments();
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('All');
+  const selectedCategoryName = categorySlug ? categories.find(category => generateSlug(category.name) === categorySlug)?.name : undefined;
+  const [selectedCategory, setSelectedCategory] = useState(selectedCategoryName || 'All');
+  useEffect(() => {
+    if (selectedCategoryName) setSelectedCategory(selectedCategoryName);
+  }, [selectedCategoryName]);
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const categoryNames = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0)).map(category => category.name);
 
@@ -23,6 +34,10 @@ export function FormsDocuments() {
     { value: 'All', label: 'All Categories' },
     ...categoryNames.map(category => ({ value: category, label: category })),
   ];
+
+  if (categorySlug && !loading && !selectedCategoryName) {
+    return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><p className="font-semibold text-slate-600">Category not found.</p><Link to="/forms-documents" className="btn-primary mx-auto mt-4">View all documents</Link></div>;
+  }
 
   return (
     <div className="space-y-8 sm:space-y-10">
@@ -69,7 +84,7 @@ export function FormsDocuments() {
         <div className="flex items-end justify-between gap-4">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-primary">Document library</p>
-            <h2 id="documents-heading" className="text-2xl font-bold text-navy sm:text-3xl">Available PDFs</h2>
+            <h2 id="documents-heading" className="text-2xl font-bold text-navy sm:text-3xl">{selectedCategoryName ? `${selectedCategoryName} PDFs` : 'Available PDFs'}</h2>
           </div>
           <span className="text-right text-xs font-semibold text-slate-500">{filteredDocuments.length} document{filteredDocuments.length === 1 ? '' : 's'}</span>
         </div>
@@ -85,7 +100,7 @@ export function FormsDocuments() {
                   <span className="rounded-md bg-red-50 px-2.5 py-1 text-[10px] font-extrabold tracking-wider text-red-600">{document.fileType}</span>
                 </div>
                 <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-primary">{document.category}</p>
-                <h3 className="text-lg font-bold leading-snug text-navy">{document.name}</h3>
+                <Link to={`/forms-documents/${generateSlug(document.category)}/${generateSlug(document.name)}`} className="text-lg font-bold leading-snug text-navy hover:text-primary">{document.name}</Link>
                 <p className="mt-2 min-h-12 text-sm leading-relaxed text-slate-500">{document.description}</p>
                 <div className="mt-6 grid grid-cols-2 gap-3">
                   <a href={document.previewUrl} target="_blank" rel="noopener noreferrer" className="btn-outline px-3 py-2 text-xs" aria-label={`Preview ${document.name}`}>
@@ -110,4 +125,35 @@ export function FormsDocuments() {
       </section>
     </div>
   );
+}
+
+export function FormsDocumentsCategory() {
+  const { categorySlug } = useParams<{ categorySlug: string }>();
+  return <FormsDocuments categorySlug={categorySlug} />;
+}
+
+export function FormsDocumentDetail() {
+  const { categorySlug, pdfSlug } = useParams<{ categorySlug: string; pdfSlug: string }>();
+  const navigate = useNavigate();
+  const { documents, categories, loading, error } = useDocuments();
+  const document = documents.find(item => generateSlug(item.category) === categorySlug && generateSlug(item.name) === pdfSlug);
+  const category = categories.find(item => generateSlug(item.name) === categorySlug);
+
+  if (loading) return <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500">Loading PDF...</div>;
+  if (error) return <div className="rounded-2xl border border-red-200 bg-red-50 p-10 text-center text-red-700">Unable to load this PDF right now.</div>;
+  if (!document) return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><p className="font-semibold text-slate-600">PDF not found.</p><button type="button" onClick={() => navigate('/forms-documents')} className="btn-primary mx-auto mt-4">Back to Forms & Documents</button></div>;
+
+  return <div className="mx-auto max-w-3xl space-y-6">
+    <SEO title={`${document.name} - ${category?.name || 'Forms & Documents'}`} description={document.description || `Download ${document.name} from India Cyber Cafe.`} url={`https://b.indiacybercafe.com/forms-documents/${categorySlug}/${pdfSlug}`} keywords={`${document.name}, PDF, ${category?.name || 'forms and documents'}`} />
+    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
+      <button type="button" onClick={() => navigate(`/forms-documents/${categorySlug}`)} className="mb-8 flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-primary"><IconRenderer name="arrow-left" className="h-4 w-4" />Back to {category?.name || 'category'}</button>
+      <div className="flex flex-col items-center text-center">
+        {document.thumbnailUrl ? <img src={document.thumbnailUrl} alt="" className="mb-6 h-24 w-24 rounded-xl object-cover" /> : <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-xl bg-orange-50 text-primary"><IconRenderer name="file-text" className="h-12 w-12" /></div>}
+        <p className="text-xs font-bold uppercase tracking-widest text-primary">{document.category}</p>
+        <h1 className="mt-2 text-2xl font-bold text-navy sm:text-4xl">{document.name}</h1>
+        {document.description && <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-500 sm:text-base">{document.description}</p>}
+        <div className="mt-8 grid w-full max-w-md grid-cols-2 gap-3"><a href={document.previewUrl} target="_blank" rel="noopener noreferrer" className="btn-outline"><IconRenderer name="eye" className="h-4 w-4" />Preview</a><a href={document.downloadUrl} download={`${document.name}.pdf`} target="_blank" rel="noopener noreferrer" className="btn-primary"><IconRenderer name="download" className="h-4 w-4" />Download</a></div>
+      </div>
+    </div>
+  </div>;
 }
