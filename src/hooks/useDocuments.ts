@@ -5,6 +5,31 @@ import { DocumentCategory, FormDocument } from '../types';
 import { generateSlug } from '../utils/slugGenerator';
 import { normalizePdfUrl } from '../utils/driveUrl';
 
+export function sanitizeFirebasePayload<T>(payload: T): T {
+  if (payload === undefined || payload === null) return undefined as T;
+
+  if (Array.isArray(payload)) {
+    return payload
+      .map(item => sanitizeFirebasePayload(item))
+      .filter(item => item !== undefined) as T;
+  }
+
+  if (typeof payload !== 'object') return payload;
+
+  const sanitized: Record<string, any> = {};
+
+  Object.entries(payload as Record<string, any>).forEach(([key, value]) => {
+    if (value === undefined || value === null) return;
+    if (key === 'thumbnailUrl' && value === '') return;
+
+    const cleanedValue = sanitizeFirebasePayload(value);
+    if (cleanedValue === undefined) return;
+    sanitized[key] = cleanedValue;
+  });
+
+  return sanitized as T;
+}
+
 export function useDocuments(includeInactive = false) {
   const [documents, setDocuments] = useState<FormDocument[]>([]);
   const [categories, setCategories] = useState<DocumentCategory[]>([]);
@@ -31,7 +56,13 @@ export function useDocuments(includeInactive = false) {
   const saveDocument = async (document: Omit<FormDocument, 'id'>, id?: string) => {
     const urls = normalizePdfUrl(document.previewUrl || document.downloadUrl);
     if (!urls) throw new Error('Enter a valid HTTPS PDF or Google Drive sharing URL.');
-    const payload = { ...document, ...urls, fileType: 'PDF' as const, updatedAt: new Date().toISOString() };
+    const payload = sanitizeFirebasePayload({
+      ...document,
+      ...urls,
+      fileType: 'PDF' as const,
+      updatedAt: new Date().toISOString(),
+    });
+
     if (id) await update(ref(rtdb, `documents/${id}`), payload);
     else await set(push(ref(rtdb, 'documents')), { ...payload, active: document.active !== false, createdAt: new Date().toISOString() });
   };
@@ -44,7 +75,8 @@ export function useDocuments(includeInactive = false) {
     if (duplicate) throw new Error('A category with this name already exists.');
     const id = existingId || category.id || generateSlug(normalizedName);
     if (!id) throw new Error('Could not create a category ID.');
-    await set(ref(rtdb, `documentCategories/${id}`), { ...category, id, name: normalizedName });
+    const payload = sanitizeFirebasePayload({ ...category, id, name: normalizedName });
+    await set(ref(rtdb, `documentCategories/${id}`), payload);
   };
   const deleteCategory = (id: string) => remove(ref(rtdb, `documentCategories/${id}`));
 
