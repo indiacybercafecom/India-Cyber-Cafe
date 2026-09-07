@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { equalTo, onValue, orderByChild, push, query, ref, remove, set, update } from 'firebase/database';
-import { rtdb } from '../firebase';
+import { auth, rtdb } from '../firebase';
 import { DocumentCategory, FormDocument } from '../types';
 import { cacheManager } from '../utils/cacheManager';
 import { generateSlug } from '../utils/slugGenerator';
@@ -98,10 +98,6 @@ export function useDocuments(includeInactive = false) {
             console.warn('[useDocuments] JSON fetch failed, falling back to Firebase:', jsonError);
           }
 
-          const lastSync = syncManager.getLastSync('documents');
-          const now = Date.now();
-          const SYNC_THRESHOLD = 5 * 60 * 1000;
-
           if (documentsLoadedFromJson && categoriesLoadedFromJson) {
             if (isMounted) {
               setLoading(false);
@@ -109,6 +105,10 @@ export function useDocuments(includeInactive = false) {
             }
             return;
           }
+
+          const lastSync = syncManager.getLastSync('documents');
+          const now = Date.now();
+          const SYNC_THRESHOLD = 5 * 60 * 1000;
 
           if (documentsLoadedFromJson || categoriesLoadedFromJson || now - lastSync > SYNC_THRESHOLD) {
             console.log('[useDocuments] Loading PDFs from Firebase fallback...');
@@ -203,6 +203,8 @@ export function useDocuments(includeInactive = false) {
       const data = snapshot.val() || {};
       setCategories(Object.entries(data).map(([id, value]) => ({ id, ...(value as Omit<DocumentCategory, 'id'>) })));
     }, err => setError(err));
+    void triggerJsonSync('documents');
+    void triggerJsonSync('documentCategories');
     return () => { documentsUnsubscribe(); categoriesUnsubscribe(); };
   }, [includeInactive]);
 
@@ -262,8 +264,10 @@ export function useDocuments(includeInactive = false) {
   const triggerJsonSync = async (type: 'documents' | 'documentCategories') => {
     try {
       console.log(`[useDocuments] Triggering JSON sync for ${type}...`);
+      const idToken = await auth.currentUser?.getIdToken();
       const response = await fetch(`/api/sync-data/${type === 'documents' ? 'documents' : 'documentCategories'}`, {
         method: 'POST',
+        headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
       });
       const result = await response.json().catch(() => null);
 

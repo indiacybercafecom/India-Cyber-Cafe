@@ -447,7 +447,11 @@ async function startServer() {
       }
 
       console.log(`[DATA SYNC] Sync triggered for type: ${type}`);
-      const result = await syncDataType(type as 'services' | 'products' | 'categories' | 'documents' | 'documentCategories');
+      const authHeader = req.headers.authorization;
+      const firebaseToken = authHeader?.startsWith('Bearer ')
+        ? authHeader.slice('Bearer '.length)
+        : undefined;
+      const result = await syncDataType(type as 'services' | 'products' | 'categories' | 'documents' | 'documentCategories', firebaseToken);
       
       if (result.success) {
         res.json({

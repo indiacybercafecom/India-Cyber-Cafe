@@ -31,8 +31,9 @@ function firebaseObjectToArray(value) {
   return Object.entries(value).map(([id, item]) => ({ id, ...item }));
 }
 
-async function fetchFirebaseCollection(collection) {
-  const response = await fetch(`${DATABASE_URL}/${collection}.json?auth=null`);
+async function fetchFirebaseCollection(collection, firebaseToken) {
+  const authQuery = firebaseToken ? `auth=${encodeURIComponent(firebaseToken)}` : 'auth=null';
+  const response = await fetch(`${DATABASE_URL}/${collection}.json?${authQuery}`);
   if (!response.ok) throw new Error(`Firebase request failed: ${response.status} ${response.statusText}`);
   return firebaseObjectToArray(await response.json());
 }
@@ -96,6 +97,42 @@ async function syncCategories() {
   return { success: true, file: 'product-categories.json', message: `Generated ${validated.length} categories` };
 }
 
+async function syncDocumentCategories(firebaseToken) {
+  const categories = await fetchFirebaseCollection('documentCategories', firebaseToken);
+  const validated = categories.map(category => ({
+    id: category.id || '',
+    name: category.name || '',
+    description: category.description || '',
+    icon: category.icon || 'file-text',
+    order: category.order ?? 0,
+  }));
+  const output = { version: 1, generatedAt: new Date().toISOString(), categories: validated };
+  writeJsonAtomically(path.join(DATA_DIR, 'document-categories.json'), output, data => data?.version === 1 && Array.isArray(data.categories));
+  return { success: true, file: 'document-categories.json', message: `Generated ${validated.length} document categories` };
+}
+
+async function syncDocuments(firebaseToken) {
+  const documents = await fetchFirebaseCollection('documents', firebaseToken);
+  const validated = documents
+    .filter(document => document && document.active !== false)
+    .map(document => ({
+      id: document.id || '',
+      name: document.name || '',
+      description: document.description || '',
+      category: document.category || '',
+      previewUrl: document.previewUrl || '',
+      downloadUrl: document.downloadUrl || '',
+      ...(document.thumbnailUrl ? { thumbnailUrl: document.thumbnailUrl } : {}),
+      fileType: document.fileType || 'PDF',
+      active: document.active !== undefined ? !!document.active : true,
+      createdAt: document.createdAt || new Date().toISOString(),
+      updatedAt: document.updatedAt || new Date().toISOString(),
+    }));
+  const output = { version: 1, generatedAt: new Date().toISOString(), documents: validated };
+  writeJsonAtomically(path.join(DATA_DIR, 'documents.json'), output, data => data?.version === 1 && Array.isArray(data.documents));
+  return { success: true, file: 'documents.json', message: `Generated ${validated.length} documents` };
+}
+
 async function syncMetadata() {
   const timestamp = new Date().toISOString();
   const output = {
@@ -109,15 +146,17 @@ async function syncMetadata() {
   return { success: true, file: 'metadata.json', message: 'Generated metadata.json' };
 }
 
-export async function syncDataType(type) {
+export async function syncDataType(type, firebaseToken) {
   ensureDataDirectory();
   try {
     if (type === 'services') return await syncServices();
     if (type === 'products') return await syncProducts();
     if (type === 'categories') return await syncCategories();
+    if (type === 'documents') return await syncDocuments(firebaseToken);
+    if (type === 'documentCategories') return await syncDocumentCategories(firebaseToken);
     return { success: false, file: '', error: 'Unknown sync type', message: 'Unknown sync type' };
   } catch (error) {
-    const file = type === 'categories' ? 'product-categories.json' : `${type}.json`;
+    const file = type === 'categories' ? 'product-categories.json' : type === 'documentCategories' ? 'document-categories.json' : `${type}.json`;
     return { success: false, file, error: error.message, message: `Failed to sync ${file}` };
   }
 }
@@ -128,6 +167,8 @@ export async function syncAllPublicJson() {
   results.push(await syncDataType('services'));
   results.push(await syncDataType('products'));
   results.push(await syncDataType('categories'));
+  results.push(await syncDataType('documents'));
+  results.push(await syncDataType('documentCategories'));
   try {
     results.push(await syncMetadata());
   } catch (error) {
@@ -139,7 +180,13 @@ export async function syncAllPublicJson() {
 export async function initializePublicDataOnStartup() {
   ensureDataDirectory();
   const requiredFiles = ['services.json', 'products.json', 'product-categories.json'];
-  if (requiredFiles.every(file => fs.existsSync(path.join(DATA_DIR, file)))) return;
-  const result = await syncAllPublicJson();
-  if (!result.success) throw new Error('Initial public data synchronization failed');
+  if (!requiredFiles.every(file => fs.existsSync(path.join(DATA_DIR, file)))) {
+    const result = await syncAllPublicJson();
+    if (!result.success) throw new Error('Initial public data synchronization failed');
+    return;
+  }
+
+  // Keep document snapshots aligned with Firebase even when older snapshots exist.
+  await syncDataType('documents');
+  await syncDataType('documentCategories');
 }

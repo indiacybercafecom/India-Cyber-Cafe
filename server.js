@@ -527,7 +527,7 @@ app.post('/api/sync-data', async (req, res) => {
 app.post('/api/sync-data/:type', async (req, res) => {
   const { type } = req.params;
 
-  if (!['services', 'products', 'categories'].includes(type)) {
+  if (!['services', 'products', 'categories', 'documents', 'documentCategories'].includes(type)) {
     return res.status(400).json({
       success: false,
       error: 'Invalid sync type',
@@ -536,7 +536,11 @@ app.post('/api/sync-data/:type', async (req, res) => {
 
   console.log(`[DATA SYNC] Sync triggered for type: ${type}`);
   try {
-    const result = await syncDataType(type);
+    const authHeader = req.headers.authorization;
+    const firebaseToken = authHeader?.startsWith('Bearer ')
+      ? authHeader.slice('Bearer '.length)
+      : undefined;
+    const result = await syncDataType(type, firebaseToken);
     if (result.success) {
       return res.json({ success: true, message: `${type} synchronized`, result });
     }

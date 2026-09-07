@@ -1,5 +1,13 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-07T00:00:00.000Z",
-  "categories": []
+  "generatedAt": "2026-09-07T07:48:02.298Z",
+  "categories": [
+    {
+      "id": "mp-e-district",
+      "name": "MP e-District",
+      "description": "Madhya Pradesh e-District forms, applications, certificates, and related documents.",
+      "icon": "file-text",
+      "order": 0
+    }
+  ]
 }
