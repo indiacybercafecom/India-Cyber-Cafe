@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Download, FileWarning, LoaderCircle, Minus, Plus, Printer, RotateCw, X } from 'lucide-react';
+import { Download, FileWarning, LoaderCircle, Minus, Plus, Printer, RotateCw, X, ChevronLeft, ChevronRight } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
@@ -154,50 +154,167 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const printWindow = window.open('', '_blank', 'noopener,noreferrer');
+    const printWindow = window.open('', '', 'height=600,width=800');
     if (!printWindow) return;
-    printWindow.document.write(`<html><head><title>${title}</title></head><body style="margin:0;text-align:center"><img src="${canvas.toDataURL('image/png')}" style="max-width:100%;height:auto" /></body></html>`);
+    
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { margin: 0; padding: 0; background: #fff; }
+            img { display: block; max-width: 100%; height: auto; page-break-after: always; }
+          </style>
+        </head>
+        <body>
+          <img src="${canvas.toDataURL('image/png')}" />
+        </body>
+      </html>
+    `);
     printWindow.document.close();
-    printWindow.focus();
-    printWindow.print();
-    printWindow.close();
+    
+    // Open print dialog after content is loaded
+    setTimeout(() => {
+      printWindow.focus();
+      printWindow.print();
+    }, 250);
   };
 
   return (
     <div
-      className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/70 p-2 backdrop-blur-sm sm:p-4"
+      className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/80 p-2 backdrop-blur-sm sm:p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="pdf-viewer-title"
       onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}
     >
-      <div className="flex h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-        <header className="flex shrink-0 items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-5">
-          <h2 id="pdf-viewer-title" className="truncate pr-4 text-base font-semibold text-navy sm:text-lg">{title}</h2>
-          <button type="button" onClick={onClose} aria-label="Close PDF preview" className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-navy">
+      <div className="flex h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
+        {/* Header */}
+        <header className="flex shrink-0 items-center justify-between bg-gradient-to-r from-navy to-blue-900 px-5 py-4 sm:px-6">
+          <h2 id="pdf-viewer-title" className="truncate pr-4 text-base font-bold text-white sm:text-lg">{title}</h2>
+          <button type="button" onClick={onClose} aria-label="Close PDF preview" className="rounded-full p-2 text-white/70 transition hover:bg-white/10 hover:text-white">
             <X className="h-5 w-5" />
           </button>
         </header>
 
-        <div className="flex shrink-0 flex-wrap items-center justify-center gap-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-sm sm:justify-between sm:px-5">
-          <div className="flex items-center gap-1">
-            <button type="button" onClick={() => setPageNumber(page => Math.max(1, page - 1))} disabled={loading || pageNumber <= 1} className="rounded-lg px-3 py-2 font-semibold text-navy hover:bg-white disabled:cursor-not-allowed disabled:opacity-40">Previous</button>
-            <span className="min-w-20 text-center font-semibold text-slate-600">{loading ? '...' : `${pageNumber} / ${pageCount}`}</span>
-            <button type="button" onClick={() => setPageNumber(page => Math.min(pageCount, page + 1))} disabled={loading || pageNumber >= pageCount} className="rounded-lg px-3 py-2 font-semibold text-navy hover:bg-white disabled:cursor-not-allowed disabled:opacity-40">Next</button>
+        {/* Toolbar */}
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-6">
+          {/* Page Navigation */}
+          <div className="flex items-center gap-2">
+            <button 
+              type="button" 
+              onClick={() => setPageNumber(page => Math.max(1, page - 1))} 
+              disabled={loading || pageNumber <= 1} 
+              aria-label="Previous page"
+              title="Previous page"
+              className="rounded-lg p-2.5 text-navy transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <span className="min-w-14 text-center text-sm font-semibold text-slate-700">{loading ? '...' : `${pageNumber}/${pageCount}`}</span>
+            <button 
+              type="button" 
+              onClick={() => setPageNumber(page => Math.min(pageCount, page + 1))} 
+              disabled={loading || pageNumber >= pageCount}
+              aria-label="Next page"
+              title="Next page"
+              className="rounded-lg p-2.5 text-navy transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
           </div>
-          <div className="flex items-center gap-1">
-            <button type="button" onClick={() => setZoom(value => Math.max(0.5, Number((value - 0.1).toFixed(1))))} disabled={loading} aria-label="Zoom out" className="rounded-lg p-2 text-navy hover:bg-white disabled:opacity-40"><Minus className="h-4 w-4" /></button>
-            <span className="w-12 text-center font-semibold text-slate-600">{Math.round(zoom * 100)}%</span>
-            <button type="button" onClick={() => setZoom(value => Math.min(2.5, Number((value + 0.1).toFixed(1))))} disabled={loading} aria-label="Zoom in" className="rounded-lg p-2 text-navy hover:bg-white disabled:opacity-40"><Plus className="h-4 w-4" /></button>
-            <button type="button" onClick={() => setRotation(value => (value + 90) % 360)} disabled={loading} aria-label="Rotate PDF" className="rounded-lg p-2 text-navy hover:bg-white disabled:opacity-40"><RotateCw className="h-4 w-4" /></button>
-            <button type="button" onClick={handlePrint} disabled={loading || rendering || !!error} aria-label="Print PDF page" className="rounded-lg p-2 text-navy hover:bg-white disabled:opacity-40"><Printer className="h-4 w-4" /></button>
-            <a href={downloadUrl} download={`${title}.pdf`} target="_blank" rel="noopener noreferrer" aria-label="Download PDF" className="rounded-lg p-2 text-navy hover:bg-white"><Download className="h-4 w-4" /></a>
+
+          {/* Control Buttons */}
+          <div className="flex items-center gap-1 sm:gap-2">
+            <button 
+              type="button" 
+              onClick={() => setZoom(value => Math.max(0.5, Number((value - 0.1).toFixed(1))))} 
+              disabled={loading} 
+              aria-label="Zoom out"
+              title="Zoom out"
+              className="rounded-lg p-2 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40"
+            >
+              <Minus className="h-4 w-4" />
+            </button>
+            <span className="w-12 text-center text-xs font-semibold text-slate-600 sm:text-sm">{Math.round(zoom * 100)}%</span>
+            <button 
+              type="button" 
+              onClick={() => setZoom(value => Math.min(2.5, Number((value + 0.1).toFixed(1))))} 
+              disabled={loading} 
+              aria-label="Zoom in"
+              title="Zoom in"
+              className="rounded-lg p-2 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
+            <div className="mx-1 h-5 w-px bg-slate-300" />
+            <button 
+              type="button" 
+              onClick={() => setRotation(value => (value + 90) % 360)} 
+              disabled={loading} 
+              aria-label="Rotate PDF"
+              title="Rotate PDF"
+              className="rounded-lg p-2 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40"
+            >
+              <RotateCw className="h-4 w-4" />
+            </button>
+            <button 
+              type="button" 
+              onClick={handlePrint} 
+              disabled={loading || rendering || !!error} 
+              aria-label="Print PDF page"
+              title="Print"
+              className="rounded-lg p-2 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40"
+            >
+              <Printer className="h-4 w-4" />
+            </button>
+            <a 
+              href={downloadUrl} 
+              download={`${title}.pdf`} 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              aria-label="Download PDF"
+              title="Download PDF"
+              className="rounded-lg p-2 text-navy transition hover:bg-white hover:shadow-sm"
+            >
+              <Download className="h-4 w-4" />
+            </a>
           </div>
         </div>
 
-        <main className="relative min-h-0 flex-1 overflow-auto bg-slate-700 p-3 sm:p-6">
-          {(fetching || loading || rendering) && <div className="absolute inset-0 z-10 flex items-center justify-center bg-slate-700/80 text-sm font-semibold text-white"><LoaderCircle className="mr-2 h-5 w-5 animate-spin" />{fetching ? 'Loading PDF...' : rendering ? 'Rendering page...' : 'Preparing PDF...'}</div>}
-          {error ? <div className="flex min-h-full items-center justify-center p-6"><div className="max-w-md rounded-2xl bg-white p-6 text-center shadow-xl"><FileWarning className="mx-auto h-10 w-10 text-red-500" /><h3 className="mt-3 text-lg font-bold text-navy">Unable to preview PDF</h3><p className="mt-2 text-sm leading-relaxed text-slate-500">{error}</p><a href={downloadUrl} download={`${title}.pdf`} target="_blank" rel="noopener noreferrer" className="btn-primary mx-auto mt-5 inline-flex items-center gap-2"><Download className="h-4 w-4" />Download PDF</a></div></div> : <div className="flex min-h-full min-w-full items-start justify-center"><canvas ref={canvasRef} className="bg-white shadow-xl" /></div>}
+        {/* Content Area */}
+        <main className="relative min-h-0 flex-1 overflow-auto bg-slate-200 p-4 sm:p-6">
+          {(fetching || loading || rendering) && (
+            <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40 backdrop-blur-sm">
+              <LoaderCircle className="mb-3 h-8 w-8 animate-spin text-white" />
+              <p className="text-sm font-semibold text-white">
+                {fetching ? 'Loading PDF...' : rendering ? 'Rendering page...' : 'Preparing PDF...'}
+              </p>
+            </div>
+          )}
+          {error ? (
+            <div className="flex min-h-full items-center justify-center p-6">
+              <div className="max-w-md rounded-xl bg-white p-8 text-center shadow-xl">
+                <FileWarning className="mx-auto h-12 w-12 text-red-500" />
+                <h3 className="mt-4 text-lg font-bold text-navy">Unable to Preview PDF</h3>
+                <p className="mt-3 text-sm leading-relaxed text-slate-600">{error}</p>
+                <a 
+                  href={downloadUrl} 
+                  download={`${title}.pdf`} 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="btn-primary mx-auto mt-6 inline-flex items-center gap-2 rounded-lg bg-navy px-5 py-2.5 text-white transition hover:bg-blue-900"
+                >
+                  <Download className="h-4 w-4" />
+                  Download PDF
+                </a>
+              </div>
+            </div>
+          ) : (
+            <div className="flex min-h-full min-w-full items-start justify-center">
+              <canvas ref={canvasRef} className="bg-white shadow-lg" />
+            </div>
+          )}
         </main>
       </div>
     </div>
