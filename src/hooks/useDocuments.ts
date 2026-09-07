@@ -60,6 +60,15 @@ export function useDocuments(includeInactive = false) {
 
           let documentsLoadedFromJson = false;
           let categoriesLoadedFromJson = false;
+          let documentsSnapshotReady = false;
+          let categoriesSnapshotReady = false;
+
+          const finishInitialLoad = () => {
+            if (isMounted && documentsSnapshotReady && categoriesSnapshotReady) {
+              setLoading(false);
+              setError(null);
+            }
+          };
 
           try {
             const [documentsResponse, categoriesResponse] = await Promise.all([
@@ -90,10 +99,6 @@ export function useDocuments(includeInactive = false) {
               }
             }
 
-            if (documentsLoadedFromJson || categoriesLoadedFromJson) {
-              setLoading(false);
-              setError(null);
-            }
           } catch (jsonError) {
             console.warn('[useDocuments] JSON fetch failed, falling back to Firebase:', jsonError);
           }
@@ -116,11 +121,11 @@ export function useDocuments(includeInactive = false) {
               }));
 
               if (isMounted) {
+                documentsSnapshotReady = true;
                 setDocuments(nextDocuments);
                 cacheManager.set('documents', nextDocuments);
                 syncManager.updateSync('documents');
-                setLoading(false);
-                setError(null);
+                finishInitialLoad();
               }
             }, err => {
               console.error('[useDocuments] Firebase documents error:', err);
@@ -138,14 +143,17 @@ export function useDocuments(includeInactive = false) {
               }));
 
               if (isMounted) {
+                categoriesSnapshotReady = true;
                 setCategories(nextCategories);
                 cacheManager.set('documentCategories', nextCategories);
                 syncManager.updateSync('documentCategories');
+                finishInitialLoad();
               }
             }, err => {
               console.error('[useDocuments] Firebase categories error:', err);
               if (isMounted) {
                 setError(err);
+                setLoading(false);
               }
             });
 

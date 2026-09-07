@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
 import { SEO } from '../components/SEO';
 import { SelectDropdown } from '../components/SelectDropdown';
+import { Skeleton } from '../components/Skeleton';
 import { useDocuments } from '../hooks/useDocuments';
 import { normalizePdfUrl } from '../utils/driveUrl';
 import { generateSlug } from '../utils/slugGenerator';
@@ -10,6 +11,40 @@ import { FormDocument } from '../types';
 
 interface FormsDocumentsProps {
   categorySlug?: string;
+}
+
+function FormsDocumentsSkeleton() {
+  return (
+    <div className="space-y-8 sm:space-y-10" aria-label="Loading forms and documents" aria-busy="true">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <Skeleton className="h-12 flex-1 rounded-xl" />
+        <Skeleton className="h-12 w-full rounded-xl sm:w-64" />
+      </div>
+      <section className="space-y-5">
+        <div className="flex items-end justify-between gap-4">
+          <div className="space-y-3">
+            <Skeleton className="h-3 w-32" />
+            <Skeleton className="h-9 w-64 max-w-[70vw]" />
+          </div>
+          <Skeleton className="h-4 w-24" />
+        </div>
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map(card => (
+            <div key={card} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <div className="mb-5 flex items-start justify-between gap-3">
+                <Skeleton className="h-12 w-12 rounded-xl" />
+                <Skeleton className="h-6 w-12 rounded-md" />
+              </div>
+              <Skeleton className="mb-3 h-3 w-32" />
+              <Skeleton className="h-6 w-4/5" />
+              <Skeleton className="mt-3 h-4 w-full" />
+              <Skeleton className="mt-2 h-4 w-3/4" />
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
 }
 
 export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
@@ -49,7 +84,9 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
     }
   };
 
-  if (categorySlug && !loading && !selectedCategoryName) {
+  if (loading) return <FormsDocumentsSkeleton />;
+
+  if (activeCategorySlug && !selectedCategoryName) {
     return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><p className="font-semibold text-slate-600">Category not found.</p><Link to="/forms-documents" className="btn-primary mx-auto mt-4">View all documents</Link></div>;
   }
 
