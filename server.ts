@@ -147,7 +147,14 @@ async function startServer() {
     '"': '&quot;'
   }[character] || character));
 
+  const sitemapCacheTtlMs = 5 * 60 * 1000;
+  let sitemapDataCache: { expiresAt: number; data: { services: any[]; productCategories: any[]; products: any[] } } | null = null;
+
   const loadSitemapData = async () => {
+    if (sitemapDataCache && sitemapDataCache.expiresAt > Date.now()) {
+      return sitemapDataCache.data;
+    }
+
     const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
     const localFiles: Record<string, string> = {
       services: 'services.json',
@@ -157,7 +164,10 @@ async function startServer() {
     const readCollection = async (name: string): Promise<any[]> => {
       let remoteItems: any[] = [];
       try {
-        const response = await fetch(`${databaseURL}/${name}.json`);
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 4000);
+        const response = await fetch(`${databaseURL}/${name}.json`, { signal: controller.signal });
+        clearTimeout(timeout);
         if (response.ok) {
           const data = await response.json();
           remoteItems = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
@@ -179,7 +189,9 @@ async function startServer() {
       readCollection('productCategories'),
       readCollection('products')
     ]);
-    return { services, productCategories, products };
+    const data = { services, productCategories, products };
+    sitemapDataCache = { data, expiresAt: Date.now() + sitemapCacheTtlMs };
+    return data;
   };
 
   const createSitemapXml = (urls: Array<{ url: string; priority?: string }>) => {
@@ -204,31 +216,46 @@ async function startServer() {
   });
 
   app.get("/service-sitemap.xml", async (req, res) => {
-    const baseUrl = getSitemapBaseUrl(req);
-    const { services } = await loadSitemapData();
-    const urls = services.filter(service => service && service.id).map(service => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}`, priority: '0.7' }));
-    res.type("application/xml").send(createSitemapXml(urls));
+    try {
+      const baseUrl = getSitemapBaseUrl(req);
+      const { services } = await loadSitemapData();
+      const urls = services.filter(service => service && service.id).map(service => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}`, priority: '0.7' }));
+      res.type("application/xml").send(createSitemapXml(urls));
+    } catch (error) {
+      console.error("Service sitemap generation error:", error);
+      res.type("application/xml").send(createSitemapXml([]));
+    }
   });
 
   app.get("/subservice-sitemap.xml", async (req, res) => {
-    const baseUrl = getSitemapBaseUrl(req);
-    const { services } = await loadSitemapData();
-    const urls = services.flatMap(service => (service?.subservices || []).filter((ss: any) => ss && ss.name).map((ss: any) => ({
-      url: `${baseUrl}/services/${encodeURIComponent(service.id)}/${slugifySitemap(ss.name)}`,
-      priority: '0.6'
-    })));
-    res.type("application/xml").send(createSitemapXml(urls));
+    try {
+      const baseUrl = getSitemapBaseUrl(req);
+      const { services } = await loadSitemapData();
+      const urls = services.flatMap(service => (service?.subservices || []).filter((ss: any) => ss && ss.name).map((ss: any) => ({
+        url: `${baseUrl}/services/${encodeURIComponent(service.id)}/${slugifySitemap(ss.name)}`,
+        priority: '0.6'
+      })));
+      res.type("application/xml").send(createSitemapXml(urls));
+    } catch (error) {
+      console.error("Subservice sitemap generation error:", error);
+      res.type("application/xml").send(createSitemapXml([]));
+    }
   });
 
   app.get("/product-sitemap.xml", async (req, res) => {
-    const baseUrl = getSitemapBaseUrl(req);
-    const { productCategories, products } = await loadSitemapData();
-    const categoryUrls = productCategories.filter(category => category && category.id).map(category => ({ url: `${baseUrl}/store/${encodeURIComponent(category.id)}`, priority: '0.7' }));
-    const productUrls = products.filter(product => product && product.id && product.category).map(product => ({
-      url: `${baseUrl}/store/${encodeURIComponent(product.category)}/${encodeURIComponent(product.id)}`,
-      priority: '0.6'
-    }));
-    res.type("application/xml").send(createSitemapXml([...categoryUrls, ...productUrls]));
+    try {
+      const baseUrl = getSitemapBaseUrl(req);
+      const { productCategories, products } = await loadSitemapData();
+      const categoryUrls = productCategories.filter(category => category && category.id).map(category => ({ url: `${baseUrl}/store/${encodeURIComponent(category.id)}`, priority: '0.7' }));
+      const productUrls = products.filter(product => product && product.id && product.category).map(product => ({
+        url: `${baseUrl}/store/${encodeURIComponent(product.category)}/${encodeURIComponent(product.id)}`,
+        priority: '0.6'
+      }));
+      res.type("application/xml").send(createSitemapXml([...categoryUrls, ...productUrls]));
+    } catch (error) {
+      console.error("Product sitemap generation error:", error);
+      res.type("application/xml").send(createSitemapXml([]));
+    }
   });
 
   // Razorpay Order Creation Endpoint
