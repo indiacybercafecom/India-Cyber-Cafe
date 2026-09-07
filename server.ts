@@ -202,11 +202,21 @@ async function startServer() {
 
   const slugifySitemap = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
 
-  app.get("/sitemap.xml", (req, res) => {
-    const baseUrl = getSitemapBaseUrl(req);
-    const sitemapNames = ['page-sitemap.xml', 'service-sitemap.xml', 'subservice-sitemap.xml', 'product-sitemap.xml'];
-    const entries = sitemapNames.map(name => `  <sitemap>\n    <loc>${escapeSitemapXml(`${baseUrl}/${name}`)}</loc>\n    <lastmod>${new Date().toISOString()}</lastmod>\n  </sitemap>`).join('\n');
-    res.type("application/xml").send(`<?xml version="1.0" encoding="UTF-8"?>\n<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries}\n</sitemapindex>`);
+  app.get("/sitemap.xml", async (req, res) => {
+    try {
+      const baseUrl = getSitemapBaseUrl(req);
+      const { services, productCategories, products } = await loadSitemapData();
+      const staticPages = ['', '/services', '/store', '/price-list', '/forms-documents', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund', '/legal/disclaimer'];
+      const pageUrls = staticPages.map(url => ({ url: `${baseUrl}${url}`, priority: url === '' ? '1.0' : '0.8' }));
+      const serviceUrls = services.filter(service => service?.id).map(service => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}`, priority: '0.7' }));
+      const subserviceUrls = services.flatMap(service => (service?.subservices || []).filter((subservice: any) => subservice?.name).map((subservice: any) => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}/${slugifySitemap(subservice.name)}`, priority: '0.6' })));
+      const categoryUrls = productCategories.filter(category => category?.id).map(category => ({ url: `${baseUrl}/store/${encodeURIComponent(category.id)}`, priority: '0.7' }));
+      const productUrls = products.filter(product => product?.id && product?.category).map(product => ({ url: `${baseUrl}/store/${encodeURIComponent(product.category)}/${encodeURIComponent(product.id)}`, priority: '0.6' }));
+      res.type("application/xml").send(createSitemapXml([...pageUrls, ...serviceUrls, ...subserviceUrls, ...categoryUrls, ...productUrls]));
+    } catch (error) {
+      console.error("Sitemap generation error:", error);
+      res.type("application/xml").send(createSitemapXml([]));
+    }
   });
 
   app.get("/page-sitemap.xml", (req, res) => {

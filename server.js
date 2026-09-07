@@ -220,9 +220,14 @@ const slugifySitemap = text => text.toLowerCase().trim().replace(/[^\w\s-]/g, ''
 // Sitemap Route
 app.get('/sitemap.xml', async (req, res) => {
   const baseUrl = getSitemapBaseUrl(req);
-  const names = ['page-sitemap.xml', 'service-sitemap.xml', 'subservice-sitemap.xml', 'product-sitemap.xml'];
-  const entries = names.map(name => `  <sitemap>\n    <loc>${escapeSitemapXml(`${baseUrl}/${name}`)}</loc>\n    <lastmod>${new Date().toISOString()}</lastmod>\n  </sitemap>`).join('\n');
-  return res.type('application/xml').send(`<?xml version="1.0" encoding="UTF-8"?>\n<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries}\n</sitemapindex>`);
+  const { services, productCategories, products } = await loadSitemapData();
+  const staticPages = ['', '/services', '/store', '/price-list', '/forms-documents', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund', '/legal/disclaimer'];
+  const pageUrls = staticPages.map(url => ({ url: `${baseUrl}${url}`, priority: url === '' ? '1.0' : '0.8' }));
+  const serviceUrls = services.filter(service => service?.id).map(service => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}`, priority: '0.7' }));
+  const subserviceUrls = services.flatMap(service => (service?.subservices || []).filter(subservice => subservice?.name).map(subservice => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}/${slugifySitemap(subservice.name)}`, priority: '0.6' })));
+  const categoryUrls = productCategories.filter(category => category?.id).map(category => ({ url: `${baseUrl}/store/${encodeURIComponent(category.id)}`, priority: '0.7' }));
+  const productUrls = products.filter(product => product?.id && product?.category).map(product => ({ url: `${baseUrl}/store/${encodeURIComponent(product.category)}/${encodeURIComponent(product.id)}`, priority: '0.6' }));
+  return res.type('application/xml').send(createSitemapXml([...pageUrls, ...serviceUrls, ...subserviceUrls, ...categoryUrls, ...productUrls]));
   /*
   let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, '') : '';
 

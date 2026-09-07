@@ -1,20 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>
-<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-  <sitemap>
-    <loc>https://b.indiacybercafe.com/page-sitemap.xml</loc>
-    <lastmod>2026-09-07</lastmod>
-  </sitemap>
-  <sitemap>
-    <loc>https://b.indiacybercafe.com/service-sitemap.xml</loc>
-    <lastmod>2026-09-07</lastmod>
-  </sitemap>
-  <sitemap>
-    <loc>https://b.indiacybercafe.com/subservice-sitemap.xml</loc>
-    <lastmod>2026-09-07</lastmod>
-  </sitemap>
-  <sitemap>
-    <loc>https://b.indiacybercafe.com/product-sitemap.xml</loc>
-    <lastmod>2026-09-07</lastmod>
-  </sitemap>
-</sitemapindex>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url><loc>https://b.indiacybercafe.com/</loc><lastmod>2026-09-07</lastmod><priority>1.0</priority></url>
+  <url><loc>https://b.indiacybercafe.com/services</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
+  <url><loc>https://b.indiacybercafe.com/store</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
+  <url><loc>https://b.indiacybercafe.com/price-list</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
+  <url><loc>https://b.indiacybercafe.com/forms-documents</loc><lastmod>2026-09-07</lastmod><priority>0.8</priority></url>
+</urlset>
