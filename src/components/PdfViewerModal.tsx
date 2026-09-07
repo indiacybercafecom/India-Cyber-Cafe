@@ -151,33 +151,15 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
   }, [onClose, pageCount]);
 
   const handlePrint = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-
-    const printWindow = window.open('', '', 'height=600,width=800');
+    // Open original PDF directly for printing (highest quality)
+    const printWindow = window.open(`/api/pdf-proxy?url=${encodeURIComponent(sourceUrl)}`, '_blank');
     if (!printWindow) return;
     
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>
-            body { margin: 0; padding: 0; background: #fff; }
-            img { display: block; max-width: 100%; height: auto; page-break-after: always; }
-          </style>
-        </head>
-        <body>
-          <img src="${canvas.toDataURL('image/png')}" />
-        </body>
-      </html>
-    `);
-    printWindow.document.close();
-    
-    // Open print dialog after content is loaded
+    // Trigger print dialog after PDF is loaded
     setTimeout(() => {
       printWindow.focus();
       printWindow.print();
-    }, 250);
+    }, 1000);
   };
 
   return (
