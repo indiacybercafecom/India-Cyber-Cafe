@@ -12,13 +12,16 @@ interface FormsDocumentsProps {
 }
 
 export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
+  const navigate = useNavigate();
   const { documents, categories, loading, error } = useDocuments();
   const [searchTerm, setSearchTerm] = useState('');
   const selectedCategoryName = categorySlug ? categories.find(category => generateSlug(category.name) === categorySlug)?.name : undefined;
-  const [selectedCategory, setSelectedCategory] = useState(selectedCategoryName || 'All');
+  const [selectedCategory, setSelectedCategory] = useState('All');
+
   useEffect(() => {
-    if (selectedCategoryName) setSelectedCategory(selectedCategoryName);
+    setSelectedCategory(selectedCategoryName || 'All');
   }, [selectedCategoryName]);
+
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const categoryNames = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0)).map(category => category.name);
 
@@ -34,6 +37,14 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
     { value: 'All', label: 'All Categories' },
     ...categoryNames.map(category => ({ value: category, label: category })),
   ];
+
+  const handleCategoryChange = (value: string) => {
+    setSelectedCategory(value);
+    const nextPath = value === 'All' ? '/forms-documents' : `/forms-documents/${generateSlug(value)}`;
+    if (window.location.pathname !== nextPath) {
+      navigate(nextPath, { replace: false });
+    }
+  };
 
   if (categorySlug && !loading && !selectedCategoryName) {
     return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><p className="font-semibold text-slate-600">Category not found.</p><Link to="/forms-documents" className="btn-primary mx-auto mt-4">View all documents</Link></div>;
@@ -71,7 +82,7 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
           {categories.length > 0 ? <SelectDropdown
               options={categoryOptions}
               value={selectedCategory}
-              onChange={value => setSelectedCategory(value)}
+              onChange={handleCategoryChange}
               containerClassName="w-full sm:w-64 shrink-0"
               className="input-field py-3"
               ariaLabel="Filter documents by category"
