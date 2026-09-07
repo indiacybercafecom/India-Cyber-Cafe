@@ -76,7 +76,7 @@ function AppContent() {
   const { services, loading: servicesLoading, error: servicesError, retry: retryServices, addService, updateService, deleteService } = useServices();
   const { products, loading: productsLoading, error: productsError, retry: retryProducts, addProduct, updateProduct, deleteProduct } = useProducts();
   const { productCategories, addProductCategory, updateProductCategory, deleteProductCategory } = useProductCategories();
-  const { documents, categories: documentCategories, saveDocument, deleteDocument, saveCategory: saveDocumentCategory, deleteCategory: deleteDocumentCategory } = useDocuments(isAdminRoute && user?.role === 'admin');
+  const { documents, categories: documentCategories, saveDocument, deleteDocument, saveCategory: saveDocumentCategory, deleteCategory: deleteDocumentCategory } = useDocuments();
 
   // User-specific data (loaded only when user is authenticated)
   const userApplications = useApplications(

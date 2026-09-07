@@ -2,14 +2,14 @@ import { useMemo, useState } from 'react';
 import { IconRenderer } from '../components/Icons';
 import { SEO } from '../components/SEO';
 import { SelectDropdown } from '../components/SelectDropdown';
-import { useDocuments, defaultDocumentCategories } from '../hooks/useDocuments';
+import { useDocuments } from '../hooks/useDocuments';
 
 export function FormsDocuments() {
   const { documents, categories, loading, error } = useDocuments();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const normalizedSearch = searchTerm.trim().toLowerCase();
-  const categoryNames = categories.length > 0 ? [...categories].sort((a, b) => (a.order || 0) - (b.order || 0)).map(category => category.name) : defaultDocumentCategories;
+  const categoryNames = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0)).map(category => category.name);
 
   const filteredDocuments = useMemo(() => documents.filter(document => {
     if (document.active === false) return false;
@@ -53,15 +53,15 @@ export function FormsDocuments() {
             onChange={event => setSearchTerm(event.target.value)}
           />
           </div>
-          <SelectDropdown
-            options={categoryOptions}
-            value={selectedCategory}
-            onChange={value => setSelectedCategory(value as typeof selectedCategory)}
-            containerClassName="w-full sm:w-64 shrink-0"
-            className="input-field py-3"
-            ariaLabel="Filter documents by category"
-            leadingIcon="filter"
-          />
+          {categories.length > 0 ? <SelectDropdown
+              options={categoryOptions}
+              value={selectedCategory}
+              onChange={value => setSelectedCategory(value)}
+              containerClassName="w-full sm:w-64 shrink-0"
+              className="input-field py-3"
+              ariaLabel="Filter documents by category"
+              leadingIcon="filter"
+            /> : <div className="flex w-full shrink-0 items-center justify-center rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm font-semibold text-slate-500 sm:w-64">No categories yet</div>}
         </div>
       </section>
 
@@ -103,8 +103,8 @@ export function FormsDocuments() {
         ) : (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center">
             <IconRenderer name="file-text" className="mx-auto h-10 w-10 text-slate-300" />
-            <p className="mt-3 font-semibold text-slate-600">No documents match your search.</p>
-            <p className="mt-1 text-sm text-slate-500">Try another search term or category.</p>
+            <p className="mt-3 font-semibold text-slate-600">{documents.length === 0 ? 'No documents available.' : 'No documents match your search.'}</p>
+            <p className="mt-1 text-sm text-slate-500">{documents.length === 0 ? 'Documents will appear here when they are published.' : 'Try another search term or category.'}</p>
           </div>
         )}
       </section>
