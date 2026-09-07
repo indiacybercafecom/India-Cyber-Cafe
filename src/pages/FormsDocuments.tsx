@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
+import { PdfViewerModal } from '../components/PdfViewerModal';
 import { SEO } from '../components/SEO';
 import { SelectDropdown } from '../components/SelectDropdown';
 import { Skeleton } from '../components/Skeleton';
@@ -193,21 +194,13 @@ export function FormsDocumentDetail() {
   const document = documents.find(item => generateSlug(item.category) === categorySlug && generateSlug(item.name) === pdfSlug);
   const category = categories.find(item => generateSlug(item.name) === categorySlug);
 
-  useEffect(() => {
-    if (!isPreviewOpen) return;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') setIsPreviewOpen(false);
-    };
-    window.document.addEventListener('keydown', handleKeyDown);
-    return () => window.document.removeEventListener('keydown', handleKeyDown);
-  }, [isPreviewOpen]);
-
   if (loading) return <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500">Loading PDF...</div>;
   if (error) return <div className="rounded-2xl border border-red-200 bg-red-50 p-10 text-center text-red-700">Unable to load this PDF right now.</div>;
   if (!document) return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><p className="font-semibold text-slate-600">PDF not found.</p><button type="button" onClick={() => navigate('/forms-documents')} className="btn-primary mx-auto mt-4">Back to Forms & Documents</button></div>;
 
   const normalizedUrls = normalizePdfUrl(document.previewUrl || document.downloadUrl);
-  const previewUrl = normalizedUrls?.previewUrl || document.previewUrl;
+  const pdfSourceUrl = normalizedUrls?.downloadUrl || document.downloadUrl || document.previewUrl;
+  const pdfDownloadUrl = normalizedUrls?.downloadUrl || document.downloadUrl;
 
   return <div className="mx-auto max-w-3xl space-y-6">
     <SEO title={`${document.name} - ${category?.name || 'Forms & Documents'}`} description={document.description || `Download ${document.name} from India Cyber Cafe.`} url={`https://b.indiacybercafe.com/forms-documents/${categorySlug}/${pdfSlug}`} keywords={`${document.name}, PDF, ${category?.name || 'forms and documents'}`} />
@@ -218,19 +211,9 @@ export function FormsDocumentDetail() {
         <p className="text-xs font-bold uppercase tracking-widest text-primary">{document.category}</p>
         <h1 className="mt-2 text-2xl font-bold text-navy sm:text-4xl">{document.name}</h1>
         {document.description && <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-500 sm:text-base">{document.description}</p>}
-        <div className="mt-8 grid w-full max-w-md grid-cols-2 gap-3"><button type="button" onClick={() => setIsPreviewOpen(true)} className="btn-outline"><IconRenderer name="eye" className="h-4 w-4" />Preview</button><a href={normalizedUrls?.downloadUrl || document.downloadUrl} download={`${document.name}.pdf`} target="_blank" rel="noopener noreferrer" className="btn-primary"><IconRenderer name="download" className="h-4 w-4" />Download</a></div>
+        <div className="mt-8 grid w-full max-w-md grid-cols-2 gap-3"><button type="button" onClick={() => setIsPreviewOpen(true)} className="btn-outline"><IconRenderer name="eye" className="h-4 w-4" />Preview</button><a href={pdfDownloadUrl} download={`${document.name}.pdf`} target="_blank" rel="noopener noreferrer" className="btn-primary"><IconRenderer name="download" className="h-4 w-4" />Download</a></div>
       </div>
     </div>
-    {isPreviewOpen && <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/70 p-2 backdrop-blur-sm sm:p-4" role="dialog" aria-modal="true" aria-labelledby="pdf-preview-title" onMouseDown={event => { if (event.target === event.currentTarget) setIsPreviewOpen(false); }}>
-      <div className="flex h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 sm:px-5">
-          <h2 id="pdf-preview-title" className="truncate pr-4 text-base font-semibold text-navy sm:text-lg">{document.name}</h2>
-          <button type="button" onClick={() => setIsPreviewOpen(false)} aria-label="Close PDF preview" className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-navy"><IconRenderer name="x" className="h-5 w-5" /></button>
-        </div>
-        <div className="min-h-0 flex-1 bg-slate-800">
-          <iframe src={previewUrl} title={`Preview of ${document.name}`} className="h-full w-full border-0" allow="autoplay" />
-        </div>
-      </div>
-    </div>}
+    {isPreviewOpen && <PdfViewerModal title={document.name} sourceUrl={pdfSourceUrl} downloadUrl={pdfDownloadUrl} onClose={() => setIsPreviewOpen(false)} />}
   </div>;
 }
