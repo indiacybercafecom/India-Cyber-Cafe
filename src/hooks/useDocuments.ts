@@ -56,15 +56,32 @@ export function useDocuments(includeInactive = false) {
   const saveDocument = async (document: Omit<FormDocument, 'id'>, id?: string) => {
     const urls = normalizePdfUrl(document.previewUrl || document.downloadUrl);
     if (!urls) throw new Error('Enter a valid HTTPS PDF or Google Drive sharing URL.');
+
+    const documentId = id || undefined;
     const payload = sanitizeFirebasePayload({
       ...document,
       ...urls,
+      id: documentId,
       fileType: 'PDF' as const,
+      active: document.active !== false,
       updatedAt: new Date().toISOString(),
     });
 
-    if (id) await update(ref(rtdb, `documents/${id}`), payload);
-    else await set(push(ref(rtdb, 'documents')), { ...payload, active: document.active !== false, createdAt: new Date().toISOString() });
+    if (documentId) {
+      await update(ref(rtdb, `documents/${documentId}`), payload);
+      return;
+    }
+
+    const newDocumentRef = push(ref(rtdb, 'documents'));
+    if (!newDocumentRef.key) throw new Error('Could not generate a document ID.');
+
+    const createdPayload = sanitizeFirebasePayload({
+      ...payload,
+      id: newDocumentRef.key,
+      createdAt: new Date().toISOString(),
+    });
+
+    await set(newDocumentRef, createdPayload);
   };
 
   const deleteDocument = (id: string) => remove(ref(rtdb, `documents/${id}`));
