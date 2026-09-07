@@ -1,18 +1,21 @@
 import { useEffect, useState } from 'react';
-import { onValue, push, ref, remove, set, update } from 'firebase/database';
+import { equalTo, onValue, orderByChild, push, query, ref, remove, set, update } from 'firebase/database';
 import { rtdb } from '../firebase';
 import { DocumentCategory, FormDocument } from '../types';
 import { generateSlug } from '../utils/slugGenerator';
 import { normalizePdfUrl } from '../utils/driveUrl';
 
-export function useDocuments() {
+export function useDocuments(includeInactive = false) {
   const [documents, setDocuments] = useState<FormDocument[]>([]);
   const [categories, setCategories] = useState<DocumentCategory[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    const documentsUnsubscribe = onValue(ref(rtdb, 'documents'), snapshot => {
+    const documentsRef = includeInactive
+      ? ref(rtdb, 'documents')
+      : query(ref(rtdb, 'documents'), orderByChild('active'), equalTo(true));
+    const documentsUnsubscribe = onValue(documentsRef, snapshot => {
       const data = snapshot.val() || {};
       setDocuments(Object.entries(data).map(([id, value]) => ({ id, ...(value as Omit<FormDocument, 'id'>) })));
       setLoading(false);
@@ -23,7 +26,7 @@ export function useDocuments() {
       setCategories(Object.entries(data).map(([id, value]) => ({ id, ...(value as Omit<DocumentCategory, 'id'>) })));
     }, err => setError(err));
     return () => { documentsUnsubscribe(); categoriesUnsubscribe(); };
-  }, []);
+  }, [includeInactive]);
 
   const saveDocument = async (document: Omit<FormDocument, 'id'>, id?: string) => {
     const urls = normalizePdfUrl(document.previewUrl || document.downloadUrl);
