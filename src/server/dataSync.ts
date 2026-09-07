@@ -310,6 +310,134 @@ async function syncProductCategoriesJson(): Promise<SyncResult> {
 }
 
 /**
+ * Generate document-categories.json
+ */
+async function syncDocumentCategoriesJson(): Promise<SyncResult> {
+  const filePath = path.join(DATA_DIR, 'document-categories.json');
+
+  try {
+    console.log('[JSON SYNC] Starting document-categories.json generation...');
+    const databaseURL = 'https://india-cyber-cafe-default-rtdb.firebaseio.com';
+
+    const response = await fetch(`${databaseURL}/documentCategories.json?auth=null`);
+    if (!response.ok) {
+      throw new Error(`Firebase request failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const categories = firebaseObjectToArray(data);
+
+    const validated = categories.map((category: any) => ({
+      id: category.id || '',
+      name: category.name || '',
+      description: category.description || '',
+      icon: category.icon || 'file-text',
+      order: category.order ?? 0,
+    }));
+
+    const output = {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      categories: validated,
+    };
+
+    writeJsonAtomically(
+      filePath,
+      output,
+      (data: any) =>
+        data &&
+        data.categories &&
+        Array.isArray(data.categories) &&
+        data.version === 1
+    );
+
+    console.log(
+      `[JSON SYNC] ✅ document-categories.json generated (${validated.length} categories)`
+    );
+    return {
+      success: true,
+      file: 'document-categories.json',
+      message: `Generated ${validated.length} categories`,
+    };
+  } catch (error: any) {
+    console.error('[JSON SYNC] ❌ Error syncing document categories:', error.message);
+    return {
+      success: false,
+      file: 'document-categories.json',
+      error: error.message,
+      message: 'Failed to sync document-categories.json',
+    };
+  }
+}
+
+/**
+ * Generate documents.json
+ */
+async function syncDocumentsJson(): Promise<SyncResult> {
+  const filePath = path.join(DATA_DIR, 'documents.json');
+
+  try {
+    console.log('[JSON SYNC] Starting documents.json generation...');
+    const databaseURL = 'https://india-cyber-cafe-default-rtdb.firebaseio.com';
+
+    const response = await fetch(`${databaseURL}/documents.json?auth=null`);
+    if (!response.ok) {
+      throw new Error(`Firebase request failed: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const documents = firebaseObjectToArray(data);
+
+    const validated = documents
+      .filter((document: any) => document && (document.active !== false))
+      .map((document: any) => ({
+        id: document.id || '',
+        name: document.name || '',
+        description: document.description || '',
+        category: document.category || '',
+        previewUrl: document.previewUrl || '',
+        downloadUrl: document.downloadUrl || '',
+        thumbnailUrl: document.thumbnailUrl || '',
+        fileType: document.fileType || 'PDF',
+        active: document.active !== undefined ? !!document.active : true,
+        createdAt: document.createdAt || new Date().toISOString(),
+        updatedAt: document.updatedAt || new Date().toISOString(),
+      }));
+
+    const output = {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      documents: validated,
+    };
+
+    writeJsonAtomically(
+      filePath,
+      output,
+      (data: any) =>
+        data &&
+        data.documents &&
+        Array.isArray(data.documents) &&
+        data.version === 1
+    );
+
+    console.log(`[JSON SYNC] ✅ documents.json generated (${validated.length} documents)`);
+    return {
+      success: true,
+      file: 'documents.json',
+      message: `Generated ${validated.length} documents`,
+    };
+  } catch (error: any) {
+    console.error('[JSON SYNC] ❌ Error syncing documents:', error.message);
+    return {
+      success: false,
+      file: 'documents.json',
+      error: error.message,
+      message: 'Failed to sync documents.json',
+    };
+  }
+}
+
+/**
  * Generate metadata.json
  * Tracks sync status and timestamps
  */
@@ -380,6 +508,12 @@ export async function syncAllPublicJson(): Promise<{
   const categoriesResult = await syncProductCategoriesJson();
   results.push(categoriesResult);
 
+  const documentsResult = await syncDocumentsJson();
+  results.push(documentsResult);
+
+  const documentCategoriesResult = await syncDocumentCategoriesJson();
+  results.push(documentCategoriesResult);
+
   const metadataResult = await syncMetadataJson();
   results.push(metadataResult);
 
@@ -402,7 +536,7 @@ export async function syncAllPublicJson(): Promise<{
  * Used by admin CRUD operations to update only affected JSON
  */
 export async function syncDataType(
-  type: 'services' | 'products' | 'categories'
+  type: 'services' | 'products' | 'categories' | 'documents' | 'documentCategories'
 ): Promise<SyncResult> {
   ensureDataDirectory();
 
@@ -413,6 +547,10 @@ export async function syncDataType(
       return await syncProductsJson();
     case 'categories':
       return await syncProductCategoriesJson();
+    case 'documents':
+      return await syncDocumentsJson();
+    case 'documentCategories':
+      return await syncDocumentCategoriesJson();
     default:
       return {
         success: false,
@@ -436,11 +574,15 @@ export async function initializePublicDataOnStartup(): Promise<void> {
     const servicesPath = path.join(DATA_DIR, 'services.json');
     const productsPath = path.join(DATA_DIR, 'products.json');
     const categoriesPath = path.join(DATA_DIR, 'product-categories.json');
+    const documentsPath = path.join(DATA_DIR, 'documents.json');
+    const documentCategoriesPath = path.join(DATA_DIR, 'document-categories.json');
 
     const hasExistingData =
       fs.existsSync(servicesPath) &&
       fs.existsSync(productsPath) &&
-      fs.existsSync(categoriesPath);
+      fs.existsSync(categoriesPath) &&
+      fs.existsSync(documentsPath) &&
+      fs.existsSync(documentCategoriesPath);
 
     if (hasExistingData) {
       console.log('[JSON SYNC] Found existing public data files, skipping initial sync');

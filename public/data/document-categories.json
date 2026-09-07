@@ -1,0 +1,104 @@
+{
+  "version": 1,
+  "generatedAt": "2026-09-07T00:00:00.000Z",
+  "categories": [
+    {
+      "id": "government-forms",
+      "name": "Government Forms",
+      "description": "Government application forms and official documents.",
+      "icon": "file-text",
+      "order": 1
+    },
+    {
+      "id": "applications",
+      "name": "Applications",
+      "description": "General application forms for services and registrations.",
+      "icon": "file-text",
+      "order": 2
+    },
+    {
+      "id": "affidavit-declaration",
+      "name": "Affidavit & Declaration",
+      "description": "Legal declaration, affidavit and sworn statement templates.",
+      "icon": "file-text",
+      "order": 3
+    },
+    {
+      "id": "resume-cv",
+      "name": "Resume/CV",
+      "description": "Professional resume and curriculum vitae templates.",
+      "icon": "file-text",
+      "order": 4
+    },
+    {
+      "id": "biodata",
+      "name": "Biodata",
+      "description": "Biodata and personal profile format templates.",
+      "icon": "file-text",
+      "order": 5
+    },
+    {
+      "id": "education",
+      "name": "Education",
+      "description": "Study, admission and academic document templates.",
+      "icon": "file-text",
+      "order": 6
+    },
+    {
+      "id": "jobs",
+      "name": "Jobs",
+      "description": "Employment application, job forms and cover letter samples.",
+      "icon": "file-text",
+      "order": 7
+    },
+    {
+      "id": "banking",
+      "name": "Banking",
+      "description": "Bank and finance related forms and templates.",
+      "icon": "file-text",
+      "order": 8
+    },
+    {
+      "id": "aadhaar-pan",
+      "name": "Aadhaar/PAN",
+      "description": "Identity and documentation forms for Aadhaar, PAN and KYC work.",
+      "icon": "file-text",
+      "order": 9
+    },
+    {
+      "id": "vehicle",
+      "name": "Vehicle",
+      "description": "Vehicle forms, no-objection and service application formats.",
+      "icon": "file-text",
+      "order": 10
+    },
+    {
+      "id": "legal",
+      "name": "Legal",
+      "description": "Legal notice and document formatting templates.",
+      "icon": "file-text",
+      "order": 11
+    },
+    {
+      "id": "business",
+      "name": "Business",
+      "description": "Business registration and documentation templates.",
+      "icon": "file-text",
+      "order": 12
+    },
+    {
+      "id": "undertaking",
+      "name": "Undertaking",
+      "description": "Undertaking and self-declaration formats for official purposes.",
+      "icon": "file-text",
+      "order": 13
+    },
+    {
+      "id": "other",
+      "name": "Other",
+      "description": "Miscellaneous forms and reference documents.",
+      "icon": "file-text",
+      "order": 14
+    }
+  ]
+}

@@ -439,7 +439,7 @@ async function startServer() {
     try {
       const { type } = req.params;
       
-      if (!['services', 'products', 'categories'].includes(type)) {
+      if (!['services', 'products', 'categories', 'documents', 'documentCategories'].includes(type)) {
         return res.status(400).json({
           success: false,
           error: "Invalid sync type",
@@ -447,7 +447,7 @@ async function startServer() {
       }
 
       console.log(`[DATA SYNC] Sync triggered for type: ${type}`);
-      const result = await syncDataType(type as 'services' | 'products' | 'categories');
+      const result = await syncDataType(type as 'services' | 'products' | 'categories' | 'documents' | 'documentCategories');
       
       if (result.success) {
         res.json({
@@ -491,7 +491,9 @@ async function startServer() {
     const hasPublicData = 
       fs.existsSync(path.join(dataDir, 'services.json')) &&
       fs.existsSync(path.join(dataDir, 'products.json')) &&
-      fs.existsSync(path.join(dataDir, 'product-categories.json'));
+      fs.existsSync(path.join(dataDir, 'product-categories.json')) &&
+      fs.existsSync(path.join(dataDir, 'documents.json')) &&
+      fs.existsSync(path.join(dataDir, 'document-categories.json'));
 
     res.json({ 
       status: "ok",
