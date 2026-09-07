@@ -15,6 +15,7 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
     { id: 'home', label: 'Home', icon: 'house' },
     { id: 'services', label: 'Services', icon: 'layer-group' },
     { id: 'price-list', label: 'Price List', icon: 'receipt-view-pricing' },
+    { id: 'forms-documents', label: 'Forms & Documents', icon: 'file-text' },
     { id: 'store', label: 'Store', icon: 'shopping-bag' },
     { id: 'track', label: 'My Applications', icon: 'list-check' },
     { id: 'profile', label: 'Edit Profile', icon: 'user-pen' },

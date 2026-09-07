@@ -142,6 +142,7 @@ export function IconRenderer({ name, className }: { name: string; className?: st
   if (lowerName.includes('envelope') || lowerName.includes('mail')) return <Icons.Mail className={className} />;
   if (lowerName.includes('phone')) return <Icons.Phone className={className} />;
   if (lowerName.includes('lock')) return <Icons.Lock className={className} />;
+  if (lowerName.includes('file-text')) return <Icons.FileText className={className} />;
   if (lowerName === 'x' || lowerName.includes('close') || lowerName.includes('xmark')) return <Icons.X className={className} />;
   if (lowerName.includes('file-check') || lowerName.includes('check-circle')) return <Icons.CheckCircle className={className} />;
   if (lowerName.includes('handshake')) return <Icons.Headset className={className} />;

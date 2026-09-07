@@ -25,8 +25,8 @@ export function Footer() {
             <li><Link to="/" className="hover:text-primary transition-colors">Home</Link></li>
             <li><Link to="/services" className="hover:text-primary transition-colors">All Services</Link></li>
             <li><Link to="/price-list" className="hover:text-primary transition-colors">Price List</Link></li>
+            <li><Link to="/forms-documents" className="hover:text-primary transition-colors">Forms & Documents</Link></li>
             <li><Link to="/track" className="hover:text-primary transition-colors">Track Application</Link></li>
-            <li><Link to="/legal/about" className="hover:text-primary transition-colors">About Us</Link></li>
           </ul>
         </div>
 
@@ -38,6 +38,7 @@ export function Footer() {
             <li><Link to="/legal/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
             <li><Link to="/legal/refund" className="hover:text-primary transition-colors">Refund Policy</Link></li>
             <li><Link to="/legal/disclaimer" className="hover:text-primary transition-colors">Disclaimer</Link></li>
+            <li><Link to="/legal/about" className="hover:text-primary transition-colors">About Us</Link></li>
             <li><Link to="/legal/contact" className="hover:text-primary transition-colors">Contact Us</Link></li>
           </ul>
         </div>

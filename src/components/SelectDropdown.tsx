@@ -65,7 +65,7 @@ export function SelectDropdown({
       >
         <span className="flex min-w-0 items-center gap-2">
           {leadingIcon && <IconRenderer name={leadingIcon} className="w-4 h-4 shrink-0 text-slate-400" />}
-          <span className={!selectedOption ? 'text-slate-400' : ''}>{displayLabel}</span>
+          <span className={`min-w-0 truncate ${!selectedOption ? 'text-slate-400' : ''}`} title={displayLabel}>{displayLabel}</span>
         </span>
         <IconRenderer name={isOpen ? 'chevron-up' : 'chevron-down'} className="w-4 h-4 shrink-0 text-slate-500" />
       </button>
