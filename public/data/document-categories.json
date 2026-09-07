@@ -1,11 +1,46 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-07T07:48:02.298Z",
+  "generatedAt": "2026-09-07T14:21:06.845Z",
   "categories": [
     {
-      "id": "mp-e-district",
-      "name": "MP e-District",
-      "description": "Madhya Pradesh e-District forms, applications, certificates, and related documents.",
+      "id": "affidavit-declaration",
+      "name": "Affidavit & Declaration",
+      "description": "Official affidavits, declarations, undertakings, and related legal documents for various personal and official purposes.",
+      "icon": "file-text",
+      "order": 0
+    },
+    {
+      "id": "banking-forms",
+      "name": "Banking Forms",
+      "description": "Official banking forms for account opening, KYC, updates, transactions, and other banking services.",
+      "icon": "file-text",
+      "order": 0
+    },
+    {
+      "id": "central-government-forms",
+      "name": "Central Government Forms",
+      "description": "Official Central Government forms, applications, certificates, and essential documents for citizens across India.",
+      "icon": "file-text",
+      "order": 0
+    },
+    {
+      "id": "education-forms",
+      "name": "Education Forms",
+      "description": "Education forms, admission applications, scholarships, certificates, and other academic documents.",
+      "icon": "file-text",
+      "order": 0
+    },
+    {
+      "id": "mp-government-forms",
+      "name": "MP Government Forms",
+      "description": "Government forms, applications, certificates, and official documents for Madhya Pradesh.",
+      "icon": "file-text",
+      "order": 0
+    },
+    {
+      "id": "pan-card",
+      "name": "PAN CARD",
+      "description": "Official PAN Card forms, applications, corrections, updates, and related documents for Indian citizens.",
       "icon": "file-text",
       "order": 0
     }

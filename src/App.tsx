@@ -48,7 +48,6 @@ const OrderConfirmation = lazy(() => import('./pages/OrderConfirmation').then(m 
 const PriceList = lazy(() => import('./pages/PriceList').then(m => ({ default: m.PriceList })));
 const Pay = lazy(() => import('./pages/Pay').then(m => ({ default: m.Pay })));
 const FormsDocuments = lazy(() => import('./pages/FormsDocuments').then(m => ({ default: m.FormsDocuments })));
-const FormsDocumentsCategory = lazy(() => import('./pages/FormsDocuments').then(m => ({ default: m.FormsDocumentsCategory })));
 const FormsDocumentDetail = lazy(() => import('./pages/FormsDocuments').then(m => ({ default: m.FormsDocumentDetail })));
 
 // Preload function
@@ -258,7 +257,7 @@ function AppContent() {
             <Route path="/price-list" element={<PriceList services={services} products={products} categories={productCategories} />} />
             <Route path="/forms-documents" element={<FormsDocuments />} />
             <Route path="/forms-documents/:categorySlug/:pdfSlug" element={<FormsDocumentDetail />} />
-            <Route path="/forms-documents/:categorySlug" element={<FormsDocumentsCategory />} />
+            <Route path="/forms-documents/:categorySlug" element={<FormsDocuments />} />
             <Route path="/services/:serviceId" element={<ServiceDetail services={services} isLoading={servicesLoading} error={servicesError} onRetry={retryServices} />} />
             {/* Apply - services + gateways loaded on demand */}
             <Route

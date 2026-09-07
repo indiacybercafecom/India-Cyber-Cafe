@@ -14,9 +14,11 @@ interface FormsDocumentsProps {
 
 export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
   const navigate = useNavigate();
+  const { categorySlug: routeCategorySlug } = useParams<{ categorySlug?: string }>();
   const { documents, categories, loading, error } = useDocuments();
   const [searchTerm, setSearchTerm] = useState('');
-  const selectedCategoryName = categorySlug ? categories.find(category => generateSlug(category.name) === categorySlug)?.name : undefined;
+  const activeCategorySlug = categorySlug ?? routeCategorySlug;
+  const selectedCategoryName = activeCategorySlug ? categories.find(category => generateSlug(category.name) === activeCategorySlug)?.name : undefined;
   const [selectedCategory, setSelectedCategory] = useState('All');
 
   useEffect(() => {
@@ -144,11 +146,6 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
       </section>
     </div>
   );
-}
-
-export function FormsDocumentsCategory() {
-  const { categorySlug } = useParams<{ categorySlug: string }>();
-  return <FormsDocuments categorySlug={categorySlug} />;
 }
 
 export function FormsDocumentDetail() {
