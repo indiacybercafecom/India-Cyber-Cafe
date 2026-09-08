@@ -25,6 +25,10 @@ function getPdfErrorMessage(error: unknown): string {
   return 'This PDF could not be loaded. Please try again or download the file.';
 }
 
+function isMobileDevice(): boolean {
+  return /Android|iPhone|iPad|iPod|IEMobile|Opera Mini/i.test(navigator.userAgent);
+}
+
 function getDefaultZoom(): number {
   return typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches ? 0.6 : 1;
 }
@@ -155,9 +159,23 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
   }, [onClose, pageCount]);
 
   const handlePrint = () => {
-    // Open original PDF directly for printing (highest quality)
-    const printWindow = window.open(`/api/pdf-proxy?url=${encodeURIComponent(sourceUrl)}`, '_blank');
+    const pdfPrintUrl = `/api/pdf-proxy?url=${encodeURIComponent(sourceUrl)}`;
+    const printWindow = window.open(pdfPrintUrl, '_blank');
     if (!printWindow) return;
+
+    if (isMobileDevice()) {
+      // Let mobile Chrome hand the original PDF to the installed print app.
+      let printStarted = false;
+      const openPrintApp = () => {
+        if (printStarted) return;
+        printStarted = true;
+        printWindow.focus();
+        printWindow.print();
+      };
+      printWindow.addEventListener('load', openPrintApp, { once: true });
+      window.setTimeout(openPrintApp, 1500);
+      return;
+    }
     
     // Trigger print dialog after PDF is loaded
     setTimeout(() => {
