@@ -190,7 +190,6 @@ export function FormsDocumentDetail() {
   const { categorySlug, pdfSlug } = useParams<{ categorySlug: string; pdfSlug: string }>();
   const navigate = useNavigate();
   const { documents, categories, loading, error } = useDocuments();
-  const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const document = documents.find(item => generateSlug(item.category) === categorySlug && generateSlug(item.name) === pdfSlug);
   const category = categories.find(item => generateSlug(item.name) === categorySlug);
 
@@ -202,18 +201,8 @@ export function FormsDocumentDetail() {
   const pdfSourceUrl = normalizedUrls?.downloadUrl || document.downloadUrl || document.previewUrl;
   const pdfDownloadUrl = normalizedUrls?.downloadUrl || document.downloadUrl;
 
-  return <div className="mx-auto max-w-3xl space-y-6">
+  return <>
     <SEO title={`${document.name} - ${category?.name || 'Forms & Documents'}`} description={document.description || `Download ${document.name} from India Cyber Cafe.`} url={`https://b.indiacybercafe.com/forms-documents/${categorySlug}/${pdfSlug}`} keywords={`${document.name}, PDF, ${category?.name || 'forms and documents'}`} />
-    <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm sm:p-10">
-      <button type="button" onClick={() => navigate(`/forms-documents/${categorySlug}`)} className="mb-8 flex items-center gap-2 text-sm font-bold text-slate-500 hover:text-primary"><IconRenderer name="arrow-left" className="h-4 w-4" />Back to {category?.name || 'category'}</button>
-      <div className="flex flex-col items-center text-center">
-        {document.thumbnailUrl ? <img src={document.thumbnailUrl} alt="" className="mb-6 h-24 w-24 rounded-xl object-cover" /> : <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-xl bg-orange-50 text-primary"><IconRenderer name="file-text" className="h-12 w-12" /></div>}
-        <p className="text-xs font-bold uppercase tracking-widest text-primary">{document.category}</p>
-        <h1 className="mt-2 text-2xl font-bold text-navy sm:text-4xl">{document.name}</h1>
-        {document.description && <p className="mt-3 max-w-2xl text-sm leading-relaxed text-slate-500 sm:text-base">{document.description}</p>}
-        <div className="mt-8 grid w-full max-w-md grid-cols-2 gap-3"><button type="button" onClick={() => setIsPreviewOpen(true)} className="btn-outline"><IconRenderer name="eye" className="h-4 w-4" />Preview</button><a href={pdfDownloadUrl} download={`${document.name}.pdf`} target="_blank" rel="noopener noreferrer" className="btn-primary"><IconRenderer name="download" className="h-4 w-4" />Download</a></div>
-      </div>
-    </div>
-    {isPreviewOpen && <PdfViewerModal title={document.name} sourceUrl={pdfSourceUrl} downloadUrl={pdfDownloadUrl} onClose={() => setIsPreviewOpen(false)} />}
-  </div>;
+    <PdfViewerModal title={document.name} sourceUrl={pdfSourceUrl} downloadUrl={pdfDownloadUrl} onClose={() => navigate(`/forms-documents/${categorySlug}`)} />
+  </>;
 }

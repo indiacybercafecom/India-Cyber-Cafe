@@ -164,13 +164,10 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
 
   return (
     <div
-      className="fixed inset-0 z-[3000] flex items-center justify-center bg-black/80 p-2 backdrop-blur-sm sm:p-4"
-      role="dialog"
-      aria-modal="true"
+      className="fixed inset-0 z-[3000] flex h-screen w-screen flex-col bg-slate-200"
       aria-labelledby="pdf-viewer-title"
-      onMouseDown={event => { if (event.target === event.currentTarget) onClose(); }}
     >
-      <div className="flex h-[94vh] w-full max-w-6xl flex-col overflow-hidden rounded-lg bg-white shadow-2xl">
+      <div className="flex h-full w-full flex-col overflow-hidden bg-white">
         {/* Header */}
         <header className="flex shrink-0 items-center justify-between bg-gradient-to-r from-navy to-blue-900 px-5 py-4 sm:px-6">
           <h2 id="pdf-viewer-title" className="truncate pr-4 text-base font-bold text-white sm:text-lg">{title}</h2>
