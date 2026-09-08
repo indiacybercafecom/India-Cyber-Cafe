@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
 import { Service, Product } from '../types';
 import { ServiceSkeleton } from '../components/Skeleton';
@@ -361,6 +361,21 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
               )}
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* Forms & Documents CTA */}
+      <section className="rounded-3xl border border-primary/20 bg-white px-6 py-8 shadow-sm sm:px-10 lg:px-14">
+        <div className="flex flex-col items-center justify-between gap-6 text-center md:flex-row md:text-left">
+          <div className="max-w-3xl">
+            <p className="text-xs font-black uppercase tracking-[0.24em] text-primary">Forms & Documents</p>
+            <p className="mt-3 text-sm font-medium leading-relaxed text-slate-600 sm:text-base lg:text-lg">
+              If you need any forms or documents, visit our Forms & Documents page.
+            </p>
+          </div>
+          <Link to="/forms-documents" className="btn-primary whitespace-nowrap px-7 py-3 text-sm sm:text-base">
+            View Forms & Documents
+          </Link>
         </div>
       </section>
     </div>

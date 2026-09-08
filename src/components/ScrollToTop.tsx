@@ -5,10 +5,16 @@ export function ScrollToTop() {
   const { pathname } = useLocation();
 
   useEffect(() => {
-    if (pathname === '/forms-documents' || pathname.startsWith('/forms-documents/')) {
+    if (pathname === '/forms-documents') {
+      window.scrollTo({ top: 0, behavior: 'auto' as ScrollBehavior });
       return;
     }
-    window.scrollTo(0, 0);
+
+    if (pathname.startsWith('/forms-documents/')) {
+      return;
+    }
+
+    window.scrollTo({ top: 0, behavior: 'auto' as ScrollBehavior });
   }, [pathname]);
 
   return null;
