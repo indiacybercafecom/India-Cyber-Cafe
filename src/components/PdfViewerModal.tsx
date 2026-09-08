@@ -166,6 +166,8 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
     }, 1000);
   };
 
+  const browserDownloadUrl = `/api/pdf-proxy?url=${encodeURIComponent(downloadUrl)}`;
+
   return (
     <div
       className="fixed inset-0 z-[3000] flex h-screen w-screen flex-col bg-slate-200"
@@ -252,10 +254,8 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
               <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </button>
             <a 
-              href={downloadUrl} 
+              href={browserDownloadUrl} 
               download={`${title}.pdf`} 
-              target="_blank" 
-              rel="noopener noreferrer" 
               aria-label="Download PDF"
               title="Download PDF"
               className="rounded-lg p-1.5 text-navy transition hover:bg-white hover:shadow-sm sm:p-2"
@@ -282,10 +282,8 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
                 <h3 className="mt-4 text-lg font-bold text-navy">Unable to Preview PDF</h3>
                 <p className="mt-3 text-sm leading-relaxed text-slate-600">{error}</p>
                 <a 
-                  href={downloadUrl} 
+                  href={browserDownloadUrl} 
                   download={`${title}.pdf`} 
-                  target="_blank" 
-                  rel="noopener noreferrer" 
                   className="btn-primary mx-auto mt-6 inline-flex items-center gap-2 rounded-lg bg-navy px-5 py-2.5 text-white transition hover:bg-blue-900"
                 >
                   <Download className="h-4 w-4" />
