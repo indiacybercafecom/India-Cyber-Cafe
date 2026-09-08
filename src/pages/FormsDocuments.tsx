@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Link, useNavigate, useParams } from 'react-router-dom';
+import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
 import { PdfViewerModal } from '../components/PdfViewerModal';
 import { SEO } from '../components/SEO';
@@ -50,6 +50,7 @@ function FormsDocumentsSkeleton() {
 
 export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
   const navigate = useNavigate();
+  const location = useLocation();
   const { categorySlug: routeCategorySlug } = useParams<{ categorySlug?: string }>();
   const { documents, categories, loading, error } = useDocuments();
   const [searchTerm, setSearchTerm] = useState('');
@@ -144,7 +145,8 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
         {loading ? <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500">Loading PDFs...</div> : error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-10 text-center text-red-700">Unable to load PDFs right now.</div> : filteredDocuments.length > 0 ? (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {filteredDocuments.map(document => {
-              const detailPath = `/forms-documents/${generateSlug(document.category)}/${generateSlug(document.name)}`;
+              const listingPath = location.pathname;
+              const detailPath = `/forms-documents/${generateSlug(document.category)}/${generateSlug(document.name)}?from=${encodeURIComponent(listingPath)}`;
 
               return (
                 <article
@@ -189,6 +191,7 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
 export function FormsDocumentDetail() {
   const { categorySlug, pdfSlug } = useParams<{ categorySlug: string; pdfSlug: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const { documents, categories, loading, error } = useDocuments();
   const document = documents.find(item => generateSlug(item.category) === categorySlug && generateSlug(item.name) === pdfSlug);
   const category = categories.find(item => generateSlug(item.name) === categorySlug);
@@ -200,9 +203,11 @@ export function FormsDocumentDetail() {
   const normalizedUrls = normalizePdfUrl(document.previewUrl || document.downloadUrl);
   const pdfSourceUrl = normalizedUrls?.downloadUrl || document.downloadUrl || document.previewUrl;
   const pdfDownloadUrl = normalizedUrls?.downloadUrl || document.downloadUrl;
+  const returnPath = new URLSearchParams(location.search).get('from');
+  const closePath = returnPath?.startsWith('/forms-documents') ? returnPath : '/forms-documents';
 
   return <>
     <SEO title={`${document.name} - ${category?.name || 'Forms & Documents'}`} description={document.description || `Download ${document.name} from India Cyber Cafe.`} url={`https://b.indiacybercafe.com/forms-documents/${categorySlug}/${pdfSlug}`} keywords={`${document.name}, PDF, ${category?.name || 'forms and documents'}`} />
-    <PdfViewerModal title={document.name} sourceUrl={pdfSourceUrl} downloadUrl={pdfDownloadUrl} onClose={() => navigate(`/forms-documents/${categorySlug}`)} />
+    <PdfViewerModal title={document.name} sourceUrl={pdfSourceUrl} downloadUrl={pdfDownloadUrl} onClose={() => navigate(closePath)} />
   </>;
 }
