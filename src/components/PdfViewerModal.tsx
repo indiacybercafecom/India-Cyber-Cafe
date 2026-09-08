@@ -164,16 +164,10 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
     if (!printWindow) return;
 
     if (isMobileDevice()) {
-      // Let mobile Chrome hand the original PDF to the installed print app.
-      let printStarted = false;
-      const openPrintApp = () => {
-        if (printStarted) return;
-        printStarted = true;
-        printWindow.focus();
-        printWindow.print();
-      };
-      printWindow.addEventListener('load', openPrintApp, { once: true });
-      window.setTimeout(openPrintApp, 1500);
+      // Keep the print call inside the tap gesture so mobile Chrome can hand
+      // the original PDF to the installed print app.
+      printWindow.focus();
+      printWindow.print();
       return;
     }
     
