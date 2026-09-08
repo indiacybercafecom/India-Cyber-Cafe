@@ -25,13 +25,17 @@ function getPdfErrorMessage(error: unknown): string {
   return 'This PDF could not be loaded. Please try again or download the file.';
 }
 
+function getDefaultZoom(): number {
+  return typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches ? 0.6 : 1;
+}
+
 export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfViewerModalProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const pdfRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
   const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
   const [pageNumber, setPageNumber] = useState(1);
   const [pageCount, setPageCount] = useState(0);
-  const [zoom, setZoom] = useState(1);
+  const [zoom, setZoom] = useState(getDefaultZoom);
   const [rotation, setRotation] = useState(0);
   const [loading, setLoading] = useState(true);
   const [fetching, setFetching] = useState(true);
@@ -48,7 +52,7 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
     setError(null);
     setPageNumber(1);
     setPageCount(0);
-    setZoom(1);
+    setZoom(getDefaultZoom());
     setRotation(0);
 
     const loadPdf = async () => {
@@ -177,65 +181,65 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
         </header>
 
         {/* Toolbar */}
-        <div className="flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:px-6">
+        <div className="flex shrink-0 flex-nowrap items-center justify-start gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50 px-2 py-2 sm:flex-wrap sm:justify-between sm:gap-3 sm:px-6 sm:py-3">
           {/* Page Navigation */}
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <button 
               type="button" 
               onClick={() => setPageNumber(page => Math.max(1, page - 1))} 
               disabled={loading || pageNumber <= 1} 
               aria-label="Previous page"
               title="Previous page"
-              className="rounded-lg p-2.5 text-navy transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+              className="rounded-lg p-1.5 text-navy transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent sm:p-2.5"
             >
-              <ChevronLeft className="h-5 w-5" />
+              <ChevronLeft className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
-            <span className="min-w-14 text-center text-sm font-semibold text-slate-700">{loading ? '...' : `${pageNumber}/${pageCount}`}</span>
+            <span className="min-w-10 text-center text-xs font-semibold text-slate-700 sm:min-w-14 sm:text-sm">{loading ? '...' : `${pageNumber}/${pageCount}`}</span>
             <button 
               type="button" 
               onClick={() => setPageNumber(page => Math.min(pageCount, page + 1))} 
               disabled={loading || pageNumber >= pageCount}
               aria-label="Next page"
               title="Next page"
-              className="rounded-lg p-2.5 text-navy transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
+              className="rounded-lg p-1.5 text-navy transition hover:bg-white hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent sm:p-2.5"
             >
-              <ChevronRight className="h-5 w-5" />
+              <ChevronRight className="h-4 w-4 sm:h-5 sm:w-5" />
             </button>
           </div>
 
           {/* Control Buttons */}
-          <div className="flex items-center gap-1 sm:gap-2">
+          <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
             <button 
               type="button" 
               onClick={() => setZoom(value => Math.max(0.5, Number((value - 0.1).toFixed(1))))} 
               disabled={loading} 
               aria-label="Zoom out"
               title="Zoom out"
-              className="rounded-lg p-2 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40"
+              className="rounded-lg p-1.5 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40 sm:p-2"
             >
-              <Minus className="h-4 w-4" />
+              <Minus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </button>
-            <span className="w-12 text-center text-xs font-semibold text-slate-600 sm:text-sm">{Math.round(zoom * 100)}%</span>
+            <span className="w-10 text-center text-[11px] font-semibold text-slate-600 sm:w-12 sm:text-sm">{Math.round(zoom * 100)}%</span>
             <button 
               type="button" 
               onClick={() => setZoom(value => Math.min(2.5, Number((value + 0.1).toFixed(1))))} 
               disabled={loading} 
               aria-label="Zoom in"
               title="Zoom in"
-              className="rounded-lg p-2 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40"
+              className="rounded-lg p-1.5 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40 sm:p-2"
             >
-              <Plus className="h-4 w-4" />
+              <Plus className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </button>
-            <div className="mx-1 h-5 w-px bg-slate-300" />
+            <div className="mx-0.5 h-5 w-px bg-slate-300 sm:mx-1" />
             <button 
               type="button" 
               onClick={() => setRotation(value => (value + 90) % 360)} 
               disabled={loading} 
               aria-label="Rotate PDF"
               title="Rotate PDF"
-              className="rounded-lg p-2 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40"
+              className="rounded-lg p-1.5 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40 sm:p-2"
             >
-              <RotateCw className="h-4 w-4" />
+              <RotateCw className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </button>
             <button 
               type="button" 
@@ -243,9 +247,9 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
               disabled={loading || rendering || !!error} 
               aria-label="Print PDF page"
               title="Print"
-              className="rounded-lg p-2 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40"
+              className="rounded-lg p-1.5 text-navy transition hover:bg-white hover:shadow-sm disabled:opacity-40 sm:p-2"
             >
-              <Printer className="h-4 w-4" />
+              <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </button>
             <a 
               href={downloadUrl} 
@@ -254,9 +258,9 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
               rel="noopener noreferrer" 
               aria-label="Download PDF"
               title="Download PDF"
-              className="rounded-lg p-2 text-navy transition hover:bg-white hover:shadow-sm"
+              className="rounded-lg p-1.5 text-navy transition hover:bg-white hover:shadow-sm sm:p-2"
             >
-              <Download className="h-4 w-4" />
+              <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
             </a>
           </div>
         </div>
