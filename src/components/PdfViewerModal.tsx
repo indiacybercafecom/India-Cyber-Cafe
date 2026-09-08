@@ -181,7 +181,7 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
         </header>
 
         {/* Toolbar */}
-        <div className="flex shrink-0 flex-nowrap items-center justify-start gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50 px-2 py-2 sm:flex-wrap sm:justify-between sm:gap-3 sm:px-6 sm:py-3">
+        <div className="flex shrink-0 flex-nowrap items-center justify-between gap-1 overflow-x-auto border-b border-slate-200 bg-slate-50 px-2 py-2 sm:flex-wrap sm:gap-3 sm:px-6 sm:py-3">
           {/* Page Navigation */}
           <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             <button 
@@ -208,7 +208,7 @@ export function PdfViewerModal({ title, sourceUrl, downloadUrl, onClose }: PdfVi
           </div>
 
           {/* Control Buttons */}
-          <div className="flex shrink-0 items-center gap-0.5 sm:gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-0.5 sm:ml-0 sm:gap-2">
             <button 
               type="button" 
               onClick={() => setZoom(value => Math.max(0.5, Number((value - 0.1).toFixed(1))))} 
