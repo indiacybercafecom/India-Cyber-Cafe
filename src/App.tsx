@@ -16,7 +16,7 @@ import { AuthModal } from './components/AuthModal';
 import { ToastContainer } from './components/Toast';
 import { Home } from './pages/Home';
 import { NotFound } from './pages/NotFound';
-import { PageSkeleton } from './components/Skeleton';
+import { PageSkeleton, ApplySkeleton, CheckoutSkeleton, ServicesSkeleton, ProfileSkeleton, TrackSkeleton, OperatorSkeleton, AdminSkeleton, StoreSkeleton, PriceListSkeleton } from './components/Skeleton';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Footer } from './components/Footer';
 import { ScrollToTop } from './components/ScrollToTop';
@@ -238,7 +238,7 @@ function AppContent() {
                   services={services}
                   products={products}
                   onSelectService={() => {}}
-                  loading={false}
+                  loading={servicesLoading}
                 />
               }
             />
@@ -264,7 +264,7 @@ function AppContent() {
               path="/services/:serviceId/:subserviceName"
               element={
                 authLoading || (authUser && profileLoading) ? (
-                  <PageSkeleton />
+                  <ApplySkeleton />
                 ) : profileUnavailable ? (
                   <Navigate to="/" />
                 ) : authUser && user ? (
@@ -304,7 +304,7 @@ function AppContent() {
               path="/store/:categoryId/:productId/checkout"
               element={
                 authLoading || (authUser && profileLoading) ? (
-                  <PageSkeleton />
+                  <CheckoutSkeleton />
                 ) : profileUnavailable ? (
                   <Navigate to="/" />
                 ) : authUser && user ? (
@@ -341,7 +341,7 @@ function AppContent() {
               path="/track"
               element={
                 authLoading || (authUser && profileLoading) ? (
-                  <PageSkeleton />
+                  <TrackSkeleton />
                 ) : profileUnavailable ? (
                   <Navigate to="/" />
                 ) : authUser && user ? (
@@ -366,7 +366,7 @@ function AppContent() {
               path="/track/:applicationId"
               element={
                 authLoading || (authUser && profileLoading) ? (
-                  <PageSkeleton />
+                  <TrackSkeleton />
                 ) : profileUnavailable ? (
                   <Navigate to="/" />
                 ) : authUser && user ? (
@@ -391,9 +391,9 @@ function AppContent() {
               path="/profile"
               element={
                 authLoading ? (
-                  <PageSkeleton />
+                  <ProfileSkeleton />
                 ) : authUser && profileLoading ? (
-                  <PageSkeleton />
+                  <ProfileSkeleton />
                 ) : profileUnavailable ? (
                   <Navigate to="/" />
                 ) : user ? (
@@ -410,9 +410,9 @@ function AppContent() {
               path="/operator"
               element={
                 authLoading ? (
-                  <PageSkeleton />
+                  <OperatorSkeleton />
                 ) : authUser && profileLoading ? (
-                  <PageSkeleton />
+                  <OperatorSkeleton />
                 ) : profileUnavailable ? (
                   <Navigate to="/" />
                 ) : user?.role === 'operator' ? (
@@ -437,9 +437,9 @@ function AppContent() {
               path="/admin/:section"
               element={
                 authLoading ? (
-                  <PageSkeleton />
+                  <AdminSkeleton />
                 ) : authUser && profileLoading ? (
-                  <PageSkeleton />
+                  <AdminSkeleton />
                 ) : profileUnavailable ? (
                   <Navigate to="/" />
                 ) : user?.role === 'admin' ? (

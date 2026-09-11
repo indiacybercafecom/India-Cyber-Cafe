@@ -12,7 +12,7 @@ import { MAX_SERVICE_FILE_SIZE, uploadFile } from '../services/uploadService';
 import { SEO } from '../components/SEO';
 import { getRazorpayKeyId, loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
 import { sanitizeFormData, sanitizeUserProfile, sanitizeEmail } from '../utils/sanitizer';
-import { PageSkeleton } from '../components/Skeleton';
+import { ApplySkeleton } from '../components/Skeleton';
 
 interface ApplyProps {
   services: Service[];
@@ -67,7 +67,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
   }, [service, subserviceName]);
 
   if (isLoading) {
-    return <PageSkeleton />;
+    return <ApplySkeleton />;
   }
 
   if (error) {

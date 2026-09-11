@@ -14,7 +14,7 @@ import { getRazorpayKeyId, loadRazorpayScript, verifyRazorpayPayment } from '../
 import { generateRandomPassword, findUserByEmail, findUserByPhone, createGuestAccount as createGuestAccountInDB } from '../services/guestCheckoutService';
 import { sendWelcomeEmail, sendOrderConfirmationEmail, sendAdminOrderNotification } from '../services/emailService';
 import { sanitizeAddress, sanitizeOrderItems, sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
-import { StoreProductDetailSkeleton } from '../components/Skeleton';
+import { CheckoutSkeleton } from '../components/Skeleton';
 import { useLoadingState } from '../hooks/useLoadingState';
 
 interface StoreCheckoutProps {
@@ -93,7 +93,7 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
   }, [user?.uid]);
 
   if (displayLoading) {
-    return <StoreProductDetailSkeleton />;
+    return <CheckoutSkeleton />;
   }
 
   if (error) {
