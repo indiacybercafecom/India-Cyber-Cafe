@@ -1,0 +1,88 @@
+[
+  {
+    "label": "Full Name",
+    "name": "fullName",
+    "type": "text",
+    "required": true,
+    "placeholder": "Enter your full name",
+    "help_text": "Use the same name as shown in your identity document."
+  },
+  {
+    "label": "Email Address",
+    "name": "email",
+    "type": "email",
+    "required": true,
+    "placeholder": "name@example.com",
+    "help_text": "We will send service updates to this email address."
+  },
+  {
+    "label": "Mobile Number",
+    "name": "phone",
+    "type": "phone",
+    "required": true,
+    "placeholder": "+91 98765 43210",
+    "help_text": "Enter a valid phone number for contact."
+  },
+  {
+    "label": "Preferred Date",
+    "name": "preferredDate",
+    "type": "date",
+    "required": false,
+    "placeholder": "Select appointment date",
+    "help_text": "Choose the date that suits you best."
+  },
+  {
+    "label": "I accept the terms",
+    "name": "termsAccepted",
+    "type": "checkbox",
+    "required": true,
+    "help_text": "Please confirm before submitting the application."
+  },
+  {
+    "label": "Service Type",
+    "name": "serviceType",
+    "type": "select",
+    "required": true,
+    "placeholder": "Select service type",
+    "options": [
+      "Internet Browsing",
+      "Printing & Scanning",
+      "Computer Repair",
+      "Cyber Cafe Access"
+    ],
+    "help_text": "Choose the service category you need."
+  },
+  {
+    "label": "Available Time Slots",
+    "name": "timeSlots",
+    "type": "multiselect",
+    "required": true,
+    "placeholder": "Select suitable slot(s)",
+    "options": [
+      "09:00 AM - 11:00 AM",
+      "11:00 AM - 01:00 PM",
+      "01:00 PM - 03:00 PM",
+      "03:00 PM - 05:00 PM",
+      "05:00 PM - 07:00 PM"
+    ],
+    "help_text": "Select one or more time slots."
+  },
+  {
+    "label": "Identity Proof",
+    "name": "identityProof",
+    "type": "file",
+    "required": true,
+    "accept": ".pdf,image/png,image/jpeg",
+    "multiple": false,
+    "placeholder": "Upload identity proof",
+    "help_text": "Upload a PDF or image file."
+  },
+  {
+    "label": "Additional Details",
+    "name": "additionalDetails",
+    "type": "textarea",
+    "required": false,
+    "placeholder": "Write your issue or requirement here",
+    "help_text": "Describe the problem or requirement in detail."
+  }
+]
