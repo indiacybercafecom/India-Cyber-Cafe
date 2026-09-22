@@ -5,7 +5,7 @@ export const DEFAULT_ICC_IMAGE = 'https://indiacybercafe.com/wp-content/uploads/
 export const DEFAULT_ICC_TITLE = 'India Cyber Cafe - Digital Services, CSC & Online Form Portal';
 export const DEFAULT_ICC_DESC = 'Apply for Government Services, CSC Online Forms, PAN Card, Aadhaar UCL, Certificates & Digital Products online at India Cyber Cafe. Fast, secure, and reliable digital partner.';
 
-function slugify(text) {
+export function slugify(text) {
   if (!text) return '';
   return text
     .toLowerCase()
@@ -15,7 +15,7 @@ function slugify(text) {
     .replace(/^-+|-+$/g, '');
 }
 
-function cleanText(text, maxLength = 160) {
+export function cleanText(text, maxLength = 160) {
   if (!text) return '';
   const cleaned = String(text)
     .replace(/<[^>]*>/g, '') // remove HTML tags
@@ -26,7 +26,7 @@ function cleanText(text, maxLength = 160) {
   return cleaned.slice(0, maxLength - 3).trim() + '...';
 }
 
-function escapeHtml(str) {
+export function escapeHtml(str) {
   if (!str) return '';
   return String(str)
     .replace(/&/g, '&amp;')
@@ -36,13 +36,37 @@ function escapeHtml(str) {
     .replace(/'/g, '&#039;');
 }
 
+export function ensureHttps(url) {
+  if (!url) return DEFAULT_ICC_IMAGE;
+  let str = String(url).trim();
+  if (str.startsWith('http://')) {
+    str = 'https://' + str.slice(7);
+  }
+  return str;
+}
+
+export function getImageMimeType(url) {
+  if (!url) return 'image/png';
+  const clean = url.split('?')[0].toLowerCase();
+  if (clean.endsWith('.webp')) return 'image/webp';
+  if (clean.endsWith('.jpg') || clean.endsWith('.jpeg')) return 'image/jpeg';
+  if (clean.endsWith('.svg')) return 'image/svg+xml';
+  if (clean.endsWith('.gif')) return 'image/gif';
+  return 'image/png';
+}
+
+export function isSocialCrawler(ua = '') {
+  if (!ua) return false;
+  return /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|linkedinbot|pinterest|slackbot|discordbot|skypeuripreview|googlebot|bingbot|applebot|yandex|duckduckbot|baiduspider|vkshare|w3c_validator|redditbot|embedly|quora link preview|outbrain/i.test(ua);
+}
+
 // In-memory cache for fast metadata lookup
 let cachedServices = null;
 let cachedServicesTime = 0;
 let cachedProducts = null;
 let cachedProductsTime = 0;
 
-function getServicesData(appRoot) {
+export function getServicesData(appRoot) {
   const now = Date.now();
   if (cachedServices && now - cachedServicesTime < 30000) {
     return cachedServices;
@@ -71,7 +95,7 @@ function getServicesData(appRoot) {
   return cachedServices || [];
 }
 
-function getProductsData(appRoot) {
+export function getProductsData(appRoot) {
   const now = Date.now();
   if (cachedProducts && now - cachedProductsTime < 30000) {
     return cachedProducts;
@@ -140,8 +164,16 @@ export function getMetadataForUrl(pathname, baseUrl, appRoot = process.cwd()) {
           service.icon.startsWith('http') &&
           !service.icon.toLowerCase().endsWith('.mp4');
 
-        const image = hasSubImg ? sub.image : hasServiceIcon ? service.icon : DEFAULT_ICC_IMAGE;
-        const priceInfo = sub.charge ? ` Charge: ₹${sub.charge}.` : '';
+        const image = hasSubImg ? ensureHttps(sub.image) : hasServiceIcon ? ensureHttps(service.icon) : DEFAULT_ICC_IMAGE;
+        
+        let priceInfo = '';
+        if (sub.charge !== undefined && sub.charge !== null && sub.charge !== '') {
+          if (sub.originalCharge && Number(sub.originalCharge) > Number(sub.charge)) {
+            priceInfo = ` Service Charge: ₹${sub.charge} (Regular: ₹${sub.originalCharge}).`;
+          } else {
+            priceInfo = ` Service Charge: ₹${sub.charge}.`;
+          }
+        }
 
         return {
           title: `${sub.name} - ${service.name} | India Cyber Cafe`,
@@ -149,6 +181,7 @@ export function getMetadataForUrl(pathname, baseUrl, appRoot = process.cwd()) {
           image,
           url: `${rootUrl}/services/${service.id}/${slugify(sub.name)}`,
           ogType: 'article',
+          price: sub.charge,
         };
       }
 
@@ -162,7 +195,7 @@ export function getMetadataForUrl(pathname, baseUrl, appRoot = process.cwd()) {
       return {
         title: `${service.name} - Apply Online | India Cyber Cafe`,
         description: cleanText(service.description) || DEFAULT_ICC_DESC,
-        image: hasServiceIcon ? service.icon : DEFAULT_ICC_IMAGE,
+        image: hasServiceIcon ? ensureHttps(service.icon) : DEFAULT_ICC_IMAGE,
         url: `${rootUrl}/services/${service.id}`,
         ogType: 'article',
       };
@@ -185,7 +218,7 @@ export function getMetadataForUrl(pathname, baseUrl, appRoot = process.cwd()) {
         service.icon.startsWith('http') &&
         !service.icon.toLowerCase().endsWith('.mp4');
 
-      const image = hasServiceIcon ? service.icon : DEFAULT_ICC_IMAGE;
+      const image = hasServiceIcon ? ensureHttps(service.icon) : DEFAULT_ICC_IMAGE;
       const subCount = service.subservices ? service.subservices.length : 0;
       const subCountText = subCount > 0 ? ` ${subCount} sub-services available.` : '';
 
@@ -201,10 +234,12 @@ export function getMetadataForUrl(pathname, baseUrl, appRoot = process.cwd()) {
     }
   }
 
-  // 3. Store Product Route: /store/:categoryId/:productId or /store-product/:productId
+  // 3. Store Product Route: /store/:categoryId/:productId, /store-product/:productId, /store/product/:productId
   const productMatch =
     cleanPath.match(/^\/store\/([^/]+)\/([^/]+)$/) ||
-    cleanPath.match(/^\/store-product\/([^/]+)$/);
+    cleanPath.match(/^\/store-product\/([^/]+)$/) ||
+    cleanPath.match(/^\/store\/product\/([^/]+)$/) ||
+    cleanPath.match(/^\/product\/([^/]+)$/);
 
   if (productMatch) {
     const productId = productMatch[2] || productMatch[1];
@@ -225,18 +260,26 @@ export function getMetadataForUrl(pathname, baseUrl, appRoot = process.cwd()) {
         product.images[0].startsWith('http') &&
         !product.images[0].toLowerCase().endsWith('.mp4');
 
-      const image = hasImage ? product.images[0] : DEFAULT_ICC_IMAGE;
+      const image = hasImage ? ensureHttps(product.images[0]) : DEFAULT_ICC_IMAGE;
       const price = product.discountedPrice || product.price;
-      const priceText = price ? ` | Price: ₹${price}` : '';
+      let priceText = '';
+      if (price) {
+        if (product.discountedPrice && product.price && product.price > product.discountedPrice) {
+          priceText = ` | Price: ₹${product.discountedPrice} (MRP: ₹${product.price})`;
+        } else {
+          priceText = ` | Price: ₹${price}`;
+        }
+      }
 
       return {
         title: `${product.seoTitle || product.name} | India Cyber Cafe Store`,
         description:
-          cleanText(product.shortDescription || product.seoDescription || product.longDescription) +
+          cleanText(product.shortDescription || product.seoDescription || product.longDescription || product.name) +
           priceText,
         image,
         url: `${rootUrl}/store/${product.category || categoryId}/${product.id}`,
         ogType: 'product',
+        price,
       };
     }
   }
@@ -307,6 +350,7 @@ export function injectOpenGraphMetadata(html, metadata) {
   const safeImage = escapeHtml(metadata.image || DEFAULT_ICC_IMAGE);
   const safeUrl = escapeHtml(metadata.url);
   const ogType = escapeHtml(metadata.ogType || 'website');
+  const imageMime = getImageMimeType(metadata.image);
 
   let modified = html;
 
@@ -323,6 +367,16 @@ export function injectOpenGraphMetadata(html, metadata) {
       /<meta\s+name=["']description["'][^>]*>/i,
       `<meta name="description" content="${safeDesc}" />`
     );
+  } else {
+    modified = modified.replace('</head>', `    <meta name="description" content="${safeDesc}" />\n  </head>`);
+  }
+
+  // Replace standard image
+  if (/<meta\s+name=["']image["'][^>]*>/i.test(modified)) {
+    modified = modified.replace(
+      /<meta\s+name=["']image["'][^>]*>/i,
+      `<meta name="image" content="${safeImage}" />`
+    );
   }
 
   // Replace og:title
@@ -331,6 +385,8 @@ export function injectOpenGraphMetadata(html, metadata) {
       /<meta\s+property=["']og:title["'][^>]*>/i,
       `<meta property="og:title" content="${safeTitle}" />`
     );
+  } else {
+    modified = modified.replace('</head>', `    <meta property="og:title" content="${safeTitle}" />\n  </head>`);
   }
 
   // Replace og:description
@@ -339,13 +395,20 @@ export function injectOpenGraphMetadata(html, metadata) {
       /<meta\s+property=["']og:description["'][^>]*>/i,
       `<meta property="og:description" content="${safeDesc}" />`
     );
+  } else {
+    modified = modified.replace('</head>', `    <meta property="og:description" content="${safeDesc}" />\n  </head>`);
   }
 
   // Replace og:image
   if (/<meta\s+property=["']og:image["'][^>]*>/i.test(modified)) {
     modified = modified.replace(
       /<meta\s+property=["']og:image["'][^>]*>/i,
-      `<meta property="og:image" content="${safeImage}" />\n    <meta property="og:image:secure_url" content="${safeImage}" />`
+      `<meta property="og:image" content="${safeImage}" />\n    <meta property="og:image:secure_url" content="${safeImage}" />\n    <meta property="og:image:type" content="${imageMime}" />\n    <meta property="og:image:width" content="1200" />\n    <meta property="og:image:height" content="630" />\n    <meta property="og:image:alt" content="${safeTitle}" />`
+    );
+  } else {
+    modified = modified.replace(
+      '</head>',
+      `    <meta property="og:image" content="${safeImage}" />\n    <meta property="og:image:secure_url" content="${safeImage}" />\n    <meta property="og:image:type" content="${imageMime}" />\n    <meta property="og:image:width" content="1200" />\n    <meta property="og:image:height" content="630" />\n    <meta property="og:image:alt" content="${safeTitle}" />\n  </head>`
     );
   }
 
@@ -355,6 +418,8 @@ export function injectOpenGraphMetadata(html, metadata) {
       /<meta\s+property=["']og:url["'][^>]*>/i,
       `<meta property="og:url" content="${safeUrl}" />`
     );
+  } else {
+    modified = modified.replace('</head>', `    <meta property="og:url" content="${safeUrl}" />\n  </head>`);
   }
 
   // Replace og:type
@@ -363,30 +428,58 @@ export function injectOpenGraphMetadata(html, metadata) {
       /<meta\s+property=["']og:type["'][^>]*>/i,
       `<meta property="og:type" content="${ogType}" />`
     );
+  } else {
+    modified = modified.replace('</head>', `    <meta property="og:type" content="${ogType}" />\n  </head>`);
+  }
+
+  // Replace or inject og:site_name
+  if (/<meta\s+property=["']og:site_name["'][^>]*>/i.test(modified)) {
+    modified = modified.replace(
+      /<meta\s+property=["']og:site_name["'][^>]*>/i,
+      `<meta property="og:site_name" content="India Cyber Cafe" />`
+    );
+  } else {
+    modified = modified.replace('</head>', `    <meta property="og:site_name" content="India Cyber Cafe" />\n  </head>`);
+  }
+
+  // Replace twitter:card
+  if (/<meta\s+(?:property|name)=["']twitter:card["'][^>]*>/i.test(modified)) {
+    modified = modified.replace(
+      /<meta\s+(?:property|name)=["']twitter:card["'][^>]*>/i,
+      `<meta name="twitter:card" content="summary_large_image" />\n    <meta property="twitter:card" content="summary_large_image" />`
+    );
+  } else {
+    modified = modified.replace('</head>', `    <meta name="twitter:card" content="summary_large_image" />\n  </head>`);
   }
 
   // Replace twitter:title
   if (/<meta\s+(?:property|name)=["']twitter:title["'][^>]*>/i.test(modified)) {
     modified = modified.replace(
       /<meta\s+(?:property|name)=["']twitter:title["'][^>]*>/i,
-      `<meta name="twitter:title" content="${safeTitle}" />`
+      `<meta name="twitter:title" content="${safeTitle}" />\n    <meta property="twitter:title" content="${safeTitle}" />`
     );
+  } else {
+    modified = modified.replace('</head>', `    <meta name="twitter:title" content="${safeTitle}" />\n  </head>`);
   }
 
   // Replace twitter:description
   if (/<meta\s+(?:property|name)=["']twitter:description["'][^>]*>/i.test(modified)) {
     modified = modified.replace(
       /<meta\s+(?:property|name)=["']twitter:description["'][^>]*>/i,
-      `<meta name="twitter:description" content="${safeDesc}" />`
+      `<meta name="twitter:description" content="${safeDesc}" />\n    <meta property="twitter:description" content="${safeDesc}" />`
     );
+  } else {
+    modified = modified.replace('</head>', `    <meta name="twitter:description" content="${safeDesc}" />\n  </head>`);
   }
 
   // Replace twitter:image
   if (/<meta\s+(?:property|name)=["']twitter:image["'][^>]*>/i.test(modified)) {
     modified = modified.replace(
       /<meta\s+(?:property|name)=["']twitter:image["'][^>]*>/i,
-      `<meta name="twitter:image" content="${safeImage}" />`
+      `<meta name="twitter:image" content="${safeImage}" />\n    <meta property="twitter:image" content="${safeImage}" />`
     );
+  } else {
+    modified = modified.replace('</head>', `    <meta name="twitter:image" content="${safeImage}" />\n  </head>`);
   }
 
   // Replace or inject canonical link
@@ -401,3 +494,4 @@ export function injectOpenGraphMetadata(html, metadata) {
 
   return modified;
 }
+

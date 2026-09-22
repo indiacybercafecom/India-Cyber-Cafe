@@ -6,7 +6,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from './src/server/dataSyncRuntime.js';
-import { getMetadataForUrl, injectOpenGraphMetadata } from './src/server/shareMetadata.js';
+import { getMetadataForUrl, injectOpenGraphMetadata, isSocialCrawler } from './src/server/shareMetadata.js';
 
 // Load environment variables
 dotenv.config();
@@ -598,6 +598,40 @@ app.get('/api/share-meta', (req, res) => {
   res.json({ success: true, metadata: meta });
 });
 
+app.get('/api/pdf-proxy', async (req, res) => {
+  const source = typeof req.query.url === 'string' ? req.query.url : '';
+  if (!source) return res.status(400).json({ success: false, error: 'PDF URL is required' });
+
+  try {
+    const sourceUrl = new URL(source);
+    if (sourceUrl.protocol !== 'https:') {
+      return res.status(400).json({ success: false, error: 'Only HTTPS PDF URLs are supported' });
+    }
+
+    const response = await fetch(sourceUrl);
+    if (!response.ok) {
+      return res.status(response.status === 401 || response.status === 403 ? 403 : 502).json({
+        success: false,
+        error: 'Unable to access PDF source',
+      });
+    }
+
+    const contentType = response.headers.get('content-type') || '';
+    if (contentType.toLowerCase().includes('text/html')) {
+      return res.status(403).json({ success: false, error: 'PDF source is not publicly accessible' });
+    }
+
+    const bytes = Buffer.from(await response.arrayBuffer());
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Length', bytes.length.toString());
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    return res.send(bytes);
+  } catch (error) {
+    console.error('PDF proxy error:', error.message);
+    return res.status(502).json({ success: false, error: 'Unable to fetch PDF' });
+  }
+});
+
 // API 404 handler
 app.use('/api', (req, res) => {
   res.status(404).json({ success: false, error: 'API endpoint not found' });
@@ -631,13 +665,17 @@ app.get(/^\/(?!api\/|data\/|assets\/|manifest\.json$|robots\.txt$|sitemap\.xml$|
     return next();
   }
 
-  if (req.accepts('html')) {
+  const ua = req.get('user-agent') || '';
+  const isCrawler = isSocialCrawler(ua);
+  const isPageRequest = isCrawler || req.accepts('html') || !req.path.includes('.');
+
+  if (isPageRequest) {
     if (fs.existsSync(distIndex)) {
       try {
         const rawHtml = fs.readFileSync(distIndex, 'utf-8');
         const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
         const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
-        const baseUrl = process.env.APP_URL || `${proto}://${host}`;
+        const baseUrl = process.env.APP_URL || (host.includes('localhost') ? `${proto}://${host}` : `https://${host}`);
         const metadata = getMetadataForUrl(req.path, baseUrl, APP_ROOT);
         const injectedHtml = injectOpenGraphMetadata(rawHtml, metadata);
         return res.status(200).set({
@@ -699,38 +737,4 @@ process.on('uncaughtException', (error) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('[UNHANDLED REJECTION]', reason);
   process.exit(1);
-});
-
-app.get('/api/pdf-proxy', async (req, res) => {
-  const source = typeof req.query.url === 'string' ? req.query.url : '';
-  if (!source) return res.status(400).json({ success: false, error: 'PDF URL is required' });
-
-  try {
-    const sourceUrl = new URL(source);
-    if (sourceUrl.protocol !== 'https:') {
-      return res.status(400).json({ success: false, error: 'Only HTTPS PDF URLs are supported' });
-    }
-
-    const response = await fetch(sourceUrl);
-    if (!response.ok) {
-      return res.status(response.status === 401 || response.status === 403 ? 403 : 502).json({
-        success: false,
-        error: 'Unable to access PDF source',
-      });
-    }
-
-    const contentType = response.headers.get('content-type') || '';
-    if (contentType.toLowerCase().includes('text/html')) {
-      return res.status(403).json({ success: false, error: 'PDF source is not publicly accessible' });
-    }
-
-    const bytes = Buffer.from(await response.arrayBuffer());
-    res.setHeader('Content-Type', 'application/pdf');
-    res.setHeader('Content-Length', bytes.length.toString());
-    res.setHeader('Cache-Control', 'private, max-age=300');
-    return res.send(bytes);
-  } catch (error) {
-    console.error('PDF proxy error:', error.message);
-    return res.status(502).json({ success: false, error: 'Unable to fetch PDF' });
-  }
 });

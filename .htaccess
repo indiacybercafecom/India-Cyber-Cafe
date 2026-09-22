@@ -56,10 +56,31 @@
   RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
   RewriteRule ^(.*)$ https://%1%{REQUEST_URI} [L,R=301]
 
-  # Keep API, data, assets, and site metadata requests out of the SPA fallback.
-  RewriteRule ^(?:api(?:/|$)|data(?:/|$)|assets(?:/|$)|favicon(?:[^/]*)?$|manifest\.json$|robots\.txt$|sitemap\.xml$) - [L,NC]
+  # Allow existing physical files and directories to be served directly
+  RewriteCond %{REQUEST_FILENAME} -f [OR]
+  RewriteCond %{REQUEST_FILENAME} -d
+  RewriteRule ^ - [L]
 
-  # SPA routing - serve index.html for real client routes only
+  # Keep data, assets, and site metadata requests out of the SPA fallback
+  RewriteRule ^(?:data(?:/|$)|assets(?:/|$)|favicon(?:[^/]*)?$|manifest\.json$|robots\.txt$|sitemap\.xml$) - [L,NC]
+
+  # If mod_proxy is enabled and Node server is running on port 3000, forward /api requests
+  <IfModule mod_proxy.c>
+    RewriteCond %{REQUEST_URI} ^/api/ [NC]
+    RewriteRule ^api/(.*)$ http://127.0.0.1:3000/api/$1 [P,L]
+  </IfModule>
+
+  # Server-Side Dynamic Open Graph Metadata & SPA Route Handler
+  # Priority 1: If index.php exists (Hostinger Apache / PHP / LiteSpeed), route non-file page requests to index.php.
+  # index.php injects dynamic OG tags for WhatsApp/social crawlers and serves the complete HTML before React mounts.
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteCond %{DOCUMENT_ROOT}/index.php -f [OR]
+  RewriteCond %{DOCUMENT_ROOT}/public/index.php -f [OR]
+  RewriteCond %{REQUEST_FILENAME}/../index.php -f
+  RewriteRule ^ index.php [QSA,L]
+
+  # Priority 2: Standard static fallback
   RewriteCond %{REQUEST_FILENAME} !-f
   RewriteCond %{REQUEST_FILENAME} !-d
   RewriteCond %{REQUEST_FILENAME} !-l
