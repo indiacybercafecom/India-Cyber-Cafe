@@ -5,7 +5,7 @@ import { getAnalytics } from "firebase/analytics";
 import { getDatabase } from "firebase/database";
 
 const firebaseConfig = {
-  apiKey: "AIzaSyAMTND9rIAw-76Oey3c7c43-TW2t6mxEfw",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAMTND9rIAw-76Oey3c7c43-TW2t6mxEfw",
   authDomain: "india-cyber-cafe.firebaseapp.com",
   projectId: "india-cyber-cafe",
   storageBucket: "india-cyber-cafe-free",

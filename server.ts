@@ -83,7 +83,7 @@ async function startServer() {
     secure: false, // Use false for STARTTLS (port 587)
     auth: {
       user: process.env.SMTP_USER || "icc@indiacybercafe.com",
-      pass: process.env.SMTP_PASS || "Ankit9977498131@@@",
+      pass: process.env.SMTP_PASS || "",
     },
     tls: {
       rejectUnauthorized: false // Helps with some mail server certificate issues
@@ -94,8 +94,8 @@ async function startServer() {
   app.post("/api/send-email", async (req, res) => {
     const { to, subject, text, html } = req.body;
 
-    const smtpUser = process.env.SMTP_USER || "icc@indiacybercafe.com";
-    const smtpPass = process.env.SMTP_PASS || "Ankit9977498131@@@";
+    const smtpUser = process.env.SMTP_USER || "";
+    const smtpPass = process.env.SMTP_PASS || "";
 
     if (!smtpUser || !smtpPass) {
       console.warn("SMTP credentials missing. Email not sent.");
