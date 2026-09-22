@@ -56,7 +56,9 @@ import {
   Truck,
   Inbox,
   PackageX,
-  RefreshCw
+  RefreshCw,
+  Share2,
+  Copy
 } from 'lucide-react';
 
 export const Icons = {
@@ -68,6 +70,8 @@ export const Icons = {
   Monitor,
   LogOut,
   X,
+  Share2,
+  Copy,
   Fingerprint,
   IdCard,
   Search,
@@ -184,6 +188,8 @@ export function IconRenderer({ name, className }: { name: string; className?: st
   if (lowerName.includes('inbox')) return <Icons.Inbox className={className} />;
   if (lowerName.includes('package-x')) return <Icons.PackageX className={className} />;
   if (lowerName.includes('refresh')) return <Icons.RefreshCw className={className} />;
+  if (lowerName.includes('share')) return <Icons.Share2 className={className} />;
+  if (lowerName.includes('copy')) return <Icons.Copy className={className} />;
   
   return <Icons.Info className={className} />;
 }

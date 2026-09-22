@@ -4,6 +4,8 @@ import { Service } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { secureUrl } from '../utils/secureUrl';
 import { SEO } from '../components/SEO';
+import { ShareButton } from '../components/ShareButton';
+import { getServiceShareData } from '../utils/shareUtils';
 
 interface ServicesProps {
   services: Service[];
@@ -66,9 +68,16 @@ export function Services({ services }: ServicesProps) {
         {filteredServices.map(service => (
           <div 
             key={service.id} 
-            className="card group cursor-pointer"
+            className="card group cursor-pointer relative"
             onClick={() => navigate(`/services/${service.id}`)}
           >
+            <div className="absolute top-3 right-3 z-10">
+              <ShareButton 
+                data={getServiceShareData(service)} 
+                variant="card-icon" 
+                title={`Share ${service.name}`} 
+              />
+            </div>
             <div className={`flex items-center justify-center mx-auto mb-3 sm:mb-4 md:mb-6 transition-all w-full ${
               service.iconType === 'url' && service.icon
                 ? 'aspect-video rounded-xl sm:rounded-2xl border border-slate-200 overflow-hidden'

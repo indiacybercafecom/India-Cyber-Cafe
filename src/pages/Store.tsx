@@ -5,6 +5,8 @@ import { SelectDropdown } from '../components/SelectDropdown';
 import { Product, ProductCategory } from '../types';
 import { SEO } from '../components/SEO';
 import { StoreSkeleton } from '../components/Skeleton';
+import { ShareButton } from '../components/ShareButton';
+import { getProductShareData } from '../utils/shareUtils';
 import { useLoadingState } from '../hooks/useLoadingState';
 
 interface StoreProps {
@@ -234,6 +236,13 @@ export function Store({ products, categories, isLoading = false, error = null, o
                     {Math.round(((product.price - product.discountedPrice) / product.price) * 100)}% OFF
                   </div>
                 )}
+                <div className="absolute top-2 left-2 z-10">
+                  <ShareButton
+                    data={getProductShareData(product)}
+                    variant="card-icon"
+                    title={`Share ${product.name}`}
+                  />
+                </div>
               </div>
 
               {/* Content */}

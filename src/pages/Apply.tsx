@@ -10,6 +10,8 @@ import { ref as dbRef, set } from 'firebase/database';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
 import { MAX_SERVICE_FILE_SIZE, uploadFile } from '../services/uploadService';
 import { SEO } from '../components/SEO';
+import { ShareButton } from '../components/ShareButton';
+import { getServiceShareData, getSubServiceShareData } from '../utils/shareUtils';
 import { getRazorpayKeyId, loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
 import { sanitizeFormData, sanitizeUserProfile, sanitizeEmail } from '../utils/sanitizer';
 import { ApplySkeleton } from '../components/Skeleton';
@@ -408,18 +410,34 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
       <div className="flex-1 max-w-2xl mx-auto w-full bg-white rounded-2xl sm:rounded-3xl shadow-xl overflow-hidden">
         <div className="p-3 sm:p-6 md:p-10 space-y-4 sm:space-y-6 md:space-y-8 max-h-screen overflow-y-auto">
           <SEO 
-            title={selectedSubService ? `${selectedSubService.name} - ${service.name}` : service.name}
-            description={`Apply for ${selectedSubService?.name || service.name} online at India Cyber Cafe. Fast and secure digital services.`}
-            keywords={`${selectedSubService?.name || ''}, ${service.name}, online application, India Cyber Cafe`}
-            url={`https://b.indiacybercafe.com/services/${service.id}/${subserviceName || ''}`}
+            title={selectedSubService ? `${selectedSubService.name} - ${service.name} | India Cyber Cafe` : `${service.name} - Apply Online | India Cyber Cafe`}
+            description={`Apply online for ${selectedSubService?.name || service.name} under ${service.name} at India Cyber Cafe. ${selectedSubService?.charge ? `Service charge: ₹${selectedSubService.charge}. ` : ''}Fast, secure & reliable digital assistance.`}
+            keywords={`${selectedSubService?.name || ''}, ${service.name}, online application, India Cyber Cafe, apply online`}
+            image={
+              selectedSubService?.imageType === 'url' && selectedSubService.image && !selectedSubService.image.toLowerCase().endsWith('.mp4')
+                ? selectedSubService.image
+                : (service.iconType === 'url' && service.icon && !service.icon.toLowerCase().endsWith('.mp4') ? service.icon : undefined)
+            }
+            url={typeof window !== 'undefined' ? window.location.href : `https://b.indiacybercafe.com/services/${service.id}/${subserviceName || ''}`}
+            ogType="article"
           />
-          <button 
-            onClick={() => navigate(`/services/${service.id}`)}
-            className="flex items-center gap-1 sm:gap-2 text-navy font-bold hover:text-primary transition-all text-xs sm:text-sm md:text-base"
-          >
-            <IconRenderer name="arrow-left" className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 shrink-0" />
-            <span>Back</span>
-          </button>
+          <div className="flex items-center justify-between gap-3">
+            <button 
+              onClick={() => navigate(`/services/${service.id}`)}
+              className="flex items-center gap-1 sm:gap-2 text-navy font-bold hover:text-primary transition-all text-xs sm:text-sm md:text-base"
+            >
+              <IconRenderer name="arrow-left" className="w-3 h-3 sm:w-4 sm:h-4 md:w-5 md:h-5 shrink-0" />
+              <span>Back</span>
+            </button>
+
+            <ShareButton
+              data={selectedSubService ? getSubServiceShareData(service, selectedSubService) : getServiceShareData(service)}
+              label="Share"
+              variant="outline"
+              size="sm"
+              title={`Share ${selectedSubService?.name || service.name}`}
+            />
+          </div>
 
           <div className="text-center space-y-0.5 sm:space-y-1 md:space-y-2 mx-auto">
             <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-navy line-clamp-2 break-words">{service.name}</h2>

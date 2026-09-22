@@ -5,6 +5,8 @@ import { IconRenderer } from '../components/Icons';
 import { secureUrl } from '../utils/secureUrl';
 import { SEO } from '../components/SEO';
 import { ServiceDetailSkeleton } from '../components/Skeleton';
+import { ShareButton } from '../components/ShareButton';
+import { getServiceShareData, getSubServiceShareData } from '../utils/shareUtils';
 
 interface ServiceDetailProps {
   services: Service[];
@@ -51,7 +53,8 @@ export function ServiceDetail({ services, isLoading = false, error = null, onRet
         title={`${service.name || 'Service'} - Government Services Apply Online`}
         description={`${service.description || 'Comprehensive service'} at India Cyber Cafe. ${service.subservices?.length || 0} sub-services available. Fastest processing, secure & reliable.`}
         keywords={`${service.name || 'Service'}, ${(service.subservices || []).map(ss => ss.name).join(', ')}, Apply Online, Digital India, Government Service`}
-        url={`https://b.indiacybercafe.com/services/${service.id}`}
+        url={typeof window !== 'undefined' ? window.location.href : `https://b.indiacybercafe.com/services/${service.id}`}
+        image={service.iconType === 'url' && service.icon && !service.icon.toLowerCase().endsWith('.mp4') ? service.icon : undefined}
         ogType="article"
         structuredData={{
           "@context": "https://schema.org",
@@ -79,25 +82,35 @@ export function ServiceDetail({ services, isLoading = false, error = null, onRet
           }
         }}
       />
-      <div className="flex flex-col sm:flex-row items-center gap-6 bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
-        <div className={`flex items-center justify-center shrink-0 overflow-hidden ${
-          service.iconType === 'url' && service.icon
-            ? 'w-full sm:w-64 h-48 sm:h-56 rounded-2xl border border-slate-200'
-            : 'w-20 h-20 sm:w-24 sm:h-24 bg-linear-to-br from-primary/10 to-navy/10 rounded-full'
-        }`}>
-          {service.iconType === 'url' && service.icon ? (
-            (service.icon || '').toLowerCase().endsWith('.mp4') ? (
-              <video src={secureUrl(service.icon)} className="w-full h-full object-cover" muted autoPlay loop />
+      <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
+        <div className="flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left">
+          <div className={`flex items-center justify-center shrink-0 overflow-hidden ${
+            service.iconType === 'url' && service.icon
+              ? 'w-full sm:w-64 h-48 sm:h-56 rounded-2xl border border-slate-200'
+              : 'w-20 h-20 sm:w-24 sm:h-24 bg-linear-to-br from-primary/10 to-navy/10 rounded-full'
+          }`}>
+            {service.iconType === 'url' && service.icon ? (
+              (service.icon || '').toLowerCase().endsWith('.mp4') ? (
+                <video src={secureUrl(service.icon)} className="w-full h-full object-cover" muted autoPlay loop />
+              ) : (
+                <img src={secureUrl(service.icon)} alt={service.name || 'Service'} className="w-full h-full object-cover" />
+              )
             ) : (
-              <img src={secureUrl(service.icon)} alt={service.name || 'Service'} className="w-full h-full object-cover" />
-            )
-          ) : (
-            <IconRenderer name={service.icon || 'layers'} className="w-10 h-10 sm:w-12 sm:h-12 text-navy" />
-          )}
+              <IconRenderer name={service.icon || 'layers'} className="w-10 h-10 sm:w-12 sm:h-12 text-navy" />
+            )}
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-3xl sm:text-4xl font-bold text-navy">{service.name}</h2>
+            <p className="text-slate-500 max-w-2xl">{service.description}</p>
+          </div>
         </div>
-        <div className="text-center sm:text-left space-y-2">
-          <h2 className="text-3xl sm:text-4xl font-bold text-navy">{service.name}</h2>
-          <p className="text-slate-500 max-w-2xl">{service.description}</p>
+        <div className="shrink-0 flex items-center gap-3">
+          <ShareButton 
+            data={getServiceShareData(service)} 
+            label="Share Service" 
+            variant="outline" 
+            size="md" 
+          />
         </div>
       </div>
 
@@ -107,12 +120,12 @@ export function ServiceDetail({ services, isLoading = false, error = null, onRet
           {(service.subservices || []).map((ss, i) => (
             <div 
               key={i} 
-              className="bg-white rounded-2xl shadow-md border border-slate-100 hover:border-primary hover:shadow-xl transition-all cursor-pointer group overflow-hidden flex flex-col h-full"
+              className="bg-white rounded-2xl shadow-md border border-slate-100 hover:border-primary hover:shadow-xl transition-all cursor-pointer group overflow-hidden flex flex-col h-full relative"
               onClick={() => navigate(`/services/${service.id}/${slugify(ss.name)}`)}
             >
               {/* Sub-Service Image/Icon Display */}
               {ss.image && (
-                <div className={`w-full flex items-center justify-center overflow-hidden ${
+                <div className={`w-full flex items-center justify-center overflow-hidden relative ${
                   ss.imageType === 'url' && ss.image
                     ? 'h-48 sm:h-56 bg-slate-100'
                     : 'h-20 sm:h-24 bg-primary/10'
@@ -126,6 +139,13 @@ export function ServiceDetail({ services, isLoading = false, error = null, onRet
                   ) : (
                     <IconRenderer name={ss.image || 'file-circle-plus'} className="w-10 h-10 sm:w-12 sm:h-12 text-primary" />
                   )}
+                  <div className="absolute top-3 right-3 z-10">
+                    <ShareButton
+                      data={getSubServiceShareData(service, ss)}
+                      variant="card-icon"
+                      title={`Share ${ss.name}`}
+                    />
+                  </div>
                 </div>
               )}
               
@@ -150,12 +170,22 @@ export function ServiceDetail({ services, isLoading = false, error = null, onRet
                   </div>
                 </div>
                 
-                <div className="flex flex-wrap gap-2 mt-auto">
-                  {(ss.paymentMethods || []).map((pm, idx) => (
-                    <span key={idx} className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 px-2 py-1 rounded">
-                      {pm.replace(/_/g, ' ')}
-                    </span>
-                  ))}
+                <div className="flex items-center justify-between gap-2 mt-auto pt-3 border-t border-slate-100">
+                  <div className="flex flex-wrap gap-1.5">
+                    {(ss.paymentMethods || []).map((pm, idx) => (
+                      <span key={idx} className="text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-500 px-2 py-1 rounded">
+                        {pm.replace(/_/g, ' ')}
+                      </span>
+                    ))}
+                  </div>
+                  {!ss.image && (
+                    <ShareButton
+                      data={getSubServiceShareData(service, ss)}
+                      variant="icon"
+                      size="sm"
+                      title={`Share ${ss.name}`}
+                    />
+                  )}
                 </div>
               </div>
             </div>

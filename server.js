@@ -6,6 +6,7 @@ import fs from 'fs';
 import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from './src/server/dataSyncRuntime.js';
+import { getMetadataForUrl, injectOpenGraphMetadata } from './src/server/shareMetadata.js';
 
 // Load environment variables
 dotenv.config();
@@ -587,6 +588,16 @@ app.post('/api/sync-data/:type', async (req, res) => {
   }
 });
 
+// Dynamic Open Graph metadata API endpoint
+app.get('/api/share-meta', (req, res) => {
+  const targetPath = req.query.path || '/';
+  const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
+  const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
+  const baseUrl = process.env.APP_URL || `${proto}://${host}`;
+  const meta = getMetadataForUrl(targetPath, baseUrl, APP_ROOT);
+  res.json({ success: true, metadata: meta });
+});
+
 // API 404 handler
 app.use('/api', (req, res) => {
   res.status(404).json({ success: false, error: 'API endpoint not found' });
@@ -608,7 +619,7 @@ app.use(express.static(DIST_PATH, {
 app.use('/assets', express.static(path.join(DIST_PATH, 'assets')));
 
 // ============================================================================
-// SPA FALLBACK - Serve index.html for frontend routes
+// SPA FALLBACK - Serve index.html with dynamic Open Graph injection for frontend routes
 // ============================================================================
 
 // Must come AFTER all /api/* routes to avoid catching API calls
@@ -622,7 +633,21 @@ app.get(/^\/(?!api\/|data\/|assets\/|manifest\.json$|robots\.txt$|sitemap\.xml$|
 
   if (req.accepts('html')) {
     if (fs.existsSync(distIndex)) {
-      return res.sendFile(distIndex);
+      try {
+        const rawHtml = fs.readFileSync(distIndex, 'utf-8');
+        const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
+        const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
+        const baseUrl = process.env.APP_URL || `${proto}://${host}`;
+        const metadata = getMetadataForUrl(req.path, baseUrl, APP_ROOT);
+        const injectedHtml = injectOpenGraphMetadata(rawHtml, metadata);
+        return res.status(200).set({
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate'
+        }).send(injectedHtml);
+      } catch (err) {
+        console.error('[SERVER.JS] Failed to inject metadata into index.html:', err);
+        return res.sendFile(distIndex);
+      }
     } else {
       return res.status(404).send('dist/index.html not found');
     }

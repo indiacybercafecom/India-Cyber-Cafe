@@ -3,6 +3,8 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
 import { Product, ProductReview, UserProfile } from '../types';
 import { SEO } from '../components/SEO';
+import { ShareButton } from '../components/ShareButton';
+import { getProductShareData } from '../utils/shareUtils';
 import { ReviewSection } from '../components/ReviewSection';
 import { StoreProductDetailSkeleton } from '../components/Skeleton';
 import { useLoadingState } from '../hooks/useLoadingState';
@@ -101,7 +103,7 @@ export function StoreProduct({ products, reviews: externalReviews, user, isLoadi
       <SEO
         title={`${product.name} - Premium Quality, ₹${product.discountedPrice || product.price} | India Cyber Cafe`}
         description={`${seoDescription} Check reviews, delivery info, and custom printing options. Buy now with secure payment.`}
-        url={`https://b.indiacybercafe.com/store/${categoryId}/${productId}`}
+        url={typeof window !== 'undefined' ? window.location.href : `https://b.indiacybercafe.com/store/${categoryId}/${productId}`}
         keywords={product.seoKeywords || `${product.name}, buy online, ${product.category}`}
         image={product.images?.[0] || "https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png"}
         ogType="product"
@@ -143,14 +145,23 @@ export function StoreProduct({ products, reviews: externalReviews, user, isLoadi
         }}
       />
 
-      {/* Back Button */}
-      <button
-        onClick={() => navigate('/store')}
-        className="flex items-center gap-2 text-primary font-semibold hover:gap-3 transition-all"
-      >
-        <IconRenderer name="arrow-left" className="w-4 h-4" />
-        Back to Store
-      </button>
+      {/* Top Action Bar */}
+      <div className="flex items-center justify-between gap-3">
+        <button
+          onClick={() => navigate('/store')}
+          className="flex items-center gap-2 text-primary font-semibold hover:gap-3 transition-all"
+        >
+          <IconRenderer name="arrow-left" className="w-4 h-4" />
+          Back to Store
+        </button>
+
+        <ShareButton
+          data={getProductShareData(product)}
+          label="Share Product"
+          variant="outline"
+          size="sm"
+        />
+      </div>
 
       {/* Product Details Grid */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 sm:gap-10">
@@ -299,13 +310,22 @@ export function StoreProduct({ products, reviews: externalReviews, user, isLoadi
               </div>
             </div>
 
-            <button
-              onClick={handleBuyNow}
-              disabled={!product.inStock}
-              className="w-full btn-primary py-3 sm:py-4 text-base sm:text-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              🛒 Buy Now
-            </button>
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+              <button
+                onClick={handleBuyNow}
+                disabled={!product.inStock}
+                className="flex-1 btn-primary py-3 sm:py-4 text-base sm:text-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                🛒 Buy Now
+              </button>
+              <ShareButton
+                data={getProductShareData(product)}
+                label="Share"
+                variant="outline"
+                size="lg"
+                className="py-3 sm:py-4 px-6 justify-center"
+              />
+            </div>
           </div>
 
           {/* Features */}

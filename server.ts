@@ -6,6 +6,7 @@ import path from "path";
 import fs from "fs";
 import crypto from "crypto";
 import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSyncRuntime.js";
+import { getMetadataForUrl, injectOpenGraphMetadata } from "./src/server/shareMetadata.js";
 
 dotenv.config();
 
@@ -510,6 +511,16 @@ async function startServer() {
     }
   });
 
+  // Dynamic Open Graph metadata API endpoint
+  app.get('/api/share-meta', (req, res) => {
+    const targetPath = (req.query.path as string) || '/';
+    const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
+    const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
+    const baseUrl = process.env.APP_URL || `${proto}://${host}`;
+    const meta = getMetadataForUrl(targetPath, baseUrl, APP_ROOT);
+    res.json({ success: true, metadata: meta });
+  });
+
   app.use('/api', (req, res) => {
     res.status(404).json({ success: false, error: 'API endpoint not found' });
   });
@@ -550,6 +561,33 @@ async function startServer() {
       server: { middlewareMode: true },
       appType: "spa",
     });
+
+    // In development: intercept HTML page requests to dynamically inject Open Graph tags
+    app.get(/^\/(?!api\/|data\/|assets\/|@|node_modules\/|src\/|manifest\.json$|robots\.txt$|sitemap\.xml$|favicon\.?\w*$).*/, async (req, res, next) => {
+      if (req.path.startsWith('/api/') || req.path.startsWith('/data/') || req.path.startsWith('/assets/') || req.path.includes('.')) {
+        return next();
+      }
+      if (!req.accepts('html')) {
+        return next();
+      }
+      try {
+        const indexPath = path.join(APP_ROOT, 'index.html');
+        if (!fs.existsSync(indexPath)) return next();
+        let rawHtml = fs.readFileSync(indexPath, 'utf-8');
+        rawHtml = await vite.transformIndexHtml(req.originalUrl, rawHtml);
+        const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
+        const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
+        const baseUrl = process.env.APP_URL || `${proto}://${host}`;
+        const metadata = getMetadataForUrl(req.path, baseUrl, APP_ROOT);
+        const injectedHtml = injectOpenGraphMetadata(rawHtml, metadata);
+        return res.status(200).set({
+          'Content-Type': 'text/html; charset=utf-8',
+        }).send(injectedHtml);
+      } catch (err) {
+        next(err);
+      }
+    });
+
     app.use(vite.middlewares);
   } else {
     app.use(express.static(DIST_PATH, {
@@ -575,7 +613,24 @@ async function startServer() {
       }
 
       if (req.accepts('html')) {
-        return res.sendFile(distIndex);
+        if (!fs.existsSync(distIndex)) {
+          return res.status(404).send('dist/index.html not found');
+        }
+        try {
+          const rawHtml = fs.readFileSync(distIndex, 'utf-8');
+          const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
+          const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
+          const baseUrl = process.env.APP_URL || `${proto}://${host}`;
+          const metadata = getMetadataForUrl(req.path, baseUrl, APP_ROOT);
+          const injectedHtml = injectOpenGraphMetadata(rawHtml, metadata);
+          return res.status(200).set({
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-cache, no-store, must-revalidate'
+          }).send(injectedHtml);
+        } catch (err) {
+          console.error('[SERVER] HTML injection error:', err);
+          return res.sendFile(distIndex);
+        }
       }
 
       next();
