@@ -304,15 +304,222 @@ async function startServer() {
     }
   });
 
+  // Helper function to validate and convert amount to exact integer paise
+  function validateAndParsePayAmount(rawAmount: any): { valid: boolean; paise: number; error?: string } {
+    if (rawAmount === undefined || rawAmount === null || typeof rawAmount === 'boolean') {
+      return { valid: false, paise: 0, error: "Payment amount is required" };
+    }
+    const amountStr = String(rawAmount).trim();
+    // Validate: only numbers with maximum 2 decimal places allowed
+    if (!/^\d+(\.\d{1,2})?$/.test(amountStr)) {
+      return { valid: false, paise: 0, error: "Invalid payment amount. Must be a positive number with at most 2 decimal places" };
+    }
+    const [rupeesPart, decimalPart = ''] = amountStr.split('.');
+    const rupees = parseInt(rupeesPart, 10);
+    if (!Number.isSafeInteger(rupees)) {
+      return { valid: false, paise: 0, error: "Amount exceeds maximum supported value" };
+    }
+    const paise = parseInt(decimalPart.padEnd(2, '0').slice(0, 2), 10);
+    const totalPaise = rupees * 100 + paise;
+
+    const MIN_PAISE = 100; // ₹1.00
+    const MAX_PAISE = 10000000; // ₹1,00,000.00 (1 Lakh INR limit)
+
+    if (totalPaise < MIN_PAISE) {
+      return { valid: false, paise: 0, error: "Amount must be at least ₹1.00" };
+    }
+    if (totalPaise > MAX_PAISE) {
+      return { valid: false, paise: 0, error: "Amount exceeds maximum limit of ₹1,00,000" };
+    }
+
+    return { valid: true, paise: totalPaise };
+  }
+
+  // Pay-by-Link Order Creation Endpoint (Secure Server-Side Validation)
+  app.post("/api/pay-link/create-order", async (req, res) => {
+    try {
+      const { amount, ref } = req.body;
+      const validation = validateAndParsePayAmount(amount);
+
+      if (!validation.valid) {
+        return res.status(400).json({
+          success: false,
+          error: validation.error
+        });
+      }
+
+      const amountInPaise = validation.paise;
+      const keyId = process.env.RAZORPAY_KEY_ID;
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+
+      if (!keyId || !keySecret) {
+        console.error("Razorpay keys not configured");
+        return res.status(500).json({
+          success: false,
+          error: "Payment gateway is not configured"
+        });
+      }
+
+      const cleanRef = typeof ref === 'string' ? ref.trim().slice(0, 64) : '';
+      const receiptId = 'PAY_' + crypto.randomBytes(6).toString('hex').toUpperCase();
+
+      const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+      console.log(`📡 Creating Pay-Link order: ${amountInPaise} paise (₹${amountInPaise / 100}), Ref: ${cleanRef || 'none'}`);
+
+      const razorpayResponse = await fetch('https://api.razorpay.com/v1/orders', {
+        method: 'POST',
+        headers: {
+          'Authorization': authHeader,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          amount: amountInPaise,
+          currency: 'INR',
+          receipt: receiptId,
+          notes: {
+            paymentType: 'pay_link',
+            receiptId,
+            reference: cleanRef || 'none'
+          }
+        })
+      });
+
+      if (!razorpayResponse.ok) {
+        const errorData = await razorpayResponse.json().catch(() => ({}));
+        console.error('❌ Razorpay Orders API error:', errorData);
+        return res.status(400).json({
+          success: false,
+          error: errorData.error?.description || 'Failed to create order with Razorpay'
+        });
+      }
+
+      const orderData = await razorpayResponse.json();
+      console.log('✅ Pay-Link Order created with Razorpay:', orderData.id);
+
+      return res.json({
+        success: true,
+        keyId,
+        order_id: orderData.id,
+        orderId: orderData.id,
+        amount: orderData.amount, // Exact integer paise from server
+        amountInRupees: amountInPaise / 100,
+        currency: orderData.currency || 'INR',
+        receiptId,
+        reference: cleanRef
+      });
+    } catch (error: any) {
+      console.error("Pay-Link order creation error:", error);
+      res.status(500).json({
+        success: false,
+        error: error.message || "Failed to create payment order"
+      });
+    }
+  });
+
+  // Pay-by-Link Server-side Payment Verification & Recording Endpoint
+  app.post("/api/pay-link/verify", async (req, res) => {
+    try {
+      const {
+        razorpay_order_id,
+        razorpay_payment_id,
+        razorpay_signature,
+        amount,
+        reference,
+        receiptId
+      } = req.body;
+
+      if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
+        return res.status(400).json({
+          verified: false,
+          error: "Missing required payment verification data"
+        });
+      }
+
+      const keySecret = process.env.RAZORPAY_KEY_SECRET;
+      if (!keySecret) {
+        console.error("RAZORPAY_KEY_SECRET is not configured");
+        return res.status(500).json({
+          verified: false,
+          error: "Payment verification not configured"
+        });
+      }
+
+      // Compute and verify HMAC-SHA256 signature
+      const body = `${razorpay_order_id}|${razorpay_payment_id}`;
+      const expectedSignature = crypto
+        .createHmac("sha256", keySecret)
+        .update(body)
+        .digest("hex");
+
+      const expectedSignatureBuffer = Buffer.from(expectedSignature, "utf8");
+      const receivedSignatureBuffer = Buffer.from(razorpay_signature, "utf8");
+      const isSignatureValid = expectedSignatureBuffer.length === receivedSignatureBuffer.length &&
+        crypto.timingSafeEqual(expectedSignatureBuffer, receivedSignatureBuffer);
+
+      if (!isSignatureValid) {
+        console.warn(`❌ Invalid payment signature - Order: ${razorpay_order_id}, Payment ID: ${razorpay_payment_id}`);
+        return res.status(400).json({
+          verified: false,
+          error: "Invalid payment signature"
+        });
+      }
+
+      console.log(`✅ Pay-link payment verified - Order: ${razorpay_order_id}, Payment ID: ${razorpay_payment_id}`);
+
+      const numAmount = typeof amount === 'number' ? amount : (parseFloat(amount) || 0);
+      const createdAt = new Date().toISOString();
+      const finalRef = typeof reference === 'string' && reference.trim() ? reference.trim() : (receiptId || 'none');
+
+      const paymentRecord = {
+        payment_id: razorpay_payment_id,
+        paymentId: razorpay_payment_id,
+        order_id: razorpay_order_id,
+        orderId: razorpay_order_id,
+        amount: numAmount,
+        currency: "INR",
+        status: "completed",
+        reference: finalRef,
+        receiptId: receiptId || razorpay_order_id,
+        type: "pay_link",
+        created_at: createdAt,
+        createdAt: createdAt
+      };
+
+      // Persist verified transaction record to Firebase RTDB
+      try {
+        const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
+        await fetch(`${databaseURL}/payments.json`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(paymentRecord)
+        });
+      } catch (dbError) {
+        console.error("Failed to record payment in RTDB from server:", dbError);
+      }
+
+      return res.json({
+        verified: true,
+        message: "Payment successfully verified",
+        record: paymentRecord
+      });
+    } catch (error: any) {
+      console.error("Pay link verification error:", error);
+      res.status(500).json({
+        verified: false,
+        error: error.message || "Payment verification failed"
+      });
+    }
+  });
+
   // Razorpay Order Creation Endpoint
   app.post("/api/create-razorpay-order", async (req, res) => {
     try {
       const { amount, currency = 'INR', receipt, notes = {} } = req.body;
 
-      if (!Number.isInteger(amount) || amount <= 0) {
+      if (!Number.isInteger(amount) || amount <= 0 || amount > 10000000) {
         return res.status(400).json({
           success: false,
-          error: "Amount must be a positive integer in paise"
+          error: "Amount must be a positive integer in paise (max ₹1,00,000)"
         });
       }
 

@@ -8,6 +8,7 @@ export interface RazorpayOptions {
   currency: string;
   name: string;
   description: string;
+  image?: string;
   order_id?: string;
   customer_notification?: number;
   timeout?: number;
@@ -145,3 +146,80 @@ export const verifyRazorpayPayment = async (
     };
   }
 };
+
+export interface PayLinkOrderResponse {
+  success: boolean;
+  keyId: string;
+  order_id: string;
+  orderId: string;
+  amount: number; // in paise
+  amountInRupees: number;
+  currency: string;
+  receiptId: string;
+  reference?: string;
+  error?: string;
+}
+
+export const createPayLinkOrder = async (
+  amount: string | number,
+  ref?: string
+): Promise<PayLinkOrderResponse> => {
+  const response = await fetch('/api/pay-link/create-order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ amount, ref })
+  });
+  const data = await response.json();
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || 'Failed to create payment order on server');
+  }
+  return data;
+};
+
+export const verifyPayLinkPayment = async (
+  paymentId: string,
+  orderId: string,
+  signature: string,
+  amount: number,
+  reference?: string,
+  receiptId?: string
+): Promise<{ verified: boolean; error?: string; record?: any }> => {
+  try {
+    const response = await fetch('/api/pay-link/verify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        razorpay_order_id: orderId,
+        razorpay_payment_id: paymentId,
+        razorpay_signature: signature,
+        amount,
+        reference,
+        receiptId
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      return {
+        verified: false,
+        error: data.error || 'Payment verification failed'
+      };
+    }
+
+    return {
+      verified: data.verified || false,
+      record: data.record,
+      error: data.verified ? undefined : (data.error || 'Payment could not be verified')
+    };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : 'Network error during verification';
+    console.error('Pay-link verification error:', error);
+    return {
+      verified: false,
+      error: errorMsg
+    };
+  }
+};
+
