@@ -335,20 +335,24 @@ export function Pay() {
                 className="h-12 mx-auto mb-3 object-contain"
               />
               <p className="text-xs font-bold uppercase tracking-widest text-primary">India Cyber Cafe</p>
-              <h1 className="text-2xl font-extrabold text-navy sm:text-3xl mt-1">Payment</h1>
-              {rawUrlRef && (
-                <p className="mt-1 text-xs text-slate-500">
-                  Reference: <span className="font-mono font-semibold text-slate-700">{rawUrlRef}</span>
-                </p>
-              )}
+              <h1 className="text-2xl font-extrabold text-navy sm:text-3xl mt-1">Direct Payment</h1>
+              <p className="text-xs sm:text-sm text-slate-500 mt-1.5">
+                Pay securely for any service, print, or fee
+              </p>
             </div>
 
-            <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-6 text-center mb-6">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 block mb-1">
-                Amount
-              </span>
-              <div className="text-4xl sm:text-5xl font-black text-navy tracking-tight">
-                {formattedAmount}
+            {/* Amount to Pay area */}
+            <div className="mb-6">
+              <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">
+                Amount to Pay (₹)
+              </label>
+              <div className="relative rounded-2xl border-2 border-slate-200 bg-slate-50/50">
+                <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-black text-slate-400">
+                  ₹
+                </span>
+                <div className="w-full bg-transparent py-4 pl-11 pr-4 text-2xl sm:text-3xl font-black text-navy select-all">
+                  {formattedAmount.replace('₹', '')}
+                </div>
               </div>
             </div>
 
@@ -358,6 +362,7 @@ export function Pay() {
               </div>
             )}
 
+            {/* Pay Button */}
             <button
               type="button"
               onClick={handlePayment}
@@ -374,22 +379,15 @@ export function Pay() {
               )}
             </button>
 
-            <div className="mt-5 flex items-center justify-center gap-2 text-xs font-medium text-slate-500">
-              <ShieldCheck className="h-4 w-4 text-emerald-500" />
-              <span>Secure payment powered by Razorpay</span>
-            </div>
-
-            <div className="mt-6 pt-4 border-t border-slate-100 text-center">
-              <button
-                type="button"
-                onClick={() => {
-                  setSearchParams({});
-                  setError('');
-                }}
-                className="text-xs text-slate-500 hover:text-navy hover:underline transition-colors cursor-pointer"
-              >
-                Want to pay a different amount? Click to enter custom amount
-              </button>
+            {/* Trust badges */}
+            <div className="mt-5 space-y-2 text-center">
+              <div className="flex items-center justify-center gap-2 text-xs font-medium text-slate-500">
+                <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                <span>100% Secure Payment Powered by Razorpay</span>
+              </div>
+              <p className="text-[11px] text-slate-400">
+                Supports UPI (Google Pay, PhonePe, Paytm), Credit/Debit Cards, NetBanking
+              </p>
             </div>
           </div>
         </section>
