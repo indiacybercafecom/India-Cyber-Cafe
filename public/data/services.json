@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-09-05T14:33:09.251Z",
+  "generatedAt": "2026-10-21T10:01:51.270Z",
   "services": [
     {
       "id": "aadhaar-ucl-opretor",
@@ -12,12 +12,14 @@
         {
           "label": "Full Name",
           "name": "fullName",
+          "placeholder": "Enter full name",
           "required": true,
           "type": "text"
         },
         {
           "label": "Father Name",
           "name": "fatherName",
+          "placeholder": "Enter father's name",
           "required": true,
           "type": "text"
         },
@@ -25,62 +27,72 @@
           "format": "dd-mm-yyyy",
           "label": "Date of Birth",
           "name": "dateOfBirth",
+          "placeholder": "Select date of birth",
           "required": true,
           "type": "date"
         },
         {
+          "help_text": "Enter your 10-digit mobile number.",
           "label": "Mobile Number",
           "name": "mobileNumber",
+          "placeholder": "Enter 10-digit mobile number",
           "required": true,
           "type": "tel"
         },
         {
           "label": "Email ID",
           "name": "emailId",
+          "placeholder": "Enter email address",
           "required": true,
           "type": "email"
         },
         {
           "label": "Full Address with Pincode",
           "name": "fullAddress",
+          "placeholder": "Enter complete address with pincode",
           "required": true,
           "type": "textarea"
         },
         {
+          "help_text": "Enter your 12-digit Aadhaar number.",
           "label": "Aadhaar Number",
           "name": "aadhaarNumber",
+          "placeholder": "Enter 12-digit Aadhaar number",
           "required": true,
           "type": "text"
         },
         {
-          "label": "Aadhaar Front Image",
-          "maxSize": "50MB",
-          "name": "aadhaarFrontImage",
+          "accept": "image/*",
+          "help_text": "Upload Aadhaar Card front and back images. Maximum size: 5 MB per file.",
+          "label": "Aadhaar Card",
+          "maxSize": "5MB",
+          "multiple": true,
+          "name": "aadhaarCard",
+          "placeholder": "Upload Aadhaar Front & Back",
           "required": true,
           "type": "file"
         },
         {
-          "label": "Aadhaar Back Image",
-          "maxSize": "50MB",
-          "name": "aadhaarBackImage",
-          "required": true,
-          "type": "file"
-        },
-        {
+          "help_text": "Enter your 10-character PAN number.",
           "label": "PAN Number",
           "name": "panNumber",
+          "placeholder": "Enter PAN number",
           "required": true,
           "type": "text"
         },
         {
+          "accept": "image/*",
+          "help_text": "Upload PAN card image. Maximum size: 5 MB.",
           "label": "PAN Card Image",
-          "maxSize": "50MB",
+          "maxSize": "5MB",
+          "multiple": false,
           "name": "panCardImage",
+          "placeholder": "Upload PAN card",
           "required": true,
           "type": "file"
         },
         {
-          "label": "What you have device?",
+          "label": "What device do you have?",
           "name": "deviceType",
           "options": [
             "Desktop",
@@ -88,8 +100,9 @@
             "Smart Phone",
             "Finger Device"
           ],
+          "placeholder": "Select devices you have",
           "required": true,
-          "type": "select"
+          "type": "multiselect"
         }
       ],
       "subservices": [
@@ -99,12 +112,14 @@
             {
               "label": "Full Name",
               "name": "fullName",
+              "placeholder": "Enter full name",
               "required": true,
               "type": "text"
             },
             {
               "label": "Father Name",
               "name": "fatherName",
+              "placeholder": "Enter father's name",
               "required": true,
               "type": "text"
             },
@@ -112,62 +127,71 @@
               "format": "dd-mm-yyyy",
               "label": "Date of Birth",
               "name": "dateOfBirth",
+              "placeholder": "Select date of birth",
               "required": true,
               "type": "date"
             },
             {
               "label": "Mobile Number",
               "name": "mobileNumber",
+              "placeholder": "Enter 10-digit mobile number",
               "required": true,
               "type": "tel"
             },
             {
               "label": "Email ID",
               "name": "emailId",
+              "placeholder": "Enter email address",
               "required": true,
               "type": "email"
             },
             {
               "label": "Full Address with Pincode",
               "name": "fullAddress",
+              "placeholder": "Enter complete address with pincode",
               "required": true,
               "type": "textarea"
             },
             {
+              "help_text": "Enter your 12-digit Aadhaar number.",
               "label": "Aadhaar Number",
               "name": "aadhaarNumber",
+              "placeholder": "Enter 12-digit Aadhaar number",
               "required": true,
               "type": "text"
             },
             {
-              "label": "Aadhaar Front Image",
-              "maxSize": "50MB",
-              "name": "aadhaarFrontImage",
+              "accept": "image/*",
+              "help_text": "Upload Aadhaar Card front and back images. Maximum size: 5 MB per file.",
+              "label": "Aadhaar Card",
+              "maxSize": "5MB",
+              "multiple": true,
+              "name": "aadhaarCard",
+              "placeholder": "Upload Aadhaar Front & Back",
               "required": true,
               "type": "file"
             },
             {
-              "label": "Aadhaar Back Image",
-              "maxSize": "50MB",
-              "name": "aadhaarBackImage",
-              "required": true,
-              "type": "file"
-            },
-            {
+              "help_text": "Enter your 10-character PAN number.",
               "label": "PAN Number",
               "name": "panNumber",
+              "placeholder": "Enter PAN number",
               "required": true,
               "type": "text"
             },
             {
+              "accept": "image/*",
+              "help_text": "Upload PAN card image. Maximum size: 5 MB.",
               "label": "PAN Card Image",
-              "maxSize": "50MB",
+              "maxSize": "5MB",
+              "multiple": false,
               "name": "panCardImage",
+              "placeholder": "Upload PAN card",
               "required": true,
               "type": "file"
             },
             {
-              "label": "What you have device?",
+              "label": "What device do you have?",
               "name": "deviceType",
               "options": [
                 "Desktop",
@@ -175,8 +199,9 @@
                 "Smart Phone",
                 "Finger Device"
               ],
+              "placeholder": "Select devices you have",
               "required": true,
-              "type": "select"
+              "type": "multiselect"
             }
           ],
           "image": "https://indiacybercafe.com/wp-content/uploads/2026/06/aadhaar-card-correction-service.webp",
@@ -193,12 +218,14 @@
             {
               "label": "Full Name",
               "name": "fullName",
+              "placeholder": "Enter full name",
               "required": true,
               "type": "text"
             },
             {
               "label": "Father Name",
               "name": "fatherName",
+              "placeholder": "Enter father's name",
               "required": true,
               "type": "text"
             },
@@ -206,57 +233,67 @@
               "format": "dd-mm-yyyy",
               "label": "Date of Birth",
               "name": "dateOfBirth",
+              "placeholder": "Select date of birth",
               "required": true,
               "type": "date"
             },
             {
+              "help_text": "Enter your 10-digit mobile number.",
               "label": "Mobile Number",
               "name": "mobileNumber",
+              "placeholder": "Enter 10-digit mobile number",
               "required": true,
               "type": "tel"
             },
             {
               "label": "Email ID",
               "name": "emailId",
+              "placeholder": "Enter email address",
               "required": true,
               "type": "email"
             },
             {
               "label": "Full Address with Pincode",
               "name": "fullAddress",
+              "placeholder": "Enter complete address with pincode",
               "required": true,
               "type": "textarea"
             },
             {
+              "help_text": "Enter your 12-digit Aadhaar number.",
               "label": "Aadhaar Number",
               "name": "aadhaarNumber",
+              "placeholder": "Enter 12-digit Aadhaar number",
               "required": true,
               "type": "text"
             },
             {
-              "label": "Aadhaar Front Image",
-              "maxSize": "50MB",
-              "name": "aadhaarFrontImage",
+              "accept": "image/*",
+              "help_text": "Upload Aadhaar Card front and back images. Maximum size: 5 MB per file.",
+              "label": "Aadhaar Card",
+              "maxSize": "5MB",
+              "multiple": true,
+              "name": "aadhaarCard",
+              "placeholder": "Upload Aadhaar Front & Back",
               "required": true,
               "type": "file"
             },
             {
-              "label": "Aadhaar Back Image",
-              "maxSize": "50MB",
-              "name": "aadhaarBackImage",
-              "required": true,
-              "type": "file"
-            },
-            {
+              "help_text": "Enter your 10-character PAN number.",
               "label": "PAN Number",
               "name": "panNumber",
+              "placeholder": "Enter PAN number",
               "required": true,
               "type": "text"
             },
             {
+              "accept": "image/*",
+              "help_text": "Upload PAN card image. Maximum size: 5 MB.",
               "label": "PAN Card Image",
-              "maxSize": "50MB",
+              "maxSize": "5MB",
+              "multiple": false,
               "name": "panCardImage",
+              "placeholder": "Upload PAN card",
               "required": true,
               "type": "file"
             }
@@ -283,36 +320,44 @@
         {
           "label": "Full Name",
           "name": "full_name",
+          "placeholder": "Enter full name",
           "required": true,
           "type": "text"
         },
         {
+          "help_text": "Enter your 10-digit mobile number.",
           "label": "Mobile Number",
           "name": "mobile",
+          "placeholder": "Enter 10-digit mobile number",
           "required": true,
           "type": "tel"
         },
         {
           "label": "Email Address",
           "name": "email",
+          "placeholder": "Enter email address",
           "required": false,
           "type": "email"
         },
         {
+          "help_text": "Enter your PAN number.",
           "label": "PAN Number",
           "name": "pan",
+          "placeholder": "Enter 10-character PAN number",
           "required": true,
           "type": "text"
         },
         {
           "label": "Business / Trade Name",
           "name": "business_name",
+          "placeholder": "Enter business or trade name",
           "required": true,
           "type": "text"
         },
         {
           "label": "GSTIN (if already registered)",
           "name": "gstin",
+          "placeholder": "Enter GSTIN if already registered",
           "required": false,
           "type": "text"
         },
@@ -326,19 +371,25 @@
             "Private Limited Company",
             "Other"
           ],
+          "placeholder": "Select business type",
           "required": true,
           "type": "select"
         },
         {
           "label": "Additional Details",
           "name": "additional_details",
+          "placeholder": "Enter any additional details",
           "required": false,
           "type": "textarea"
         },
         {
+          "accept": "image/*,.pdf",
+          "help_text": "You can upload multiple documents. Maximum size: 5 MB per file.",
           "label": "Upload Documents",
+          "maxSize": "5MB",
           "multiple": true,
           "name": "documents",
+          "placeholder": "Upload required documents",
           "required": false,
           "type": "file"
         }
@@ -350,24 +401,29 @@
             {
               "label": "Full Name",
               "name": "name",
+              "placeholder": "Enter full name",
               "required": true,
               "type": "text"
             },
             {
               "label": "Email Address",
               "name": "email",
+              "placeholder": "Enter email address",
               "required": true,
               "type": "email"
             },
             {
+              "help_text": "Enter your 10-digit mobile number.",
               "label": "Mobile Number",
               "name": "mobile",
+              "placeholder": "Enter 10-digit mobile number",
               "required": true,
               "type": "tel"
             },
             {
               "label": "Company / Business Name",
               "name": "company_name",
+              "placeholder": "Enter company or business name",
               "required": true,
               "type": "text"
             },
@@ -382,6 +438,7 @@
                 "Public Limited Company",
                 "Other"
               ],
+              "placeholder": "Select company or business type",
               "required": true,
               "type": "select"
             }
@@ -400,24 +457,29 @@
             {
               "label": "Full Name",
               "name": "name",
+              "placeholder": "Enter full name",
               "required": true,
               "type": "text"
             },
             {
               "label": "Email Address",
               "name": "email",
+              "placeholder": "Enter email address",
               "required": true,
               "type": "email"
             },
             {
+              "help_text": "Enter your 10-digit mobile number.",
               "label": "Mobile Number",
               "name": "mobile",
+              "placeholder": "Enter 10-digit mobile number",
               "required": true,
               "type": "tel"
             },
             {
               "label": "Company / Business Name",
               "name": "company_name",
+              "placeholder": "Enter company or business name",
               "required": true,
               "type": "text"
             },
@@ -432,6 +494,7 @@
                 "Public Limited Company",
                 "Other"
               ],
+              "placeholder": "Select company or business type",
               "required": true,
               "type": "select"
             }
@@ -448,11 +511,11 @@
       "css": ""
     },
     {
-      "id": "pan-card",
-      "name": "PAN Card",
-      "icon": "https://indiacybercafe.com/wp-content/uploads/2026/09/pan-card.png",
+      "id": "mp-taas",
+      "name": "MP TAAS",
+      "icon": "https://indiacybercafe.com/wp-content/uploads/2026/09/MP-TAAS.png",
       "iconType": "url",
-      "description": "Apply for PAN Card online with easy assistance. Get help for New PAN Card application, PAN Card Correction/Change, PAN Card Reprint and other PAN card services through India Cyber Cafe.",
+      "description": "MP TAAS registration, scholarship application and student assistance.",
       "fields": [
         {
           "label": "Mobile Number",
@@ -461,47 +524,150 @@
       ],
       "subservices": [
         {
-          "charge": 199,
+          "charge": 49,
+          "fields": [
+            {
+              "label": "Samgra I'd (9 digit)",
+              "type": "text"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/Student-Registration-MP-TAAS.png",
+          "imageType": "url",
+          "name": "Registration",
+          "originalCharge": 100,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 50,
+          "fields": [
+            {
+              "label": "User ID",
+              "type": "text"
+            },
+            {
+              "label": "Password",
+              "required": false,
+              "type": "text"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/Apply-Scholarship-MP-TAAS.png",
+          "imageType": "url",
+          "name": "Apply Scholarship",
+          "originalCharge": 100,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        }
+      ],
+      "css": ""
+    },
+    {
+      "id": "otr-scholarship",
+      "name": "OTR Scholarship",
+      "icon": "https://indiacybercafe.com/wp-content/uploads/2026/09/NSP_OTR.png",
+      "iconType": "url",
+      "description": "NSP OTR Scholarship registration and application assistance.",
+      "fields": [
+        {
+          "label": "Mobile Number",
+          "type": "phone"
+        }
+      ],
+      "subservices": [
+        {
+          "charge": 20,
           "fields": [
             {
               "label": "Mobile Number",
-              "name": "mobile_number",
-              "required": true,
               "type": "phone"
             },
             {
+              "label": "Aadhaar Number",
+              "type": "text"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/OTR-REGISTRATION.png",
+          "imageType": "url",
+          "name": "OTR Registration",
+          "originalCharge": 50,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        }
+      ],
+      "css": ""
+    },
+    {
+      "id": "pan-card",
+      "name": "PAN Card",
+      "icon": "https://indiacybercafe.com/wp-content/uploads/2026/09/pan-card.png",
+      "iconType": "url",
+      "description": "Apply for PAN Card online with easy assistance. Get help for New PAN Card application, PAN Card Correction/Change, PAN Card Reprint and other PAN card services through India Cyber Cafe.",
+      "fields": [
+        {
+          "help_text": "Enter your 10-digit mobile number.",
+          "label": "Mobile Number",
+          "name": "mobile_number",
+          "placeholder": "Enter 10-digit mobile number",
+          "required": true,
+          "type": "tel"
+        }
+      ],
+      "subservices": [
+        {
+          "charge": 199,
+          "fields": [
+            {
+              "help_text": "Enter your 10-digit mobile number.",
+              "label": "Mobile Number",
+              "name": "mobile_number",
+              "placeholder": "Enter 10-digit mobile number",
+              "required": true,
+              "type": "tel"
+            },
+            {
               "accept": "image/*,.pdf",
-              "label": "Aadhaar Card Front",
-              "name": "aadhaar_front",
+              "help_text": "Upload Aadhaar Card front and back. Maximum size: 5 MB per file.",
+              "label": "Aadhaar Card",
+              "maxSize": "5MB",
+              "multiple": true,
+              "name": "aadhaar_card",
+              "placeholder": "Upload Aadhaar Front & Back",
               "required": true,
               "type": "file"
             },
             {
               "accept": "image/*,.pdf",
-              "label": "Aadhaar Card Back",
-              "name": "aadhaar_back",
-              "required": true,
-              "type": "file"
-            },
-            {
-              "accept": "image/*,.pdf",
-              "help_text": "Aadhaar Card is not accepted as Date of Birth proof.",
+              "help_text": "Aadhaar Card is not accepted as Date of Birth proof. Maximum size: 5 MB.",
               "label": "Date of Birth Proof",
+              "maxSize": "5MB",
+              "multiple": false,
               "name": "date_of_birth_proof",
+              "placeholder": "Upload Date of Birth Proof",
               "required": true,
               "type": "file"
             },
             {
               "accept": "image/*",
+              "help_text": "Upload a passport size photo. Maximum size: 5 MB.",
               "label": "Passport Size Photo",
+              "maxSize": "5MB",
+              "multiple": false,
               "name": "photo",
+              "placeholder": "Upload passport size photo",
               "required": true,
               "type": "file"
             },
             {
               "accept": "image/*",
+              "help_text": "Upload your signature image. Maximum size: 5 MB.",
               "label": "Signature",
+              "maxSize": "5MB",
+              "multiple": false,
               "name": "signature",
+              "placeholder": "Upload signature",
               "required": true,
               "type": "file"
             }
@@ -518,51 +684,87 @@
           "charge": 199,
           "fields": [
             {
+              "help_text": "Select what you want to change or update. You can select multiple options.",
+              "label": "What do you want to change?",
+              "name": "change_request",
+              "options": [
+                "Name",
+                "Father's Name",
+                "Date of Birth",
+                "Gender",
+                "Photograph",
+                "Signature",
+                "Mobile Number",
+                "Email ID",
+                "Address",
+                "Aadhaar Number",
+                "Aadhaar Name",
+                "Other"
+              ],
+              "placeholder": "Select what you want to change",
+              "required": true,
+              "type": "multiselect"
+            },
+            {
+              "help_text": "Enter your 10-digit mobile number.",
               "label": "Mobile Number",
               "name": "mobile_number",
+              "placeholder": "Enter 10-digit mobile number",
               "required": true,
-              "type": "phone"
+              "type": "tel"
             },
             {
               "accept": "image/*,.pdf",
+              "help_text": "Upload your existing PAN Card. Maximum size: 5 MB.",
               "label": "Old PAN Card",
+              "maxSize": "5MB",
+              "multiple": false,
               "name": "old_pan_card",
+              "placeholder": "Upload old PAN card",
               "required": true,
               "type": "file"
             },
             {
               "accept": "image/*,.pdf",
-              "label": "Aadhaar Card Front",
-              "name": "aadhaar_front",
+              "help_text": "Upload Aadhaar Card front and back. Maximum size: 5 MB per file.",
+              "label": "Aadhaar Card",
+              "maxSize": "5MB",
+              "multiple": true,
+              "name": "aadhaar_card",
+              "placeholder": "Upload Aadhaar Front & Back",
               "required": true,
               "type": "file"
             },
             {
               "accept": "image/*,.pdf",
-              "label": "Aadhaar Card Back",
-              "name": "aadhaar_back",
-              "required": true,
-              "type": "file"
-            },
-            {
-              "accept": "image/*,.pdf",
-              "help_text": "Aadhaar Card is not accepted as Date of Birth proof.",
+              "help_text": "Aadhaar Card is not accepted as Date of Birth proof. Maximum size: 5 MB.",
               "label": "Date of Birth Proof",
+              "maxSize": "5MB",
+              "multiple": false,
               "name": "date_of_birth_proof",
+              "placeholder": "Upload Date of Birth Proof",
               "required": true,
               "type": "file"
             },
             {
               "accept": "image/*",
+              "help_text": "Upload a passport size photo. Maximum size: 5 MB.",
               "label": "Passport Size Photo",
+              "maxSize": "5MB",
+              "multiple": false,
               "name": "photo",
+              "placeholder": "Upload passport size photo",
               "required": true,
               "type": "file"
             },
             {
               "accept": "image/*",
+              "help_text": "Upload your signature image. Maximum size: 5 MB.",
               "label": "Signature",
+              "maxSize": "5MB",
+              "multiple": false,
               "name": "signature",
+              "placeholder": "Upload signature",
               "required": true,
               "type": "file"
             }
@@ -585,40 +787,540 @@
               "placeholder": "Enter 12-digit Aadhaar Number",
               "required": true,
               "type": "text"
-            },
-            {
-              "help_text": "Re-enter Aadhaar number for confirmation.",
-              "label": "Confirm Aadhaar Number",
-              "name": "confirm_aadhaar_number",
-              "placeholder": "Re-enter 12-digit Aadhaar Number",
-              "required": false,
-              "type": "text"
-            },
-            {
-              "accept": "image/*,.pdf",
-              "help_text": "Upload one Aadhaar Card file. Maximum size: 5 MB.",
-              "label": "Aadhaar Card",
-              "multiple": false,
-              "name": "aadhaar_card",
-              "placeholder": "Upload Aadhaar Card",
-              "required": true,
-              "type": "file"
-            },
-            {
-              "accept": "image/*,.pdf",
-              "help_text": "Upload multiple Aadhaar Card files if required. Maximum size: 5 MB per file.",
-              "label": "Aadhaar Card Documents",
-              "multiple": true,
-              "name": "aadhaar_documents",
-              "placeholder": "Upload Aadhaar Card Documents",
-              "required": false,
-              "type": "file"
             }
           ],
           "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/aadhaar-to-pan-number.png",
           "imageType": "url",
           "name": "Aadhaar to Pan Number Find",
           "originalCharge": 199,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 1099,
+          "fields": [
+            {
+              "label": "Pan Card Number",
+              "type": "text"
+            },
+            {
+              "label": "Aadhaar Number",
+              "type": "text"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/Pan-to-Aadhaar-Link.png",
+          "imageType": "url",
+          "name": "Pan to Aadhaar Link",
+          "originalCharge": 1500,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        }
+      ],
+      "css": ""
+    },
+    {
+      "id": "passport-seva",
+      "name": "Passport Seva",
+      "icon": "https://indiacybercafe.com/wp-content/uploads/2026/09/passport-services.png",
+      "iconType": "url",
+      "description": "Apply for new passports, re-issue, correction, Tatkaal passport, and PCC services with easy assistance.",
+      "fields": [
+        {
+          "label": "Name",
+          "required": false,
+          "type": "text"
+        },
+        {
+          "label": "Mobile Number",
+          "type": "phone"
+        }
+      ],
+      "subservices": [
+        {
+          "charge": 2999,
+          "fields": [
+            {
+              "help_text": "Enter your name as shown on your official documents.",
+              "label": "Full Name",
+              "name": "fullName",
+              "placeholder": "Enter your full name",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "help_text": "Enter an active mobile number for contact.",
+              "label": "Mobile Number",
+              "name": "phone",
+              "placeholder": "+91 98765 43210",
+              "required": true,
+              "type": "phone"
+            },
+            {
+              "help_text": "Enter an active email address for passport application updates.",
+              "label": "Email Address",
+              "name": "email",
+              "placeholder": "name@example.com",
+              "required": true,
+              "type": "email"
+            },
+            {
+              "help_text": "Select the required passport booklet size.",
+              "label": "Passport Booklet",
+              "name": "passportBooklet",
+              "options": [
+                "36 Pages",
+                "60 Pages"
+              ],
+              "placeholder": "Select passport booklet",
+              "required": true,
+              "type": "select"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the front and back sides or a single PDF of your Aadhaar Card.",
+              "label": "Aadhaar Card",
+              "multiple": true,
+              "name": "aadhaarCard",
+              "placeholder": "Upload Aadhaar Card",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload one or more pages of an accepted date of birth proof.",
+              "label": "Date of Birth Proof",
+              "multiple": true,
+              "name": "dateOfBirthProof",
+              "placeholder": "Upload date of birth proof",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload any other relevant documents such as education, address, Non-ECR or supporting documents.",
+              "label": "Additional Documents",
+              "multiple": true,
+              "name": "additionalDocuments",
+              "placeholder": "Upload additional documents",
+              "required": false,
+              "type": "file"
+            },
+            {
+              "help_text": "Mention anything else we should know about your application.",
+              "label": "Additional Details",
+              "name": "additionalDetails",
+              "placeholder": "Enter any additional information",
+              "required": false,
+              "type": "textarea"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/apply-new-passport.png",
+          "imageType": "url",
+          "name": "Apply New Passport",
+          "originalCharge": 3999,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 2999,
+          "fields": [
+            {
+              "help_text": "Enter your name as shown on your current passport.",
+              "label": "Full Name",
+              "name": "fullName",
+              "placeholder": "Enter your full name",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "help_text": "Enter an active mobile number for contact.",
+              "label": "Mobile Number",
+              "name": "phone",
+              "placeholder": "+91 98765 43210",
+              "required": true,
+              "type": "phone"
+            },
+            {
+              "help_text": "Enter an active email address for application updates.",
+              "label": "Email Address",
+              "name": "email",
+              "placeholder": "name@example.com",
+              "required": true,
+              "type": "email"
+            },
+            {
+              "help_text": "Select the reason for applying for passport re-issue.",
+              "label": "Re-Issue Reason",
+              "name": "reissueReason",
+              "options": [
+                "Passport Expired / About to Expire",
+                "Pages Exhausted",
+                "Change in Personal Details",
+                "Lost Passport",
+                "Damaged Passport",
+                "Stolen Passport"
+              ],
+              "placeholder": "Select reason for re-issue",
+              "required": true,
+              "type": "select"
+            },
+            {
+              "help_text": "Select the required passport booklet size.",
+              "label": "Passport Booklet",
+              "name": "passportBooklet",
+              "options": [
+                "36 Pages",
+                "60 Pages"
+              ],
+              "placeholder": "Select passport booklet",
+              "required": true,
+              "type": "select"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the passport's first and last pages, or the complete passport as a PDF.",
+              "label": "Current / Previous Passport",
+              "multiple": true,
+              "name": "currentPassport",
+              "placeholder": "Upload current passport",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the front and back sides or a single PDF of your Aadhaar Card.",
+              "label": "Aadhaar Card",
+              "multiple": true,
+              "name": "aadhaarCard",
+              "placeholder": "Upload Aadhaar Card",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload documents supporting the selected re-issue reason, such as address or personal-detail proof.",
+              "label": "Supporting Documents",
+              "multiple": true,
+              "name": "supportingDocuments",
+              "placeholder": "Upload supporting documents",
+              "required": false,
+              "type": "file"
+            },
+            {
+              "help_text": "Mention any special details or requirements about your passport re-issue.",
+              "label": "Additional Details",
+              "name": "additionalDetails",
+              "placeholder": "Enter any additional information",
+              "required": false,
+              "type": "textarea"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/apply-passport-reissue.png",
+          "imageType": "url",
+          "name": "Apply Passport Re-Issue",
+          "originalCharge": 3999,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 2999,
+          "fields": [
+            {
+              "help_text": "Enter your name as shown on your current passport.",
+              "label": "Full Name",
+              "name": "fullName",
+              "placeholder": "Enter your full name",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "help_text": "Enter an active mobile number for contact.",
+              "label": "Mobile Number",
+              "name": "phone",
+              "placeholder": "+91 98765 43210",
+              "required": true,
+              "type": "phone"
+            },
+            {
+              "help_text": "Enter an active email address for application updates.",
+              "label": "Email Address",
+              "name": "email",
+              "placeholder": "name@example.com",
+              "required": true,
+              "type": "email"
+            },
+            {
+              "help_text": "Select all passport details that need to be corrected or updated.",
+              "label": "Correction Required",
+              "name": "correctionType",
+              "options": [
+                "Name Correction",
+                "Date of Birth Correction",
+                "Place of Birth Correction",
+                "Father / Mother Name Correction",
+                "Spouse Name Correction",
+                "Address Change",
+                "Other Personal Details"
+              ],
+              "placeholder": "Select correction(s) required",
+              "required": true,
+              "type": "multiselect"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the relevant passport pages or the complete passport as a PDF.",
+              "label": "Current Passport",
+              "multiple": true,
+              "name": "currentPassport",
+              "placeholder": "Upload current passport",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the front and back sides or a single PDF of your Aadhaar Card.",
+              "label": "Aadhaar Card",
+              "multiple": true,
+              "name": "aadhaarCard",
+              "placeholder": "Upload Aadhaar Card",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the document(s) supporting the requested correction or change.",
+              "label": "Correction Proof",
+              "multiple": true,
+              "name": "correctionProof",
+              "placeholder": "Upload proof for correction",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload any other documents relevant to your correction request.",
+              "label": "Additional Documents",
+              "multiple": true,
+              "name": "additionalDocuments",
+              "placeholder": "Upload additional documents",
+              "required": false,
+              "type": "file"
+            },
+            {
+              "help_text": "Mention any specific details about the correction request.",
+              "label": "Additional Details",
+              "name": "additionalDetails",
+              "placeholder": "Enter any additional information",
+              "required": false,
+              "type": "textarea"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/apply-passport-correction.png",
+          "imageType": "url",
+          "name": "Apply Passport Correction",
+          "originalCharge": 3999,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 4999,
+          "fields": [
+            {
+              "help_text": "Enter your name as shown on your passport or official documents.",
+              "label": "Full Name",
+              "name": "fullName",
+              "placeholder": "Enter your full name",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "help_text": "Enter an active mobile number for contact.",
+              "label": "Mobile Number",
+              "name": "phone",
+              "placeholder": "+91 98765 43210",
+              "required": true,
+              "type": "phone"
+            },
+            {
+              "help_text": "Enter an active email address for application updates.",
+              "label": "Email Address",
+              "name": "email",
+              "placeholder": "name@example.com",
+              "required": true,
+              "type": "email"
+            },
+            {
+              "help_text": "Select whether you need a new passport or re-issue under Tatkaal.",
+              "label": "Tatkaal Service",
+              "name": "tatkaalService",
+              "options": [
+                "New Passport",
+                "Passport Re-Issue"
+              ],
+              "placeholder": "Select service",
+              "required": true,
+              "type": "select"
+            },
+            {
+              "help_text": "Select the required passport booklet size.",
+              "label": "Passport Booklet",
+              "name": "passportBooklet",
+              "options": [
+                "36 Pages",
+                "60 Pages"
+              ],
+              "placeholder": "Select passport booklet",
+              "required": true,
+              "type": "select"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "For re-issue, upload the relevant passport pages or complete passport PDF. Not required for a fresh passport.",
+              "label": "Current / Previous Passport",
+              "multiple": true,
+              "name": "currentPassport",
+              "placeholder": "Upload passport",
+              "required": false,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the front and back sides or a single PDF of your Aadhaar Card.",
+              "label": "Aadhaar Card",
+              "multiple": true,
+              "name": "aadhaarCard",
+              "placeholder": "Upload Aadhaar Card",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload an accepted proof of date of birth.",
+              "label": "Date of Birth Proof",
+              "multiple": true,
+              "name": "dateOfBirthProof",
+              "placeholder": "Upload date of birth proof",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the documents required for your Tatkaal passport application.",
+              "label": "Supporting Documents",
+              "multiple": true,
+              "name": "supportingDocuments",
+              "placeholder": "Upload supporting documents",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "help_text": "Mention any special requirement or information about your application.",
+              "label": "Additional Details",
+              "name": "additionalDetails",
+              "placeholder": "Enter any additional information",
+              "required": false,
+              "type": "textarea"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/apply-tatkaal-passport.png",
+          "imageType": "url",
+          "name": "Apply Tatkaal Passport",
+          "originalCharge": 6999,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 899,
+          "fields": [
+            {
+              "help_text": "Enter your name as shown on your current passport.",
+              "label": "Full Name",
+              "name": "fullName",
+              "placeholder": "Enter your full name",
+              "required": true,
+              "type": "text"
+            },
+            {
+              "help_text": "Enter an active mobile number for contact.",
+              "label": "Mobile Number",
+              "name": "phone",
+              "placeholder": "+91 98765 43210",
+              "required": true,
+              "type": "phone"
+            },
+            {
+              "help_text": "Enter an active email address for application updates.",
+              "label": "Email Address",
+              "name": "email",
+              "placeholder": "name@example.com",
+              "required": true,
+              "type": "email"
+            },
+            {
+              "help_text": "Select the purpose for which you need the Police Clearance Certificate.",
+              "label": "PCC Purpose",
+              "name": "pccPurpose",
+              "options": [
+                "Employment",
+                "Education",
+                "Visa / Immigration",
+                "Residence Permit",
+                "Citizenship",
+                "Other"
+              ],
+              "placeholder": "Select PCC purpose",
+              "required": true,
+              "type": "select"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the first and last pages or the complete passport as a PDF.",
+              "label": "Current / Previous Passport",
+              "multiple": true,
+              "name": "passport",
+              "placeholder": "Upload passport",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the front and back sides or a single PDF of your Aadhaar Card.",
+              "label": "Aadhaar Card",
+              "multiple": true,
+              "name": "aadhaarCard",
+              "placeholder": "Upload Aadhaar Card",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload documents related to your PCC purpose, such as employment, education, visa or immigration documents.",
+              "label": "Supporting Documents",
+              "multiple": true,
+              "name": "supportingDocuments",
+              "placeholder": "Upload supporting documents",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "help_text": "Mention any other information relevant to your PCC application.",
+              "label": "Additional Details",
+              "name": "additionalDetails",
+              "placeholder": "Enter any additional information",
+              "required": false,
+              "type": "textarea"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/apply-police-clearance-certificate-pcc.png",
+          "imageType": "url",
+          "name": "Apply Police Clearance Certificate PCC",
+          "originalCharge": 999,
           "paymentMethods": [
             "razorpay"
           ]
@@ -635,14 +1337,24 @@
       "fields": [
         {
           "label": "Name",
+          "name": "name",
+          "placeholder": "Enter full name",
+          "required": true,
           "type": "text"
         },
         {
+          "help_text": "Enter your 10-digit mobile number.",
           "label": "Mobile Number",
-          "type": "phone"
+          "name": "mobile",
+          "placeholder": "Enter 10-digit mobile number",
+          "required": true,
+          "type": "tel"
         },
         {
           "label": "Email",
+          "name": "email",
+          "placeholder": "Enter email address",
+          "required": false,
           "type": "email"
         }
       ],
@@ -652,6 +1364,7 @@
           "fields": [
             {
               "label": "Select Form Type",
+              "name": "form_type",
               "options": [
                 "Defence Recruitment Form",
                 "Police Recruitment Form",
@@ -664,18 +1377,30 @@
                 "Admission Form",
                 "Scholarship Form"
               ],
+              "placeholder": "Select recruitment or application form",
+              "required": true,
               "type": "select"
             },
             {
               "label": "Name",
+              "name": "name",
+              "placeholder": "Enter full name",
+              "required": true,
               "type": "text"
             },
             {
+              "help_text": "Enter your 10-digit mobile number.",
               "label": "Mobile Number",
-              "type": "phone"
+              "name": "mobile",
+              "placeholder": "Enter 10-digit mobile number",
+              "required": true,
+              "type": "tel"
             },
             {
               "label": "Email",
+              "name": "email",
+              "placeholder": "Enter email address",
+              "required": false,
               "type": "email"
             }
           ],
@@ -692,6 +1417,7 @@
           "fields": [
             {
               "label": "Select Service",
+              "name": "service",
               "options": [
                 "Form Filling Service",
                 "Aadhaar Card Services",
@@ -711,18 +1437,30 @@
                 "Document Scanning",
                 "Online Registration"
               ],
+              "placeholder": "Select a service",
+              "required": true,
               "type": "select"
             },
             {
               "label": "Name",
+              "name": "name",
+              "placeholder": "Enter full name",
+              "required": true,
               "type": "text"
             },
             {
+              "help_text": "Enter your 10-digit mobile number.",
               "label": "Mobile Number",
-              "type": "phone"
+              "name": "mobile",
+              "placeholder": "Enter 10-digit mobile number",
+              "required": true,
+              "type": "tel"
             },
             {
               "label": "Email",
+              "name": "email",
+              "placeholder": "Enter email address",
+              "required": false,
               "type": "email"
             }
           ],
@@ -730,6 +1468,175 @@
           "imageType": "url",
           "name": "Fast Service (Instant work)",
           "originalCharge": 500,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        }
+      ],
+      "css": ""
+    },
+    {
+      "id": "voter-id-services",
+      "name": "Voter ID Services",
+      "icon": "https://indiacybercafe.com/wp-content/uploads/2026/09/Voter-ID-Services.png",
+      "iconType": "url",
+      "description": "Apply for new Voter ID, correction, address change, replacement, deletion and other voter services with easy assistance.",
+      "fields": [
+        {
+          "label": "Mobile Number",
+          "type": "phone"
+        }
+      ],
+      "subservices": [
+        {
+          "charge": 99,
+          "fields": [
+            {
+              "help_text": "Enter an active mobile number for contact.",
+              "label": "Mobile Number",
+              "name": "phone",
+              "placeholder": "+91 98765 43210",
+              "required": true,
+              "type": "phone"
+            },
+            {
+              "help_text": "Enter an active email address for application updates.",
+              "label": "Email Address",
+              "name": "email",
+              "placeholder": "name@example.com",
+              "required": true,
+              "type": "email"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the front and back sides or a single PDF of your Aadhaar Card.",
+              "label": "Aadhaar Card",
+              "multiple": true,
+              "name": "aadhaarCard",
+              "placeholder": "Upload Aadhaar Card",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload your marksheet or birth certificate as proof of date of birth.",
+              "label": "Marksheet / Birth Certificate",
+              "multiple": true,
+              "name": "dobProof",
+              "placeholder": "Upload marksheet or birth certificate",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/png,image/jpeg",
+              "help_text": "Upload a clear recent passport-size photograph.",
+              "label": "Passport Size Photo",
+              "multiple": false,
+              "name": "photo",
+              "placeholder": "Upload passport size photo",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/png,image/jpeg",
+              "help_text": "Upload a clear image of your signature.",
+              "label": "Signature",
+              "multiple": false,
+              "name": "signature",
+              "placeholder": "Upload signature",
+              "required": true,
+              "type": "file"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/Apply-New-Voter-ID.png",
+          "imageType": "url",
+          "name": "Apply New Voter ID",
+          "originalCharge": 299,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 99,
+          "fields": [
+            {
+              "help_text": "Select the voter details that need to be corrected or updated.",
+              "label": "Correction Type",
+              "name": "correctionType",
+              "options": [
+                "Name Correction",
+                "Date of Birth Correction",
+                "Gender Correction",
+                "Address Correction",
+                "Father / Mother Name Correction",
+                "Photo Update",
+                "Other Details Correction"
+              ],
+              "placeholder": "Select correction(s)",
+              "required": true,
+              "type": "multiselect"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload both sides of your Voter ID or a single PDF.",
+              "label": "Voter ID",
+              "multiple": true,
+              "name": "voterId",
+              "placeholder": "Upload Voter ID",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "help_text": "Enter an active mobile number for contact.",
+              "label": "Mobile Number",
+              "name": "phone",
+              "placeholder": "+91 98765 43210",
+              "required": true,
+              "type": "phone"
+            },
+            {
+              "help_text": "Enter your email address for application updates.",
+              "label": "Email Address",
+              "name": "email",
+              "placeholder": "name@example.com",
+              "required": false,
+              "type": "email"
+            },
+            {
+              "accept": ".pdf,image/png,image/jpeg",
+              "help_text": "Upload the document(s) supporting the selected correction.",
+              "label": "Correction Proof Document",
+              "multiple": true,
+              "name": "correctionProof",
+              "placeholder": "Upload correction proof",
+              "required": true,
+              "type": "file"
+            },
+            {
+              "accept": "image/png,image/jpeg",
+              "help_text": "Upload a recent passport-size photo if a photo update is required.",
+              "label": "Passport Size Photo",
+              "multiple": false,
+              "name": "photo",
+              "placeholder": "Upload photo",
+              "required": false,
+              "type": "file"
+            },
+            {
+              "accept": "image/png,image/jpeg",
+              "help_text": "Upload a clear image of the applicant's signature.",
+              "label": "Signature",
+              "multiple": false,
+              "name": "signature",
+              "placeholder": "Upload signature",
+              "required": true,
+              "type": "file"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/Voter-ID-Correction.png",
+          "imageType": "url",
+          "name": "Voter ID Correction",
+          "originalCharge": 199,
           "paymentMethods": [
             "razorpay"
           ]

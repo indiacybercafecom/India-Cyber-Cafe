@@ -198,6 +198,30 @@ function AppContent() {
     }
   };
 
+  const isEmbedMode = Boolean(
+    new URLSearchParams(location.search).get('embed') === '1' ||
+    new URLSearchParams(location.search).get('embed') === 'true'
+  );
+
+  if (isEmbedMode) {
+    return (
+      <div className="h-screen w-screen overflow-hidden bg-white">
+        <ToastContainer />
+        <main className="h-full w-full p-0 m-0 overflow-hidden">
+          <ErrorBoundary>
+            <Suspense fallback={<div className="flex h-screen w-screen items-center justify-center bg-slate-900 text-white font-medium">Loading Document...</div>}>
+              <Routes>
+                <Route path="/forms-documents/:categorySlug/:pdfSlug" element={<FormsDocumentDetail />} />
+                <Route path="/forms-documents" element={<FormsDocuments />} />
+                <Route path="*" element={<NotFound />} />
+              </Routes>
+            </Suspense>
+          </ErrorBoundary>
+        </main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <ScrollToTop />

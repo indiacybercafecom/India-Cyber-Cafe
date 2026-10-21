@@ -192,22 +192,62 @@ export function FormsDocumentDetail() {
   const { categorySlug, pdfSlug } = useParams<{ categorySlug: string; pdfSlug: string }>();
   const navigate = useNavigate();
   const location = useLocation();
+  const searchParams = new URLSearchParams(location.search);
+
+  const isEmbed = Boolean(
+    searchParams.get('embed') === '1' ||
+    searchParams.get('embed') === 'true'
+  );
+
   const { documents, categories, loading, error } = useDocuments();
-  const document = documents.find(item => generateSlug(item.category) === categorySlug && generateSlug(item.name) === pdfSlug);
+
+  // Format slug to readable title as instant fallback while documents are loading
+  const fallbackTitle = pdfSlug
+    ? pdfSlug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+    : 'Document Preview';
+
+  const document = documents.find(
+    item => generateSlug(item.category) === categorySlug && generateSlug(item.name) === pdfSlug
+  );
   const category = categories.find(item => generateSlug(item.name) === categorySlug);
 
-  if (loading) return <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500">Loading PDF...</div>;
-  if (error) return <div className="rounded-2xl border border-red-200 bg-red-50 p-10 text-center text-red-700">Unable to load this PDF right now.</div>;
-  if (!document) return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><p className="font-semibold text-slate-600">PDF not found.</p><button type="button" onClick={() => navigate('/forms-documents')} className="btn-primary mx-auto mt-4">Back to Forms & Documents</button></div>;
+  const normalizedUrls = document ? normalizePdfUrl(document.previewUrl || document.downloadUrl) : null;
+  const pdfSourceUrl = normalizedUrls?.downloadUrl || document?.downloadUrl || document?.previewUrl || '';
+  const pdfDownloadUrl = normalizedUrls?.downloadUrl || document?.downloadUrl || '';
 
-  const normalizedUrls = normalizePdfUrl(document.previewUrl || document.downloadUrl);
-  const pdfSourceUrl = normalizedUrls?.downloadUrl || document.downloadUrl || document.previewUrl;
-  const pdfDownloadUrl = normalizedUrls?.downloadUrl || document.downloadUrl;
-  const returnPath = new URLSearchParams(location.search).get('from');
+  const returnPath = searchParams.get('from');
   const closePath = returnPath?.startsWith('/forms-documents') ? returnPath : '/forms-documents';
 
-  return <>
-    <SEO title={`${document.name} - ${category?.name || 'Forms & Documents'}`} description={document.description || `Download ${document.name} from India Cyber Cafe.`} url={`https://b.indiacybercafe.com/forms-documents/${categorySlug}/${pdfSlug}`} keywords={`${document.name}, PDF, ${category?.name || 'forms and documents'}`} />
-    <PdfViewerModal title={document.name} sourceUrl={pdfSourceUrl} downloadUrl={pdfDownloadUrl} onClose={() => navigate(closePath)} />
-  </>;
+  const handleClose = () => {
+    if (!isEmbed) {
+      navigate(closePath);
+    }
+  };
+
+  const documentTitle = document?.name || fallbackTitle;
+  const documentError = (!loading && !document)
+    ? 'Document not found or no longer available.'
+    : error
+      ? 'Unable to load this PDF right now.'
+      : null;
+
+  return (
+    <>
+      <SEO
+        title={`${documentTitle} - ${category?.name || 'Forms & Documents'} | India Cyber Cafe`}
+        description={document?.description || `Download and preview ${documentTitle} from India Cyber Cafe.`}
+        url={`https://b.indiacybercafe.com/forms-documents/${categorySlug}/${pdfSlug}`}
+        keywords={`${documentTitle}, PDF, ${category?.name || 'forms and documents'}`}
+      />
+      <PdfViewerModal
+        title={documentTitle}
+        sourceUrl={pdfSourceUrl}
+        downloadUrl={pdfDownloadUrl}
+        onClose={handleClose}
+        isEmbed={isEmbed}
+        isLoadingDocument={loading}
+        documentError={documentError}
+      />
+    </>
+  );
 }

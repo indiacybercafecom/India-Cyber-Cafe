@@ -123,13 +123,42 @@ async function startServer() {
     res.json({ status: "ok" });
   });
 
+  app.options("/api/pdf-proxy", (req, res) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Accept");
+    res.sendStatus(204);
+  });
+
   app.get("/api/pdf-proxy", async (req, res) => {
-    const source = typeof req.query.url === "string" ? req.query.url : "";
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    const source = typeof req.query.url === "string" ? req.query.url.trim() : "";
     if (!source) return res.status(400).json({ success: false, error: "PDF URL is required" });
 
     try {
+      // Support local documents served from public directory
+      if (source.startsWith('/')) {
+        const publicDir = path.join(APP_ROOT, 'public');
+        const safePath = path.resolve(publicDir, source.replace(/^\/+/, ''));
+        // Prevent directory traversal attacks
+        if (!safePath.startsWith(publicDir)) {
+          return res.status(403).json({ success: false, error: "Access denied" });
+        }
+
+        if (fs.existsSync(safePath) && fs.statSync(safePath).isFile()) {
+          const bytes = fs.readFileSync(safePath);
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Length", bytes.length.toString());
+          res.setHeader("Cache-Control", "public, max-age=3600");
+          return res.send(bytes);
+        } else {
+          return res.status(404).json({ success: false, error: "Local document not found" });
+        }
+      }
+
       const sourceUrl = new URL(source);
-      if (sourceUrl.protocol !== "https:") {
+      if (sourceUrl.protocol !== "https:" && sourceUrl.hostname !== "localhost" && sourceUrl.hostname !== "127.0.0.1") {
         return res.status(400).json({ success: false, error: "Only HTTPS PDF URLs are supported" });
       }
 
@@ -149,7 +178,7 @@ async function startServer() {
       const bytes = Buffer.from(await response.arrayBuffer());
       res.setHeader("Content-Type", "application/pdf");
       res.setHeader("Content-Length", bytes.length.toString());
-      res.setHeader("Cache-Control", "private, max-age=300");
+      res.setHeader("Cache-Control", "public, max-age=300");
       return res.send(bytes);
     } catch (error: any) {
       console.error("PDF proxy error:", error.message);
