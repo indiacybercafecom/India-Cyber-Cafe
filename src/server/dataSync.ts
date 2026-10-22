@@ -389,7 +389,7 @@ async function syncDocumentsJson(): Promise<SyncResult> {
     const documents = firebaseObjectToArray(data);
 
     const validated = documents
-      .filter((document: any) => document && (document.active !== false))
+      .filter((document: any) => document && (document.name || document.id))
       .map((document: any) => ({
         id: document.id || '',
         name: document.name || '',

@@ -50,7 +50,15 @@ export function DocumentModal({ document, categories, onClose, onSave }: Documen
             <div><label className="block text-sm font-bold text-slate-700 mb-2">Category *</label><SelectDropdown options={categoryOptions} value={formData.category} onChange={category => setFormData({ ...formData, category })} containerClassName="w-full" className="input-field" ariaLabel="PDF category" placeholder="Select category" /></div>
             <div><label className="block text-sm font-bold text-slate-700 mb-2">Google Drive or PDF URL *</label><input type="url" value={formData.url} onChange={event => setFormData({ ...formData, url: event.target.value })} placeholder="https://drive.google.com/file/d/.../view" className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all" /><p className="text-xs text-slate-400 mt-1">The Drive file must be publicly viewable.</p></div>
             <div><label className="block text-sm font-bold text-slate-700 mb-2">Thumbnail URL (optional)</label><input type="url" value={formData.thumbnailUrl} onChange={event => setFormData({ ...formData, thumbnailUrl: event.target.value })} className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all" /></div>
-            <label className="flex items-center gap-3 text-sm font-bold text-slate-700"><input type="checkbox" checked={formData.active} onChange={event => setFormData({ ...formData, active: event.target.checked })} className="h-4 w-4 accent-primary" />Visible on public page</label>
+            <div>
+              <label className="flex items-center gap-3 text-sm font-bold text-slate-700">
+                <input type="checkbox" checked={formData.active} onChange={event => setFormData({ ...formData, active: event.target.checked })} className="h-4 w-4 accent-primary" />
+                Visible on public page
+              </label>
+              <p className="mt-1 pl-7 text-xs text-slate-400">
+                Uncheck to hide from India Cyber Cafe website. External websites can still view and embed it via URL.
+              </p>
+            </div>
           </div>
           <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 p-4 sm:p-6 border-t border-slate-200">
             <button type="button" onClick={onClose} className="flex-1 px-4 sm:px-6 py-3 rounded-xl border-2 border-slate-200 font-bold text-slate-700 hover:bg-slate-50 transition-all text-sm sm:text-base">Cancel</button>

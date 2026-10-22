@@ -114,7 +114,7 @@ async function syncDocumentCategories(firebaseToken) {
 async function syncDocuments(firebaseToken) {
   const documents = await fetchFirebaseCollection('documents', firebaseToken);
   const validated = documents
-    .filter(document => document && document.active !== false)
+    .filter(document => document && (document.name || document.id))
     .map(document => ({
       id: document.id || '',
       name: document.name || '',

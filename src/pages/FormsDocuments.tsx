@@ -199,7 +199,7 @@ export function FormsDocumentDetail() {
     searchParams.get('embed') === 'true'
   );
 
-  const { documents, categories, loading, error } = useDocuments();
+  const { documents, categories, loading, error } = useDocuments(true);
 
   // Format slug to readable title as instant fallback while documents are loading
   const fallbackTitle = pdfSlug

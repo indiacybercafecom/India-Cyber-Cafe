@@ -51,161 +51,120 @@ export function useDocuments(includeInactive = false) {
   const [error, setError] = useState<Error | null>(null);
 
   useEffect(() => {
-    if (!includeInactive) {
-      let isMounted = true;
+    let isMounted = true;
 
-      const loadPublicData = async () => {
+    const loadData = async () => {
+      try {
+        let documentsLoadedFromJson = false;
+        let categoriesLoadedFromJson = false;
+
         try {
-          console.log('[useDocuments] Attempting to load public PDFs from JSON...');
+          const [documentsResponse, categoriesResponse] = await Promise.all([
+            fetch('/data/documents.json', { cache: 'no-store' }),
+            fetch('/data/document-categories.json', { cache: 'no-store' }),
+          ]);
 
-          let documentsLoadedFromJson = false;
-          let categoriesLoadedFromJson = false;
-          let documentsSnapshotReady = false;
-          let categoriesSnapshotReady = false;
-
-          const finishInitialLoad = () => {
-            if (isMounted && documentsSnapshotReady && categoriesSnapshotReady) {
-              setLoading(false);
-              setError(null);
-            }
-          };
-
-          try {
-            const [documentsResponse, categoriesResponse] = await Promise.all([
-              fetch('/data/documents.json', { cache: 'no-store' }),
-              fetch('/data/document-categories.json', { cache: 'no-store' }),
-            ]);
-
-            if (documentsResponse.ok) {
-              const jsonData: DocumentsJsonData = await documentsResponse.json();
-              if (jsonData && Array.isArray(jsonData.documents)) {
-                const normalizedDocuments = jsonData.documents.filter((document) => document.active !== false);
-                if (isMounted) {
-                  setDocuments(normalizedDocuments);
-                  cacheManager.set('documents', normalizedDocuments);
-                  documentsLoadedFromJson = true;
-                }
-              }
-            }
-
-            if (categoriesResponse.ok) {
-              const jsonData: DocumentCategoriesJsonData = await categoriesResponse.json();
-              if (jsonData && Array.isArray(jsonData.categories)) {
-                if (isMounted) {
-                  setCategories(jsonData.categories);
-                  cacheManager.set('documentCategories', jsonData.categories);
-                  categoriesLoadedFromJson = true;
-                }
-              }
-            }
-
-          } catch (jsonError) {
-            console.warn('[useDocuments] JSON fetch failed, falling back to Firebase:', jsonError);
-          }
-
-          const lastSync = syncManager.getLastSync('documents');
-          const now = Date.now();
-          const SYNC_THRESHOLD = 5 * 60 * 1000;
-
-          if (documentsLoadedFromJson || categoriesLoadedFromJson || now - lastSync > SYNC_THRESHOLD) {
-            console.log('[useDocuments] Loading PDFs from Firebase fallback...');
-
-            const documentsRef = query(ref(rtdb, 'documents'), orderByChild('active'), equalTo(true));
-            const categoriesRef = ref(rtdb, 'documentCategories');
-
-            const documentsUnsubscribe = onValue(documentsRef, snapshot => {
-              const data = snapshot.val() || {};
-              const nextDocuments = Object.entries(data).map(([id, value]) => ({
-                id,
-                ...(value as Omit<FormDocument, 'id'>),
-              }));
+          if (documentsResponse.ok) {
+            const jsonData: DocumentsJsonData = await documentsResponse.json();
+            if (jsonData && Array.isArray(jsonData.documents)) {
+              const normalizedDocuments = includeInactive
+                ? jsonData.documents
+                : jsonData.documents.filter((document) => document.active !== false);
 
               if (isMounted) {
-                documentsSnapshotReady = true;
-                setDocuments(nextDocuments);
-                cacheManager.set('documents', nextDocuments);
-                syncManager.updateSync('documents');
-                finishInitialLoad();
-              }
-            }, err => {
-              console.error('[useDocuments] Firebase documents error:', err);
-              if (isMounted) {
-                setError(err);
+                setDocuments(normalizedDocuments);
+                cacheManager.set(includeInactive ? 'documents_all' : 'documents', normalizedDocuments);
+                documentsLoadedFromJson = true;
                 setLoading(false);
               }
-            });
+            }
+          }
 
-            const categoriesUnsubscribe = onValue(categoriesRef, snapshot => {
-              const data = snapshot.val() || {};
-              const nextCategories = Object.entries(data).map(([id, value]) => ({
-                id,
-                ...(value as Omit<DocumentCategory, 'id'>),
-              }));
-
+          if (categoriesResponse.ok) {
+            const jsonData: DocumentCategoriesJsonData = await categoriesResponse.json();
+            if (jsonData && Array.isArray(jsonData.categories)) {
               if (isMounted) {
-                categoriesSnapshotReady = true;
-                setCategories(nextCategories);
-                cacheManager.set('documentCategories', nextCategories);
-                syncManager.updateSync('documentCategories');
-                finishInitialLoad();
+                setCategories(jsonData.categories);
+                cacheManager.set('documentCategories', jsonData.categories);
+                categoriesLoadedFromJson = true;
               }
-            }, err => {
-              console.error('[useDocuments] Firebase categories error:', err);
-              if (isMounted) {
-                setError(err);
-                setLoading(false);
-              }
-            });
-
-            return () => {
-              documentsUnsubscribe();
-              categoriesUnsubscribe();
-            };
+            }
           }
-
-          const cachedDocuments = cacheManager.get('documents');
-          const cachedCategories = cacheManager.get('documentCategories');
-          if (cachedDocuments && cachedDocuments.length > 0 && isMounted) {
-            setDocuments(cachedDocuments);
-          }
-          if (cachedCategories && cachedCategories.length > 0 && isMounted) {
-            setCategories(cachedCategories);
-          }
-          if (isMounted) {
-            setLoading(false);
-          }
-        } catch (err) {
-          const error = err instanceof Error ? err : new Error(String(err));
-          if (isMounted) {
-            setError(error);
-            setLoading(false);
-          }
+        } catch (jsonError) {
+          console.warn('[useDocuments] JSON fetch failed, falling back to Firebase:', jsonError);
         }
-      };
 
-      loadPublicData();
+        const cachedDocs = cacheManager.get(includeInactive ? 'documents_all' : 'documents');
+        const cachedCats = cacheManager.get('documentCategories');
+        if (cachedDocs && cachedDocs.length > 0 && isMounted && !documentsLoadedFromJson) {
+          setDocuments(cachedDocs);
+          setLoading(false);
+        }
+        if (cachedCats && cachedCats.length > 0 && isMounted && !categoriesLoadedFromJson) {
+          setCategories(cachedCats);
+        }
 
-      return () => {
-        isMounted = false;
-      };
-    }
+        // Firebase real-time subscription
+        const documentsRef = includeInactive
+          ? ref(rtdb, 'documents')
+          : query(ref(rtdb, 'documents'), orderByChild('active'), equalTo(true));
+        const categoriesRef = ref(rtdb, 'documentCategories');
 
-    const documentsRef = includeInactive
-      ? ref(rtdb, 'documents')
-      : query(ref(rtdb, 'documents'), orderByChild('active'), equalTo(true));
-    const documentsUnsubscribe = onValue(documentsRef, snapshot => {
-      const data = snapshot.val() || {};
-      setDocuments(Object.entries(data).map(([id, value]) => ({ id, ...(value as Omit<FormDocument, 'id'>) })));
-      setLoading(false);
-      setError(null);
-    }, err => { setError(err); setLoading(false); });
-    const categoriesUnsubscribe = onValue(ref(rtdb, 'documentCategories'), snapshot => {
-      const data = snapshot.val() || {};
-      setCategories(Object.entries(data).map(([id, value]) => ({ id, ...(value as Omit<DocumentCategory, 'id'>) })));
-    }, err => setError(err));
-    void triggerJsonSync('documents');
-    void triggerJsonSync('documentCategories');
-    return () => { documentsUnsubscribe(); categoriesUnsubscribe(); };
+        const documentsUnsubscribe = onValue(documentsRef, snapshot => {
+          const data = snapshot.val() || {};
+          const nextDocuments = Object.entries(data).map(([id, value]) => ({
+            id,
+            ...(value as Omit<FormDocument, 'id'>),
+          }));
+
+          if (isMounted) {
+            setDocuments(nextDocuments);
+            cacheManager.set(includeInactive ? 'documents_all' : 'documents', nextDocuments);
+            setLoading(false);
+            setError(null);
+          }
+        }, err => {
+          console.error('[useDocuments] Firebase documents error:', err);
+          if (isMounted && !documentsLoadedFromJson) {
+            setError(err);
+            setLoading(false);
+          }
+        });
+
+        const categoriesUnsubscribe = onValue(categoriesRef, snapshot => {
+          const data = snapshot.val() || {};
+          const nextCategories = Object.entries(data).map(([id, value]) => ({
+            id,
+            ...(value as Omit<DocumentCategory, 'id'>),
+          }));
+
+          if (isMounted) {
+            setCategories(nextCategories);
+            cacheManager.set('documentCategories', nextCategories);
+          }
+        }, err => {
+          console.error('[useDocuments] Firebase categories error:', err);
+        });
+
+        return () => {
+          documentsUnsubscribe();
+          categoriesUnsubscribe();
+        };
+      } catch (err) {
+        const error = err instanceof Error ? err : new Error(String(err));
+        if (isMounted) {
+          setError(error);
+          setLoading(false);
+        }
+      }
+    };
+
+    let cleanupPromise = loadData();
+
+    return () => {
+      isMounted = false;
+      cleanupPromise.then(cleanup => cleanup && cleanup());
+    };
   }, [includeInactive]);
 
   const saveDocument = async (document: Omit<FormDocument, 'id'>, id?: string) => {
