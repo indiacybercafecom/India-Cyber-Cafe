@@ -62,19 +62,27 @@ export function PdfViewerModal({
     if (isEmbed) {
       try {
         if (typeof window !== 'undefined' && window.parent && window.parent !== window) {
-          window.parent.postMessage(
-            {
-              type: 'ICC_PDF_VIEWER_CLOSE',
-              action: 'close',
-              source: 'icc-pdf-viewer',
-              documentTitle: title,
-            },
-            '*'
-          );
+          const payload = {
+            type: 'icc-pdf-viewer-close',
+            action: 'close',
+            source: 'icc-pdf-viewer',
+            documentTitle: title,
+          };
+          window.parent.postMessage(payload, '*');
+          window.parent.postMessage({ ...payload, type: 'ICC_PDF_VIEWER_CLOSE' }, '*');
         }
       } catch (postError) {
         console.error('Failed to notify parent window of close action:', postError);
       }
+
+      try {
+        if (typeof window !== 'undefined' && window.frameElement) {
+          (window.frameElement as HTMLElement).style.display = 'none';
+        }
+      } catch {
+        // Cross-origin restriction
+      }
+
       setIsDismissed(true);
       onClose();
       return;
@@ -237,16 +245,7 @@ export function PdfViewerModal({
       : '#';
 
   if (isDismissed && isEmbed) {
-    return (
-      <div className="flex h-screen w-screen flex-col items-center justify-center bg-slate-100 p-6 text-center">
-        <div className="max-w-sm rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-base font-bold text-navy">Document Preview Closed</p>
-          <p className="mt-2 text-xs leading-relaxed text-slate-500">
-            The preview session has concluded. You may return to the host application or reopen the document.
-          </p>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   return (
