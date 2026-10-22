@@ -47,7 +47,7 @@ async function startServer() {
           "https://*.razorpay.com " +
           "https://india-cyber-cafe-default-rtdb.firebaseio.com " +
           "https://*.firebaseio.com; " +
-        "worker-src 'self' blob:; " +
+        "worker-src 'self' blob: data:; " +
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
         "font-src 'self' https://fonts.gstatic.com data:; " +
         "img-src 'self' data: blob: https://indiacybercafe.com https://cdn-icons-png.flaticon.com https://firebasestorage.googleapis.com https://api.dicebear.com https://www.google-analytics.com https://region1.google-analytics.com https://*.razorpay.com; " +
@@ -63,16 +63,20 @@ async function startServer() {
           "https://*.firebaseio.com " +
           "wss://*.firebaseio.com " +
           "https://firebasestorage.googleapis.com " +
+          "https://cdn.jsdelivr.net " +
           "https://www.google-analytics.com " +
           "https://region1.google-analytics.com " +
           "https://*.razorpay.com " +
           "wss://*.razorpay.com " +
-          "blob:; " +
+          "blob: " +
+          "data:; " +
         "frame-src 'self' " +
           "https://*.razorpay.com " +
           "https://*.firebaseapp.com " +
           "https://accounts.google.com " +
-          "https://*.firebaseio.com"
+          "https://*.firebaseio.com " +
+          "https://docs.google.com " +
+          "https://drive.google.com"
     );
     next();
   });
@@ -137,49 +141,132 @@ async function startServer() {
     if (!source) return res.status(400).json({ success: false, error: "PDF URL is required" });
 
     try {
-      // Support local documents served from public directory
-      if (source.startsWith('/')) {
-        const publicDir = path.join(APP_ROOT, 'public');
-        const safePath = path.resolve(publicDir, source.replace(/^\/+/, ''));
-        // Prevent directory traversal attacks
+      const publicDir = path.join(APP_ROOT, 'public');
+
+      // Helper to serve local file safely
+      const serveLocalPath = (relPath: string) => {
+        const safePath = path.resolve(publicDir, relPath.replace(/^\/+/, ''));
         if (!safePath.startsWith(publicDir)) {
           return res.status(403).json({ success: false, error: "Access denied" });
         }
-
         if (fs.existsSync(safePath) && fs.statSync(safePath).isFile()) {
           const bytes = fs.readFileSync(safePath);
           res.setHeader("Content-Type", "application/pdf");
           res.setHeader("Content-Length", bytes.length.toString());
-          res.setHeader("Cache-Control", "public, max-age=3600");
+          res.setHeader("Accept-Ranges", "bytes");
+          res.setHeader("Cache-Control", "public, max-age=86400, stale-while-revalidate=604800");
           return res.send(bytes);
-        } else {
-          return res.status(404).json({ success: false, error: "Local document not found" });
         }
+        return null;
+      };
+
+      // 1. Direct local file support: /documents/..., /data/..., etc.
+      if (source.startsWith('/')) {
+        const served = serveLocalPath(source);
+        if (served) return;
+        return res.status(404).json({ success: false, error: "Local document not found" });
       }
 
-      const sourceUrl = new URL(source);
-      if (sourceUrl.protocol !== "https:" && sourceUrl.hostname !== "localhost" && sourceUrl.hostname !== "127.0.0.1") {
+      // Check if URL points to self domain or localhost with local documents path
+      let parsedUrl: URL;
+      try {
+        parsedUrl = new URL(source);
+      } catch {
+        return res.status(400).json({ success: false, error: "Invalid PDF URL format" });
+      }
+
+      if (parsedUrl.pathname.startsWith('/documents/')) {
+        const served = serveLocalPath(parsedUrl.pathname);
+        if (served) return;
+      }
+
+      if (parsedUrl.protocol !== "https:" && parsedUrl.hostname !== "localhost" && parsedUrl.hostname !== "127.0.0.1") {
         return res.status(400).json({ success: false, error: "Only HTTPS PDF URLs are supported" });
       }
 
-      const response = await fetch(sourceUrl);
-      if (!response.ok) {
-        return res.status(response.status === 401 || response.status === 403 ? 403 : 502).json({
+      // 2. Google Drive Support with fallback and confirmation handling
+      const driveMatch = source.match(/drive\.google\.com\/(?:file\/d\/|open\?[^#]*\bid=|uc\?[^#]*\bid=)([a-zA-Z0-9_-]+)/i) || source.match(/[?&]id=([a-zA-Z0-9_-]+)/i);
+
+      let targetUrls: string[] = [source];
+      if (/drive\.google\.com/i.test(source) && driveMatch?.[1]) {
+        const fileId = driveMatch[1];
+        targetUrls = [
+          `https://drive.usercontent.google.com/download?id=${fileId}&export=download&authuser=0&confirm=t`,
+          `https://docs.google.com/uc?export=download&id=${fileId}&confirm=t`,
+          source
+        ];
+      }
+
+      let pdfBuffer: Buffer | null = null;
+      let lastStatus = 502;
+
+      for (const targetUrl of targetUrls) {
+        try {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 12000);
+
+          const response = await fetch(targetUrl, {
+            signal: controller.signal,
+            redirect: 'follow',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+              'Accept': 'application/pdf,application/octet-stream,*/*',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+          });
+          clearTimeout(timeout);
+
+          if (!response.ok) {
+            lastStatus = response.status === 401 || response.status === 403 ? 403 : 502;
+            continue;
+          }
+
+          const arrayBuf = await response.arrayBuffer();
+          const buf = Buffer.from(arrayBuf);
+
+          // Verify PDF magic bytes (%PDF -> 0x25 0x50 0x44 0x46)
+          if (buf.length >= 4 && buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46) {
+            pdfBuffer = buf;
+            break;
+          }
+
+          // If Google Drive returned an HTML warning/confirmation page, attempt to parse confirm token
+          const text = buf.toString('utf-8', 0, Math.min(buf.length, 5000));
+          const confirmMatch = text.match(/confirm=([0-9a-zA-Z_-]+)/) || text.match(/download_warning_([0-9a-zA-Z_-]+)/);
+          if (confirmMatch && driveMatch?.[1]) {
+            const confirmToken = confirmMatch[1];
+            const confirmUrl = `https://drive.usercontent.google.com/download?id=${driveMatch[1]}&export=download&confirm=${confirmToken}&authuser=0`;
+            const retryResp = await fetch(confirmUrl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+                'Accept': 'application/pdf,*/*',
+              },
+            });
+            if (retryResp.ok) {
+              const retryBuf = Buffer.from(await retryResp.arrayBuffer());
+              if (retryBuf.length >= 4 && retryBuf[0] === 0x25 && retryBuf[1] === 0x50 && retryBuf[2] === 0x44 && retryBuf[3] === 0x46) {
+                pdfBuffer = retryBuf;
+                break;
+              }
+            }
+          }
+        } catch (fetchErr: any) {
+          console.warn(`[pdf-proxy] Target attempt failed (${targetUrl}):`, fetchErr.message);
+        }
+      }
+
+      if (!pdfBuffer) {
+        return res.status(lastStatus).json({
           success: false,
-          error: "Unable to access PDF source",
+          error: "Unable to retrieve valid PDF document from source",
         });
       }
 
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType.toLowerCase().includes("text/html")) {
-        return res.status(403).json({ success: false, error: "PDF source is not publicly accessible" });
-      }
-
-      const bytes = Buffer.from(await response.arrayBuffer());
       res.setHeader("Content-Type", "application/pdf");
-      res.setHeader("Content-Length", bytes.length.toString());
-      res.setHeader("Cache-Control", "public, max-age=300");
-      return res.send(bytes);
+      res.setHeader("Content-Length", pdfBuffer.length.toString());
+      res.setHeader("Accept-Ranges", "bytes");
+      res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+      return res.send(pdfBuffer);
     } catch (error: any) {
       console.error("PDF proxy error:", error.message);
       return res.status(502).json({ success: false, error: "Unable to fetch PDF" });

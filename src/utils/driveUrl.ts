@@ -25,7 +25,7 @@ export function normalizePdfUrl(value: string): DriveUrls | null {
     };
   }
 
-  if (/^https:\/\//i.test(input)) {
+  if (input.startsWith('/') || /^https?:\/\//i.test(input)) {
     return { previewUrl: input, downloadUrl: input };
   }
 

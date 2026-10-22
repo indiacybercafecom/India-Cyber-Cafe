@@ -207,13 +207,16 @@ export function FormsDocumentDetail() {
     : 'Document Preview';
 
   const document = documents.find(
-    item => generateSlug(item.category) === categorySlug && generateSlug(item.name) === pdfSlug
+    item => (generateSlug(item.category) === categorySlug && generateSlug(item.name) === pdfSlug) ||
+            item.id === pdfSlug ||
+            generateSlug(item.name) === pdfSlug
   );
-  const category = categories.find(item => generateSlug(item.name) === categorySlug);
+  const category = categories.find(item => generateSlug(item.name) === categorySlug) ||
+    (document ? categories.find(item => item.name === document.category) : undefined);
 
   const normalizedUrls = document ? normalizePdfUrl(document.previewUrl || document.downloadUrl) : null;
-  const pdfSourceUrl = normalizedUrls?.downloadUrl || document?.downloadUrl || document?.previewUrl || '';
-  const pdfDownloadUrl = normalizedUrls?.downloadUrl || document?.downloadUrl || '';
+  const pdfSourceUrl = normalizedUrls?.downloadUrl || document?.previewUrl || document?.downloadUrl || '';
+  const pdfDownloadUrl = normalizedUrls?.downloadUrl || document?.downloadUrl || document?.previewUrl || '';
 
   const returnPath = searchParams.get('from');
   const closePath = returnPath?.startsWith('/forms-documents') ? returnPath : '/forms-documents';

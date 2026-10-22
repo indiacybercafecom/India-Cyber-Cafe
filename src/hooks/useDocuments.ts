@@ -112,38 +112,62 @@ export function useDocuments(includeInactive = false) {
 
         const documentsUnsubscribe = onValue(documentsRef, snapshot => {
           const data = snapshot.val() || {};
-          const nextDocuments = Object.entries(data).map(([id, value]) => ({
+          const remoteDocs = Object.entries(data).map(([id, value]) => ({
             id,
             ...(value as Omit<FormDocument, 'id'>),
           }));
 
           if (isMounted) {
-            setDocuments(nextDocuments);
-            cacheManager.set(includeInactive ? 'documents_all' : 'documents', nextDocuments);
+            setDocuments(prev => {
+              if (remoteDocs.length === 0) {
+                return prev;
+              }
+              const map = new Map<string, FormDocument>();
+              prev.forEach(d => map.set(d.id, d));
+              remoteDocs.forEach(d => map.set(d.id, d));
+              const merged = Array.from(map.values());
+              const filtered = includeInactive ? merged : merged.filter(d => d.active !== false);
+              cacheManager.set(includeInactive ? 'documents_all' : 'documents', filtered);
+              return filtered;
+            });
             setLoading(false);
             setError(null);
           }
         }, err => {
-          console.error('[useDocuments] Firebase documents error:', err);
+          console.warn('[useDocuments] Firebase documents subscription notice:', err);
           if (isMounted && !documentsLoadedFromJson) {
-            setError(err);
+            setDocuments(prev => {
+              if (prev.length === 0) {
+                setError(err);
+              }
+              return prev;
+            });
             setLoading(false);
           }
         });
 
         const categoriesUnsubscribe = onValue(categoriesRef, snapshot => {
           const data = snapshot.val() || {};
-          const nextCategories = Object.entries(data).map(([id, value]) => ({
+          const remoteCats = Object.entries(data).map(([id, value]) => ({
             id,
             ...(value as Omit<DocumentCategory, 'id'>),
           }));
 
           if (isMounted) {
-            setCategories(nextCategories);
-            cacheManager.set('documentCategories', nextCategories);
+            setCategories(prev => {
+              if (remoteCats.length === 0) {
+                return prev;
+              }
+              const map = new Map<string, DocumentCategory>();
+              prev.forEach(c => map.set(c.id, c));
+              remoteCats.forEach(c => map.set(c.id, c));
+              const merged = Array.from(map.values());
+              cacheManager.set('documentCategories', merged);
+              return merged;
+            });
           }
         }, err => {
-          console.error('[useDocuments] Firebase categories error:', err);
+          console.warn('[useDocuments] Firebase categories subscription notice:', err);
         });
 
         return () => {
