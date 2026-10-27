@@ -210,6 +210,11 @@ export function CallbackModal({ isOpen, onClose }: CallbackModalProps) {
                   </button>
                 </form>
 
+                {/* Short Form Privacy Notice */}
+                <p className="text-[11px] text-slate-500 text-center leading-normal mb-3">
+                  We use your mobile number solely to return your call and provide service assistance. Never shared or sold for marketing.
+                </p>
+
                 {/* Trust Line */}
                 <div className="text-center text-[11px] text-gray-500 mb-3">
                   <span className="text-green-600 font-semibold">✓ 100% Secure</span>

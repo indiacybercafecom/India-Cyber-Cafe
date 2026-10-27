@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview, FormDocument, DocumentCategory } from '../types';
+import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview, FormDocument, DocumentCategory, PrivacyRequest, PrivacyRequestStatus } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { SelectDropdown } from '../components/SelectDropdown';
 import { showToast } from '../components/Toast';
@@ -14,6 +14,7 @@ import { DocumentCategoryModal } from '../components/DocumentCategoryModal';
 import { OrderManageModal } from '../components/OrderManageModal';
 import { exportDataComprehensive } from '../services/exportService';
 import { generateSlug } from '../utils/slugGenerator';
+import { fetchAdminPrivacyRequests, updatePrivacyRequestStatus, PRIVACY_REQUEST_CATEGORIES } from '../services/privacyRequestService';
 const getEmbeddedTimestamp = (id: string | undefined): number | null => {
   const match = id?.match(/^ICC(?:\/STORE)?-(\d{2})(\d{2})(\d{4})-(\d{2})(\d{2})(\d{2})-/);
   if (!match) return null;
@@ -104,7 +105,7 @@ export function Admin({
 }: AdminProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  type AdminTab = 'apps' | 'users' | 'services' | 'payments' | 'products' | 'documents' | 'orders' | 'reviews';
+  type AdminTab = 'apps' | 'users' | 'services' | 'payments' | 'products' | 'documents' | 'orders' | 'reviews' | 'privacy';
   const tabFromPath = (pathname: string): AdminTab => {
     const section = pathname.split('/')[2];
     const sectionMap: Record<string, AdminTab> = {
@@ -116,6 +117,7 @@ export function Admin({
       orders: 'orders',
       reviews: 'reviews',
       payments: 'payments',
+      'privacy-requests': 'privacy',
     };
     return sectionMap[section] || 'apps';
   };
@@ -129,6 +131,7 @@ export function Admin({
       orders: 'orders',
       reviews: 'reviews',
       payments: 'payments',
+      privacy: 'privacy-requests',
     };
     return `/admin/${sectionMap[nextTab]}`;
   };
@@ -151,6 +154,16 @@ export function Admin({
   const sectionDropdownRef = useRef<HTMLDivElement>(null);
   const roleDropdownRef = useRef<HTMLDivElement>(null);
 
+  // Privacy requests state
+  const [privacyRequests, setPrivacyRequests] = useState<PrivacyRequest[]>([]);
+  const [privacyLoading, setPrivacyLoading] = useState(false);
+  const [privacyStatusFilter, setPrivacyStatusFilter] = useState<'all' | PrivacyRequestStatus>('all');
+  const [searchPrivacy, setSearchPrivacy] = useState('');
+  const [selectedPrivacyReq, setSelectedPrivacyReq] = useState<PrivacyRequest | null>(null);
+  const [adminNoteText, setAdminNoteText] = useState('');
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
+  const [updatingPrivacy, setUpdatingPrivacy] = useState(false);
+
   const sectionOptions = [
     { id: 'apps', label: 'Applications', icon: 'clipboard-list' },
     { id: 'orders', label: 'Orders', icon: 'package' },
@@ -160,6 +173,7 @@ export function Admin({
     { id: 'documents', label: 'PDFs', icon: 'file-text' },
     { id: 'reviews', label: 'Reviews', icon: 'star' },
     { id: 'payments', label: 'Payments', icon: 'credit-card' },
+    { id: 'privacy', label: 'Privacy & Grievances', icon: 'shield-check' },
   ] as const;
   const selectedSection = sectionOptions.find(option => option.id === tab) || sectionOptions[0];
 
@@ -469,6 +483,101 @@ export function Admin({
     .sort((a, b) => {
       return getRecordTimestamp(b?.id, b?.createdAt) - getRecordTimestamp(a?.id, a?.createdAt);
     });
+
+  // Privacy requests loading and filtering
+  useEffect(() => {
+    if (tab === 'privacy') {
+      setPrivacyLoading(true);
+      fetchAdminPrivacyRequests()
+        .then(reqs => {
+          setPrivacyRequests(reqs);
+          setPrivacyLoading(false);
+        })
+        .catch(err => {
+          console.error("Privacy load error:", err);
+          setPrivacyLoading(false);
+        });
+    }
+  }, [tab]);
+
+  const filteredPrivacyRequests = privacyRequests.filter(req => {
+    const matchesStatus = privacyStatusFilter === 'all' || req.status === privacyStatusFilter;
+    const matchesSearch =
+      !searchPrivacy ||
+      req.id.toLowerCase().includes(searchPrivacy.toLowerCase()) ||
+      req.name.toLowerCase().includes(searchPrivacy.toLowerCase()) ||
+      req.email.toLowerCase().includes(searchPrivacy.toLowerCase()) ||
+      req.category.toLowerCase().includes(searchPrivacy.toLowerCase()) ||
+      (req.referenceId && req.referenceId.toLowerCase().includes(searchPrivacy.toLowerCase()));
+    return matchesStatus && matchesSearch;
+  });
+
+  const handleOpenPrivacyModal = (req: PrivacyRequest) => {
+    setSelectedPrivacyReq(req);
+    setAdminNoteText(req.adminNotes || '');
+    setIsPrivacyModalOpen(true);
+  };
+
+  const handleSavePrivacyStatus = async (newStatus: PrivacyRequestStatus) => {
+    if (!selectedPrivacyReq) return;
+    setUpdatingPrivacy(true);
+    try {
+      const res = await updatePrivacyRequestStatus(selectedPrivacyReq.id, newStatus, adminNoteText);
+      if (res.success) {
+        showToast('Privacy request status updated.', 'success');
+        setPrivacyRequests(prev =>
+          prev.map(item =>
+            item.id === selectedPrivacyReq.id
+              ? {
+                  ...item,
+                  status: newStatus,
+                  adminNotes: adminNoteText,
+                  updatedAt: new Date().toISOString(),
+                  resolvedAt: newStatus === 'resolved' ? new Date().toISOString() : item.resolvedAt,
+                }
+              : item
+          )
+        );
+        setIsPrivacyModalOpen(false);
+        setSelectedPrivacyReq(null);
+      } else {
+        showToast(res.error || 'Failed to update request', 'error');
+      }
+    } catch (err: any) {
+      showToast(err.message || 'Error updating status', 'error');
+    } finally {
+      setUpdatingPrivacy(false);
+    }
+  };
+
+  const exportPrivacyRequests = () => {
+    try {
+      const dataToExport = filteredPrivacyRequests.map(r => ({
+        Ticket_ID: r.id,
+        Date: new Date(r.createdAt).toLocaleString('en-IN'),
+        Category: r.category,
+        Status: r.status,
+        Name: r.name,
+        Email: r.email,
+        Phone: r.phone || '',
+        Reference_ID: r.referenceId || '',
+        Description: r.description,
+        Resolution_Notes: r.adminNotes || '',
+        Resolved_Date: r.resolvedAt ? new Date(r.resolvedAt).toLocaleString('en-IN') : ''
+      }));
+      const blob = new Blob([JSON.stringify(dataToExport, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `privacy_grievance_requests_${new Date().toISOString().split('T')[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      showToast('Privacy requests exported successfully', 'success');
+    } catch (err: any) {
+      showToast(err.message || 'Export failed', 'error');
+    }
+  };
+
 
   return (
     <div className="space-y-8">
@@ -1480,13 +1589,296 @@ export function Admin({
                   Export All Data
                 </button>
                 <button
-                  onClick={() => { exportToExcel(tab); setIsExportModalOpen(false); }}
+                  onClick={() => {
+                    if (tab === 'privacy') {
+                      exportPrivacyRequests();
+                    } else {
+                      exportToExcel(tab);
+                    }
+                    setIsExportModalOpen(false);
+                  }}
                   className="bg-green-600 text-white px-4 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:bg-green-700 transition-all shadow-lg shadow-green-600/20"
                 >
                   <IconRenderer name="excel" className="w-5 h-5" />
                   Export {tab.charAt(0).toUpperCase() + tab.slice(1)}
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'privacy' && (
+        <div className="space-y-6">
+          {/* Stats Cards */}
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-1">
+              <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Inquiries</span>
+              <p className="text-2xl sm:text-3xl font-extrabold text-navy">{privacyRequests.length}</p>
+            </div>
+            <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-1">
+              <span className="text-xs font-semibold text-amber-600 uppercase tracking-wider">New / Submitted</span>
+              <p className="text-2xl sm:text-3xl font-extrabold text-amber-600">
+                {privacyRequests.filter(r => r.status === 'submitted').length}
+              </p>
+            </div>
+            <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-1">
+              <span className="text-xs font-semibold text-blue-600 uppercase tracking-wider">Under Investigation</span>
+              <p className="text-2xl sm:text-3xl font-extrabold text-blue-600">
+                {privacyRequests.filter(r => r.status === 'in_review').length}
+              </p>
+            </div>
+            <div className="bg-white rounded-2xl p-5 border border-slate-100 shadow-sm space-y-1">
+              <span className="text-xs font-semibold text-emerald-600 uppercase tracking-wider">Resolved</span>
+              <p className="text-2xl sm:text-3xl font-extrabold text-emerald-600">
+                {privacyRequests.filter(r => r.status === 'resolved').length}
+              </p>
+            </div>
+          </div>
+
+          {/* Search & Action Bar */}
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            <div className="flex flex-1 items-center gap-3">
+              <div className="relative flex-1 max-w-md">
+                <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search Ticket, Name, Email, Reference..."
+                  className="w-full pl-11 pr-4 py-3 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-xs sm:text-sm"
+                  value={searchPrivacy}
+                  onChange={e => setSearchPrivacy(e.target.value)}
+                />
+              </div>
+
+              <select
+                value={privacyStatusFilter}
+                onChange={e => setPrivacyStatusFilter(e.target.value as any)}
+                className="px-4 py-3 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm font-semibold text-slate-700 outline-none"
+              >
+                <option value="all">All Statuses</option>
+                <option value="submitted">Submitted</option>
+                <option value="in_review">In Review</option>
+                <option value="additional_info_required">Info Required</option>
+                <option value="resolved">Resolved</option>
+                <option value="rejected">Rejected</option>
+              </select>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={exportPrivacyRequests}
+                className="px-4 py-3 rounded-xl bg-slate-100 text-slate-700 hover:bg-slate-200 transition font-bold text-xs sm:text-sm flex items-center gap-2"
+              >
+                <IconRenderer name="file-export" className="w-4 h-4" />
+                Export Audit Log
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate('/privacy-request')}
+                className="px-4 py-3 rounded-xl bg-primary/10 text-primary hover:bg-primary/20 transition font-bold text-xs sm:text-sm flex items-center gap-2"
+              >
+                <IconRenderer name="shield-check" className="w-4 h-4" />
+                Public Form
+              </button>
+            </div>
+          </div>
+
+          {/* Table Container */}
+          <div className="bg-white rounded-3xl shadow-xl overflow-hidden border border-slate-100">
+            {privacyLoading ? (
+              <div className="p-12 text-center text-slate-400">Loading privacy and grievance records...</div>
+            ) : filteredPrivacyRequests.length === 0 ? (
+              <div className="p-12 text-center space-y-2">
+                <IconRenderer name="shield-check" className="h-10 w-10 text-slate-300 mx-auto" />
+                <h4 className="font-bold text-navy">No Privacy Requests Found</h4>
+                <p className="text-xs text-slate-500">
+                  {searchPrivacy || privacyStatusFilter !== 'all'
+                    ? 'Try clearing your search or status filter.'
+                    : 'Submissions from the public privacy & grievance form will appear here.'}
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-navy text-white text-xs sm:text-sm">
+                      <th className="p-4 sm:p-5 font-bold">Ticket ID</th>
+                      <th className="p-4 sm:p-5 font-bold">Date Logged</th>
+                      <th className="p-4 sm:p-5 font-bold">Category</th>
+                      <th className="p-4 sm:p-5 font-bold">Requester</th>
+                      <th className="p-4 sm:p-5 font-bold">Status</th>
+                      <th className="p-4 sm:p-5 font-bold text-right">Action</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs sm:text-sm">
+                    {filteredPrivacyRequests.map(item => (
+                      <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="p-4 sm:p-5 font-mono font-bold text-primary">
+                          {item.id}
+                        </td>
+                        <td className="p-4 sm:p-5 text-slate-500 whitespace-nowrap">
+                          {new Date(item.createdAt).toLocaleDateString('en-IN', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric'
+                          })}
+                        </td>
+                        <td className="p-4 sm:p-5 font-medium text-slate-700 capitalize">
+                          {PRIVACY_REQUEST_CATEGORIES.find(c => c.value === item.category)?.label || item.category}
+                        </td>
+                        <td className="p-4 sm:p-5">
+                          <div className="font-bold text-navy">{item.name}</div>
+                          <div className="text-xs text-slate-400">{item.email}</div>
+                          {item.phone && <div className="text-[11px] text-slate-400">{item.phone}</div>}
+                        </td>
+                        <td className="p-4 sm:p-5">
+                          <span
+                            className={`px-3 py-1 rounded-full text-xs font-bold capitalize whitespace-nowrap ${
+                              item.status === 'resolved'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : item.status === 'rejected'
+                                ? 'bg-red-100 text-red-800'
+                                : item.status === 'in_review'
+                                ? 'bg-blue-100 text-blue-800'
+                                : 'bg-amber-100 text-amber-800'
+                            }`}
+                          >
+                            {item.status.replace('_', ' ')}
+                          </span>
+                        </td>
+                        <td className="p-4 sm:p-5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenPrivacyModal(item)}
+                            className="px-3 py-1.5 rounded-lg bg-navy text-white hover:bg-navy-light text-xs font-semibold transition"
+                          >
+                            Manage
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Privacy Request Manage Modal */}
+      {isPrivacyModalOpen && selectedPrivacyReq && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[2000] flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
+            {/* Header */}
+            <div className="p-5 sm:p-6 border-b border-slate-100 flex items-start justify-between flex-shrink-0">
+              <div>
+                <span className="text-xs font-mono font-bold text-primary">{selectedPrivacyReq.id}</span>
+                <h3 className="text-xl font-bold text-navy mt-1">
+                  {PRIVACY_REQUEST_CATEGORIES.find(c => c.value === selectedPrivacyReq.category)?.label || selectedPrivacyReq.category}
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Logged on {new Date(selectedPrivacyReq.createdAt).toLocaleString('en-IN')}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => { setIsPrivacyModalOpen(false); setSelectedPrivacyReq(null); }}
+                className="p-2 hover:bg-slate-100 rounded-full transition text-slate-400 hover:text-slate-600"
+              >
+                <IconRenderer name="x" className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5 text-xs sm:text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 p-4 rounded-xl border border-slate-200">
+                <div>
+                  <span className="font-bold text-slate-400 uppercase text-[11px] block">Requester Name</span>
+                  <span className="font-semibold text-navy text-sm">{selectedPrivacyReq.name}</span>
+                </div>
+                <div>
+                  <span className="font-bold text-slate-400 uppercase text-[11px] block">Email</span>
+                  <a href={`mailto:${selectedPrivacyReq.email}`} className="text-primary font-medium hover:underline">
+                    {selectedPrivacyReq.email}
+                  </a>
+                </div>
+                {selectedPrivacyReq.phone && (
+                  <div>
+                    <span className="font-bold text-slate-400 uppercase text-[11px] block">Phone</span>
+                    <span>{selectedPrivacyReq.phone}</span>
+                  </div>
+                )}
+                {selectedPrivacyReq.referenceId && (
+                  <div>
+                    <span className="font-bold text-slate-400 uppercase text-[11px] block">Reference ID</span>
+                    <span className="font-mono">{selectedPrivacyReq.referenceId}</span>
+                  </div>
+                )}
+              </div>
+
+              <div>
+                <span className="font-bold text-slate-700 block mb-1 uppercase tracking-wider text-xs">
+                  User Submitted Description:
+                </span>
+                <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 text-slate-700 whitespace-pre-line leading-relaxed">
+                  {selectedPrivacyReq.description}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <label className="font-bold text-slate-700 block uppercase tracking-wider text-xs">
+                  Official Grievance Redressal / Communication Note:
+                </label>
+                <textarea
+                  rows={4}
+                  value={adminNoteText}
+                  onChange={e => setAdminNoteText(e.target.value)}
+                  placeholder="Record investigation findings, steps taken, or communication sent to the applicant..."
+                  className="input-field p-3 text-xs sm:text-sm leading-relaxed"
+                />
+              </div>
+
+              <div className="space-y-2">
+                <span className="font-bold text-slate-700 block uppercase tracking-wider text-xs">
+                  Update Request Status:
+                </span>
+                <div className="flex flex-wrap gap-2">
+                  {(['submitted', 'in_review', 'additional_info_required', 'resolved', 'rejected'] as PrivacyRequestStatus[]).map(statusKey => (
+                    <button
+                      key={statusKey}
+                      type="button"
+                      disabled={updatingPrivacy}
+                      onClick={() => handleSavePrivacyStatus(statusKey)}
+                      className={`px-3.5 py-2 rounded-xl text-xs font-bold capitalize transition border ${
+                        selectedPrivacyReq.status === statusKey
+                          ? 'bg-navy text-white border-navy shadow-sm'
+                          : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                      }`}
+                    >
+                      {statusKey.replace(/_/g, ' ')}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
+              <a
+                href={`mailto:${selectedPrivacyReq.email}?subject=[${selectedPrivacyReq.id}] Privacy Request Update - India Cyber Cafe`}
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-primary hover:underline"
+              >
+                <IconRenderer name="envelope" className="w-4 h-4" />
+                Email Applicant Directly
+              </a>
+              <button
+                type="button"
+                onClick={() => { setIsPrivacyModalOpen(false); setSelectedPrivacyReq(null); }}
+                className="px-5 py-2 rounded-xl bg-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-300 transition"
+              >
+                Close
+              </button>
             </div>
           </div>
         </div>

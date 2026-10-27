@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
 import { auth, rtdb } from '../firebase';
 import { IconRenderer } from '../components/Icons';
@@ -1191,19 +1191,32 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
               {uploading ? 'Uploading...' : submitting ? 'Processing...' : paymentMethod === 'cod' ? '🚚 Place COD Order' : '💳 Pay Now'}
             </button>
 
-            {/* Trust Badges */}
-            <div className="space-y-2 pt-4 border-t border-slate-200">
+            {/* Statutory Pre-Purchase Notice */}
+            <p className="text-[11px] text-slate-500 text-center leading-normal">
+              By placing this order, you agree to our{' '}
+              <Link to="/legal/terms" target="_blank" className="text-primary underline">Terms</Link>,{' '}
+              <Link to="/legal/privacy" target="_blank" className="text-primary underline">Privacy Policy</Link>, and{' '}
+              <Link to="/legal/refund" target="_blank" className="text-primary underline">Refund & Cancellation Policy</Link>.
+            </p>
+
+            {/* E-Commerce Disclosures & Trust Badges */}
+            <div className="space-y-2 pt-3 border-t border-slate-200">
               <div className="flex items-center gap-2 text-xs text-slate-600">
-                <IconRenderer name="shield-check" className="w-4 h-4 text-primary" />
-                <span>Secure Payment</span>
+                <IconRenderer name="shield-check" className="w-4 h-4 text-primary shrink-0" />
+                <span>PCI-DSS Compliant 256-bit Secure Payment</span>
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-600">
                 <span
                   aria-hidden="true"
-                  className="w-4 h-4 bg-primary"
+                  className="w-4 h-4 bg-primary shrink-0"
                   style={{ WebkitMaskImage: 'url(/icons/bi--rocket-takeoff.svg)', maskImage: 'url(/icons/bi--rocket-takeoff.svg)', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskPosition: 'center', maskPosition: 'center', WebkitMaskSize: 'contain', maskSize: 'contain' }}
                 />
-                <span>Fast Delivery</span>
+                <span>Pan-India Delivery (3–7 Business Days)</span>
+              </div>
+              <div className="pt-2 text-[10px] text-slate-400 border-t border-slate-100">
+                <p className="font-semibold text-slate-500">Seller / Service Provider:</p>
+                <p>India Cyber Cafe, Village Jobgarh, Bargawan, Singrauli, MP - 486886</p>
+                <p>Grievance Officer: icc@indiacybercafe.com</p>
               </div>
             </div>
           </div>

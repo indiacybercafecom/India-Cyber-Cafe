@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { Service, UserProfile, SubService, Application, PaymentGateway } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { SelectDropdown } from '../components/SelectDropdown';
@@ -36,6 +36,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [files, setFiles] = useState<Record<string, File[]>>({});
   const [loading, setLoading] = useState(false);
+  const [declarationChecked, setDeclarationChecked] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const paymentProcessingRef = useRef(false);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
@@ -153,6 +154,11 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
     if (loading || paymentProcessingRef.current) return;
     if (service.subservices.length > 0 && !selectedSubService) {
       showToast('Please select a sub-service', 'error');
+      return;
+    }
+
+    if (!declarationChecked) {
+      showToast('Please accept the privacy notice and declaration before proceeding.', 'error');
       return;
     }
 
@@ -662,6 +668,35 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
             <p className="text-[10px] sm:text-xs md:text-sm text-slate-500">No additional details required.</p>
           </div>
         )}
+
+        {/* Statutory Privacy Notice & Declaration */}
+        <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-5 space-y-3 mt-4">
+          <div className="flex items-start gap-2.5">
+            <span className="text-base text-primary">🛡️</span>
+            <div>
+              <h4 className="text-xs sm:text-sm font-bold text-navy">Data Privacy & Service Declaration</h4>
+              <p className="text-[11px] sm:text-xs text-slate-600 leading-relaxed mt-1">
+                We collect your submitted details and uploaded documents solely to prepare, verify, and submit your requested application to the relevant government or institutional portals on your behalf. We do not sell or monetize personal information.
+              </p>
+            </div>
+          </div>
+
+          <label className="flex items-start gap-3 cursor-pointer pt-2 border-t border-slate-200">
+            <input
+              type="checkbox"
+              checked={declarationChecked}
+              onChange={e => setDeclarationChecked(e.target.checked)}
+              className="mt-0.5 w-4 h-4 rounded text-primary focus:ring-primary/20 accent-primary shrink-0"
+              required
+            />
+            <span className="text-[11px] sm:text-xs text-slate-700 leading-normal">
+              I certify that all details and documents provided are authentic and truthful. I have read and agree to the{' '}
+              <Link to="/legal/terms" target="_blank" className="text-primary font-semibold underline">Terms of Service</Link>,{' '}
+              <Link to="/legal/privacy" target="_blank" className="text-primary font-semibold underline">Privacy Policy</Link>, and{' '}
+              <Link to="/legal/refund" target="_blank" className="text-primary font-semibold underline">Refund Policy</Link>. If the applicant is a minor (under 18), I confirm this application is submitted with parental/guardian authorization.
+            </span>
+          </label>
+        </div>
 
         <button 
           type="submit" 

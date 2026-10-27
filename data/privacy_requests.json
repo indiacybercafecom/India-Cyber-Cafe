@@ -1,0 +1,15 @@
+{
+  "PRV-838283-D0B02C": {
+    "id": "PRV-838283-D0B02C",
+    "category": "other",
+    "name": "Ramesh Sharma",
+    "email": "ramesh.sharma@example.com",
+    "phone": "9876543210",
+    "referenceId": "",
+    "description": "I am submitting a formal inquiry regarding my documents for scholarship verification under DPDP Act.",
+    "status": "in_review",
+    "createdAt": "2026-10-27T04:03:58.283Z",
+    "updatedAt": "2026-10-27T04:04:23.202Z",
+    "adminNotes": "Assigned to Grievance Officer for document audit."
+  }
+}

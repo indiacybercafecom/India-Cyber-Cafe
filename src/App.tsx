@@ -27,6 +27,7 @@ import { ConfirmationModal, LogoutChoiceModal } from './components/ConfirmationM
 import { auth } from './firebase';
 import { signOut } from 'firebase/auth';
 import { showToast } from './components/Toast';
+import { ConsentBanner } from './components/ConsentBanner';
 import { Service, Application, UserProfile } from './types';
 
 // Lazy load other pages
@@ -41,6 +42,7 @@ const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login }
 const Register = lazy(() => import('./pages/Register').then(m => ({ default: m.Register })));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword').then(m => ({ default: m.ForgotPassword })));
 const Legal = lazy(() => import('./pages/Legal').then(m => ({ default: m.Legal })));
+const PrivacyRequest = lazy(() => import('./pages/PrivacyRequest').then(m => ({ default: m.PrivacyRequestPage })));
 const Store = lazy(() => import('./pages/Store').then(m => ({ default: m.Store })));
 const StoreProduct = lazy(() => import('./pages/StoreProduct').then(m => ({ default: m.StoreProduct })));
 const StoreCheckout = lazy(() => import('./pages/StoreCheckout').then(m => ({ default: m.StoreCheckout })));
@@ -272,6 +274,8 @@ function AppContent() {
             <Route path="/legal/:type" element={<Legal />} />
             <Route path="/about" element={<Legal />} />
             <Route path="/contact" element={<Legal />} />
+            <Route path="/privacy-request" element={<PrivacyRequest />} />
+            <Route path="/privacy-request/track" element={<PrivacyRequest />} />
             <Route path="/payment-policy" element={<Navigate to="/legal/terms" />} />
             <Route path="/refund-policy" element={<Navigate to="/legal/refund" />} />
             <Route path="/pay" element={<Pay />} />
@@ -571,6 +575,7 @@ function AppContent() {
       )}
 
       <Footer />
+      <ConsentBanner />
 
       <ConfirmationModal
         isOpen={isLogoutConfirmOpen}

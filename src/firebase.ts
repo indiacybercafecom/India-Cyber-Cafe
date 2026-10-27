@@ -1,8 +1,9 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getStorage } from "firebase/storage";
-import { getAnalytics } from "firebase/analytics";
+import { getAnalytics, setAnalyticsCollectionEnabled, Analytics } from "firebase/analytics";
 import { getDatabase } from "firebase/database";
+import { consentService } from "./services/consentService";
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAMTND9rIAw-76Oey3c7c43-TW2t6mxEfw",
@@ -15,8 +16,66 @@ const firebaseConfig = {
   databaseURL: "https://india-cyber-cafe-default-rtdb.firebaseio.com"
 };
 
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 export const auth = getAuth(app);
 export const rtdb = getDatabase(app);
 export const storage = getStorage(app);
-export const analytics = typeof window !== 'undefined' ? getAnalytics(app) : null;
+
+let analyticsInstance: Analytics | null = null;
+
+export function getAppAnalytics(): Analytics | null {
+  if (typeof window === 'undefined') return null;
+
+  const isConsented = consentService.isAnalyticsConsented();
+
+  if (isConsented) {
+    if (!analyticsInstance) {
+      try {
+        analyticsInstance = getAnalytics(app);
+        setAnalyticsCollectionEnabled(analyticsInstance, true);
+      } catch (err) {
+        console.warn('[Analytics] Failed to initialize Firebase Analytics:', err);
+      }
+    } else {
+      try {
+        setAnalyticsCollectionEnabled(analyticsInstance, true);
+      } catch {
+        // Ignore
+      }
+    }
+    return analyticsInstance;
+  } else {
+    if (analyticsInstance) {
+      try {
+        setAnalyticsCollectionEnabled(analyticsInstance, false);
+      } catch {
+        // Ignore
+      }
+    }
+    return null;
+  }
+}
+
+// React to consent changes dynamically
+if (typeof window !== 'undefined') {
+  consentService.subscribe((prefs) => {
+    if (prefs.analytics) {
+      getAppAnalytics();
+    } else if (analyticsInstance) {
+      try {
+        setAnalyticsCollectionEnabled(analyticsInstance, false);
+      } catch {
+        // Ignore
+      }
+    }
+  });
+
+  // Initialize on load only if already consented
+  if (consentService.isAnalyticsConsented()) {
+    getAppAnalytics();
+  }
+}
+
+export const analytics = typeof window !== 'undefined' && consentService.isAnalyticsConsented()
+  ? getAppAnalytics()
+  : null;

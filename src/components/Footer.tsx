@@ -1,7 +1,11 @@
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { IconRenderer } from './Icons';
+import { ConsentPreferencesModal } from './ConsentPreferencesModal';
 
 export function Footer() {
+  const [isPreferencesOpen, setIsPreferencesOpen] = useState(false);
+
   return (
     <footer className="bg-linear-to-b from-navy to-black text-white pt-16 pb-8 px-[5%]">
       <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-4 gap-12 mb-12">
@@ -37,9 +41,19 @@ export function Footer() {
             <li><Link to="/legal/terms" className="hover:text-primary transition-colors">Terms & Conditions</Link></li>
             <li><Link to="/legal/privacy" className="hover:text-primary transition-colors">Privacy Policy</Link></li>
             <li><Link to="/legal/refund" className="hover:text-primary transition-colors">Refund Policy</Link></li>
+            <li><Link to="/privacy-request" className="hover:text-primary transition-colors">Grievance & Privacy Requests</Link></li>
             <li><Link to="/legal/disclaimer" className="hover:text-primary transition-colors">Disclaimer</Link></li>
             <li><Link to="/legal/about" className="hover:text-primary transition-colors">About Us</Link></li>
             <li><Link to="/legal/contact" className="hover:text-primary transition-colors">Contact Us</Link></li>
+            <li>
+              <button
+                type="button"
+                onClick={() => setIsPreferencesOpen(true)}
+                className="text-left hover:text-primary transition-colors cursor-pointer"
+              >
+                Cookie & Privacy Choices
+              </button>
+            </li>
           </ul>
         </div>
 
@@ -75,6 +89,10 @@ export function Footer() {
           © {new Date().getFullYear()} India Cyber Cafe. All rights reserved. Designed for speed and security.
         </p>
       </div>
+      <ConsentPreferencesModal
+        isOpen={isPreferencesOpen}
+        onClose={() => setIsPreferencesOpen(false)}
+      />
     </footer>
   );
 }

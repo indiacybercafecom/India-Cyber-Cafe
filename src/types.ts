@@ -199,3 +199,43 @@ export interface Order {
   createdAt: string;
   updatedAt: string;
 }
+
+// Privacy & Consent Management
+export interface ConsentPreferences {
+  essential: true; // Always true
+  analytics: boolean; // Firebase & Google Analytics
+  marketing: boolean; // Optional marketing communications
+  timestamp: string;
+  version: string;
+}
+
+export type PrivacyRequestCategory =
+  | 'privacy_question'
+  | 'data_access'
+  | 'data_correction'
+  | 'data_deletion'
+  | 'consent_withdrawal'
+  | 'consumer_grievance'
+  | 'other';
+
+export type PrivacyRequestStatus =
+  | 'submitted'
+  | 'in_review'
+  | 'additional_info_required'
+  | 'resolved'
+  | 'rejected';
+
+export interface PrivacyRequest {
+  id: string;
+  category: PrivacyRequestCategory;
+  name: string;
+  email: string;
+  phone?: string;
+  referenceId?: string;
+  description: string;
+  status: PrivacyRequestStatus;
+  createdAt: string;
+  updatedAt: string;
+  adminNotes?: string;
+  resolvedAt?: string;
+}

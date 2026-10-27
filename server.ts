@@ -31,6 +31,10 @@ async function startServer() {
   app.use(express.json());
 
   app.use((req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
     res.setHeader(
       "Content-Security-Policy",
       "default-src 'self'; " +
@@ -842,6 +846,239 @@ async function startServer() {
     const baseUrl = process.env.APP_URL || `${proto}://${host}`;
     const meta = getMetadataForUrl(targetPath, baseUrl, APP_ROOT);
     res.json({ success: true, metadata: meta });
+  });
+
+  // --- Privacy & Grievance Request Management ---
+  const RTDB_URL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
+  const PRIVACY_STORE_PATH = path.join(APP_ROOT, 'data/privacy_requests.json');
+
+  const readLocalPrivacyRequests = (): Record<string, any> => {
+    try {
+      if (fs.existsSync(PRIVACY_STORE_PATH)) {
+        const raw = fs.readFileSync(PRIVACY_STORE_PATH, 'utf-8');
+        return JSON.parse(raw);
+      }
+    } catch (err) {
+      console.warn("Could not read local privacy store:", err);
+    }
+    return {};
+  };
+
+  const saveLocalPrivacyRequest = (record: any) => {
+    try {
+      const dataDir = path.dirname(PRIVACY_STORE_PATH);
+      if (!fs.existsSync(dataDir)) {
+        fs.mkdirSync(dataDir, { recursive: true });
+      }
+      const existing = readLocalPrivacyRequests();
+      existing[record.id] = record;
+      fs.writeFileSync(PRIVACY_STORE_PATH, JSON.stringify(existing, null, 2), 'utf-8');
+    } catch (err) {
+      console.error("Failed to write to local privacy store:", err);
+    }
+  };
+
+  // Public submission of privacy request or grievance
+  app.post("/api/privacy-requests", async (req, res) => {
+    try {
+      const { category, name, email, phone, referenceId, description } = req.body;
+
+      if (!name || typeof name !== 'string' || !name.trim()) {
+        return res.status(400).json({ success: false, error: "Name is required" });
+      }
+      if (!email || typeof email !== 'string' || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+        return res.status(400).json({ success: false, error: "Valid email address is required" });
+      }
+      if (!description || typeof description !== 'string' || description.trim().length < 10) {
+        return res.status(400).json({ success: false, error: "Please provide a detailed description (minimum 10 characters)" });
+      }
+
+      const validCategories = [
+        'privacy_question',
+        'data_access',
+        'data_correction',
+        'data_deletion',
+        'consent_withdrawal',
+        'consumer_grievance',
+        'other'
+      ];
+      const selectedCategory = validCategories.includes(category) ? category : 'other';
+
+      const randomSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
+      const ticketId = `PRV-${Date.now().toString().slice(-6)}-${randomSuffix}`;
+      const now = new Date().toISOString();
+
+      const privacyRecord = {
+        id: ticketId,
+        category: selectedCategory,
+        name: name.trim().slice(0, 100),
+        email: email.trim().toLowerCase().slice(0, 120),
+        phone: typeof phone === 'string' ? phone.trim().slice(0, 20) : '',
+        referenceId: typeof referenceId === 'string' ? referenceId.trim().slice(0, 60) : '',
+        description: description.trim().slice(0, 4000),
+        status: 'submitted',
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      // Always persist to local secure data store
+      saveLocalPrivacyRequest(privacyRecord);
+
+      // Attempt to save to Firebase RTDB if possible
+      try {
+        await fetch(`${RTDB_URL}/privacy_requests/${ticketId}.json`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(privacyRecord)
+        });
+      } catch (dbErr) {
+        console.warn("RTDB write notice:", dbErr);
+      }
+
+      // Send confirmation email to user & admin if transporter is configured
+      try {
+        if (process.env.SMTP_USER && process.env.SMTP_PASS) {
+          await transporter.sendMail({
+            from: `"India Cyber Cafe Grievance Cell" <${process.env.SMTP_USER}>`,
+            to: privacyRecord.email,
+            subject: `[${ticketId}] Acknowledgment: Privacy & Grievance Request`,
+            text: `Dear ${privacyRecord.name},\n\nWe have received your privacy request (Ticket ID: ${ticketId}).\nCategory: ${selectedCategory}\n\nOur Grievance Redressal Officer will review your request and acknowledge within 48 hours, with resolution within 15 to 30 days as per Consumer Protection (E-Commerce) Rules and DPDP Act provisions.\n\nYou can track your request at: https://b.indiacybercafe.com/privacy-request/track\n\nRegards,\nGrievance Officer\nIndia Cyber Cafe\nSingrauli, MP, India\nContact: icc@indiacybercafe.com | +91 9203251821`,
+          }).catch(err => console.warn("Privacy ack email error:", err.message));
+
+          await transporter.sendMail({
+            from: `"India Cyber Cafe Portal" <${process.env.SMTP_USER}>`,
+            to: "icc@indiacybercafe.com",
+            subject: `🔔 New Privacy Request [${ticketId}] - ${privacyRecord.name}`,
+            text: `A new privacy request has been submitted:\nTicket ID: ${ticketId}\nCategory: ${selectedCategory}\nName: ${privacyRecord.name}\nEmail: ${privacyRecord.email}\nPhone: ${privacyRecord.phone || 'N/A'}\nReference: ${privacyRecord.referenceId || 'N/A'}\n\nDescription:\n${privacyRecord.description}\n\nReview in Admin Portal: https://b.indiacybercafe.com/admin/privacy-requests`,
+          }).catch(err => console.warn("Admin privacy alert email error:", err.message));
+        }
+      } catch (mailErr) {
+        console.warn("Mail dispatch failed:", mailErr);
+      }
+
+      return res.json({
+        success: true,
+        ticketId,
+        message: "Your request has been recorded. An acknowledgment has been generated.",
+        request: privacyRecord
+      });
+    } catch (error: any) {
+      console.error("Privacy request submission error:", error);
+      res.status(500).json({ success: false, error: "Failed to process privacy request" });
+    }
+  });
+
+  // Track privacy request by ticket ID and email
+  app.post("/api/privacy-requests/track", async (req, res) => {
+    try {
+      const { ticketId, email } = req.body;
+      if (!ticketId || typeof ticketId !== 'string') {
+        return res.status(400).json({ success: false, error: "Ticket ID is required" });
+      }
+      if (!email || typeof email !== 'string') {
+        return res.status(400).json({ success: false, error: "Verification email is required" });
+      }
+
+      const cleanTicket = ticketId.trim();
+      const cleanEmail = email.trim().toLowerCase();
+
+      // Check local store first
+      const localStore = readLocalPrivacyRequests();
+      let record = localStore[cleanTicket];
+
+      // If not in local store, attempt RTDB fetch
+      if (!record) {
+        try {
+          const rtdbResp = await fetch(`${RTDB_URL}/privacy_requests/${encodeURIComponent(cleanTicket)}.json`);
+          if (rtdbResp.ok) {
+            record = await rtdbResp.json();
+          }
+        } catch (rtdbErr) {
+          console.warn("RTDB fetch notice:", rtdbErr);
+        }
+      }
+
+      if (!record || !record.id) {
+        return res.status(404).json({ success: false, error: "No privacy request found matching this Ticket ID" });
+      }
+
+      if (record.email?.toLowerCase().trim() !== cleanEmail) {
+        return res.status(403).json({ success: false, error: "Email address does not match the record on file" });
+      }
+
+      return res.json({ success: true, request: record });
+    } catch (error: any) {
+      console.error("Privacy tracking error:", error);
+      res.status(500).json({ success: false, error: "Failed to retrieve status" });
+    }
+  });
+
+  // Admin: List all privacy requests
+  app.get("/api/admin/privacy-requests", async (req, res) => {
+    try {
+      const localStore = readLocalPrivacyRequests();
+      const combined: Record<string, any> = { ...localStore };
+
+      try {
+        const rtdbResp = await fetch(`${RTDB_URL}/privacy_requests.json`);
+        if (rtdbResp.ok) {
+          const data = await rtdbResp.json();
+          if (data && typeof data === 'object') {
+            Object.assign(combined, data);
+          }
+        }
+      } catch (rtdbErr) {
+        console.warn("RTDB list notice:", rtdbErr);
+      }
+
+      const requests = Object.values(combined).sort((a: any, b: any) => 
+        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
+      );
+      return res.json({ success: true, requests });
+    } catch (error: any) {
+      console.error("Admin privacy fetch error:", error);
+      res.status(500).json({ success: false, error: "Failed to load privacy requests" });
+    }
+  });
+
+  // Admin: Update privacy request status
+  app.patch("/api/admin/privacy-requests/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { status, adminNotes } = req.body;
+
+      const now = new Date().toISOString();
+      const localStore = readLocalPrivacyRequests();
+      if (localStore[id]) {
+        if (status) localStore[id].status = status;
+        if (adminNotes !== undefined) localStore[id].adminNotes = adminNotes;
+        if (status === 'resolved') localStore[id].resolvedAt = now;
+        localStore[id].updatedAt = now;
+        saveLocalPrivacyRequest(localStore[id]);
+      }
+
+      const updates: Record<string, any> = {
+        updatedAt: now,
+      };
+      if (status) updates.status = status;
+      if (adminNotes !== undefined) updates.adminNotes = adminNotes;
+      if (status === 'resolved') updates.resolvedAt = now;
+
+      try {
+        await fetch(`${RTDB_URL}/privacy_requests/${encodeURIComponent(id)}.json`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updates)
+        });
+      } catch (rtdbErr) {
+        console.warn("RTDB patch notice:", rtdbErr);
+      }
+
+      return res.json({ success: true, message: "Request updated" });
+    } catch (error: any) {
+      console.error("Admin privacy update error:", error);
+      res.status(500).json({ success: false, error: "Failed to update request" });
+    }
   });
 
   app.use('/api', (req, res) => {
