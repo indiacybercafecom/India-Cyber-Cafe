@@ -1,23 +1,12 @@
-import { useEffect, useState } from 'react';
-import { equalTo, onValue, orderByChild, push, query, ref, remove, set, update } from 'firebase/database';
+import { useEffect, useState, useRef } from 'react';
+import { onValue, push, ref, remove, set, update } from 'firebase/database';
 import { auth, rtdb } from '../firebase';
 import { DocumentCategory, FormDocument } from '../types';
 import { cacheManager } from '../utils/cacheManager';
 import { generateSlug } from '../utils/slugGenerator';
 import { normalizePdfUrl } from '../utils/driveUrl';
-import { syncManager } from '../utils/syncManager';
-
-interface DocumentsJsonData {
-  version: number;
-  generatedAt: string;
-  documents: FormDocument[];
-}
-
-interface DocumentCategoriesJsonData {
-  version: number;
-  generatedAt: string;
-  categories: DocumentCategory[];
-}
+import { deduplicateDocuments, deduplicateCategories } from '../utils/documentDeduplication';
+import { checkAndInvalidateFormsCache, FORMS_CACHE_VERSION } from '../utils/cacheVersionManager';
 
 export function sanitizeFirebasePayload<T>(payload: T): T {
   if (payload === undefined || payload === null) return undefined as T;
@@ -50,144 +39,174 @@ export function useDocuments(includeInactive = false) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<Error | null>(null);
 
+  // Track if authoritative Firebase snapshots have already arrived
+  const firebaseDocsReceivedRef = useRef(false);
+  const firebaseCatsReceivedRef = useRef(false);
+
   useEffect(() => {
     let isMounted = true;
 
-    const loadData = async () => {
+    // Step 1: Detect version bump and invalidate stale Forms/PDF cache if needed
+    checkAndInvalidateFormsCache();
+
+    // Step 2: Immediate local cache inspection for fast rendering while live sync connects
+    const cacheKey = includeInactive ? 'documents_all' : 'documents';
+    const cachedDocs = cacheManager.get(cacheKey);
+    const cachedCats = cacheManager.get('documentCategories');
+
+    if (Array.isArray(cachedDocs) && cachedDocs.length > 0) {
+      setDocuments(deduplicateDocuments(cachedDocs));
+      setLoading(false);
+    }
+    if (Array.isArray(cachedCats) && cachedCats.length > 0) {
+      setCategories(deduplicateCategories(cachedCats));
+    }
+
+    // Step 3: Fetch fresh snapshot from server API (with cache buster and versioning)
+    const loadApiData = async () => {
       try {
-        let documentsLoadedFromJson = false;
-        let categoriesLoadedFromJson = false;
+        const queryParams = `includeInactive=${includeInactive}&v=${FORMS_CACHE_VERSION}&_t=${Date.now()}`;
+        const [docsResp, catsResp] = await Promise.all([
+          fetch(`/api/documents?${queryParams}`, { cache: 'no-store' })
+            .catch(() => fetch(`/data/documents.json?_t=${Date.now()}`, { cache: 'no-store' })),
+          fetch(`/api/document-categories?v=${FORMS_CACHE_VERSION}&_t=${Date.now()}`, { cache: 'no-store' })
+            .catch(() => fetch(`/data/document-categories.json?_t=${Date.now()}`, { cache: 'no-store' })),
+        ]);
 
-        try {
-          const [documentsResponse, categoriesResponse] = await Promise.all([
-            fetch('/data/documents.json', { cache: 'no-store' }),
-            fetch('/data/document-categories.json', { cache: 'no-store' }),
-          ]);
+        if (docsResp && docsResp.ok && isMounted) {
+          // If a Firebase real-time snapshot has already arrived, it takes strict precedence
+          if (!firebaseDocsReceivedRef.current) {
+            const data = await docsResp.json();
+            const rawDocs: FormDocument[] = Array.isArray(data.documents)
+              ? data.documents
+              : Array.isArray(data)
+                ? data
+                : [];
+            const deduplicated = deduplicateDocuments(rawDocs);
+            const filtered = includeInactive ? deduplicated : deduplicated.filter(d => d.active !== false);
 
-          if (documentsResponse.ok) {
-            const jsonData: DocumentsJsonData = await documentsResponse.json();
-            if (jsonData && Array.isArray(jsonData.documents)) {
-              const normalizedDocuments = includeInactive
-                ? jsonData.documents
-                : jsonData.documents.filter((document) => document.active !== false);
-
-              if (isMounted) {
-                setDocuments(normalizedDocuments);
-                cacheManager.set(includeInactive ? 'documents_all' : 'documents', normalizedDocuments);
-                documentsLoadedFromJson = true;
-                setLoading(false);
-              }
+            if (!firebaseDocsReceivedRef.current) {
+              setDocuments(filtered);
+              cacheManager.set(cacheKey, filtered);
+              setLoading(false);
             }
           }
+        }
 
-          if (categoriesResponse.ok) {
-            const jsonData: DocumentCategoriesJsonData = await categoriesResponse.json();
-            if (jsonData && Array.isArray(jsonData.categories)) {
-              if (isMounted) {
-                setCategories(jsonData.categories);
-                cacheManager.set('documentCategories', jsonData.categories);
-                categoriesLoadedFromJson = true;
-              }
+        if (catsResp && catsResp.ok && isMounted) {
+          if (!firebaseCatsReceivedRef.current) {
+            const data = await catsResp.json();
+            const rawCats: DocumentCategory[] = Array.isArray(data.categories)
+              ? data.categories
+              : Array.isArray(data)
+                ? data
+                : [];
+            const deduplicatedCats = deduplicateCategories(rawCats);
+            if (!firebaseCatsReceivedRef.current) {
+              setCategories(deduplicatedCats);
+              cacheManager.set('documentCategories', deduplicatedCats);
             }
           }
-        } catch (jsonError) {
-          console.warn('[useDocuments] JSON fetch failed, falling back to Firebase:', jsonError);
         }
-
-        const cachedDocs = cacheManager.get(includeInactive ? 'documents_all' : 'documents');
-        const cachedCats = cacheManager.get('documentCategories');
-        if (cachedDocs && cachedDocs.length > 0 && isMounted && !documentsLoadedFromJson) {
-          setDocuments(cachedDocs);
-          setLoading(false);
-        }
-        if (cachedCats && cachedCats.length > 0 && isMounted && !categoriesLoadedFromJson) {
-          setCategories(cachedCats);
-        }
-
-        // Firebase real-time subscription
-        const documentsRef = includeInactive
-          ? ref(rtdb, 'documents')
-          : query(ref(rtdb, 'documents'), orderByChild('active'), equalTo(true));
-        const categoriesRef = ref(rtdb, 'documentCategories');
-
-        const documentsUnsubscribe = onValue(documentsRef, snapshot => {
-          const data = snapshot.val() || {};
-          const remoteDocs = Object.entries(data).map(([id, value]) => ({
-            id,
-            ...(value as Omit<FormDocument, 'id'>),
-          }));
-
-          if (isMounted) {
-            setDocuments(prev => {
-              if (remoteDocs.length === 0) {
-                return prev;
-              }
-              const map = new Map<string, FormDocument>();
-              prev.forEach(d => map.set(d.id, d));
-              remoteDocs.forEach(d => map.set(d.id, d));
-              const merged = Array.from(map.values());
-              const filtered = includeInactive ? merged : merged.filter(d => d.active !== false);
-              cacheManager.set(includeInactive ? 'documents_all' : 'documents', filtered);
-              return filtered;
-            });
-            setLoading(false);
-            setError(null);
-          }
-        }, err => {
-          console.warn('[useDocuments] Firebase documents subscription notice:', err);
-          if (isMounted && !documentsLoadedFromJson) {
-            setDocuments(prev => {
-              if (prev.length === 0) {
-                setError(err);
-              }
-              return prev;
-            });
-            setLoading(false);
-          }
-        });
-
-        const categoriesUnsubscribe = onValue(categoriesRef, snapshot => {
-          const data = snapshot.val() || {};
-          const remoteCats = Object.entries(data).map(([id, value]) => ({
-            id,
-            ...(value as Omit<DocumentCategory, 'id'>),
-          }));
-
-          if (isMounted) {
-            setCategories(prev => {
-              if (remoteCats.length === 0) {
-                return prev;
-              }
-              const map = new Map<string, DocumentCategory>();
-              prev.forEach(c => map.set(c.id, c));
-              remoteCats.forEach(c => map.set(c.id, c));
-              const merged = Array.from(map.values());
-              cacheManager.set('documentCategories', merged);
-              return merged;
-            });
-          }
-        }, err => {
-          console.warn('[useDocuments] Firebase categories subscription notice:', err);
-        });
-
-        return () => {
-          documentsUnsubscribe();
-          categoriesUnsubscribe();
-        };
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        if (isMounted) {
-          setError(error);
+        console.warn('[useDocuments] API fetch notice:', err);
+      } finally {
+        if (isMounted && !firebaseDocsReceivedRef.current && !cachedDocs) {
           setLoading(false);
         }
       }
     };
 
-    let cleanupPromise = loadData();
+    loadApiData();
+
+    // Step 4: Real-time Firebase RTDB subscription (Firebase is the single source of truth!)
+    const documentsRef = ref(rtdb, 'documents');
+    const categoriesRef = ref(rtdb, 'documentCategories');
+
+    const documentsUnsubscribe = onValue(
+      documentsRef,
+      snapshot => {
+        firebaseDocsReceivedRef.current = true;
+        const data = snapshot.val();
+        let remoteDocs: FormDocument[] = [];
+
+        if (data && typeof data === 'object') {
+          remoteDocs = Object.entries(data).map(([id, value]) => ({
+            id,
+            ...(value as Omit<FormDocument, 'id'>),
+          }));
+        }
+
+        if (isMounted) {
+          // Firebase snapshot COMPLETELY replaces the entire collection.
+          // NEVER merge old local records with new Firebase data.
+          const deduplicated = deduplicateDocuments(remoteDocs);
+          const filtered = includeInactive
+            ? deduplicated
+            : deduplicated.filter(d => d.active !== false);
+
+          setDocuments(filtered);
+          setLoading(false);
+          setError(null);
+          cacheManager.set(cacheKey, filtered);
+
+          // Mirror authoritative Firebase state to server store
+          fetch('/api/documents/sync-bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ documents: deduplicated }),
+          }).catch(() => {});
+        }
+      },
+      err => {
+        console.warn('[useDocuments] Firebase documents subscription notice:', err);
+        if (isMounted) {
+          // If Firebase is unavailable, report error but do not wipe existing valid UI state
+          if (!documents.length && !cachedDocs) {
+            setError(err instanceof Error ? err : new Error(String(err)));
+          }
+          setLoading(false);
+        }
+      }
+    );
+
+    const categoriesUnsubscribe = onValue(
+      categoriesRef,
+      snapshot => {
+        firebaseCatsReceivedRef.current = true;
+        const data = snapshot.val();
+        let remoteCats: DocumentCategory[] = [];
+
+        if (data && typeof data === 'object') {
+          remoteCats = Object.entries(data).map(([id, value]) => ({
+            id,
+            ...(value as Omit<DocumentCategory, 'id'>),
+          }));
+        }
+
+        if (isMounted) {
+          // Firebase snapshot completely replaces the categories collection.
+          const deduplicatedCats = deduplicateCategories(remoteCats);
+          setCategories(deduplicatedCats);
+          cacheManager.set('documentCategories', deduplicatedCats);
+
+          // Mirror authoritative categories to server store
+          fetch('/api/document-categories/sync-bulk', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ categories: deduplicatedCats }),
+          }).catch(() => {});
+        }
+      },
+      err => {
+        console.warn('[useDocuments] Firebase categories subscription notice:', err);
+      }
+    );
 
     return () => {
       isMounted = false;
-      cleanupPromise.then(cleanup => cleanup && cleanup());
+      documentsUnsubscribe();
+      categoriesUnsubscribe();
     };
   }, [includeInactive]);
 
@@ -205,62 +224,113 @@ export function useDocuments(includeInactive = false) {
       updatedAt: new Date().toISOString(),
     });
 
-    if (documentId) {
-      await update(ref(rtdb, `documents/${documentId}`), payload);
-      await triggerJsonSync('documents');
-      return;
+    // 1. Save directly to server-side persistent store first
+    try {
+      const serverResp = await fetch('/api/documents', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (serverResp.ok) {
+        const serverData = await serverResp.json();
+        if (serverData?.document) {
+          setDocuments(prev => deduplicateDocuments([serverData.document, ...prev.filter(d => d.id !== serverData.document.id)]));
+        }
+      }
+    } catch (serverErr) {
+      console.warn('Direct server document save notice:', serverErr);
     }
 
-    const newDocumentRef = push(ref(rtdb, 'documents'));
-    if (!newDocumentRef.key) throw new Error('Could not generate a document ID.');
+    // 2. Write to Firebase RTDB (source of truth)
+    try {
+      if (documentId) {
+        await update(ref(rtdb, `documents/${documentId}`), payload);
+      } else {
+        const newDocumentRef = push(ref(rtdb, 'documents'));
+        if (newDocumentRef.key) {
+          const createdPayload = sanitizeFirebasePayload({
+            ...payload,
+            id: newDocumentRef.key,
+            createdAt: new Date().toISOString(),
+          });
+          await set(newDocumentRef, createdPayload);
+        }
+      }
+    } catch (rtdbErr) {
+      console.warn('RTDB write notice during saveDocument:', rtdbErr);
+    }
 
-    const createdPayload = sanitizeFirebasePayload({
-      ...payload,
-      id: newDocumentRef.key,
-      createdAt: new Date().toISOString(),
-    });
-
-    await set(newDocumentRef, createdPayload);
-    await triggerJsonSync('documents');
+    triggerJsonSync('documents');
   };
 
   const deleteDocument = async (id: string) => {
-    await remove(ref(rtdb, `documents/${id}`));
-    await triggerJsonSync('documents');
+    // 1. Delete on server store
+    try {
+      await fetch(`/api/documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch (err) {
+      console.warn('Server delete document notice:', err);
+    }
+
+    // 2. Delete on Firebase RTDB (triggers real-time update across all clients)
+    try {
+      await remove(ref(rtdb, `documents/${id}`));
+    } catch (err) {
+      console.warn('RTDB delete document notice:', err);
+    }
+
+    // Optimistically remove from state
+    setDocuments(prev => prev.filter(d => d.id !== id));
+    triggerJsonSync('documents');
   };
+
   const saveCategory = async (category: DocumentCategory, existingId?: string) => {
     const normalizedName = category.name.trim();
     if (!normalizedName) throw new Error('Category name is required.');
-    const duplicate = categories.find(existing => existing.id !== existingId && existing.name.trim().toLowerCase() === normalizedName.toLowerCase());
+    const duplicate = categories.find(
+      existing => existing.id !== existingId && existing.name.trim().toLowerCase() === normalizedName.toLowerCase()
+    );
     if (duplicate) throw new Error('A category with this name already exists.');
     const id = existingId || category.id || generateSlug(normalizedName);
     if (!id) throw new Error('Could not create a category ID.');
     const payload = sanitizeFirebasePayload({ ...category, id, name: normalizedName });
-    await set(ref(rtdb, `documentCategories/${id}`), payload);
-    await triggerJsonSync('documentCategories');
+
+    try {
+      await fetch('/api/document-categories', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+    } catch {}
+
+    try {
+      await set(ref(rtdb, `documentCategories/${id}`), payload);
+    } catch {}
+
+    setCategories(prev => deduplicateCategories([...prev.filter(c => c.id !== id), payload]));
+    triggerJsonSync('documentCategories');
   };
+
   const deleteCategory = async (id: string) => {
-    await remove(ref(rtdb, `documentCategories/${id}`));
-    await triggerJsonSync('documentCategories');
+    try {
+      await fetch(`/api/document-categories/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    } catch {}
+
+    try {
+      await remove(ref(rtdb, `documentCategories/${id}`));
+    } catch {}
+
+    setCategories(prev => prev.filter(c => c.id !== id));
+    triggerJsonSync('documentCategories');
   };
 
   const triggerJsonSync = async (type: 'documents' | 'documentCategories') => {
     try {
-      console.log(`[useDocuments] Triggering JSON sync for ${type}...`);
       const idToken = await auth.currentUser?.getIdToken();
-      const response = await fetch(`/api/sync-data/${type === 'documents' ? 'documents' : 'documentCategories'}`, {
+      await fetch(`/api/sync-data/${type === 'documents' ? 'documents' : 'documentCategories'}`, {
         method: 'POST',
         headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
       });
-      const result = await response.json().catch(() => null);
-
-      if (!response.ok || !result?.success) {
-        const message = result?.error || result?.message || `JSON sync failed (${response.status})`;
-        console.error('[useDocuments] JSON sync failed:', message);
-      }
-    } catch (err) {
-      console.error('[useDocuments] Error triggering JSON sync:', err);
-    }
+    } catch {}
   };
 
   return { documents, categories, loading, error, saveDocument, deleteDocument, saveCategory, deleteCategory };

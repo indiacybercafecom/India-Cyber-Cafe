@@ -214,6 +214,7 @@ function AppContent() {
             <Suspense fallback={<div className="flex h-screen w-screen items-center justify-center bg-slate-900 text-white font-medium">Loading Document...</div>}>
               <Routes>
                 <Route path="/forms-documents/:categorySlug/:pdfSlug" element={<FormsDocumentDetail />} />
+                <Route path="/forms-documents/:pdfSlug" element={<FormsDocumentDetail />} />
                 <Route path="/forms-documents" element={<FormsDocuments />} />
                 <Route path="*" element={<NotFound />} />
               </Routes>

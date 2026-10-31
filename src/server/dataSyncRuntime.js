@@ -98,22 +98,97 @@ async function syncCategories() {
 }
 
 async function syncDocumentCategories(firebaseToken) {
-  const categories = await fetchFirebaseCollection('documentCategories', firebaseToken);
-  const validated = categories.map(category => ({
+  let categories;
+  try {
+    categories = await fetchFirebaseCollection('documentCategories', firebaseToken);
+  } catch (err) {
+    console.error('[JSON SYNC] Firebase documentCategories fetch error:', err.message);
+    return {
+      success: false,
+      file: 'document-categories.json',
+      error: err.message,
+      message: 'Failed to fetch document categories from Firebase',
+    };
+  }
+
+  const validated = (categories || []).map(category => ({
     id: category.id || '',
     name: category.name || '',
     description: category.description || '',
     icon: category.icon || 'file-text',
     order: category.order ?? 0,
   }));
+
   const output = { version: 1, generatedAt: new Date().toISOString(), categories: validated };
-  writeJsonAtomically(path.join(DATA_DIR, 'document-categories.json'), output, data => data?.version === 1 && Array.isArray(data.categories));
+
+  // Write atomically to public/data/document-categories.json
+  writeJsonAtomically(
+    path.join(DATA_DIR, 'document-categories.json'),
+    output,
+    data => data?.version === 1 && Array.isArray(data.categories)
+  );
+
+  // Also write to data/ in root
+  const rootDataDir = path.join(__dirname, '../../data');
+  if (fs.existsSync(rootDataDir)) {
+    writeJsonAtomically(
+      path.join(rootDataDir, 'document-categories.json'),
+      output,
+      data => data?.version === 1 && Array.isArray(data.categories)
+    );
+  }
+
+  // Also write to dist/data/ if built
+  const distDataDir = path.join(__dirname, '../../dist/data');
+  if (fs.existsSync(distDataDir)) {
+    writeJsonAtomically(
+      path.join(distDataDir, 'document-categories.json'),
+      output,
+      data => data?.version === 1 && Array.isArray(data.categories)
+    );
+  }
+
   return { success: true, file: 'document-categories.json', message: `Generated ${validated.length} document categories` };
 }
 
+function deduplicateDocsList(docs) {
+  const seenIds = new Set();
+  const seenSlugs = new Set();
+  const result = [];
+  const slugify = (str) => (str || '').toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-');
+
+  for (const doc of docs) {
+    if (!doc || !doc.name) continue;
+    const id = (doc.id || '').trim();
+    const slug = slugify(doc.name);
+    if (id && seenIds.has(id)) continue;
+    if (slug && seenSlugs.has(slug)) continue;
+    if (id) seenIds.add(id);
+    if (slug) seenSlugs.add(slug);
+    result.push(doc);
+  }
+  return result;
+}
+
 async function syncDocuments(firebaseToken) {
-  const documents = await fetchFirebaseCollection('documents', firebaseToken);
-  const validated = documents
+  let remoteDocs;
+  try {
+    remoteDocs = await fetchFirebaseCollection('documents', firebaseToken);
+  } catch (err) {
+    console.error('[JSON SYNC] Firebase documents fetch error:', err.message);
+    // If Firebase fetching fails, do NOT overwrite a valid JSON snapshot with an empty dataset
+    return {
+      success: false,
+      file: 'documents.json',
+      error: err.message,
+      message: 'Failed to fetch documents from Firebase: service unavailable',
+    };
+  }
+
+  // Firebase is the single authoritative source of truth.
+  // Never merge old local JSON data with new Firebase data.
+  // Empty Firebase collection correctly generates [].
+  const validated = (remoteDocs || [])
     .filter(document => document && (document.name || document.id))
     .map(document => ({
       id: document.id || '',
@@ -128,9 +203,38 @@ async function syncDocuments(firebaseToken) {
       createdAt: document.createdAt || new Date().toISOString(),
       updatedAt: document.updatedAt || new Date().toISOString(),
     }));
-  const output = { version: 1, generatedAt: new Date().toISOString(), documents: validated };
-  writeJsonAtomically(path.join(DATA_DIR, 'documents.json'), output, data => data?.version === 1 && Array.isArray(data.documents));
-  return { success: true, file: 'documents.json', message: `Generated ${validated.length} documents` };
+
+  const deduplicated = deduplicateDocsList(validated);
+  const output = { version: 1, generatedAt: new Date().toISOString(), documents: deduplicated };
+
+  // Atomically write to public/data/documents.json
+  writeJsonAtomically(
+    path.join(DATA_DIR, 'documents.json'),
+    output,
+    data => data?.version === 1 && Array.isArray(data.documents)
+  );
+
+  // Also write to data/documents.json in root if data dir exists
+  const rootDataDir = path.join(__dirname, '../../data');
+  if (fs.existsSync(rootDataDir)) {
+    writeJsonAtomically(
+      path.join(rootDataDir, 'documents.json'),
+      output,
+      data => data?.version === 1 && Array.isArray(data.documents)
+    );
+  }
+
+  // Also write to dist/data/documents.json if dist exists
+  const distDataDir = path.join(__dirname, '../../dist/data');
+  if (fs.existsSync(distDataDir)) {
+    writeJsonAtomically(
+      path.join(distDataDir, 'documents.json'),
+      output,
+      data => data?.version === 1 && Array.isArray(data.documents)
+    );
+  }
+
+  return { success: true, file: 'documents.json', message: `Generated ${deduplicated.length} documents` };
 }
 
 async function syncMetadata() {

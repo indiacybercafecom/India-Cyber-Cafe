@@ -8,6 +8,7 @@ import { Skeleton } from '../components/Skeleton';
 import { useDocuments } from '../hooks/useDocuments';
 import { normalizePdfUrl } from '../utils/driveUrl';
 import { generateSlug } from '../utils/slugGenerator';
+import { findDocumentBySlug, deduplicateDocuments } from '../utils/documentDeduplication';
 import { FormDocument } from '../types';
 
 interface FormsDocumentsProps {
@@ -65,13 +66,16 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const categoryNames = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0)).map(category => category.name);
 
-  const filteredDocuments = useMemo(() => documents.filter(document => {
-    if (document.active === false) return false;
-    const matchesCategory = selectedCategory === 'All' || document.category === selectedCategory;
-    const matchesSearch = !normalizedSearch || [document.name, document.description, document.category]
-      .some(value => value.toLowerCase().includes(normalizedSearch));
-    return matchesCategory && matchesSearch;
-  }), [documents, normalizedSearch, selectedCategory]);
+  const filteredDocuments = useMemo(() => {
+    const deduplicated = deduplicateDocuments(documents);
+    return deduplicated.filter(document => {
+      if (document.active === false) return false;
+      const matchesCategory = selectedCategory === 'All' || document.category === selectedCategory;
+      const matchesSearch = !normalizedSearch || [document.name, document.description, document.category]
+        .some(value => value.toLowerCase().includes(normalizedSearch));
+      return matchesCategory && matchesSearch;
+    });
+  }, [documents, normalizedSearch, selectedCategory]);
 
   const categoryOptions = [
     { value: 'All', label: 'All Categories' },
@@ -88,90 +92,100 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
 
   if (loading) return <FormsDocumentsSkeleton />;
 
-  if (activeCategorySlug && !selectedCategoryName) {
-    return <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center"><p className="font-semibold text-slate-600">Category not found.</p><Link to="/forms-documents" className="btn-primary mx-auto mt-4">View all documents</Link></div>;
-  }
-
   return (
     <div className="space-y-8 sm:space-y-10">
       <SEO
-        title="Forms & Documents"
-        description="Find and download useful government forms, applications, affidavits, resumes and other documents from India Cyber Cafe."
+        title="Forms & Documents - India Cyber Cafe"
+        description="Browse, preview, and download official government forms, applications, and documents directly from India Cyber Cafe."
         url="https://b.indiacybercafe.com/forms-documents"
-        keywords="forms and documents, government forms, PDF download, India Cyber Cafe documents"
-        structuredData={{
-          '@context': 'https://schema.org',
-          '@type': 'CollectionPage',
-          name: 'Forms & Documents',
-          description: 'Downloadable forms and documents from India Cyber Cafe.',
-          url: 'https://b.indiacybercafe.com/forms-documents',
-        }}
+        keywords="forms, documents, government applications, pdf download, MP online forms"
       />
 
-      <section aria-label="Find a document">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-          <div className="relative min-w-0 flex-1">
-          <IconRenderer name="search" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+      <section className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
           <input
             type="search"
-            aria-label="Search forms and documents"
-            placeholder="Search by document name, description or category..."
-            className="input-field py-3 pl-12"
             value={searchTerm}
             onChange={event => setSearchTerm(event.target.value)}
+            placeholder="Search forms, certificates, or documents..."
+            className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm font-medium text-navy shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
-          </div>
-          {categories.length > 0 ? <SelectDropdown
-              options={categoryOptions}
-              value={selectedCategory}
-              onChange={handleCategoryChange}
-              containerClassName="w-full sm:w-64 shrink-0"
-              className="input-field py-3"
-              ariaLabel="Filter documents by category"
-              leadingIcon="filter"
-            /> : <div className="flex w-full shrink-0 items-center justify-center rounded-xl border border-dashed border-slate-300 px-4 py-3 text-sm font-semibold text-slate-500 sm:w-64">No categories yet</div>}
+        </div>
+
+        <div className="w-full sm:w-64">
+          <SelectDropdown
+            value={selectedCategory}
+            onChange={handleCategoryChange}
+            options={categoryOptions}
+            className="w-full text-sm"
+          />
         </div>
       </section>
 
-      <section aria-labelledby="documents-heading" className="space-y-5">
+      <section className="space-y-5">
         <div className="flex items-end justify-between gap-4">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-primary">Document library</p>
-            <h2 id="documents-heading" className="text-2xl font-bold text-navy sm:text-3xl">{selectedCategoryName ? `${selectedCategoryName} PDFs` : 'Available PDFs'}</h2>
+            <p className="text-xs font-bold uppercase tracking-wider text-primary">Browse Catalogue</p>
+            <h1 className="text-2xl font-bold text-navy sm:text-3xl">
+              {selectedCategory === 'All' ? 'Forms & Documents' : selectedCategory}
+            </h1>
           </div>
-          <span className="text-right text-xs font-semibold text-slate-500">{filteredDocuments.length} document{filteredDocuments.length === 1 ? '' : 's'}</span>
+          <p className="text-xs font-semibold text-slate-500 sm:text-sm">
+            {filteredDocuments.length} {filteredDocuments.length === 1 ? 'document' : 'documents'}
+          </p>
         </div>
 
-        {loading ? <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center text-slate-500">Loading PDFs...</div> : error ? <div className="rounded-2xl border border-red-200 bg-red-50 p-10 text-center text-red-700">Unable to load PDFs right now.</div> : filteredDocuments.length > 0 ? (
+        {error && (
+          <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+            {error.message || 'Unable to refresh documents catalogue right now.'}
+          </div>
+        )}
+
+        {filteredDocuments.length > 0 ? (
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {filteredDocuments.map(document => {
-              const listingPath = location.pathname;
-              const detailPath = `/forms-documents/${generateSlug(document.category)}/${generateSlug(document.name)}?from=${encodeURIComponent(listingPath)}`;
+              const categorySlugValue = generateSlug(document.category);
+              const pdfSlugValue = generateSlug(document.name);
+              const previewPath = `/forms-documents/${categorySlugValue}/${pdfSlugValue}?from=${encodeURIComponent(location.pathname + location.search)}`;
 
               return (
                 <article
                   key={document.id}
-                  className="flex cursor-pointer flex-col rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all hover:-translate-y-1 hover:border-primary/30 hover:shadow-xl hover:shadow-primary/10"
-                  onClick={() => navigate(detailPath)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' || event.key === ' ') {
-                      event.preventDefault();
-                      navigate(detailPath);
-                    }
-                  }}
-                  role="button"
-                  tabIndex={0}
-                  aria-label={`Open ${document.name}`}
+                  className="group flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-5 shadow-sm transition-all duration-300 hover:-translate-y-1 hover:border-primary hover:shadow-lg"
                 >
-                  <div className="mb-5 flex items-start justify-between gap-3">
-                    <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-orange-50 text-primary">
-                      <IconRenderer name="file-text" className="h-6 w-6" />
+                  <div>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary transition group-hover:bg-primary group-hover:text-white">
+                        <IconRenderer name="file-text" className="h-6 w-6" />
+                      </div>
+                      <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold uppercase tracking-wider text-slate-600">
+                        {document.fileType || 'PDF'}
+                      </span>
                     </div>
-                    <span className="rounded-md bg-red-50 px-2.5 py-1 text-[10px] font-extrabold tracking-wider text-red-600">{document.fileType}</span>
+
+                    <p className="mt-4 text-xs font-bold uppercase tracking-wider text-primary">
+                      {document.category}
+                    </p>
+
+                    <h2 className="mt-1 text-lg font-bold text-navy transition group-hover:text-primary">
+                      {document.name}
+                    </h2>
+
+                    <p className="mt-2 line-clamp-3 text-sm leading-relaxed text-slate-600">
+                      {document.description}
+                    </p>
                   </div>
-                  <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-primary">{document.category}</p>
-                  <div className="text-lg font-bold leading-snug text-navy hover:text-primary">{document.name}</div>
-                  <p className="mt-2 min-h-12 text-sm leading-relaxed text-slate-500">{document.description}</p>
+
+                  <div className="mt-6 border-t border-slate-100 pt-4">
+                    <Link
+                      to={previewPath}
+                      className="btn-primary flex w-full items-center justify-center gap-2 py-2.5 text-xs font-semibold"
+                    >
+                      <IconRenderer name="eye" className="h-4 w-4" />
+                      <span>Preview Document</span>
+                    </Link>
+                  </div>
                 </article>
               );
             })}
@@ -189,10 +203,14 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
 }
 
 export function FormsDocumentDetail() {
-  const { categorySlug, pdfSlug } = useParams<{ categorySlug: string; pdfSlug: string }>();
+  const params = useParams<{ categorySlug?: string; pdfSlug?: string }>();
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
+
+  // Handle both /:categorySlug/:pdfSlug and /:pdfSlug routes
+  const categorySlug = params.pdfSlug ? params.categorySlug : undefined;
+  const targetPdfSlug = params.pdfSlug || params.categorySlug || '';
 
   const isEmbed = Boolean(
     searchParams.get('embed') === '1' ||
@@ -200,23 +218,58 @@ export function FormsDocumentDetail() {
   );
 
   const { documents, categories, loading, error } = useDocuments(true);
+  const [fetchedDoc, setFetchedDoc] = useState<FormDocument | null>(null);
+  const [lookupLoading, setLookupLoading] = useState(false);
+  const [lookupAttempted, setLookupAttempted] = useState(false);
 
   // Format slug to readable title as instant fallback while documents are loading
-  const fallbackTitle = pdfSlug
-    ? pdfSlug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
+  const fallbackTitle = targetPdfSlug
+    ? targetPdfSlug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
     : 'Document Preview';
 
-  const document = documents.find(
-    item => (generateSlug(item.category) === categorySlug && generateSlug(item.name) === pdfSlug) ||
-            item.id === pdfSlug ||
-            generateSlug(item.name) === pdfSlug
-  );
+  // 1. Try finding in loaded documents
+  const document = useMemo(() => {
+    return findDocumentBySlug(documents, targetPdfSlug, categorySlug) || fetchedDoc || null;
+  }, [documents, targetPdfSlug, categorySlug, fetchedDoc]);
+
+  // 2. If not found in loaded documents, immediately query the server API lookup
+  useEffect(() => {
+    if (document || !targetPdfSlug) return;
+    let cancelled = false;
+    setLookupLoading(true);
+
+    const lookupUrl = `/api/documents/lookup?slug=${encodeURIComponent(targetPdfSlug)}&category=${encodeURIComponent(categorySlug || '')}`;
+    fetch(lookupUrl)
+      .then(res => res.ok ? res.json() : null)
+      .then(data => {
+        if (!cancelled && data?.document) {
+          setFetchedDoc(data.document);
+        }
+      })
+      .catch(err => {
+        console.warn('[FormsDocumentDetail] Document lookup notice:', err);
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLookupLoading(false);
+          setLookupAttempted(true);
+        }
+      });
+
+    return () => { cancelled = true; };
+  }, [targetPdfSlug, categorySlug, document]);
+
   const category = categories.find(item => generateSlug(item.name) === categorySlug) ||
     (document ? categories.find(item => item.name === document.category) : undefined);
 
-  const normalizedUrls = document ? normalizePdfUrl(document.previewUrl || document.downloadUrl) : null;
-  const pdfSourceUrl = normalizedUrls?.downloadUrl || document?.previewUrl || document?.downloadUrl || '';
-  const pdfDownloadUrl = normalizedUrls?.downloadUrl || document?.downloadUrl || document?.previewUrl || '';
+  // Support direct fallback url in query params if provided
+  const queryDirectUrl = searchParams.get('url') || searchParams.get('source') || '';
+  const normalizedUrls = document
+    ? normalizePdfUrl(document.previewUrl || document.downloadUrl)
+    : (queryDirectUrl ? normalizePdfUrl(queryDirectUrl) : null);
+
+  const pdfSourceUrl = normalizedUrls?.downloadUrl || document?.previewUrl || document?.downloadUrl || queryDirectUrl || '';
+  const pdfDownloadUrl = normalizedUrls?.downloadUrl || document?.downloadUrl || document?.previewUrl || queryDirectUrl || '';
 
   const returnPath = searchParams.get('from');
   const closePath = returnPath?.startsWith('/forms-documents') ? returnPath : '/forms-documents';
@@ -227,10 +280,13 @@ export function FormsDocumentDetail() {
     }
   };
 
-  const documentTitle = document?.name || fallbackTitle;
-  const documentError = (!loading && !document)
+  const documentTitle = document?.name || searchParams.get('title') || fallbackTitle;
+
+  // Only declare documentError when both initial load and async lookup have concluded without finding a doc
+  const isResolving = (loading && !document) || (lookupLoading && !document);
+  const documentError = (!isResolving && !document && lookupAttempted)
     ? 'Document not found or no longer available.'
-    : error
+    : error && !document
       ? 'Unable to load this PDF right now.'
       : null;
 
@@ -239,7 +295,7 @@ export function FormsDocumentDetail() {
       <SEO
         title={`${documentTitle} - ${category?.name || 'Forms & Documents'} | India Cyber Cafe`}
         description={document?.description || `Download and preview ${documentTitle} from India Cyber Cafe.`}
-        url={`https://b.indiacybercafe.com/forms-documents/${categorySlug}/${pdfSlug}`}
+        url={`https://b.indiacybercafe.com/forms-documents/${categorySlug || 'doc'}/${targetPdfSlug}`}
         keywords={`${documentTitle}, PDF, ${category?.name || 'forms and documents'}`}
       />
       <PdfViewerModal
@@ -248,7 +304,7 @@ export function FormsDocumentDetail() {
         downloadUrl={pdfDownloadUrl}
         onClose={handleClose}
         isEmbed={isEmbed}
-        isLoadingDocument={loading}
+        isLoadingDocument={isResolving}
         documentError={documentError}
       />
     </>

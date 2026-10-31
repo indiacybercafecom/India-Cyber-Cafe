@@ -848,6 +848,389 @@ async function startServer() {
     res.json({ success: true, metadata: meta });
   });
 
+  // --- Robust Document Management & Embed Resolver ---
+  // --- Robust Document Management & Embed Resolver ---
+  const DOCS_STORE_PATH = path.join(APP_ROOT, 'data/documents.json');
+  const PUBLIC_DOCS_PATH = path.join(APP_ROOT, 'public/data/documents.json');
+  const DOC_CATS_STORE_PATH = path.join(APP_ROOT, 'data/document-categories.json');
+  const PUBLIC_DOC_CATS_PATH = path.join(APP_ROOT, 'public/data/document-categories.json');
+
+  const setNoCacheHeaders = (res: express.Response) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+  };
+
+  const writeJsonAtomically = (filePath: string, data: any) => {
+    try {
+      const dir = path.dirname(filePath);
+      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+      const tempPath = `${filePath}.tmp.${Date.now()}.${Math.random().toString(36).slice(2, 7)}`;
+      fs.writeFileSync(tempPath, JSON.stringify(data, null, 2), 'utf-8');
+      fs.renameSync(tempPath, filePath);
+    } catch (err) {
+      console.warn(`Atomic write error for ${filePath}:`, err);
+    }
+  };
+
+  const serverSlugify = (str: string): string => {
+    return (str || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^\w\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  };
+
+  const deduplicateServerDocs = (docs: any[]): any[] => {
+    if (!Array.isArray(docs)) return [];
+    const seenIds = new Set<string>();
+    const seenSlugs = new Map<string, any>();
+    const seenUrls = new Map<string, any>();
+    const result: any[] = [];
+
+    const sorted = [...docs]
+      .filter(d => Boolean(d && typeof d === 'object' && d.name))
+      .sort((a, b) => {
+        const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+        const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+        return timeB - timeA;
+      });
+
+    for (const doc of sorted) {
+      const id = (doc.id || '').trim();
+      const nameSlug = serverSlugify(doc.name || '');
+      const catSlug = serverSlugify(doc.category || '');
+      const compositeKey = `${catSlug}/${nameSlug}`;
+      const cleanUrl = (doc.previewUrl || doc.downloadUrl || '').trim().toLowerCase();
+
+      if (id && seenIds.has(id)) continue;
+      if (compositeKey && seenSlugs.has(compositeKey)) continue;
+      if (nameSlug && seenSlugs.has(nameSlug)) continue;
+      if (cleanUrl && cleanUrl.length > 5 && !cleanUrl.endsWith('incomeaay-certificate-form.pdf') && seenUrls.has(cleanUrl)) continue;
+
+      if (id) seenIds.add(id);
+      if (compositeKey) seenSlugs.set(compositeKey, doc);
+      if (nameSlug) seenSlugs.set(nameSlug, doc);
+      if (cleanUrl) seenUrls.set(cleanUrl, doc);
+
+      result.push(doc);
+    }
+
+    return result;
+  };
+
+  const readServerDocuments = (): any[] => {
+    // Read from the primary public data path; do NOT merge across multiple disk locations
+    const targetPath = fs.existsSync(PUBLIC_DOCS_PATH) ? PUBLIC_DOCS_PATH : DOCS_STORE_PATH;
+    if (fs.existsSync(targetPath)) {
+      try {
+        const raw = fs.readFileSync(targetPath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) return deduplicateServerDocs(parsed);
+        if (Array.isArray(parsed?.documents)) return deduplicateServerDocs(parsed.documents);
+      } catch (err) {
+        console.warn(`Read ${targetPath} notice:`, err);
+      }
+    }
+    return [];
+  };
+
+  const saveServerDocuments = (docs: any[]) => {
+    // Firebase is the single source of truth; deduplicate and overwrite completely
+    const deduplicated = deduplicateServerDocs(docs);
+    const output = {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      documents: deduplicated
+    };
+
+    writeJsonAtomically(PUBLIC_DOCS_PATH, output);
+    writeJsonAtomically(DOCS_STORE_PATH, output);
+    if (fs.existsSync(DIST_PATH)) {
+      writeJsonAtomically(path.join(DIST_PATH, 'data/documents.json'), output);
+    }
+  };
+
+  const readServerDocCategories = (): any[] => {
+    const targetPath = fs.existsSync(PUBLIC_DOC_CATS_PATH) ? PUBLIC_DOC_CATS_PATH : DOC_CATS_STORE_PATH;
+    if (fs.existsSync(targetPath)) {
+      try {
+        const raw = fs.readFileSync(targetPath, 'utf-8');
+        const parsed = JSON.parse(raw);
+        const cats = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.categories) ? parsed.categories : [];
+        const seen = new Set<string>();
+        const result: any[] = [];
+        for (const c of cats) {
+          if (!c || !c.name) continue;
+          const slug = serverSlugify(c.name);
+          if (!slug || seen.has(slug)) continue;
+          seen.add(slug);
+          result.push(c);
+        }
+        return result;
+      } catch (err) {
+        console.warn(`Read ${targetPath} notice:`, err);
+      }
+    }
+    return [];
+  };
+
+  const saveServerDocCategories = (cats: any[]) => {
+    const seen = new Set<string>();
+    const deduplicated: any[] = [];
+    for (const c of cats) {
+      if (!c || !c.name) continue;
+      const slug = serverSlugify(c.name);
+      if (!slug || seen.has(slug)) continue;
+      seen.add(slug);
+      deduplicated.push(c);
+    }
+
+    const output = {
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      categories: deduplicated
+    };
+
+    writeJsonAtomically(PUBLIC_DOC_CATS_PATH, output);
+    writeJsonAtomically(DOC_CATS_STORE_PATH, output);
+    if (fs.existsSync(DIST_PATH)) {
+      writeJsonAtomically(path.join(DIST_PATH, 'data/document-categories.json'), output);
+    }
+  };
+
+  // Dedicated dynamic endpoints for documents and categories with strict no-cache headers
+  app.get('/data/documents.json', (req, res) => {
+    const docs = readServerDocuments();
+    setNoCacheHeaders(res);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json({
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      documents: docs
+    });
+  });
+
+  app.get('/data/document-categories.json', (req, res) => {
+    const cats = readServerDocCategories();
+    setNoCacheHeaders(res);
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.json({
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      categories: cats
+    });
+  });
+
+  app.get('/api/documents', (req, res) => {
+    const includeInactive = req.query.includeInactive === 'true' || req.query.all === 'true';
+    const docs = readServerDocuments();
+    const filtered = includeInactive ? docs : docs.filter(d => d.active !== false);
+    setNoCacheHeaders(res);
+    res.json({ success: true, documents: filtered });
+  });
+
+  app.get('/api/version', (req, res) => {
+    setNoCacheHeaders(res);
+    res.json({ success: true, version: '2026.10.31-v1', timestamp: Date.now() });
+  });
+
+  app.get('/api/documents/lookup', async (req, res) => {
+    const slug = ((req.query.slug as string) || '').trim();
+    const category = ((req.query.category as string) || '').trim();
+    const id = ((req.query.id as string) || '').trim();
+
+    if (!slug && !id) {
+      return res.status(400).json({ success: false, error: "Slug or id is required" });
+    }
+
+    const docs = readServerDocuments();
+    const cleanTargetSlug = serverSlugify(slug);
+    const cleanTargetCompact = cleanTargetSlug.replace(/-/g, '');
+    const cleanCatSlug = serverSlugify(category);
+
+    let match = docs.find(d => {
+      const docId = (d.id || '').trim();
+      const docNameSlug = serverSlugify(d.name || '');
+      const docCatSlug = serverSlugify(d.category || '');
+
+      if (id && (docId === id || docId === serverSlugify(id))) return true;
+      if (slug && (docId === slug || docId === cleanTargetSlug)) return true;
+      if (cleanCatSlug && docCatSlug === cleanCatSlug && docNameSlug === cleanTargetSlug) return true;
+      if (cleanTargetSlug && docNameSlug === cleanTargetSlug) return true;
+      if (cleanTargetCompact && docNameSlug.replace(/-/g, '') === cleanTargetCompact) return true;
+      if (slug && (d.name || '').trim().toLowerCase() === slug.toLowerCase()) return true;
+      return false;
+    });
+
+    // If not found in local store, attempt RTDB fetch if possible
+    if (!match) {
+      try {
+        const rtdbResp = await fetch("https://india-cyber-cafe-default-rtdb.firebaseio.com/documents.json");
+        if (rtdbResp.ok) {
+          const rtdbData = await rtdbResp.json();
+          if (rtdbData) {
+            const remoteList = Object.entries(rtdbData).map(([k, v]: [string, any]) => ({ id: k, ...v }));
+            match = remoteList.find((d: any) => {
+              const docId = (d.id || '').trim();
+              const docNameSlug = serverSlugify(d.name || '');
+              return docId === slug || docNameSlug === cleanTargetSlug || docNameSlug.replace(/-/g, '') === cleanTargetCompact;
+            });
+            if (match) {
+              docs.push(match);
+              saveServerDocuments(docs);
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("RTDB lookup check notice:", err);
+      }
+    }
+
+    setNoCacheHeaders(res);
+    if (match) {
+      return res.json({ success: true, document: match });
+    }
+
+    return res.status(404).json({ success: false, error: "Document not found" });
+  });
+
+  app.post('/api/documents', async (req, res) => {
+    try {
+      const doc = req.body;
+      if (!doc || !doc.name) {
+        return res.status(400).json({ success: false, error: "Document name is required" });
+      }
+
+      const docs = readServerDocuments();
+      const docId = doc.id || `doc-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`;
+      const payload = {
+        ...doc,
+        id: docId,
+        fileType: 'PDF',
+        active: doc.active !== false,
+        updatedAt: new Date().toISOString(),
+        createdAt: doc.createdAt || new Date().toISOString()
+      };
+
+      const filtered = docs.filter(d => d.id !== docId && serverSlugify(d.name) !== serverSlugify(payload.name));
+      filtered.unshift(payload);
+      saveServerDocuments(filtered);
+
+      // Attempt Firebase RTDB write
+      try {
+        await fetch(`https://india-cyber-cafe-default-rtdb.firebaseio.com/documents/${encodeURIComponent(docId)}.json`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+      } catch (rtdbErr) {
+        console.warn("RTDB save document notice:", rtdbErr);
+      }
+
+      return res.json({ success: true, document: payload });
+    } catch (error: any) {
+      console.error("Save document error:", error);
+      res.status(500).json({ success: false, error: "Failed to save document" });
+    }
+  });
+
+  app.post('/api/documents/sync-bulk', async (req, res) => {
+    try {
+      const { documents } = req.body;
+      if (!Array.isArray(documents)) {
+        return res.status(400).json({ success: false, error: "Documents array required" });
+      }
+      // Firebase is the single source of truth:
+      // Authoritative remote snapshot completely replaces the local store.
+      // Never merge with stale records!
+      saveServerDocuments(documents);
+      return res.json({ success: true, count: documents.length });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.delete('/api/documents/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const docs = readServerDocuments();
+      const filtered = docs.filter(d => d.id !== id && serverSlugify(d.name) !== serverSlugify(id));
+      saveServerDocuments(filtered);
+
+      try {
+        await fetch(`https://india-cyber-cafe-default-rtdb.firebaseio.com/documents/${encodeURIComponent(id)}.json`, {
+          method: "DELETE"
+        });
+      } catch (rtdbErr) {
+        console.warn("RTDB delete notice:", rtdbErr);
+      }
+
+      return res.json({ success: true, message: "Document deleted" });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: "Failed to delete document" });
+    }
+  });
+
+  app.get('/api/document-categories', (req, res) => {
+    const cats = readServerDocCategories();
+    setNoCacheHeaders(res);
+    res.json({ success: true, categories: cats });
+  });
+
+  app.post('/api/document-categories', (req, res) => {
+    try {
+      const cat = req.body;
+      if (!cat || !cat.name) return res.status(400).json({ success: false, error: "Category name required" });
+      const cats = readServerDocCategories();
+      const id = cat.id || serverSlugify(cat.name);
+      const payload = { ...cat, id };
+      const filtered = cats.filter(c => c.id !== id && serverSlugify(c.name) !== serverSlugify(cat.name));
+      filtered.push(payload);
+      saveServerDocCategories(filtered);
+      return res.json({ success: true, category: payload });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.post('/api/document-categories/sync-bulk', async (req, res) => {
+    try {
+      const { categories } = req.body;
+      if (!Array.isArray(categories)) {
+        return res.status(400).json({ success: false, error: "Categories array required" });
+      }
+      saveServerDocCategories(categories);
+      return res.json({ success: true, count: categories.length });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  });
+
+  app.delete('/api/document-categories/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const cats = readServerDocCategories();
+      const filtered = cats.filter(c => c.id !== id && serverSlugify(c.name) !== serverSlugify(id));
+      saveServerDocCategories(filtered);
+
+      try {
+        await fetch(`https://india-cyber-cafe-default-rtdb.firebaseio.com/documentCategories/${encodeURIComponent(id)}.json`, {
+          method: "DELETE"
+        });
+      } catch (rtdbErr) {
+        console.warn("RTDB delete category notice:", rtdbErr);
+      }
+
+      return res.json({ success: true, message: "Category deleted" });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: "Failed to delete category" });
+    }
+  });
+
   // --- Privacy & Grievance Request Management ---
   const RTDB_URL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
   const PRIVACY_STORE_PATH = path.join(APP_ROOT, 'data/privacy_requests.json');
