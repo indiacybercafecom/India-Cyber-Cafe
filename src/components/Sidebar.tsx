@@ -76,10 +76,17 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
             <li key={item.id} className="mb-1">
               <button
                 onClick={() => { onNavigate(item.id); onClose(); }}
-                className="w-full flex items-center gap-3 p-3 rounded-xl text-slate-600 font-semibold transition-all hover:bg-primary/10 hover:text-primary hover:translate-x-1 border-l-4 border-transparent hover:border-primary text-sm"
+                className="w-full flex items-center justify-between p-3 rounded-xl text-slate-600 font-semibold transition-all hover:bg-primary/10 hover:text-primary hover:translate-x-1 border-l-4 border-transparent hover:border-primary text-sm"
               >
-                <IconRenderer name={item.icon || 'layers'} className="w-5 h-5 opacity-70" />
-                {item.label}
+                <div className="flex items-center gap-3">
+                  <IconRenderer name={item.icon || 'layers'} className="w-5 h-5 opacity-70" />
+                  <span>{item.label}</span>
+                </div>
+                {item.id === 'profile' && user && (!user.phone || !user.phone.trim()) && (
+                  <span className="text-[10px] bg-amber-100 text-amber-800 font-bold px-1.5 py-0.5 rounded-full border border-amber-200">
+                    Add Mobile
+                  </span>
+                )}
               </button>
             </li>
           ))}

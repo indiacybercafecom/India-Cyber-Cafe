@@ -3,6 +3,7 @@ import { auth, rtdb } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { ref, onValue } from 'firebase/database';
 import { UserProfile } from '../types';
+import { checkRedirectAuth, ensureUserProfile } from '../services/authService';
 
 /**
  * Hook that separates auth identity from profile data
@@ -21,11 +22,15 @@ export function useAuth() {
   const [profileError, setProfileError] = useState<Error | null>(null);
 
   useEffect(() => {
+    // Check for any redirect authentication completion on initial mount (mobile browsers)
+    checkRedirectAuth().catch(err => {
+      console.warn('[useAuth] Redirect auth check notice:', err);
+    });
+
     let userUnsubscribe: (() => void) | null = null;
 
-    const authUnsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+    const authUnsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       // STEP 1: Set auth identity immediately (uid, email)
-      // This completes auth loading, allowing Home to render
       setAuthUser(firebaseUser);
       setLoading(false);
 
@@ -35,16 +40,16 @@ export function useAuth() {
         userUnsubscribe = null;
       }
 
-      // STEP 2: Always load the profile separately in the background.
+      // STEP 2: Load the profile in the background
       if (firebaseUser) {
         setProfileError(null);
         setProfileLoading(true);
         const userRef = ref(rtdb, `users/${firebaseUser.uid}`);
 
-        // Use onValue for real-time profile updates (fixes race condition during registration)
+        // Set up real-time listener for profile updates
         userUnsubscribe = onValue(
           userRef,
-          (snapshot) => {
+          async (snapshot) => {
             if (snapshot.exists()) {
               const userData = snapshot.val() as UserProfile;
 
@@ -52,6 +57,8 @@ export function useAuth() {
               const userWithUid: UserProfile = {
                 ...userData,
                 uid: firebaseUser.uid,
+                phone: userData.phone || '',
+                profileCompleted: Boolean(userData.phone),
               };
 
               // Security: Hardcoded check for Super Admin email
@@ -63,26 +70,38 @@ export function useAuth() {
               }
 
               setUser(userWithUid);
+              setProfileLoading(false);
             } else {
-              // Fallback for Admin email if profile doesn't exist yet
-              if (
-                firebaseUser.email?.toLowerCase() ===
-                'indiacybercafe.com@gmail.com'
-              ) {
-                setUser({
-                  uid: firebaseUser.uid,
-                  email: firebaseUser.email,
-                  name: 'Super Admin',
-                  role: 'admin',
-                  avatar:
-                    'https://cdn-icons-png.flaticon.com/512/149/149071.png',
-                  createdAt: Date.now(),
-                });
-              } else {
-                setUser(null);
+              // Profile does not exist yet (e.g., first-time Google sign-in)
+              // Automatically create the initial user profile
+              try {
+                const { profile } = await ensureUserProfile(firebaseUser, 'google');
+                setUser(profile);
+              } catch (createErr: any) {
+                console.error('[useAuth] Auto profile creation notice:', createErr);
+                // Fallback for Admin email if auto creation encounters issue
+                if (
+                  firebaseUser.email?.toLowerCase() ===
+                  'indiacybercafe.com@gmail.com'
+                ) {
+                  setUser({
+                    uid: firebaseUser.uid,
+                    email: firebaseUser.email,
+                    name: firebaseUser.displayName || 'Super Admin',
+                    role: 'admin',
+                    phone: '',
+                    avatar:
+                      firebaseUser.photoURL ||
+                      'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+                    authProvider: 'google',
+                    createdAt: Date.now(),
+                  });
+                } else {
+                  setUser(null);
+                }
               }
+              setProfileLoading(false);
             }
-            setProfileLoading(false);
           },
           (error) => {
             console.error('Profile listener error:', error);
@@ -91,7 +110,7 @@ export function useAuth() {
           }
         );
       } else {
-        // Only a real Firebase sign-out clears the application profile.
+        // Sign-out clears the application profile
         setUser(null);
         setProfileError(null);
         setProfileLoading(false);

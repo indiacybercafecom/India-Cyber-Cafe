@@ -1,70 +1,39 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { rtdb } from '../firebase';
-import { ref, get, query, orderByChild, equalTo } from 'firebase/database';
 import { showToast } from '../components/Toast';
 import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
 import { motion } from 'motion/react';
-import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
-import { trimWhitespace, sanitizeEmail, sanitizePhone } from '../utils/sanitizer';
+import { initiatePasswordReset } from '../services/authService';
 
 export function ForgotPassword() {
   const [identifier, setIdentifier] = useState('');
   const [loading, setLoading] = useState(false);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isGoogleAccount, setIsGoogleAccount] = useState(false);
   const navigate = useNavigate();
 
   const handleReset = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
+    setStatusMessage(null);
+    setIsGoogleAccount(false);
+
     try {
-      // Sanitize identifier input
-      const sanitizedIdentifier = trimWhitespace(identifier);
-      
-      let resetEmail = sanitizedIdentifier;
-      const isPhone = /^\+?[\d\s-]{10,}$/.test(sanitizedIdentifier);
-      let userName = 'User';
-      let userPassword = '';
-      
-      // Check if user exists in database
-      if (isPhone) {
-        // Search by phone
-        const sanitizedPhone = sanitizePhone(sanitizedIdentifier, true);
-        const usersRef = ref(rtdb, 'users');
-        const snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(sanitizedIdentifier)));
-        if (snapshot.exists()) {
-          const userData = Object.values(snapshot.val())[0] as any;
-          resetEmail = sanitizeEmail(userData.email);
-          userName = userData.name.trim();
-          userPassword = userData.password;
-        } else {
-          throw new Error('No registered account found with this phone number. Please check and try again.');
-        }
+      const res = await initiatePasswordReset(identifier);
+
+      if (res.isGoogleAccount) {
+        setIsGoogleAccount(true);
+        setStatusMessage(res.message);
+        showToast(res.message, 'info');
+      } else if (res.success) {
+        setStatusMessage(res.message);
+        showToast('Password recovery instructions sent!');
       } else {
-        // Search by email
-        const sanitizedEmailSearch = sanitizeEmail(sanitizedIdentifier);
-        const usersRef = ref(rtdb, 'users');
-        const snapshot = await get(query(usersRef, orderByChild('email'), equalTo(sanitizedEmailSearch)));
-        if (snapshot.exists()) {
-          const userData = Object.values(snapshot.val())[0] as any;
-          userName = userData.name.trim();
-          userPassword = userData.password;
-          resetEmail = sanitizeEmail(userData.email);
-        } else {
-          throw new Error('No registered account found with this email. Please check and try again or register first.');
-        }
+        showToast(res.message, 'error');
       }
-
-      // Send password to user with instructions
-      sendEmail(resetEmail, 'Your Password - India Cyber Cafe', emailTemplates.userPasswordDelivery(userName, userPassword));
-      
-      // Notify All Admins
-      sendEmailToAllAdmins('Password Reset Requested - India Cyber Cafe', emailTemplates.adminPasswordResetRequest(userName, resetEmail, new Date().toLocaleString()));
-
-      showToast('Password has been sent to your email! Please check your inbox and spam folder.');
-      setTimeout(() => navigate('/login'), 2000);
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error.message || 'Unable to request password reset right now.', 'error');
     } finally {
       setLoading(false);
     }
@@ -73,67 +42,102 @@ export function ForgotPassword() {
   return (
     <>
       <SEO
-        title="Forgot Password - Reset Your Account | India Cyber Cafe"
-        description="Recover your India Cyber Cafe account by entering your registered email or phone number. Reset your password securely."
+        title="Forgot Password? - Account Recovery | India Cyber Cafe"
+        description="Enter your registered email address or mobile number to recover your India Cyber Cafe account securely."
         url="https://b.indiacybercafe.com/forgot-password"
         keywords="forgot password, reset password, account recovery, password reset"
         ogType="website"
       />
       <div className="min-h-[80vh] flex items-center justify-center p-4">
-      <motion.div 
-        initial={{ y: 20, opacity: 0 }}
-        animate={{ y: 0, opacity: 1 }}
-        className="bg-white rounded-3xl w-full max-w-[420px] shadow-2xl border-t-8 border-primary overflow-hidden"
-      >
-        <div className="p-8 sm:p-10">
-          <div className="text-center mb-10">
-            <h2 className="text-3xl font-bold text-navy">Recover Password</h2>
-            <p className="text-slate-400 mt-2">Only for registered users. Enter your registered email or mobile.</p>
-          </div>
-
-          <form onSubmit={handleReset} className="space-y-6">
-            <div className="relative border-b-2 border-slate-100 focus-within:border-primary transition-all">
-              <IconRenderer name="envelope" className="absolute left-2 top-3 text-slate-400" />
-              <input 
-                type="text" 
-                placeholder="Email or Mobile" 
-                required 
-                className="w-full pl-10 pr-4 py-3 outline-none bg-transparent"
-                value={identifier}
-                onChange={e => setIdentifier(e.target.value)}
-              />
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="bg-white rounded-3xl w-full max-w-[420px] shadow-2xl border-t-8 border-primary overflow-hidden"
+        >
+          <div className="p-8 sm:p-10">
+            <div className="text-center mb-8">
+              <h2 className="text-3xl font-bold text-navy">Forgot Password?</h2>
+              <p className="text-slate-400 mt-2 text-sm sm:text-base">
+                Enter your registered email address or mobile number to recover your account.
+              </p>
             </div>
 
-            <button 
-              type="submit" 
-              disabled={loading}
-              className="w-full bg-linear-to-br from-navy to-navy-light text-white py-4 rounded-xl font-bold shadow-lg shadow-navy/25 transition-all hover:-translate-y-1 disabled:opacity-50"
-            >
-              {loading ? 'Sending Your Password...' : 'Get My Password'}
-            </button>
-          </form>
+            {statusMessage ? (
+              <div
+                className={`p-5 rounded-2xl border mb-6 text-sm leading-relaxed ${
+                  isGoogleAccount
+                    ? 'bg-amber-50 border-amber-200 text-amber-900'
+                    : 'bg-emerald-50 border-emerald-200 text-emerald-900'
+                }`}
+              >
+                <div className="flex items-start gap-3">
+                  <IconRenderer
+                    name={isGoogleAccount ? 'info' : 'check'}
+                    className={`w-5 h-5 shrink-0 mt-0.5 ${
+                      isGoogleAccount ? 'text-amber-600' : 'text-emerald-600'
+                    }`}
+                  />
+                  <div>
+                    <p className="font-semibold mb-1">
+                      {isGoogleAccount ? 'Google Sign-In Account' : 'Check Your Inbox'}
+                    </p>
+                    <p className="text-xs sm:text-sm">{statusMessage}</p>
+                  </div>
+                </div>
 
-          <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-            <p className="text-sm text-navy font-semibold mb-2">📧 What will happen next:</p>
-            <ul className="text-xs text-slate-600 space-y-1 ml-4">
-              <li>✓ Your password will be sent to your registered email</li>
-              <li>✓ Check your inbox and spam folder</li>
-              <li>✓ Use the password to login</li>
-              <li>✓ Change your password from your profile for security</li>
-            </ul>
-          </div>
+                {isGoogleAccount ? (
+                  <div className="mt-4">
+                    <Link
+                      to="/login"
+                      className="block text-center w-full bg-navy text-white py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider hover:bg-navy-light transition-all"
+                    >
+                      Go to Login with Google
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="mt-4 pt-3 border-t border-emerald-200/60 text-xs text-emerald-800 space-y-1">
+                    <p>✓ Check both your inbox and spam/junk folders</p>
+                    <p>✓ Click the secure reset link provided by Firebase</p>
+                    <p>✓ Choose a strong, new password</p>
+                  </div>
+                )}
+              </div>
+            ) : null}
 
-          <div className="mt-8 text-center">
-            <Link 
-              to="/login" 
-              className="text-primary font-bold hover:underline text-sm"
-            >
-              Back to Login
-            </Link>
+            <form onSubmit={handleReset} className="space-y-6">
+              <div className="relative border-b-2 border-slate-100 focus-within:border-primary transition-all">
+                <IconRenderer name="envelope" className="absolute left-2 top-3 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Registered Email or Mobile Number"
+                  required
+                  className="w-full pl-10 pr-4 py-3 outline-none bg-transparent text-sm sm:text-base"
+                  value={identifier}
+                  onChange={e => setIdentifier(e.target.value)}
+                  disabled={loading}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={loading}
+                className="w-full bg-linear-to-br from-navy to-navy-light text-white py-4 rounded-xl font-bold shadow-lg shadow-navy/25 transition-all hover:-translate-y-1 disabled:opacity-50 text-sm sm:text-base"
+              >
+                {loading ? 'Sending Reset Link...' : 'Send Password Reset Link'}
+              </button>
+            </form>
+
+            <div className="mt-8 text-center pt-4 border-t border-slate-100">
+              <Link
+                to="/login"
+                className="text-primary font-bold hover:text-primary-dark text-sm inline-flex items-center gap-1 transition-all"
+              >
+                <span>← Back to Login</span>
+              </Link>
+            </div>
           </div>
-        </div>
-      </motion.div>
-    </div>
+        </motion.div>
+      </div>
     </>
   );
 }

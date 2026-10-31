@@ -6,7 +6,7 @@ import { getDatabase } from "firebase/database";
 import { consentService } from "./services/consentService";
 
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyAMTND9rIAw-76Oey3c7c43-TW2t6mxEfw",
+  apiKey: (typeof import.meta !== 'undefined' && import.meta.env?.VITE_FIREBASE_API_KEY) || (typeof process !== 'undefined' && process.env?.VITE_FIREBASE_API_KEY) || "AIzaSyAMTND9rIAw-76Oey3c7c43-TW2t6mxEfw",
   authDomain: "india-cyber-cafe.firebaseapp.com",
   projectId: "india-cyber-cafe",
   storageBucket: "india-cyber-cafe-free",

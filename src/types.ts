@@ -9,7 +9,11 @@ export interface UserProfile {
   role: UserRole;
   avatar?: string;
   address?: OrderAddress;
+  authProvider?: 'google' | 'password' | 'email';
+  phoneVerified?: boolean;
+  profileCompleted?: boolean;
   createdAt: number;
+  updatedAt?: number;
 }
 
 export interface ServiceField {

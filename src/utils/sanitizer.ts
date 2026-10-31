@@ -281,7 +281,21 @@ export function sanitizeUserProfile(profile: any): any {
   if (!profile) return profile;
 
   const sanitized: Record<string, any> = {};
-  const profileKeys = ['uid', 'name', 'email', 'phone', 'password', 'role', 'avatar', 'address', 'createdAt'];
+  const profileKeys = [
+    'uid',
+    'name',
+    'email',
+    'phone',
+    'password',
+    'role',
+    'avatar',
+    'address',
+    'authProvider',
+    'phoneVerified',
+    'profileCompleted',
+    'createdAt',
+    'updatedAt',
+  ];
   
   for (const key of profileKeys) {
     if (key in profile) {
