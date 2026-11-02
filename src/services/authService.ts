@@ -4,7 +4,10 @@ import {
   signInWithRedirect,
   getRedirectResult,
   sendPasswordResetEmail,
+  verifyPasswordResetCode,
+  confirmPasswordReset,
   User as FirebaseUser,
+  ActionCodeSettings,
 } from 'firebase/auth';
 import { ref, get, set, update, query, orderByChild, equalTo } from 'firebase/database';
 import { auth, rtdb } from '../firebase';
@@ -213,7 +216,8 @@ export async function checkRedirectAuth(): Promise<{ success: boolean; user?: Fi
 /**
  * Password recovery supporting both Email and Mobile number.
  * - Email input: Initiates Firebase sendPasswordResetEmail().
- * - Mobile input: Finds associated email in RTDB, then initiates Firebase sendPasswordResetEmail().
+ * - Mobile input: Finds associated email in RTDB (matching 10-digit, +91, or 91 format),
+ *   then initiates Firebase sendPasswordResetEmail().
  * - Google-only accounts: Informs user that their account uses Google Sign-In.
  */
 export async function initiatePasswordReset(identifier: string): Promise<{
@@ -243,15 +247,22 @@ export async function initiatePasswordReset(identifier: string): Promise<{
         }
       }
     } else {
-      // Validate mobile number
+      // Validate Indian mobile number
       const { valid, normalized, error: phoneErr } = normalizeIndianMobile(cleaned);
       if (!valid) {
         return { success: false, message: phoneErr || 'Please enter a valid mobile number or email address.' };
       }
 
-      // Search RTDB for user with this mobile
+      // Search RTDB for user with this mobile across standard formats (normalized, +91, 91)
       const usersRef = ref(rtdb, 'users');
-      const snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(normalized)));
+      let snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(normalized)));
+      
+      if (!snapshot.exists()) {
+        snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(`+91${normalized}`)));
+      }
+      if (!snapshot.exists()) {
+        snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(`91${normalized}`)));
+      }
 
       if (snapshot.exists()) {
         const userData = Object.values(snapshot.val())[0] as any;
@@ -271,7 +282,20 @@ export async function initiatePasswordReset(identifier: string): Promise<{
     }
 
     if (targetEmail) {
-      await sendPasswordResetEmail(auth, targetEmail);
+      const actionCodeSettings: ActionCodeSettings = {
+        url: typeof window !== 'undefined' && window.location.origin
+          ? `${window.location.origin}/reset-password`
+          : 'https://b.indiacybercafe.com/reset-password',
+        handleCodeInApp: true,
+      };
+
+      try {
+        await sendPasswordResetEmail(auth, targetEmail, actionCodeSettings);
+      } catch (actionErr: any) {
+        // Fallback to standard email reset if deep linking URL is rejected
+        console.warn('[authService] ActionCodeSettings fallback to standard email:', actionErr?.message);
+        await sendPasswordResetEmail(auth, targetEmail);
+      }
     }
 
     // Generic response to prevent account enumeration
@@ -289,6 +313,33 @@ export async function initiatePasswordReset(identifier: string): Promise<{
       };
     }
     return { success: false, message: mapAuthError(err) };
+  }
+}
+
+/**
+ * Validates the one-time action code (oobCode) from the password reset email link.
+ * Returns the associated email address if the code is valid.
+ */
+export async function verifyPasswordReset(oobCode: string): Promise<{ success: boolean; email?: string; error?: string }> {
+  try {
+    const email = await verifyPasswordResetCode(auth, oobCode);
+    return { success: true, email };
+  } catch (error: any) {
+    console.error('[authService] verifyPasswordReset error:', error);
+    return { success: false, error: mapAuthError(error) };
+  }
+}
+
+/**
+ * Completes the password reset by applying the new password.
+ */
+export async function confirmPasswordUpdate(oobCode: string, newPass: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    await confirmPasswordReset(auth, oobCode, newPass);
+    return { success: true };
+  } catch (error: any) {
+    console.error('[authService] confirmPasswordReset error:', error);
+    return { success: false, error: mapAuthError(error) };
   }
 }
 

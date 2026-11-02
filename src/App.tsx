@@ -41,6 +41,7 @@ const Operator = lazy(() => import('./pages/Operator').then(m => ({ default: m.O
 const Login = lazy(() => import('./pages/Login').then(m => ({ default: m.Login })));
 const Register = lazy(() => import('./pages/Register').then(m => ({ default: m.Register })));
 const ForgotPassword = lazy(() => import('./pages/ForgotPassword').then(m => ({ default: m.ForgotPassword })));
+const ResetPassword = lazy(() => import('./pages/ResetPassword').then(m => ({ default: m.ResetPassword })));
 const Legal = lazy(() => import('./pages/Legal').then(m => ({ default: m.Legal })));
 const PrivacyRequest = lazy(() => import('./pages/PrivacyRequest').then(m => ({ default: m.PrivacyRequestPage })));
 const Store = lazy(() => import('./pages/Store').then(m => ({ default: m.Store })));
@@ -272,6 +273,7 @@ function AppContent() {
             <Route path="/login" element={<Login user={user} authUser={authUser} authLoading={authLoading} />} />
             <Route path="/register" element={<Register user={user} />} />
             <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/legal/:type" element={<Legal />} />
             <Route path="/about" element={<Legal />} />
             <Route path="/contact" element={<Legal />} />
