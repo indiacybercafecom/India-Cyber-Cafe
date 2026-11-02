@@ -235,13 +235,26 @@ async function syncDocuments(firebaseToken) {
   try {
     remoteDocs = await fetchFirebaseCollection('documents', firebaseToken);
   } catch (err) {
-    console.error('[JSON SYNC] Firebase documents fetch error:', err.message);
-    // If Firebase fetching fails, do NOT overwrite a valid JSON snapshot with an empty dataset
+    console.warn('[JSON SYNC] RTDB documents fetch notice, attempting upstream live sync:', err.message);
+    try {
+      const prodResp = await fetch('https://b.indiacybercafe.com/data/documents.json', {
+        headers: { Accept: 'application/json' },
+      });
+      if (prodResp.ok) {
+        const prodData = await prodResp.json();
+        remoteDocs = Array.isArray(prodData?.documents) ? prodData.documents : [];
+      }
+    } catch (prodErr) {
+      console.warn('[JSON SYNC] Upstream fetch notice:', prodErr.message);
+    }
+  }
+
+  if (!remoteDocs || !Array.isArray(remoteDocs)) {
     return {
       success: false,
       file: 'documents.json',
-      error: err.message,
-      message: 'Failed to fetch documents from Firebase: service unavailable',
+      error: 'Upstream and Firebase documents unavailable',
+      message: 'Failed to fetch documents from Firebase or upstream',
     };
   }
 

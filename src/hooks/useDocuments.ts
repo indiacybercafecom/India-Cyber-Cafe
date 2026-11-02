@@ -47,12 +47,18 @@ export function useDocuments(includeInactive = false) {
     let isMounted = true;
 
     // Step 1: Detect version bump and invalidate stale Forms/PDF cache if needed
-    checkAndInvalidateFormsCache();
+    try {
+      checkAndInvalidateFormsCache();
+    } catch {}
 
     // Step 2: Immediate local cache inspection for fast rendering while live sync connects
     const cacheKey = includeInactive ? 'documents_all' : 'documents';
-    const cachedDocs = cacheManager.get(cacheKey);
-    const cachedCats = cacheManager.get('documentCategories');
+    let cachedDocs: any = null;
+    let cachedCats: any = null;
+    try {
+      cachedDocs = cacheManager.get(cacheKey);
+      cachedCats = cacheManager.get('documentCategories');
+    } catch {}
 
     if (Array.isArray(cachedDocs) && cachedDocs.length > 0) {
       setDocuments(deduplicateDocuments(cachedDocs));
@@ -62,54 +68,78 @@ export function useDocuments(includeInactive = false) {
       setCategories(deduplicateCategories(cachedCats));
     }
 
-    // Step 3: Fetch fresh snapshot from server API (with cache buster and versioning)
+    // Step 3: Fetch fresh snapshot from server API with automatic fallback to static JSON
     const loadApiData = async () => {
       try {
         const queryParams = `includeInactive=${includeInactive}&v=${FORMS_CACHE_VERSION}&_t=${Date.now()}`;
-        const [docsResp, catsResp] = await Promise.all([
-          fetch(`/api/documents?${queryParams}`, { cache: 'no-store' })
-            .catch(() => fetch(`/data/documents.json?_t=${Date.now()}`, { cache: 'no-store' })),
-          fetch(`/api/document-categories?v=${FORMS_CACHE_VERSION}&_t=${Date.now()}`, { cache: 'no-store' })
-            .catch(() => fetch(`/data/document-categories.json?_t=${Date.now()}`, { cache: 'no-store' })),
-        ]);
-
-        if (docsResp && docsResp.ok && isMounted) {
-          // If a Firebase real-time snapshot has already arrived, it takes strict precedence
-          if (!firebaseDocsReceivedRef.current) {
+        
+        // 1. Fetch documents: try API first; if unavailable or non-200, fallback to static JSON snapshot
+        let rawDocs: FormDocument[] = [];
+        try {
+          const docsResp = await fetch(`/api/documents?${queryParams}`, { cache: 'no-store' });
+          if (docsResp.ok) {
             const data = await docsResp.json();
-            const rawDocs: FormDocument[] = Array.isArray(data.documents)
-              ? data.documents
-              : Array.isArray(data)
-                ? data
-                : [];
-            const deduplicated = deduplicateDocuments(rawDocs);
-            const filtered = includeInactive ? deduplicated : deduplicated.filter(d => d.active !== false);
+            const list = Array.isArray(data.documents) ? data.documents : Array.isArray(data) ? data : [];
+            if (list.length > 0) rawDocs = list;
+          }
+        } catch (e) {
+          console.warn('[useDocuments] /api/documents fetch notice:', e);
+        }
 
-            if (!firebaseDocsReceivedRef.current) {
-              setDocuments(filtered);
-              cacheManager.set(cacheKey, filtered);
-              setLoading(false);
+        if (rawDocs.length === 0) {
+          try {
+            const jsonResp = await fetch(`/data/documents.json?_t=${Date.now()}`, { cache: 'no-store' });
+            if (jsonResp.ok) {
+              const data = await jsonResp.json();
+              const list = Array.isArray(data.documents) ? data.documents : Array.isArray(data) ? data : [];
+              if (list.length > 0) rawDocs = list;
             }
+          } catch (e) {
+            console.warn('[useDocuments] /data/documents.json fetch notice:', e);
           }
         }
 
-        if (catsResp && catsResp.ok && isMounted) {
-          if (!firebaseCatsReceivedRef.current) {
+        if (rawDocs.length > 0 && isMounted && !firebaseDocsReceivedRef.current) {
+          const deduplicated = deduplicateDocuments(rawDocs);
+          const filtered = includeInactive ? deduplicated : deduplicated.filter(d => d.active !== false);
+          setDocuments(filtered);
+          try { cacheManager.set(cacheKey, filtered); } catch {}
+          setLoading(false);
+        }
+
+        // 2. Fetch categories: try API first; fallback to static JSON
+        let rawCats: DocumentCategory[] = [];
+        try {
+          const catsResp = await fetch(`/api/document-categories?v=${FORMS_CACHE_VERSION}&_t=${Date.now()}`, { cache: 'no-store' });
+          if (catsResp.ok) {
             const data = await catsResp.json();
-            const rawCats: DocumentCategory[] = Array.isArray(data.categories)
-              ? data.categories
-              : Array.isArray(data)
-                ? data
-                : [];
-            const deduplicatedCats = deduplicateCategories(rawCats);
-            if (!firebaseCatsReceivedRef.current) {
-              setCategories(deduplicatedCats);
-              cacheManager.set('documentCategories', deduplicatedCats);
-            }
+            const list = Array.isArray(data.categories) ? data.categories : Array.isArray(data) ? data : [];
+            if (list.length > 0) rawCats = list;
           }
+        } catch (e) {
+          console.warn('[useDocuments] /api/document-categories notice:', e);
+        }
+
+        if (rawCats.length === 0) {
+          try {
+            const jsonCatsResp = await fetch(`/data/document-categories.json?_t=${Date.now()}`, { cache: 'no-store' });
+            if (jsonCatsResp.ok) {
+              const data = await jsonCatsResp.json();
+              const list = Array.isArray(data.categories) ? data.categories : Array.isArray(data) ? data : [];
+              if (list.length > 0) rawCats = list;
+            }
+          } catch (e) {
+            console.warn('[useDocuments] /data/document-categories.json notice:', e);
+          }
+        }
+
+        if (rawCats.length > 0 && isMounted && !firebaseCatsReceivedRef.current) {
+          const deduplicatedCats = deduplicateCategories(rawCats);
+          setCategories(deduplicatedCats);
+          try { cacheManager.set('documentCategories', deduplicatedCats); } catch {}
         }
       } catch (err) {
-        console.warn('[useDocuments] API fetch notice:', err);
+        console.warn('[useDocuments] API load error:', err);
       } finally {
         if (isMounted && !firebaseDocsReceivedRef.current && !cachedDocs) {
           setLoading(false);

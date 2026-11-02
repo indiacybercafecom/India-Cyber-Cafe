@@ -307,31 +307,55 @@ export function FormsDocumentDetail() {
     let cancelled = false;
     setLookupLoading(true);
 
-    const lookupUrl = `/api/documents/lookup?slug=${encodeURIComponent(targetPdfSlug)}&category=${encodeURIComponent(categorySlug || '')}`;
-    fetch(lookupUrl)
-      .then(async res => {
-        if (res.ok) return res.json();
-        // If constrained by categorySlug and not found, retry without category
-        if (categorySlug) {
-          const fallbackRes = await fetch(`/api/documents/lookup?slug=${encodeURIComponent(targetPdfSlug)}`);
-          if (fallbackRes.ok) return fallbackRes.json();
+    const performLookup = async () => {
+      let found: FormDocument | null = null;
+
+      // 1. Try server lookup with category
+      try {
+        const lookupUrl = `/api/documents/lookup?slug=${encodeURIComponent(targetPdfSlug)}&category=${encodeURIComponent(categorySlug || '')}&_t=${Date.now()}`;
+        const res = await fetch(lookupUrl);
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.document) found = data.document;
         }
-        return null;
-      })
-      .then(data => {
-        if (!cancelled && data?.document) {
-          setFetchedDoc(data.document);
-        }
-      })
-      .catch(err => {
+      } catch (err) {
         console.warn('[FormsDocumentDetail] Document lookup notice:', err);
-      })
-      .finally(() => {
-        if (!cancelled) {
-          setLookupLoading(false);
-          setLookupAttempted(true);
+      }
+
+      // 2. Try server lookup without category
+      if (!found && categorySlug) {
+        try {
+          const res = await fetch(`/api/documents/lookup?slug=${encodeURIComponent(targetPdfSlug)}&_t=${Date.now()}`);
+          if (res.ok) {
+            const data = await res.json();
+            if (data?.document) found = data.document;
+          }
+        } catch (err) {}
+      }
+
+      // 3. Fallback to direct static documents.json (essential for WebViews, iframes & offline)
+      if (!found) {
+        try {
+          const res = await fetch(`/data/documents.json?_t=${Date.now()}`);
+          if (res.ok) {
+            const data = await res.json();
+            const list: FormDocument[] = Array.isArray(data?.documents) ? data.documents : Array.isArray(data) ? data : [];
+            const localDoc = findDocumentBySlug(list, targetPdfSlug, categorySlug);
+            if (localDoc) found = localDoc;
+          }
+        } catch (err) {}
+      }
+
+      if (!cancelled) {
+        if (found) {
+          setFetchedDoc(found);
         }
-      });
+        setLookupLoading(false);
+        setLookupAttempted(true);
+      }
+    };
+
+    void performLookup();
 
     return () => { cancelled = true; };
   }, [targetPdfSlug, categorySlug, document]);

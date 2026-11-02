@@ -123,12 +123,12 @@ async function runTests() {
       assert.ok(searchData.documents.length >= 1, 'Search for domicile should return at least 1 document');
       console.log(`   ✅ /api/documents/search?q=domicile returned ${searchData.documents.length} document(s)`);
 
-      // Test search for pyq
-      const searchPyq = await fetch('http://localhost:3000/api/documents/search?q=pyq');
-      const pyqData = await searchPyq.json();
-      assert.ok(pyqData.success, 'Search for pyq should succeed');
-      assert.ok(pyqData.documents.some((d: any) => d.name === 'Pyq Bt 102'), 'Pyq Bt 102 should be found in search');
-      console.log('   ✅ /api/documents/search?q=pyq returned Pyq Bt 102');
+      // Test search for bt-101
+      const searchBt101 = await fetch('http://localhost:3000/api/documents/search?q=bt-101');
+      const bt101Data = await searchBt101.json();
+      assert.ok(bt101Data.success, 'Search for bt-101 should succeed');
+      assert.ok(bt101Data.documents.some((d: any) => d.name === 'BT-101'), 'BT-101 should be found in search');
+      console.log('   ✅ /api/documents/search?q=bt-101 returned BT-101');
 
       // Test refresh endpoint
       const refreshResp = await fetch('http://localhost:3000/api/documents/refresh', { method: 'POST' });
@@ -136,12 +136,25 @@ async function runTests() {
       assert.ok(refreshData.success, 'Refresh endpoint should return success');
       console.log(`   ✅ /api/documents/refresh succeeded with ${refreshData.count} documents`);
 
-      // Test lookup endpoint
-      const lookupResp = await fetch('http://localhost:3000/api/documents/lookup?slug=pyq-bt-102');
+      // Test lookup endpoint for domicile
+      const lookupResp = await fetch('http://localhost:3000/api/documents/lookup?slug=domicile-niwas-form');
       const lookupData = await lookupResp.json();
-      assert.ok(lookupData.success, 'Lookup for pyq-bt-102 should succeed');
-      assert.strictEqual(lookupData.document?.name, 'Pyq Bt 102');
-      console.log('   ✅ /api/documents/lookup?slug=pyq-bt-102 returned Pyq Bt 102');
+      assert.ok(lookupData.success, 'Lookup for domicile-niwas-form should succeed');
+      assert.strictEqual(lookupData.document?.name, 'Domicile/Niwas Form');
+      console.log('   ✅ /api/documents/lookup?slug=domicile-niwas-form returned Domicile/Niwas Form');
+
+      // Test lookup endpoint for bt-101 (WebView embed url)
+      const lookupBt101Resp = await fetch('http://localhost:3000/api/documents/lookup?slug=bt-101&category=tit-advance');
+      const lookupBt101Data = await lookupBt101Resp.json();
+      assert.ok(lookupBt101Data.success, 'Lookup for bt-101 should succeed');
+      assert.strictEqual(lookupBt101Data.document?.name, 'BT-101');
+      console.log('   ✅ /api/documents/lookup?slug=bt-101 returned BT-101 successfully');
+
+      // Test PDF proxy stream for BT-101
+      const proxyResp = await fetch(`http://localhost:3000/api/pdf-proxy?url=${encodeURIComponent(lookupBt101Data.document.downloadUrl)}`);
+      assert.ok(proxyResp.ok, 'PDF proxy must succeed');
+      assert.strictEqual(proxyResp.headers.get('content-type'), 'application/pdf');
+      console.log('   ✅ /api/pdf-proxy streamed BT-101 PDF successfully');
     } else {
       console.log('   ℹ️ Server not responding on port 3000, skipping live HTTP tests');
     }

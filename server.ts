@@ -975,19 +975,23 @@ async function startServer() {
   };
 
   const readServerDocuments = (): any[] => {
-    // Read from the primary public data path; do NOT merge across multiple disk locations
-    const targetPath = fs.existsSync(PUBLIC_DOCS_PATH) ? PUBLIC_DOCS_PATH : DOCS_STORE_PATH;
-    if (fs.existsSync(targetPath)) {
-      try {
-        const raw = fs.readFileSync(targetPath, 'utf-8');
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) return deduplicateServerDocs(parsed);
-        if (Array.isArray(parsed?.documents)) return deduplicateServerDocs(parsed.documents);
-      } catch (err) {
-        console.warn(`Read ${targetPath} notice:`, err);
+    const candidates = [PUBLIC_DOCS_PATH, DOCS_STORE_PATH, path.join(DIST_PATH, 'data/documents.json')];
+    const allFound: any[] = [];
+    for (const targetPath of candidates) {
+      if (fs.existsSync(targetPath)) {
+        try {
+          const raw = fs.readFileSync(targetPath, 'utf-8');
+          const parsed = JSON.parse(raw);
+          const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.documents) ? parsed.documents : [];
+          if (list.length > 0) {
+            allFound.push(...list);
+          }
+        } catch (err) {
+          console.warn(`Read ${targetPath} notice:`, err);
+        }
       }
     }
-    return [];
+    return deduplicateServerDocs(allFound);
   };
 
   const saveServerDocuments = (docs: any[]) => {
@@ -1064,6 +1068,24 @@ async function startServer() {
       // Sync documents
       await syncDataType('documents');
 
+      // Also pull from live production domain if accessible (ensures newly published documents like BT-101 sync immediately)
+      try {
+        const prodResp = await fetch("https://b.indiacybercafe.com/data/documents.json", {
+          signal: AbortSignal.timeout(5000),
+          headers: { 'Accept': 'application/json' }
+        });
+        if (prodResp.ok) {
+          const prodData = await prodResp.json();
+          const prodDocs = Array.isArray(prodData?.documents) ? prodData.documents : [];
+          if (prodDocs.length > 0) {
+            const merged = [...readServerDocuments(), ...prodDocs];
+            saveServerDocuments(merged);
+          }
+        }
+      } catch (prodErr: any) {
+        // Silently continue if external upstream unavailable
+      }
+
       // Re-read and atomically rewrite cleanly deduplicated snapshots
       const currentDocs = readServerDocuments();
       saveServerDocuments(currentDocs);
@@ -1075,7 +1097,7 @@ async function startServer() {
   };
 
   // Run periodic sync on startup and repeat every 12 hours
-  setTimeout(run12HourDocumentSync, 3000);
+  setTimeout(run12HourDocumentSync, 2000);
   const syncTimer = setInterval(run12HourDocumentSync, SYNC_INTERVAL_MS);
   if (syncTimer.unref) syncTimer.unref();
 
@@ -1247,6 +1269,28 @@ async function startServer() {
       } catch (err) {
         console.warn("RTDB lookup check notice:", err);
       }
+    }
+
+    // If still not found, check live upstream production snapshot
+    if (!match) {
+      try {
+        const prodResp = await fetch("https://b.indiacybercafe.com/data/documents.json", {
+          signal: AbortSignal.timeout(4000),
+          headers: { 'Accept': 'application/json' }
+        });
+        if (prodResp.ok) {
+          const prodData = await prodResp.json();
+          const prodDocs = Array.isArray(prodData?.documents) ? prodData.documents : [];
+          match = prodDocs.find((d: any) => {
+            const docId = (d.id || '').trim();
+            const docNameSlug = serverSlugify(d.name || '');
+            return docId === slug || docNameSlug === cleanTargetSlug || docNameSlug.replace(/-/g, '') === cleanTargetCompact || (d.name || '').trim().toLowerCase() === rawTarget;
+          });
+          if (match) {
+            saveServerDocuments([...docs, match]);
+          }
+        }
+      } catch (err) {}
     }
 
     setNoCacheHeaders(res);

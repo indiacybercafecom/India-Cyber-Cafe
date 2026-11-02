@@ -109,6 +109,115 @@ export function PdfViewerModal({
     onClose();
   };
 
+  const resolveDownloadUrl = (): string => {
+    if (downloadUrl && downloadUrl !== '#') return downloadUrl;
+    if (sourceUrl && sourceUrl !== '#') return sourceUrl;
+    if (typeof window !== 'undefined') {
+      const sp = new URLSearchParams(window.location.search);
+      const queryUrl = sp.get('url') || sp.get('source') || sp.get('downloadUrl');
+      if (queryUrl) return queryUrl;
+    }
+    return '';
+  };
+
+  const getDirectDownloadUrl = (url: string): string => {
+    if (!url) return '';
+    const driveMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+    if (driveMatch && driveMatch[1]) {
+      return `https://drive.google.com/uc?export=download&id=${driveMatch[1]}`;
+    }
+    return url;
+  };
+
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownload = async (e?: React.MouseEvent) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    const resolvedUrl = resolveDownloadUrl();
+    const cleanTitle = (title || 'document').trim().replace(/[^a-zA-Z0-9_ -]/g, '').replace(/\s+/g, '_') || 'document';
+    const fileName = cleanTitle.toLowerCase().endsWith('.pdf') ? cleanTitle : `${cleanTitle}.pdf`;
+
+    let finalUrl = resolvedUrl;
+    if (!finalUrl && typeof window !== 'undefined') {
+      try {
+        const parts = window.location.pathname.split('/').filter(Boolean);
+        const slug = parts[parts.length - 1];
+        if (slug) {
+          const res = await fetch(`/api/documents/lookup?slug=${encodeURIComponent(slug)}`);
+          if (res.ok) {
+            const data = await res.json();
+            finalUrl = data?.document?.downloadUrl || data?.document?.previewUrl || '';
+          }
+          if (!finalUrl) {
+            const jsonRes = await fetch(`/data/documents.json`);
+            if (jsonRes.ok) {
+              const jsonData = await jsonRes.json();
+              const list = Array.isArray(jsonData?.documents) ? jsonData.documents : [];
+              const found = list.find((d: any) => d.id === slug || d.name?.toLowerCase().includes(slug.replace(/-/g, ' ')));
+              if (found) finalUrl = found.downloadUrl || found.previewUrl || '';
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('[PdfViewerModal] Direct lookup before download error:', err);
+      }
+    }
+
+    if (!finalUrl) {
+      if (typeof window !== 'undefined') {
+        window.open(window.location.href, '_blank');
+      }
+      return;
+    }
+
+    setDownloading(true);
+
+    try {
+      const proxyUrl = finalUrl.startsWith('/') ? finalUrl : `/api/pdf-proxy?url=${encodeURIComponent(finalUrl)}`;
+      const resp = await fetch(proxyUrl);
+      if (resp.ok) {
+        const blob = await resp.blob();
+        const blobUrl = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = blobUrl;
+        link.download = fileName;
+        link.target = '_blank';
+        document.body.appendChild(link);
+        link.click();
+        setTimeout(() => {
+          document.body.removeChild(link);
+          window.URL.revokeObjectURL(blobUrl);
+          setDownloading(false);
+        }, 2000);
+        return;
+      }
+    } catch (blobErr) {
+      console.warn('[PdfViewerModal] Blob download notice, using direct navigation:', blobErr);
+    }
+
+    const directUrl = getDirectDownloadUrl(finalUrl);
+    try {
+      const link = document.createElement('a');
+      link.href = directUrl;
+      link.download = fileName;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      document.body.appendChild(link);
+      link.click();
+      setTimeout(() => {
+        document.body.removeChild(link);
+        setDownloading(false);
+      }, 1000);
+    } catch {
+      window.open(directUrl, '_blank');
+      setDownloading(false);
+    }
+  };
+
   const browserDownloadUrl = downloadUrl 
     ? (downloadUrl.startsWith('/') ? downloadUrl : `/api/pdf-proxy?url=${encodeURIComponent(downloadUrl)}`)
     : sourceUrl 
@@ -426,15 +535,20 @@ export function PdfViewerModal({
               >
                 <Printer className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
               </button>
-              <a
-                href={browserDownloadUrl}
-                download={`${title}.pdf`}
+              <button
+                type="button"
+                onClick={handleDownload}
+                disabled={downloading}
                 aria-label="Download PDF"
                 title="Download PDF"
-                className={`rounded-lg p-1.5 text-navy transition hover:bg-white hover:shadow-sm sm:p-2 ${(!downloadUrl && !sourceUrl) || error ? 'pointer-events-none opacity-40' : ''}`}
+                className="rounded-lg p-1.5 text-navy transition hover:bg-white hover:shadow-sm sm:p-2 cursor-pointer disabled:opacity-50"
               >
-                <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
-              </a>
+                {downloading ? (
+                  <LoaderCircle className="h-3.5 w-3.5 animate-spin sm:h-4 sm:w-4 text-primary" />
+                ) : (
+                  <Download className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                )}
+              </button>
             </div>
           </div>
         )}
@@ -484,34 +598,35 @@ export function PdfViewerModal({
                 <div className="mt-6 flex flex-col gap-2.5">
                   <button
                     type="button"
-                    onClick={handleRetry}
-                    className="btn-primary inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-primary/90"
+                    onClick={handleDownload}
+                    disabled={downloading}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-primary px-5 py-3 text-sm font-semibold text-white shadow-md transition hover:bg-primary/90 cursor-pointer disabled:opacity-60"
                   >
-                    <RefreshCw className="h-4 w-4" />
-                    Try Again
+                    {downloading ? (
+                      <LoaderCircle className="h-4 w-4 animate-spin text-white" />
+                    ) : (
+                      <Download className="h-4 w-4" />
+                    )}
+                    <span>Download PDF File</span>
                   </button>
 
-                  {browserDownloadUrl !== '#' && (
-                    <button
-                      type="button"
-                      onClick={() => setUseNativeViewer(true)}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                    >
-                      <Eye className="h-4 w-4 text-slate-500" />
-                      Try Browser Viewer
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={handleRetry}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition hover:bg-slate-50 cursor-pointer"
+                  >
+                    <RefreshCw className="h-4 w-4 text-slate-500" />
+                    <span>Try Preview Again</span>
+                  </button>
 
-                  {browserDownloadUrl !== '#' && (
-                    <a
-                      href={browserDownloadUrl}
-                      download={`${title}.pdf`}
-                      className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-5 py-2 text-sm font-medium text-slate-600 transition hover:bg-slate-100"
-                    >
-                      <Download className="h-4 w-4" />
-                      Download PDF File
-                    </a>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => setUseNativeViewer(true)}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-5 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-100 cursor-pointer"
+                  >
+                    <Eye className="h-4 w-4 text-slate-500" />
+                    <span>Try Browser Viewer</span>
+                  </button>
 
                   {isEmbed && typeof window !== 'undefined' && (
                     <a
