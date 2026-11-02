@@ -884,42 +884,94 @@ async function startServer() {
       .replace(/^-+|-+$/g, '');
   };
 
+  const extractCoreTokens = (title: string): string[] => {
+    if (!title) return [];
+    const noise = new Set([
+      'form',
+      'certificate',
+      'application',
+      'official',
+      'document',
+      'pdf',
+      'prapatra',
+      'praman',
+      'patra',
+    ]);
+    return String(title)
+      .toLowerCase()
+      .replace(/[^\w\s]/g, ' ')
+      .split(/\s+/)
+      .map(w => w.trim())
+      .filter(w => w.length > 1 && !noise.has(w))
+      .sort();
+  };
+
+  const getDocSignature = (title: string): string => {
+    const tokens = extractCoreTokens(title);
+    return tokens.length > 0 ? tokens.join('-') : serverSlugify(title);
+  };
+
   const deduplicateServerDocs = (docs: any[]): any[] => {
     if (!Array.isArray(docs)) return [];
-    const seenIds = new Set<string>();
-    const seenSlugs = new Map<string, any>();
-    const seenUrls = new Map<string, any>();
-    const result: any[] = [];
+    const idMap = new Map<string, any>();
+    const catSigMap = new Map<string, any>();
+    const catSlugMap = new Map<string, any>();
+    const urlMap = new Map<string, any>();
 
-    const sorted = [...docs]
-      .filter(d => Boolean(d && typeof d === 'object' && d.name))
-      .sort((a, b) => {
-        const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
-        const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
-        return timeB - timeA;
-      });
+    const validDocs = docs.filter(d => Boolean(d && typeof d === 'object' && (d.name || d.id)));
 
-    for (const doc of sorted) {
+    for (const doc of validDocs) {
       const id = (doc.id || '').trim();
+      const catSlug = serverSlugify(doc.category || 'general');
       const nameSlug = serverSlugify(doc.name || '');
-      const catSlug = serverSlugify(doc.category || '');
-      const compositeKey = `${catSlug}/${nameSlug}`;
-      const cleanUrl = (doc.previewUrl || doc.downloadUrl || '').trim().toLowerCase();
+      const signature = getDocSignature(doc.name || '');
+      const catSigKey = `${catSlug}::${signature}`;
+      const catSlugKey = `${catSlug}::${nameSlug}`;
+      const cleanUrl = (doc.downloadUrl || doc.previewUrl || '').trim().toLowerCase();
+      const isGenericUrl = !cleanUrl || cleanUrl.includes('incomeaay-certificate-form.pdf');
 
-      if (id && seenIds.has(id)) continue;
-      if (compositeKey && seenSlugs.has(compositeKey)) continue;
-      if (nameSlug && seenSlugs.has(nameSlug)) continue;
-      if (cleanUrl && cleanUrl.length > 5 && !cleanUrl.endsWith('incomeaay-certificate-form.pdf') && seenUrls.has(cleanUrl)) continue;
+      const existing = (id && idMap.get(id)) || catSigMap.get(catSigKey) || catSlugMap.get(catSlugKey) || (!isGenericUrl ? urlMap.get(cleanUrl) : undefined);
 
-      if (id) seenIds.add(id);
-      if (compositeKey) seenSlugs.set(compositeKey, doc);
-      if (nameSlug) seenSlugs.set(nameSlug, doc);
-      if (cleanUrl) seenUrls.set(cleanUrl, doc);
+      if (existing) {
+        const urlA = cleanUrl;
+        const urlB = (existing.downloadUrl || existing.previewUrl || '').toLowerCase();
+        const isDummyA = urlA.includes('incomeaay-certificate-form.pdf') || (doc.id && (doc.id.startsWith('mp-') || doc.id.startsWith('pan-')));
+        const isDummyB = urlB.includes('incomeaay-certificate-form.pdf') || (existing.id && (existing.id.startsWith('mp-') || existing.id.startsWith('pan-')));
+        const timeA = new Date(doc.updatedAt || doc.createdAt || 0).getTime();
+        const timeB = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
 
-      result.push(doc);
+        const docWins = (!isDummyA && isDummyB) || (isDummyA === isDummyB && timeA >= timeB);
+        if (docWins) {
+          if (existing.id) idMap.delete(existing.id);
+          const oldCatSlug = serverSlugify(existing.category || 'general');
+          catSigMap.delete(`${oldCatSlug}::${getDocSignature(existing.name || '')}`);
+          catSlugMap.delete(`${oldCatSlug}::${serverSlugify(existing.name || '')}`);
+          if (!isGenericUrl) urlMap.delete(urlB);
+
+          if (id) idMap.set(id, doc);
+          catSigMap.set(catSigKey, doc);
+          catSlugMap.set(catSlugKey, doc);
+          if (!isGenericUrl) urlMap.set(cleanUrl, doc);
+        }
+        continue;
+      }
+
+      if (id) idMap.set(id, doc);
+      catSigMap.set(catSigKey, doc);
+      catSlugMap.set(catSlugKey, doc);
+      if (!isGenericUrl) urlMap.set(cleanUrl, doc);
     }
 
-    return result;
+    const resultSet = new Set<any>([
+      ...catSigMap.values(),
+      ...idMap.values()
+    ]);
+
+    return Array.from(resultSet).sort((a, b) => {
+      const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+      const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+      return timeB - timeA;
+    });
   };
 
   const readServerDocuments = (): any[] => {
@@ -1002,6 +1054,31 @@ async function startServer() {
     }
   };
 
+  // 12-Hour Automatic Document Refresh & Background Sync Scheduler
+  const SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
+  const run12HourDocumentSync = async () => {
+    try {
+      console.log(`[12-HOUR SYNC] Starting scheduled documents refresh at ${new Date().toISOString()}...`);
+      // Sync document categories
+      await syncDataType('documentCategories');
+      // Sync documents
+      await syncDataType('documents');
+
+      // Re-read and atomically rewrite cleanly deduplicated snapshots
+      const currentDocs = readServerDocuments();
+      saveServerDocuments(currentDocs);
+
+      console.log(`[12-HOUR SYNC] ✅ Scheduled sync completed. Authoritative documents count: ${currentDocs.length}`);
+    } catch (err: any) {
+      console.error('[12-HOUR SYNC] Error during scheduled sync:', err?.message || err);
+    }
+  };
+
+  // Run periodic sync on startup and repeat every 12 hours
+  setTimeout(run12HourDocumentSync, 3000);
+  const syncTimer = setInterval(run12HourDocumentSync, SYNC_INTERVAL_MS);
+  if (syncTimer.unref) syncTimer.unref();
+
   // Dedicated dynamic endpoints for documents and categories with strict no-cache headers
   app.get('/data/documents.json', (req, res) => {
     const docs = readServerDocuments();
@@ -1025,17 +1102,78 @@ async function startServer() {
     });
   });
 
-  app.get('/api/documents', (req, res) => {
+  // Direct Live Database Search & Retrieval Endpoint
+  app.get(['/api/documents', '/api/documents/search'], (req, res) => {
     const includeInactive = req.query.includeInactive === 'true' || req.query.all === 'true';
+    const rawQuery = typeof req.query.q === 'string' ? req.query.q.trim().toLowerCase() : '';
+    const rawCategory = typeof req.query.category === 'string' ? req.query.category.trim() : '';
+
     const docs = readServerDocuments();
-    const filtered = includeInactive ? docs : docs.filter(d => d.active !== false);
+    let filtered = includeInactive ? docs : docs.filter(d => d.active !== false);
+
+    // Filter by category if specified and not 'All'
+    if (rawCategory && rawCategory.toLowerCase() !== 'all') {
+      const catSlug = serverSlugify(rawCategory);
+      filtered = filtered.filter(d => {
+        return (d.category || '').toLowerCase() === rawCategory.toLowerCase() ||
+          serverSlugify(d.category || '') === catSlug;
+      });
+    }
+
+    // Filter by query string across name, description, category, id, and slugs
+    if (rawQuery) {
+      const queryTokens = rawQuery.split(/\s+/).filter(Boolean);
+      const querySig = getDocSignature(rawQuery);
+
+      filtered = filtered.filter(d => {
+        const name = (d.name || '').toLowerCase();
+        const desc = (d.description || '').toLowerCase();
+        const cat = (d.category || '').toLowerCase();
+        const id = (d.id || '').toLowerCase();
+        const docSig = getDocSignature(d.name || '');
+
+        // 1. Direct substring in name or id
+        if (name.includes(rawQuery) || id.includes(rawQuery)) return true;
+
+        // 2. Signature match
+        if (querySig && docSig && (docSig === querySig || docSig.includes(querySig) || querySig.includes(docSig))) return true;
+
+        // 3. Substring in description or category
+        if (desc.includes(rawQuery) || cat.includes(rawQuery)) return true;
+
+        // 4. All query tokens present in document fields
+        const combined = `${name} ${desc} ${cat} ${id}`;
+        if (queryTokens.every(token => combined.includes(token))) return true;
+
+        return false;
+      });
+    }
+
     setNoCacheHeaders(res);
-    res.json({ success: true, documents: filtered });
+    res.json({ success: true, count: filtered.length, documents: filtered });
+  });
+
+  // Manual / on-demand trigger to refresh documents from database
+  app.post('/api/documents/refresh', async (req, res) => {
+    try {
+      await run12HourDocumentSync();
+      const docs = readServerDocuments();
+      setNoCacheHeaders(res);
+      res.json({
+        success: true,
+        message: "Documents refreshed and synchronized from database",
+        count: docs.length,
+        documents: docs,
+        refreshedAt: new Date().toISOString()
+      });
+    } catch (err: any) {
+      res.status(500).json({ success: false, error: err?.message || "Failed to refresh documents" });
+    }
   });
 
   app.get('/api/version', (req, res) => {
     setNoCacheHeaders(res);
-    res.json({ success: true, version: '2026.10.31-v1', timestamp: Date.now() });
+    res.json({ success: true, version: '2026.11.02-v1', timestamp: Date.now() });
   });
 
   app.get('/api/documents/lookup', async (req, res) => {
@@ -1048,21 +1186,42 @@ async function startServer() {
     }
 
     const docs = readServerDocuments();
-    const cleanTargetSlug = serverSlugify(slug);
+    const rawTarget = (slug || id).trim().toLowerCase();
+    const cleanTargetSlug = serverSlugify(slug || id);
     const cleanTargetCompact = cleanTargetSlug.replace(/-/g, '');
     const cleanCatSlug = serverSlugify(category);
+    const targetSig = getDocSignature(slug || id);
 
     let match = docs.find(d => {
       const docId = (d.id || '').trim();
+      const docIdLower = docId.toLowerCase();
       const docNameSlug = serverSlugify(d.name || '');
       const docCatSlug = serverSlugify(d.category || '');
+      const docSig = getDocSignature(d.name || '');
 
-      if (id && (docId === id || docId === serverSlugify(id))) return true;
-      if (slug && (docId === slug || docId === cleanTargetSlug)) return true;
+      // 1. Exact ID match
+      if (id && (docId === id || docIdLower === id.toLowerCase() || docId === cleanTargetSlug)) return true;
+      if (slug && (docId === slug || docIdLower === rawTarget || docId === cleanTargetSlug)) return true;
+
+      // 2. Category + Slug match
       if (cleanCatSlug && docCatSlug === cleanCatSlug && docNameSlug === cleanTargetSlug) return true;
+
+      // 3. Name slug match regardless of category
       if (cleanTargetSlug && docNameSlug === cleanTargetSlug) return true;
+
+      // 4. Token signature match
+      if (targetSig && docSig && targetSig === docSig) return true;
+
+      // 5. Compact alphanumeric match (e.g., 'pyqbt102')
       if (cleanTargetCompact && docNameSlug.replace(/-/g, '') === cleanTargetCompact) return true;
-      if (slug && (d.name || '').trim().toLowerCase() === slug.toLowerCase()) return true;
+      if (cleanTargetCompact && docIdLower.replace(/[^a-z0-9]/g, '') === cleanTargetCompact) return true;
+
+      // 6. Case-insensitive raw title match
+      if (rawTarget && (d.name || '').trim().toLowerCase() === rawTarget) return true;
+
+      // 7. Substring if target length is at least 4
+      if (cleanTargetSlug.length >= 4 && (docNameSlug.includes(cleanTargetSlug) || cleanTargetSlug.includes(docNameSlug))) return true;
+
       return false;
     });
 

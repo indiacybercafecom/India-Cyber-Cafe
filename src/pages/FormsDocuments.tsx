@@ -55,6 +55,8 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
   const { categorySlug: routeCategorySlug } = useParams<{ categorySlug?: string }>();
   const { documents, categories, loading, error } = useDocuments();
   const [searchTerm, setSearchTerm] = useState('');
+  const [dbResults, setDbResults] = useState<FormDocument[] | null>(null);
+  const [isSearchingDb, setIsSearchingDb] = useState(false);
   const activeCategorySlug = categorySlug ?? routeCategorySlug;
   const selectedCategoryName = activeCategorySlug ? categories.find(category => generateSlug(category.name) === activeCategorySlug)?.name : undefined;
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -66,7 +68,53 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const categoryNames = [...categories].sort((a, b) => (a.order || 0) - (b.order || 0)).map(category => category.name);
 
+  // Live Database Search: Debounced query directly hitting the authoritative database endpoint
+  useEffect(() => {
+    if (!normalizedSearch) {
+      setDbResults(null);
+      setIsSearchingDb(false);
+      return;
+    }
+
+    let cancelled = false;
+    setIsSearchingDb(true);
+
+    const timer = setTimeout(() => {
+      const searchUrl = `/api/documents/search?q=${encodeURIComponent(normalizedSearch)}&category=${encodeURIComponent(selectedCategory)}&_t=${Date.now()}`;
+      fetch(searchUrl)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (!cancelled && data && Array.isArray(data.documents)) {
+            setDbResults(deduplicateDocuments(data.documents));
+          }
+        })
+        .catch(err => {
+          console.warn('[FormsDocuments] Live DB search notice:', err);
+        })
+        .finally(() => {
+          if (!cancelled) {
+            setIsSearchingDb(false);
+          }
+        });
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [normalizedSearch, selectedCategory]);
+
   const filteredDocuments = useMemo(() => {
+    // If live database search returned results for current query, use it
+    if (normalizedSearch && dbResults !== null) {
+      return deduplicateDocuments(dbResults).filter(doc => {
+        if (doc.active === false) return false;
+        if (selectedCategory !== 'All' && doc.category !== selectedCategory) return false;
+        return true;
+      });
+    }
+
+    // Default: in-memory authoritative documents filtered and deduplicated
     const deduplicated = deduplicateDocuments(documents);
     return deduplicated.filter(document => {
       if (document.active === false) return false;
@@ -75,7 +123,7 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
         .some(value => value.toLowerCase().includes(normalizedSearch));
       return matchesCategory && matchesSearch;
     });
-  }, [documents, normalizedSearch, selectedCategory]);
+  }, [documents, dbResults, normalizedSearch, selectedCategory]);
 
   const categoryOptions = [
     { value: 'All', label: 'All Categories' },
@@ -90,7 +138,7 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
     }
   };
 
-  if (loading) return <FormsDocumentsSkeleton />;
+  if (loading && !documents.length) return <FormsDocumentsSkeleton />;
 
   return (
     <div className="space-y-8 sm:space-y-10">
@@ -103,14 +151,19 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
 
       <section className="flex flex-col gap-3 sm:flex-row sm:items-center">
         <div className="relative flex-1">
-          <IconRenderer name="magnifying-glass" className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+          <IconRenderer name="magnifying-glass" className={`absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 ${isSearchingDb ? 'animate-pulse text-primary' : 'text-slate-400'}`} />
           <input
             type="search"
             value={searchTerm}
             onChange={event => setSearchTerm(event.target.value)}
-            placeholder="Search forms, certificates, or documents..."
-            className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-4 text-sm font-medium text-navy shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            placeholder="Search forms, certificates, or documents directly from database..."
+            className="w-full rounded-xl border border-slate-200 bg-white py-3 pl-11 pr-10 text-sm font-medium text-navy shadow-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
           />
+          {isSearchingDb && (
+            <div className="absolute right-3.5 top-1/2 -translate-y-1/2">
+              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            </div>
+          )}
         </div>
 
         <div className="w-full sm:w-64">
@@ -227,10 +280,26 @@ export function FormsDocumentDetail() {
     ? targetPdfSlug.split('-').map(word => word.charAt(0).toUpperCase() + word.slice(1)).join(' ')
     : 'Document Preview';
 
-  // 1. Try finding in loaded documents
+  // Support direct fallback url in query params if provided (for universal embeds)
+  const queryDirectUrl = searchParams.get('url') || searchParams.get('source') || searchParams.get('downloadUrl') || '';
+
+  const directDoc = useMemo(() => {
+    if (!queryDirectUrl) return null;
+    return {
+      id: targetPdfSlug || 'embed-direct-doc',
+      name: searchParams.get('title') || fallbackTitle,
+      category: categorySlug || 'Forms & Documents',
+      previewUrl: queryDirectUrl,
+      downloadUrl: queryDirectUrl,
+      active: true,
+      fileType: 'PDF',
+    } as FormDocument;
+  }, [queryDirectUrl, targetPdfSlug, categorySlug, searchParams, fallbackTitle]);
+
+  // 1. Try finding in loaded documents or direct doc
   const document = useMemo(() => {
-    return findDocumentBySlug(documents, targetPdfSlug, categorySlug) || fetchedDoc || null;
-  }, [documents, targetPdfSlug, categorySlug, fetchedDoc]);
+    return directDoc || findDocumentBySlug(documents, targetPdfSlug, categorySlug) || fetchedDoc || null;
+  }, [directDoc, documents, targetPdfSlug, categorySlug, fetchedDoc]);
 
   // 2. If not found in loaded documents, immediately query the server API lookup
   useEffect(() => {
@@ -240,7 +309,15 @@ export function FormsDocumentDetail() {
 
     const lookupUrl = `/api/documents/lookup?slug=${encodeURIComponent(targetPdfSlug)}&category=${encodeURIComponent(categorySlug || '')}`;
     fetch(lookupUrl)
-      .then(res => res.ok ? res.json() : null)
+      .then(async res => {
+        if (res.ok) return res.json();
+        // If constrained by categorySlug and not found, retry without category
+        if (categorySlug) {
+          const fallbackRes = await fetch(`/api/documents/lookup?slug=${encodeURIComponent(targetPdfSlug)}`);
+          if (fallbackRes.ok) return fallbackRes.json();
+        }
+        return null;
+      })
       .then(data => {
         if (!cancelled && data?.document) {
           setFetchedDoc(data.document);
@@ -262,8 +339,6 @@ export function FormsDocumentDetail() {
   const category = categories.find(item => generateSlug(item.name) === categorySlug) ||
     (document ? categories.find(item => item.name === document.category) : undefined);
 
-  // Support direct fallback url in query params if provided
-  const queryDirectUrl = searchParams.get('url') || searchParams.get('source') || '';
   const normalizedUrls = document
     ? normalizePdfUrl(document.previewUrl || document.downloadUrl)
     : (queryDirectUrl ? normalizePdfUrl(queryDirectUrl) : null);
@@ -282,7 +357,7 @@ export function FormsDocumentDetail() {
 
   const documentTitle = document?.name || searchParams.get('title') || fallbackTitle;
 
-  // Only declare documentError when both initial load and async lookup have concluded without finding a doc
+  // Only declare documentError when initial load and async lookup have concluded without finding a doc
   const isResolving = (loading && !document) || (lookupLoading && !document);
   const documentError = (!isResolving && !document && lookupAttempted)
     ? 'Document not found or no longer available.'

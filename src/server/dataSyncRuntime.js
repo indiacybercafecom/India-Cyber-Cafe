@@ -151,23 +151,83 @@ async function syncDocumentCategories(firebaseToken) {
   return { success: true, file: 'document-categories.json', message: `Generated ${validated.length} document categories` };
 }
 
-function deduplicateDocsList(docs) {
-  const seenIds = new Set();
-  const seenSlugs = new Set();
-  const result = [];
+function extractCoreTokens(title) {
+  if (!title) return [];
+  const noise = new Set([
+    'form',
+    'certificate',
+    'application',
+    'official',
+    'document',
+    'pdf',
+    'prapatra',
+    'praman',
+    'patra',
+  ]);
+  return String(title)
+    .toLowerCase()
+    .replace(/[^\w\s]/g, ' ')
+    .split(/\s+/)
+    .map(w => w.trim())
+    .filter(w => w.length > 1 && !noise.has(w))
+    .sort();
+}
+
+function getDocumentSignature(title) {
+  const tokens = extractCoreTokens(title);
   const slugify = (str) => (str || '').toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-');
+  return tokens.length > 0 ? tokens.join('-') : slugify(title);
+}
+
+function deduplicateDocsList(docs) {
+  if (!Array.isArray(docs)) return [];
+  const slugify = (str) => (str || '').toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-');
+  const idMap = new Map();
+  const catSigMap = new Map();
+  const urlMap = new Map();
 
   for (const doc of docs) {
-    if (!doc || !doc.name) continue;
+    if (!doc || (!doc.name && !doc.id)) continue;
     const id = (doc.id || '').trim();
-    const slug = slugify(doc.name);
-    if (id && seenIds.has(id)) continue;
-    if (slug && seenSlugs.has(slug)) continue;
-    if (id) seenIds.add(id);
-    if (slug) seenSlugs.add(slug);
-    result.push(doc);
+    const catSlug = slugify(doc.category || 'general');
+    const signature = getDocumentSignature(doc.name || '');
+    const catSigKey = `${catSlug}::${signature}`;
+    const cleanUrl = (doc.downloadUrl || doc.previewUrl || '').trim().toLowerCase();
+    const isGenericUrl = !cleanUrl || cleanUrl.includes('incomeaay-certificate-form.pdf');
+
+    const existing = (id && idMap.get(id)) || catSigMap.get(catSigKey) || (!isGenericUrl ? urlMap.get(cleanUrl) : undefined);
+    if (existing) {
+      const urlA = cleanUrl;
+      const urlB = (existing.downloadUrl || existing.previewUrl || '').toLowerCase();
+      const isDummyA = urlA.includes('incomeaay-certificate-form.pdf') || (doc.id && (doc.id.startsWith('mp-') || doc.id.startsWith('pan-')));
+      const isDummyB = urlB.includes('incomeaay-certificate-form.pdf') || (existing.id && (existing.id.startsWith('mp-') || existing.id.startsWith('pan-')));
+      const timeA = new Date(doc.updatedAt || doc.createdAt || 0).getTime();
+      const timeB = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+
+      const docWins = (!isDummyA && isDummyB) || (isDummyA === isDummyB && timeA >= timeB);
+      if (docWins) {
+        if (existing.id) idMap.delete(existing.id);
+        const oldCatSlug = slugify(existing.category || 'general');
+        catSigMap.delete(`${oldCatSlug}::${getDocumentSignature(existing.name || '')}`);
+        if (!isGenericUrl) urlMap.delete(urlB);
+
+        if (id) idMap.set(id, doc);
+        catSigMap.set(catSigKey, doc);
+        if (!isGenericUrl) urlMap.set(cleanUrl, doc);
+      }
+      continue;
+    }
+
+    if (id) idMap.set(id, doc);
+    catSigMap.set(catSigKey, doc);
+    if (!isGenericUrl) urlMap.set(cleanUrl, doc);
   }
-  return result;
+
+  return Array.from(catSigMap.values()).sort((a, b) => {
+    const timeA = new Date(a.updatedAt || a.createdAt || 0).getTime();
+    const timeB = new Date(b.updatedAt || b.createdAt || 0).getTime();
+    return timeB - timeA;
+  });
 }
 
 async function syncDocuments(firebaseToken) {
