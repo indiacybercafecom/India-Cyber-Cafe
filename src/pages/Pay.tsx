@@ -11,6 +11,7 @@ import {
   createPayLinkOrder,
   verifyPayLinkPayment
 } from '../services/razorpayService';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 type PaymentState = 'idle' | 'processing' | 'success' | 'error';
 
@@ -202,7 +203,7 @@ export function Pay() {
             setPaymentState('success');
           } catch (verificationError) {
             console.error('Payment verification error:', verificationError);
-            setError(verificationError instanceof Error ? verificationError.message : 'Payment verification failed.');
+            setError(getFriendlyErrorMessage(verificationError, 'Payment could not be verified.'));
             setPaymentState('error');
           } finally {
             isVerifyingRef.current = false;
@@ -219,7 +220,7 @@ export function Pay() {
       razorpay.open();
     } catch (paymentError) {
       console.error('Payment initialization error:', paymentError);
-      setError(paymentError instanceof Error ? paymentError.message : 'Unable to start payment.');
+      setError(getFriendlyErrorMessage(paymentError, 'Unable to start payment. Please try again.'));
       setPaymentState('error');
     }
   };

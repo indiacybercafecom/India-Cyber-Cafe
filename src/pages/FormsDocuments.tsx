@@ -10,6 +10,7 @@ import { normalizePdfUrl } from '../utils/driveUrl';
 import { generateSlug } from '../utils/slugGenerator';
 import { findDocumentBySlug, deduplicateDocuments } from '../utils/documentDeduplication';
 import { FormDocument } from '../types';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 interface FormsDocumentsProps {
   categorySlug?: string;
@@ -191,7 +192,7 @@ export function FormsDocuments({ categorySlug }: FormsDocumentsProps) {
 
         {error && (
           <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {error.message || 'Unable to refresh documents catalogue right now.'}
+            {getFriendlyErrorMessage(error, 'Unable to refresh documents catalogue right now.')}
           </div>
         )}
 

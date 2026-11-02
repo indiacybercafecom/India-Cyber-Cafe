@@ -7,6 +7,7 @@ import { SEO } from '../components/SEO';
 import { ServiceDetailSkeleton } from '../components/Skeleton';
 import { ShareButton } from '../components/ShareButton';
 import { getServiceShareData, getSubServiceShareData } from '../utils/shareUtils';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 interface ServiceDetailProps {
   services: Service[];
@@ -32,7 +33,7 @@ export function ServiceDetail({ services, isLoading = false, error = null, onRet
       <div className="text-center py-20">
         <IconRenderer name="alert-circle" className="w-16 h-16 text-red-400 mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-slate-600 mb-2">Failed to Load Services</h2>
-        <p className="text-slate-500 text-sm mb-6">{error.message || 'An error occurred while loading services.'}</p>
+        <p className="text-slate-500 text-sm mb-6">{getFriendlyErrorMessage(error, 'An error occurred while loading services.')}</p>
         <button onClick={onRetry} className="btn-primary">Retry</button>
       </div>
     );

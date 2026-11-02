@@ -56,7 +56,7 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
       showToast('Note added successfully');
       setNoteText('');
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error, 'error', 'Failed to add note. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -78,7 +78,7 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
       showToast(`Order status updated to ${newStatus}`);
       setNewStatus('');
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error, 'error', 'Failed to update order status. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -100,7 +100,7 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
       showToast(`Payment status updated to ${newPaymentStatus}`);
       setNewPaymentStatus('');
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error, 'error', 'Failed to update payment status. Please try again.');
     } finally {
       setLoading(false);
     }

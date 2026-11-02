@@ -30,7 +30,7 @@ export function DocumentModal({ document, categories, onClose, onSave }: Documen
       showToast(document ? 'PDF updated successfully!' : 'PDF added successfully!', 'success');
       onClose();
     } catch (error: any) {
-      showToast(error.message || 'Failed to save PDF.', 'error');
+      showToast(error, 'error', 'Failed to save PDF.');
     } finally {
       setSaving(false);
     }

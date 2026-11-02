@@ -41,7 +41,7 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
       showToast('User updated successfully!');
       onClose();
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error, 'error', 'Failed to update user. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -58,7 +58,7 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
       showToast(`Logged in as ${user.name}`);
       window.location.href = '/'; // Force reload to apply new auth state
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error, 'error', 'Unable to sign in as user. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -71,7 +71,7 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
       showToast('User deleted successfully!');
       onClose();
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error, 'error', 'Failed to delete user. Please try again.');
     } finally {
       setLoading(false);
     }

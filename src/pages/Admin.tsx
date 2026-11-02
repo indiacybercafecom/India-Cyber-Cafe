@@ -251,7 +251,7 @@ export function Admin({
       setIsGatewayModalOpen(false);
       setSelectedGateway(null);
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error, 'error', 'Failed to save gateway');
     }
   };
 
@@ -266,7 +266,7 @@ export function Admin({
           await onDeleteGateway(id);
           showToast('Gateway deleted successfully', 'success');
         } catch (error: any) {
-          showToast(error.message || 'Failed to delete gateway', 'error');
+          showToast(error, 'error', 'Failed to delete gateway');
         }
       }
     });
@@ -285,7 +285,7 @@ export function Admin({
             showToast('Product deleted successfully');
           }
         } catch (error: any) {
-          showToast(error.message || 'Failed to delete product', 'error');
+          showToast(error, 'error', 'Failed to delete product');
         }
       }
     });
@@ -304,7 +304,7 @@ export function Admin({
             showToast('Category deleted successfully');
           }
         } catch (error: any) {
-          showToast(error.message || 'Failed to delete category', 'error');
+          showToast(error, 'error', 'Failed to delete category');
         }
       }
     });
@@ -318,7 +318,7 @@ export function Admin({
       type: 'danger',
       onConfirm: async () => {
         try { await onDeleteDocument?.(id); showToast('PDF deleted successfully'); }
-        catch (error: any) { showToast(error.message || 'Failed to delete PDF', 'error'); }
+        catch (error: any) { showToast(error, 'error', 'Failed to delete PDF'); }
       }
     });
   };
@@ -331,7 +331,7 @@ export function Admin({
       type: 'danger',
       onConfirm: async () => {
         try { await onDeleteDocumentCategory?.(id); showToast('PDF category deleted successfully'); }
-        catch (error: any) { showToast(error.message || 'Failed to delete PDF category', 'error'); }
+        catch (error: any) { showToast(error, 'error', 'Failed to delete PDF category'); }
       }
     });
   };
@@ -349,7 +349,7 @@ export function Admin({
             showToast('Order deleted successfully');
           }
         } catch (error: any) {
-          showToast(error.message || 'Failed to delete order', 'error');
+          showToast(error, 'error', 'Failed to delete order');
         }
       }
     });
@@ -368,7 +368,7 @@ export function Admin({
             showToast('Review deleted successfully');
           }
         } catch (error: any) {
-          showToast(error.message || 'Failed to delete review', 'error');
+          showToast(error, 'error', 'Failed to delete review');
         }
       }
     });
@@ -394,7 +394,7 @@ export function Admin({
       const formatName = exportFormat === 'json' ? 'JSON' : 'Excel';
       showToast(`Export ${type} as ${formatName} successful!`, 'success');
     } catch (error: any) {
-      showToast(error.message || 'Export failed', 'error');
+      showToast(error, 'error', 'Export failed. Please try again.');
     }
   };
 
@@ -409,7 +409,7 @@ export function Admin({
           await onDeleteApp(id);
           showToast('Application deleted successfully', 'success');
         } catch (error: any) {
-          showToast(error.message || 'Failed to delete application', 'error');
+          showToast(error, 'error', 'Failed to delete application');
         }
       }
     });
@@ -426,7 +426,7 @@ export function Admin({
           await onDeleteService(id);
           showToast('Service deleted successfully', 'success');
         } catch (error: any) {
-          showToast(error.message || 'Failed to delete service', 'error');
+          showToast(error, 'error', 'Failed to delete service');
         }
       }
     });
@@ -541,10 +541,10 @@ export function Admin({
         setIsPrivacyModalOpen(false);
         setSelectedPrivacyReq(null);
       } else {
-        showToast(res.error || 'Failed to update request', 'error');
+        showToast(res.error, 'error', 'Failed to update request');
       }
     } catch (err: any) {
-      showToast(err.message || 'Error updating status', 'error');
+      showToast(err, 'error', 'Error updating status');
     } finally {
       setUpdatingPrivacy(false);
     }
@@ -574,7 +574,7 @@ export function Admin({
       URL.revokeObjectURL(url);
       showToast('Privacy requests exported successfully', 'success');
     } catch (err: any) {
-      showToast(err.message || 'Export failed', 'error');
+      showToast(err, 'error', 'Export failed. Please try again.');
     }
   };
 
@@ -1415,7 +1415,7 @@ export function Admin({
                 }
               }
             } catch (error: any) {
-              showToast(error.message || 'Failed to save category', 'error');
+              showToast(error, 'error', 'Failed to save category');
             }
           }}
         />

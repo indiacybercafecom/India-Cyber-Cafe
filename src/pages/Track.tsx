@@ -93,28 +93,38 @@ export function Track({ applications, orders = [], user, gateways, onViewDetails
     const razorpayGateway = gateways.find(g => g.type === 'razorpay' && g.active);
     const key = razorpayGateway?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd';
 
-    const options = {
-      key,
-      amount: (app.charge || 0) * 100,
-      currency: 'INR',
-      name: 'India Cyber Cafe',
-      description: `Payment for ${app.serviceName}`,
-      handler: async (response: any) => {
-        await onUpdateApp(app.id, {
-          paymentStatus: 'completed',
-          razorpayPaymentId: response.razorpay_payment_id
-        });
-        showToast('Payment Successful!');
-      },
-      prefill: {
-        name: app.name,
-        email: app.email,
-        contact: user.phone || ''
-      },
-      theme: { color: '#FF9933' }
-    };
-    const rzp = new (window as any).Razorpay(options);
-    rzp.open();
+    try {
+      const options = {
+        key,
+        amount: (app.charge || 0) * 100,
+        currency: 'INR',
+        name: 'India Cyber Cafe',
+        description: `Payment for ${app.serviceName}`,
+        handler: async (response: any) => {
+          try {
+            await onUpdateApp(app.id, {
+              paymentStatus: 'completed',
+              razorpayPaymentId: response.razorpay_payment_id
+            });
+            showToast('Payment Successful!');
+          } catch (handlerErr) {
+            console.error('Track payment update error:', handlerErr);
+            showToast(handlerErr, 'error', 'Payment could not be verified.');
+          }
+        },
+        prefill: {
+          name: app.name,
+          email: app.email,
+          contact: user.phone || ''
+        },
+        theme: { color: '#FF9933' }
+      };
+      const rzp = new (window as any).Razorpay(options);
+      rzp.open();
+    } catch (err) {
+      console.error('Payment start error:', err);
+      showToast(err, 'error', 'Unable to start payment. Please try again.');
+    }
   };
 
   const getStatusBadge = (status: string) => {

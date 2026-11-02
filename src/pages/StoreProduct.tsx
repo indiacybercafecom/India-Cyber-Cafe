@@ -9,6 +9,7 @@ import { ReviewSection } from '../components/ReviewSection';
 import { StoreProductDetailSkeleton } from '../components/Skeleton';
 import { useLoadingState } from '../hooks/useLoadingState';
 import { useProductReviews } from '../hooks/useProductReviews';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 interface StoreProductProps {
   products: Product[];
@@ -49,7 +50,7 @@ export function StoreProduct({ products, reviews: externalReviews, user, isLoadi
         <IconRenderer name="alert-circle" className="w-16 h-16 text-red-400 mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-slate-600 mb-2">Failed to Load Product</h2>
         <p className="text-slate-500 text-sm mb-6">
-          {error.message || 'An error occurred while loading the product details.'}
+          {getFriendlyErrorMessage(error, 'An error occurred while loading the product details.')}
         </p>
         <button
           onClick={onRetry}

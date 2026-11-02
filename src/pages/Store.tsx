@@ -8,6 +8,7 @@ import { StoreSkeleton } from '../components/Skeleton';
 import { ShareButton } from '../components/ShareButton';
 import { getProductShareData } from '../utils/shareUtils';
 import { useLoadingState } from '../hooks/useLoadingState';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 interface StoreProps {
   products: Product[];
@@ -166,7 +167,7 @@ export function Store({ products, categories, isLoading = false, error = null, o
           <IconRenderer name="alert-circle" className="w-16 h-16 text-red-400 mx-auto mb-4" />
           <h3 className="text-lg font-semibold text-slate-600 mb-2">Failed to Load Products</h3>
           <p className="text-slate-500 text-sm mb-6">
-            {error.message || 'An error occurred while loading products. Please try again.'}
+            {getFriendlyErrorMessage(error, 'An error occurred while loading products. Please try again.')}
           </p>
           <button
             onClick={onRetry}

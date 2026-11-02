@@ -11,6 +11,7 @@ import { auth, rtdb } from '../firebase';
 import { UserProfile } from '../types';
 import { sanitizeUserProfile, sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from './emailService';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 // Reusable Google Auth Provider instance
 export const googleAuthProvider = new GoogleAuthProvider();
@@ -293,38 +294,8 @@ export async function initiatePasswordReset(identifier: string): Promise<{
 
 /**
  * Maps Firebase Auth error codes to user-friendly messages.
+ * Delegates to centralized getFriendlyErrorMessage.
  */
 export function mapAuthError(error: any): string {
-  const code = error?.code || '';
-  const message = error?.message || '';
-
-  switch (code) {
-    case 'auth/popup-closed-by-user':
-      return 'Google sign-in popup was closed before completing. Please try again.';
-    case 'auth/popup-blocked':
-      return 'Popup was blocked by your browser. Please allow popups or try again.';
-    case 'auth/cancelled-popup-request':
-      return 'Sign in was cancelled. Please try again.';
-    case 'auth/unauthorized-domain':
-      return 'This domain is not authorized in Firebase Console for Google Sign-In. Please add it to Authorized Domains in Firebase Authentication.';
-    case 'auth/operation-not-allowed':
-      return 'Google provider is not enabled in Firebase Authentication. Please enable Google Sign-In in Firebase Console.';
-    case 'auth/account-exists-with-different-credential':
-      return 'An account already exists with this email address using a different sign-in method. Please log in with your email and password.';
-    case 'auth/invalid-credential':
-    case 'auth/user-not-found':
-    case 'auth/wrong-password':
-      return 'Invalid email/mobile or password. Please verify your credentials and try again.';
-    case 'auth/email-already-in-use':
-      return 'This email address is already registered. Please log in or use another email.';
-    case 'auth/network-request-failed':
-      return 'Network error. Please check your internet connection and try again.';
-    case 'auth/too-many-requests':
-      return 'Too many attempts. Your access has been temporarily restricted for security. Please try again later.';
-    case 'auth/user-disabled':
-      return 'This account has been disabled. Please contact India Cyber Cafe support.';
-    default:
-      if (message && !message.includes('Firebase:')) return message;
-      return 'An unexpected authentication error occurred. Please try again.';
-  }
+  return getFriendlyErrorMessage(error, 'Something went wrong. Please try again.');
 }

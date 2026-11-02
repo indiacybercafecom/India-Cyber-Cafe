@@ -33,7 +33,7 @@ export function ForgotPassword() {
         showToast(res.message, 'error');
       }
     } catch (error: any) {
-      showToast(error.message || 'Unable to request password reset right now.', 'error');
+      showToast(error, 'error', 'Unable to request password reset right now.');
     } finally {
       setLoading(false);
     }
@@ -97,7 +97,7 @@ export function ForgotPassword() {
                 ) : (
                   <div className="mt-4 pt-3 border-t border-emerald-200/60 text-xs text-emerald-800 space-y-1">
                     <p>✓ Check both your inbox and spam/junk folders</p>
-                    <p>✓ Click the secure reset link provided by Firebase</p>
+                    <p>✓ Click the secure reset link sent to your email</p>
                     <p>✓ Choose a strong, new password</p>
                   </div>
                 )}

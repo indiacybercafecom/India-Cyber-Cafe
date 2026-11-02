@@ -73,7 +73,7 @@ export function Profile({ user }: ProfileProps) {
       ).catch(() => {});
     } catch (error: any) {
       console.error('Upload error:', error);
-      showToast(error.message || 'Failed to upload image', 'error');
+      showToast(error, 'error', 'Unable to upload file. Please try again.');
     } finally {
       setLoading(false);
     }

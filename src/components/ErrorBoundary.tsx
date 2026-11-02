@@ -1,5 +1,6 @@
 import { Component, ReactNode, ErrorInfo } from 'react';
 import { IconRenderer } from './Icons';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 interface Props {
   children: ReactNode;
@@ -41,7 +42,7 @@ export class ErrorBoundary extends Component<Props, State> {
           <IconRenderer name="circle-exclamation" className="w-8 h-8 sm:w-10 sm:h-10 text-red-500 mb-3" />
           <h3 className="text-lg sm:text-xl font-bold text-red-700 mb-2">Something went wrong</h3>
           <p className="text-sm text-red-600 text-center mb-4 max-w-sm">
-            {this.state.error?.message || 'An unexpected error occurred'}
+            {getFriendlyErrorMessage(this.state.error, 'Something went wrong. Please try again.')}
           </p>
           <button
             onClick={() => this.setState({ hasError: false, error: null })}

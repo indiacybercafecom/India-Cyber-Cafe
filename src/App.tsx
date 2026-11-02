@@ -181,7 +181,7 @@ function AppContent() {
       setIsLogoutConfirmOpen(false);
       setIsLogoutChoiceOpen(true);
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error, 'error', 'Unable to sign out right now.');
     }
   };
 
@@ -196,7 +196,7 @@ function AppContent() {
       setEditingService(null);
       showToast('Service saved successfully!');
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error, 'error', 'Failed to save service. Please try again.');
     }
   };
 

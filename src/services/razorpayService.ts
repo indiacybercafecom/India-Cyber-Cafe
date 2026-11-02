@@ -1,5 +1,6 @@
 // Razorpay Configuration - Frontend Only (Key ID)
 // The Key Secret is kept safe on the backend only
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_SO0ZFBCZTJT9Tu';
 
 export interface RazorpayOptions {
@@ -67,17 +68,16 @@ export const initiateRazorpayPayment = async (options: RazorpayOptions) => {
     const scriptLoaded = await loadRazorpayScript();
     
     if (!scriptLoaded) {
-      throw new Error('Failed to load Razorpay script. Please check your internet connection.');
+      throw new Error('Please check your internet connection.');
     }
 
     if (!window.Razorpay) {
-      throw new Error('Razorpay checkout is not available. Please refresh the page and try again.');
+      throw new Error('Payment checkout is temporarily unavailable. Please refresh the page and try again.');
     }
 
     // Use the key from options, fallback to default if not provided
     const keyToUse = options.key || RAZORPAY_KEY_ID;
-    console.log('Razorpay Payment initiated with key:', keyToUse.substring(0, 10) + '***');
-    console.log('Payment options:', { ...options, key: keyToUse });
+    console.log('Payment initiated');
 
     const finalOptions: RazorpayOptions = {
       ...options,
@@ -99,7 +99,7 @@ export const initiateRazorpayPayment = async (options: RazorpayOptions) => {
     const razorpay = new window.Razorpay(finalOptions);
     razorpay.open();
   } catch (error: any) {
-    console.error('Razorpay initialization error:', error);
+    console.error('Payment initialization error:', error);
     throw error;
   }
 };
@@ -129,16 +129,16 @@ export const verifyRazorpayPayment = async (
     if (!response.ok) {
       return {
         verified: false,
-        error: data.error || 'Payment verification failed'
+        error: getFriendlyErrorMessage(data.error, 'Payment could not be verified.')
       };
     }
 
     return {
       verified: data.verified || false,
-      error: data.verified ? undefined : 'Payment could not be verified'
+      error: data.verified ? undefined : 'Payment could not be verified.'
     };
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Network error during verification';
+    const errorMsg = getFriendlyErrorMessage(error, 'Payment could not be verified.');
     console.error('Payment verification error:', error);
     return {
       verified: false,
@@ -171,7 +171,7 @@ export const createPayLinkOrder = async (
   });
   const data = await response.json();
   if (!response.ok || !data.success) {
-    throw new Error(data.error || 'Failed to create payment order on server');
+    throw new Error(getFriendlyErrorMessage(data.error, 'Unable to start payment. Please try again.'));
   }
   return data;
 };
@@ -204,17 +204,17 @@ export const verifyPayLinkPayment = async (
     if (!response.ok) {
       return {
         verified: false,
-        error: data.error || 'Payment verification failed'
+        error: getFriendlyErrorMessage(data.error, 'Payment could not be verified.')
       };
     }
 
     return {
       verified: data.verified || false,
       record: data.record,
-      error: data.verified ? undefined : (data.error || 'Payment could not be verified')
+      error: data.verified ? undefined : (getFriendlyErrorMessage(data.error, 'Payment could not be verified.'))
     };
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : 'Network error during verification';
+    const errorMsg = getFriendlyErrorMessage(error, 'Payment could not be verified.');
     console.error('Pay-link verification error:', error);
     return {
       verified: false,

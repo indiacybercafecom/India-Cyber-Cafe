@@ -79,7 +79,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       }));
       showToast(`${uploadedUrls.length} images uploaded successfully!`, 'success');
     } catch (error: any) {
-      showToast(error.message || 'Failed to upload images', 'error');
+      showToast(error, 'error', 'Unable to upload file. Please try again.');
     } finally {
       setUploadingImages(false);
       e.target.value = '';
@@ -148,7 +148,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       showToast(product ? 'Product updated successfully!' : 'Product added successfully!', 'success');
       onClose();
     } catch (error: any) {
-      showToast(error.message || 'Failed to save product', 'error');
+      showToast(error, 'error', 'Failed to save product. Please try again.');
     } finally {
       setLoading(false);
     }

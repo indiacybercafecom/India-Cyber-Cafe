@@ -15,6 +15,7 @@ import { getServiceShareData, getSubServiceShareData } from '../utils/shareUtils
 import { getRazorpayKeyId, loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
 import { sanitizeFormData, sanitizeUserProfile, sanitizeEmail } from '../utils/sanitizer';
 import { ApplySkeleton } from '../components/Skeleton';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 interface ApplyProps {
   services: Service[];
@@ -78,7 +79,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
       <div className="text-center py-20">
         <IconRenderer name="alert-circle" className="w-16 h-16 text-red-400 mx-auto mb-4" />
         <h2 className="text-2xl font-bold text-slate-600 mb-2">Failed to Load Services</h2>
-        <p className="text-slate-500 text-sm mb-6">{error.message || 'An error occurred while loading services.'}</p>
+        <p className="text-slate-500 text-sm mb-6">{getFriendlyErrorMessage(error, 'An error occurred while loading services.')}</p>
         <button onClick={onRetry} className="btn-primary">Retry</button>
       </div>
     );
@@ -344,9 +345,9 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                 await submitApp(application);
               } catch (error: any) {
                 console.error('Payment verification error:', error);
-                  paymentProcessingRef.current = false;
-                  setPaymentProcessing(false);
-                showToast(`Payment verification failed: ${error.message}`, 'error');
+                paymentProcessingRef.current = false;
+                setPaymentProcessing(false);
+                showToast(error, 'error', 'Payment could not be verified.');
               }
             },
               prefill: {
@@ -360,7 +361,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                   paymentProcessingRef.current = false;
                   setPaymentProcessing(false);
                   setLoading(false);
-                  showToast('💳 Payment cancelled. You can try again whenever you\'re ready.', 'error');
+                  showToast('Payment was cancelled. You can try again whenever you\'re ready.', 'info');
                 }
               },
               theme: { color: '#FF9933' }
@@ -373,7 +374,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
             console.error('❌ Razorpay payment error:', error);
             paymentProcessingRef.current = false;
             setPaymentProcessing(false);
-            showToast(`❌ Failed to initiate payment: ${error.message}`, 'error');
+            showToast(error, 'error', 'Unable to start payment. Please try again.');
             setLoading(false);
           }
         } else if (methods.includes('pay_after_work')) {
@@ -397,7 +398,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
         await submitApp(application);
       }
     } catch (error: any) {
-      showToast(error.message, 'error');
+      showToast(error, 'error', 'Something went wrong. Please try again.');
     } finally {
       setLoading(false);
     }

@@ -28,7 +28,13 @@ export const initializeConsoleHandler = () => {
   console.error = (...args: any[]) => {
     const message = args[0]?.toString?.() || '';
     
-    // Check if error should be suppressed
+    // Always preserve internal ICC and application error logs
+    if (message.includes('[ICC') || message.includes('Error')) {
+      originalError.apply(console, args);
+      return;
+    }
+
+    // Check if non-critical warning should be suppressed
     const shouldSuppress = SUPPRESS_PATTERNS.some(pattern => pattern.test(message));
     
     if (!shouldSuppress) {

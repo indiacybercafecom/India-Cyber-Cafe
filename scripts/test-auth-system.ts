@@ -89,13 +89,13 @@ console.log('\n--- Testing Error Message Mapping ---');
 const popupClosedErr = { code: 'auth/popup-closed-by-user' };
 assert(
   'Error mapping: popup-closed-by-user',
-  mapAuthError(popupClosedErr).includes('closed before completing')
+  mapAuthError(popupClosedErr).includes('cancelled')
 );
 
 const unauthDomainErr = { code: 'auth/unauthorized-domain' };
 assert(
-  'Error mapping: unauthorized-domain',
-  mapAuthError(unauthDomainErr).includes('Authorized Domains')
+  'Error mapping: unauthorized-domain (friendly, no technical leak)',
+  mapAuthError(unauthDomainErr).includes('unavailable') && !mapAuthError(unauthDomainErr).includes('Firebase')
 );
 
 const accountExistsErr = { code: 'auth/account-exists-with-different-credential' };

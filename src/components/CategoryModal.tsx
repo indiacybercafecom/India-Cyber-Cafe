@@ -68,7 +68,7 @@ export function CategoryModal({ category, onClose, onSave }: CategoryModalProps)
       showToast(category ? 'Category updated successfully!' : 'Category added successfully!', 'success');
       onClose();
     } catch (error: any) {
-      showToast(error.message || 'Failed to save category', 'error');
+      showToast(error, 'error', 'Failed to save category. Please try again.');
     } finally {
       setLoading(false);
     }

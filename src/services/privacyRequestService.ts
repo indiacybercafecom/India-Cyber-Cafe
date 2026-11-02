@@ -1,4 +1,5 @@
 import { PrivacyRequest, PrivacyRequestCategory, PrivacyRequestStatus } from '../types';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 export const PRIVACY_REQUEST_CATEGORIES: { value: PrivacyRequestCategory; label: string; description: string }[] = [
   {
@@ -55,7 +56,7 @@ export async function submitPrivacyRequest(data: {
 
     const result = await response.json();
     if (!response.ok || !result.success) {
-      return { success: false, error: result.error || 'Failed to submit privacy request' };
+      return { success: false, error: getFriendlyErrorMessage(result.error, 'Failed to submit privacy request') };
     }
 
     return {
@@ -64,7 +65,7 @@ export async function submitPrivacyRequest(data: {
       message: result.message,
     };
   } catch (error: any) {
-    return { success: false, error: error.message || 'Network error while submitting request' };
+    return { success: false, error: getFriendlyErrorMessage(error, 'Please check your internet connection.') };
   }
 }
 
@@ -81,12 +82,12 @@ export async function trackPrivacyRequest(
 
     const result = await response.json();
     if (!response.ok || !result.success) {
-      return { success: false, error: result.error || 'Request not found' };
+      return { success: false, error: getFriendlyErrorMessage(result.error, 'Request not found') };
     }
 
     return { success: true, request: result.request };
   } catch (error: any) {
-    return { success: false, error: error.message || 'Network error while checking status' };
+    return { success: false, error: getFriendlyErrorMessage(error, 'Please check your internet connection.') };
   }
 }
 
@@ -113,8 +114,8 @@ export async function updatePrivacyRequestStatus(
       body: JSON.stringify({ status, adminNotes }),
     });
     const result = await response.json();
-    return { success: Boolean(result.success), error: result.error };
+    return { success: Boolean(result.success), error: result.error ? getFriendlyErrorMessage(result.error, 'Failed to update request') : undefined };
   } catch (err: any) {
-    return { success: false, error: err.message };
+    return { success: false, error: getFriendlyErrorMessage(err, 'Failed to update request') };
   }
 }

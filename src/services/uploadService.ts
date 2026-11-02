@@ -1,5 +1,6 @@
 import { storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 export const MAX_SERVICE_FILE_SIZE = 5 * 1024 * 1024;
 
@@ -45,15 +46,9 @@ export async function uploadFile(file: File, category: string = 'general', maxSi
     
     return downloadURL;
   } catch (error: any) {
-    console.error('Firebase Upload Error:', error);
-    // Provide clear error feedback
-    let errorMessage = error.message || 'Upload failed';
-    if (error.code === 'storage/unauthorized') {
-      errorMessage = 'Permission denied. Please ensure Firebase Storage rules allow uploads.';
-    } else if (error.code === 'storage/quota-exceeded') {
-      errorMessage = 'Storage quota exceeded. Please contact support.';
-    }
-    throw new Error(errorMessage);
+    console.error('File Upload Error:', error);
+    const friendly = getFriendlyErrorMessage(error, 'Unable to upload file. Please try again.');
+    throw new Error(friendly);
   }
 }
 

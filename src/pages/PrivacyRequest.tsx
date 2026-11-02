@@ -10,6 +10,7 @@ import {
 } from '../services/privacyRequestService';
 import { PrivacyRequest, PrivacyRequestCategory } from '../types';
 import { showToast } from '../components/Toast';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 export function PrivacyRequestPage() {
   const [searchParams] = useSearchParams();
@@ -64,10 +65,10 @@ export function PrivacyRequestPage() {
         setReferenceId('');
         setDescription('');
       } else {
-        showToast(res.error || 'Failed to submit request.', 'error');
+        showToast(res.error || 'Failed to submit request.', 'error', 'Unable to submit request. Please try again.');
       }
     } catch (err: any) {
-      showToast(err.message || 'Error submitting request', 'error');
+      showToast(err, 'error', 'Unable to submit request. Please try again.');
     } finally {
       setSubmitting(false);
     }
@@ -91,10 +92,10 @@ export function PrivacyRequestPage() {
       if (res.success && res.request) {
         setTrackedRecord(res.request);
       } else {
-        setTrackError(res.error || 'No matching privacy request found.');
+        setTrackError(getFriendlyErrorMessage(res.error, 'No matching privacy request found.'));
       }
     } catch (err: any) {
-      setTrackError(err.message || 'Failed to track request');
+      setTrackError(getFriendlyErrorMessage(err, 'Failed to track request. Please try again.'));
     } finally {
       setTracking(false);
     }

@@ -3,6 +3,7 @@ import { ref as dbRef, query, equalTo, orderByChild, get } from 'firebase/databa
 import { auth } from '../firebase';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { sanitizeEmail, sanitizePhone, trimWhitespace } from '../utils/sanitizer';
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 /**
  * Generate a random password
@@ -143,7 +144,7 @@ export async function createGuestAccount(
     console.error('Error creating guest account:', error);
     return {
       success: false,
-      error: error.message || 'Failed to create account'
+      error: getFriendlyErrorMessage(error, 'Failed to create account. Please try again.')
     };
   }
 }

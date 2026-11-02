@@ -134,7 +134,7 @@ export function OrderManageModal({
         showToast('Order updated successfully!', 'success');
       }
     } catch (error: any) {
-      showToast(error.message || 'Failed to update order', 'error');
+      showToast(error, 'error', 'Failed to update order. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -204,7 +204,7 @@ export function OrderManageModal({
       }
       showToast('Note added successfully!', 'success');
     } catch (error: any) {
-      showToast(error.message || 'Failed to add note', 'error');
+      showToast(error, 'error', 'Failed to add note. Please try again.');
     } finally {
       setLoading(false);
       setUploadingFile(false);
@@ -226,7 +226,7 @@ export function OrderManageModal({
       showToast('Order deleted successfully!', 'success');
       onClose();
     } catch (error: any) {
-      showToast(error.message || 'Failed to delete order', 'error');
+      showToast(error, 'error', 'Failed to delete order. Please try again.');
     } finally {
       setLoading(false);
     }
