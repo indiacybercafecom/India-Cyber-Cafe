@@ -10,6 +10,7 @@ import { sendEmail, emailTemplates } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
 import { sanitizeAddress, trimWhitespace } from '../utils/sanitizer';
 import { normalizeIndianMobile, checkPhoneRegistered, mapAuthError } from '../services/authService';
+import { UserAvatar } from '../components/UserAvatar';
 
 interface ProfileProps {
   user: UserProfile;
@@ -61,6 +62,7 @@ export function Profile({ user }: ProfileProps) {
       const url = await uploadFile(file, 'avatars');
       await update(dbRef(rtdb, `users/${user.uid}`), {
         avatar: url,
+        customAvatar: true,
         updatedAt: Date.now(),
       });
       setAvatar(url);
@@ -152,13 +154,14 @@ export function Profile({ user }: ProfileProps) {
         <div className="text-center space-y-4 sm:space-y-6">
           <div className="relative inline-block group">
             <div className="relative">
-              <img
-                src={avatar || 'https://cdn-icons-png.flaticon.com/512/149/149071.png'}
+              <UserAvatar
+                src={avatar}
+                user={user}
+                authUser={auth.currentUser}
                 className={`w-24 h-24 sm:w-32 sm:h-32 rounded-full border-4 border-primary shadow-2xl object-cover transition-opacity ${
                   loading ? 'opacity-50' : 'opacity-100'
                 }`}
                 alt={user.name}
-                referrerPolicy="no-referrer"
               />
               {loading && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-white/50 rounded-full">

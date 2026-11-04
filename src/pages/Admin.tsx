@@ -15,6 +15,7 @@ import { OrderManageModal } from '../components/OrderManageModal';
 import { exportDataComprehensive } from '../services/exportService';
 import { generateSlug } from '../utils/slugGenerator';
 import { fetchAdminPrivacyRequests, updatePrivacyRequestStatus, PRIVACY_REQUEST_CATEGORIES } from '../services/privacyRequestService';
+import { UserAvatar } from '../components/UserAvatar';
 const getEmbeddedTimestamp = (id: string | undefined): number | null => {
   const match = id?.match(/^ICC(?:\/STORE)?-(\d{2})(\d{2})(\d{4})-(\d{2})(\d{2})(\d{2})-/);
   if (!match) return null;
@@ -821,7 +822,7 @@ export function Admin({
                   {filteredUsers.map(u => (
                     <tr key={u.uid} className="hover:bg-slate-50 transition-colors">
                       <td className="p-6">
-                        <img src={u.avatar} className="w-10 h-10 rounded-full object-cover border-2 border-slate-100" />
+                        <UserAvatar user={u} className="w-10 h-10 rounded-full object-cover border-2 border-slate-100" />
                       </td>
                       <td className="p-6 font-bold text-navy">{u.name}</td>
                       <td className="p-6 text-sm text-slate-600">{u.email}</td>
@@ -858,7 +859,7 @@ export function Admin({
               {filteredUsers.map(u => (
                 <div key={u.uid} className="p-6 flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <img src={u.avatar} className="w-12 h-12 rounded-full object-cover border-2 border-primary/20" />
+                    <UserAvatar user={u} className="w-12 h-12 rounded-full object-cover border-2 border-primary/20" />
                     <div className="min-w-0">
                       <div className="font-bold text-navy">{u.name}</div>
                       <div className="text-xs text-slate-400 truncate">{u.email}</div>

@@ -2,6 +2,8 @@ import { User as FirebaseUser } from 'firebase/auth';
 import { UserProfile } from '../types';
 import { IconRenderer } from './Icons';
 
+import { UserAvatar } from './UserAvatar';
+
 interface NavbarProps {
   user: UserProfile | null;
   authUser: FirebaseUser | null;
@@ -38,11 +40,10 @@ export function Navbar({ user, authUser, loading, onLoginClick, onMenuClick, onL
             className="flex items-center gap-2 bg-slate-100/50 hover:bg-slate-100 p-1 pr-3 rounded-full cursor-pointer transition-all border border-slate-200 group"
             onClick={onMenuClick}
           >
-            <img 
-              src={user?.avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} 
-              alt={user?.name || authUser.displayName || authUser.email || 'Profile'}
-              className="w-[32px] h-[32px] sm:w-[40px] sm:h-[40px] rounded-full border-2 border-white shadow-sm group-hover:border-primary transition-all"
-              referrerPolicy="no-referrer"
+            <UserAvatar 
+              user={user}
+              authUser={authUser}
+              className="w-[32px] h-[32px] sm:w-[40px] sm:h-[40px] rounded-full border-2 border-white shadow-sm group-hover:border-primary transition-all object-cover"
             />
             <span className="hidden sm:inline text-xs font-bold text-navy uppercase tracking-wider">Menu</span>
           </div>

@@ -3,7 +3,8 @@ import { auth, rtdb } from '../firebase';
 import { onAuthStateChanged, User } from 'firebase/auth';
 import { ref, onValue } from 'firebase/database';
 import { UserProfile } from '../types';
-import { checkRedirectAuth, ensureUserProfile } from '../services/authService';
+import { checkRedirectAuth, ensureUserProfile, syncGoogleProfilePhoto } from '../services/authService';
+import { shouldSyncGooglePhoto, resolveAvatarUrl, DEFAULT_AVATAR } from '../utils/avatar';
 
 /**
  * Hook that separates auth identity from profile data
@@ -48,61 +49,67 @@ export function useAuth() {
 
         // Set up real-time listener for profile updates
         userUnsubscribe = onValue(
-          userRef,
-          async (snapshot) => {
-            if (snapshot.exists()) {
-              const userData = snapshot.val() as UserProfile;
+           userRef,
+           async (snapshot) => {
+             if (snapshot.exists()) {
+               const userData = snapshot.val() as UserProfile;
 
-              // Ensure uid is always set from Firebase Auth
-              const userWithUid: UserProfile = {
-                ...userData,
-                uid: firebaseUser.uid,
-                phone: userData.phone || '',
-                profileCompleted: Boolean(userData.phone),
-              };
+               // Automatically synchronize Google profile photo if missing, placeholder, or outdated
+               if (firebaseUser.photoURL && shouldSyncGooglePhoto(userData.avatar, firebaseUser.photoURL, userData.customAvatar)) {
+                 syncGoogleProfilePhoto(firebaseUser.uid, firebaseUser.photoURL, userData.avatar, userData.customAvatar).catch(() => {});
+               }
 
-              // Security: Hardcoded check for Super Admin email
-              if (
-                userWithUid.email?.toLowerCase() ===
-                'indiacybercafe.com@gmail.com'
-              ) {
-                userWithUid.role = 'admin';
-              }
+               // Ensure uid is always set from Firebase Auth and avatar is correctly resolved
+               const userWithUid: UserProfile = {
+                 ...userData,
+                 uid: firebaseUser.uid,
+                 avatar: resolveAvatarUrl(userData, firebaseUser),
+                 phone: userData.phone || '',
+                 profileCompleted: Boolean(userData.phone),
+               };
 
-              setUser(userWithUid);
-              setProfileLoading(false);
-            } else {
-              // Profile does not exist yet (e.g., first-time Google sign-in)
-              // Automatically create the initial user profile
-              try {
-                const { profile } = await ensureUserProfile(firebaseUser, 'google');
-                setUser(profile);
-              } catch (createErr: any) {
-                console.error('[useAuth] Auto profile creation notice:', createErr);
-                // Fallback for Admin email if auto creation encounters issue
-                if (
-                  firebaseUser.email?.toLowerCase() ===
-                  'indiacybercafe.com@gmail.com'
-                ) {
-                  setUser({
-                    uid: firebaseUser.uid,
-                    email: firebaseUser.email,
-                    name: firebaseUser.displayName || 'Super Admin',
-                    role: 'admin',
-                    phone: '',
-                    avatar:
-                      firebaseUser.photoURL ||
-                      'https://cdn-icons-png.flaticon.com/512/149/149071.png',
-                    authProvider: 'google',
-                    createdAt: Date.now(),
-                  });
-                } else {
-                  setUser(null);
-                }
-              }
-              setProfileLoading(false);
-            }
-          },
+               // Security: Hardcoded check for Super Admin email
+               if (
+                 userWithUid.email?.toLowerCase() ===
+                 'indiacybercafe.com@gmail.com'
+               ) {
+                 userWithUid.role = 'admin';
+               }
+
+               setUser(userWithUid);
+               setProfileLoading(false);
+             } else {
+               // Profile does not exist yet (e.g., first-time Google sign-in)
+               // Automatically create the initial user profile
+               try {
+                 const { profile } = await ensureUserProfile(firebaseUser, 'google');
+                 setUser(profile);
+               } catch (createErr: any) {
+                 console.error('[useAuth] Auto profile creation notice:', createErr);
+                 // Fallback for Admin email if auto creation encounters issue
+                 if (
+                   firebaseUser.email?.toLowerCase() ===
+                   'indiacybercafe.com@gmail.com'
+                 ) {
+                   setUser({
+                     uid: firebaseUser.uid,
+                     email: firebaseUser.email,
+                     name: firebaseUser.displayName || 'Super Admin',
+                     role: 'admin',
+                     phone: '',
+                     avatar:
+                       firebaseUser.photoURL ||
+                       DEFAULT_AVATAR,
+                     authProvider: 'google',
+                     createdAt: Date.now(),
+                   });
+                 } else {
+                   setUser(null);
+                 }
+               }
+               setProfileLoading(false);
+             }
+           },
           (error) => {
             console.error('Profile listener error:', error);
             setProfileError(error);

@@ -16,6 +16,7 @@ import {
   mapAuthError,
 } from '../services/authService';
 import { UserProfile } from '../types';
+import { DEFAULT_AVATAR } from '../utils/avatar';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -120,7 +121,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         phone: normalized,
         password: sanitizedPassword,
         role,
-        avatar: 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+        avatar: DEFAULT_AVATAR,
         authProvider: 'password',
         phoneVerified: false,
         profileCompleted: true,

@@ -9,6 +9,7 @@ import { signInWithEmailAndPassword } from 'firebase/auth';
 import { showToast } from './Toast';
 import { ConfirmationModal } from './ConfirmationModal';
 import { trimWhitespace, sanitizePhone } from '../utils/sanitizer';
+import { UserAvatar } from './UserAvatar';
 
 interface UserManageModalProps {
   user: UserProfile | null;
@@ -93,7 +94,7 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-8 space-y-6">
           <div className="text-center">
-            <img src={user.avatar} className="w-20 h-20 sm:w-24 sm:h-24 rounded-full mx-auto border-4 border-primary shadow-lg object-cover" />
+            <UserAvatar user={user} className="w-20 h-20 sm:w-24 sm:h-24 rounded-full mx-auto border-4 border-primary shadow-lg object-cover" />
             <p className="text-slate-400 mt-2 text-xs sm:text-sm break-all">{user.email}</p>
           </div>
 

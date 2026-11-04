@@ -1,6 +1,8 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { UserProfile } from '../types';
 import { IconRenderer } from './Icons';
+import { UserAvatar } from './UserAvatar';
+import { auth } from '../firebase';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -49,10 +51,10 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
         className="fixed top-0 right-0 w-full max-w-[280px] h-full bg-white z-[2000] shadow-2xl flex flex-col overflow-y-auto"
       >
         <div className="p-6 bg-linear-to-br from-navy to-navy-light text-white relative flex items-center gap-3 shadow-lg">
-          <img 
-            src={user?.avatar || "https://cdn-icons-png.flaticon.com/512/149/149071.png"} 
+          <UserAvatar 
+            user={user}
+            authUser={auth.currentUser}
             className="w-[48px] h-[48px] rounded-full border-2 border-white/50 shadow-md object-cover shrink-0"
-            referrerPolicy="no-referrer"
           />
           <div className="flex-1 min-w-0 pr-6">
             <h4 className="font-bold text-base leading-tight truncate flex items-center gap-1.5">

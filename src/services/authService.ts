@@ -15,6 +15,7 @@ import { UserProfile } from '../types';
 import { sanitizeUserProfile, sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from './emailService';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
+import { shouldSyncGooglePhoto, DEFAULT_AVATAR } from '../utils/avatar';
 
 // Reusable Google Auth Provider instance
 export const googleAuthProvider = new GoogleAuthProvider();
@@ -92,9 +93,47 @@ export async function checkPhoneRegistered(
   }
 }
 
+// In-memory set to prevent duplicate database writes for the same photo in a single session
+const syncedUidsInSession = new Set<string>();
+
+/**
+ * Synchronizes the user's latest Google profile photo to Realtime Database.
+ * Runs safely in the background, only updates when necessary, and preserves custom uploads.
+ */
+export async function syncGoogleProfilePhoto(
+  uid: string,
+  googlePhotoURL: string,
+  existingAvatar?: string | null,
+  customAvatar?: boolean
+): Promise<boolean> {
+  if (!uid || !googlePhotoURL) return false;
+
+  const sessionKey = `${uid}:${googlePhotoURL}`;
+  if (syncedUidsInSession.has(sessionKey)) return false;
+
+  if (!shouldSyncGooglePhoto(existingAvatar, googlePhotoURL, customAvatar)) {
+    return false;
+  }
+
+  try {
+    syncedUidsInSession.add(sessionKey);
+    const userRef = ref(rtdb, `users/${uid}`);
+    await update(userRef, {
+      avatar: googlePhotoURL,
+      updatedAt: Date.now(),
+    });
+    return true;
+  } catch (err) {
+    console.warn('[authService] Could not sync Google profile photo to database:', err);
+    syncedUidsInSession.delete(sessionKey);
+    return false;
+  }
+}
+
 /**
  * Ensures or creates a user profile in RTDB for an authenticated Firebase user.
  * Preserves all existing data, roles, and records if the profile already exists.
+ * Automatically recovers and syncs Google profile photos if missing, placeholder, or updated.
  */
 export async function ensureUserProfile(firebaseUser: FirebaseUser, provider: 'google' | 'password' = 'google'): Promise<{ profile: UserProfile; isNew: boolean }> {
   const userRef = ref(rtdb, `users/${firebaseUser.uid}`);
@@ -109,7 +148,8 @@ export async function ensureUserProfile(firebaseUser: FirebaseUser, provider: 'g
     if (!existing.authProvider) {
       safeUpdates.authProvider = provider;
     }
-    if (!existing.avatar && firebaseUser.photoURL) {
+    // Automatically recover and update Google profile photo if missing, placeholder, or outdated
+    if (firebaseUser.photoURL && shouldSyncGooglePhoto(existing.avatar, firebaseUser.photoURL, existing.customAvatar)) {
       safeUpdates.avatar = firebaseUser.photoURL;
     }
     await update(userRef, safeUpdates);
@@ -132,7 +172,7 @@ export async function ensureUserProfile(firebaseUser: FirebaseUser, provider: 'g
     email: userEmail,
     phone,
     role,
-    avatar: firebaseUser.photoURL || 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+    avatar: firebaseUser.photoURL || DEFAULT_AVATAR,
     authProvider: provider,
     phoneVerified: Boolean(phone),
     profileCompleted: Boolean(phone),

@@ -8,6 +8,7 @@ export interface UserProfile {
   password?: string;
   role: UserRole;
   avatar?: string;
+  customAvatar?: boolean;
   address?: OrderAddress;
   authProvider?: 'google' | 'password' | 'email';
   phoneVerified?: boolean;

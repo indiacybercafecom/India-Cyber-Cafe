@@ -12,6 +12,7 @@ import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/ema
 import { UserProfile } from '../types';
 import { sanitizeUserProfile, sanitizeEmail, sanitizePhone } from '../utils/sanitizer';
 import { signInWithGoogle, normalizeIndianMobile, checkPhoneRegistered, mapAuthError } from '../services/authService';
+import { DEFAULT_AVATAR } from '../utils/avatar';
 
 interface RegisterProps {
   user: UserProfile | null;
@@ -66,7 +67,7 @@ export function Register({ user }: RegisterProps) {
         phone: normalized,
         password: sanitizedPassword,
         role: role,
-        avatar: 'https://cdn-icons-png.flaticon.com/512/149/149071.png',
+        avatar: DEFAULT_AVATAR,
         authProvider: 'password',
         phoneVerified: false,
         profileCompleted: true,
