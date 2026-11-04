@@ -11,6 +11,7 @@ import { uploadFile } from '../services/uploadService';
 import { sanitizeAddress, trimWhitespace } from '../utils/sanitizer';
 import { normalizeIndianMobile, checkPhoneRegistered, mapAuthError } from '../services/authService';
 import { UserAvatar } from '../components/UserAvatar';
+import { resolveAvatarUrl } from '../utils/avatar';
 
 interface ProfileProps {
   user: UserProfile;
@@ -21,7 +22,7 @@ export function Profile({ user }: ProfileProps) {
   const [phone, setPhone] = useState(user.phone || '');
   const [newPass, setNewPass] = useState('');
   const [loading, setLoading] = useState(false);
-  const [avatar, setAvatar] = useState(user.avatar);
+  const [avatar, setAvatar] = useState(() => resolveAvatarUrl(user, auth.currentUser));
   const [address, setAddress] = useState<OrderAddress>(
     user.address || {
       name: user.name,
@@ -38,10 +39,10 @@ export function Profile({ user }: ProfileProps) {
 
   // Sync phone and avatar state with user prop if it changes externally via useAuth listener
   useEffect(() => {
-    setAvatar(user.avatar);
+    setAvatar(resolveAvatarUrl(user, auth.currentUser));
     setName(user.name);
     setPhone(user.phone || '');
-  }, [user.avatar, user.name, user.phone]);
+  }, [user, user.avatar, user.name, user.phone]);
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];

@@ -4,7 +4,7 @@ import { onAuthStateChanged, User } from 'firebase/auth';
 import { ref, onValue } from 'firebase/database';
 import { UserProfile } from '../types';
 import { checkRedirectAuth, ensureUserProfile, syncGoogleProfilePhoto } from '../services/authService';
-import { shouldSyncGooglePhoto, resolveAvatarUrl, DEFAULT_AVATAR } from '../utils/avatar';
+import { shouldSyncGooglePhoto, resolveAvatarUrl, extractAuthPhotoUrl, getEmailAvatarUrl, DEFAULT_AVATAR } from '../utils/avatar';
 
 /**
  * Hook that separates auth identity from profile data
@@ -54,9 +54,10 @@ export function useAuth() {
              if (snapshot.exists()) {
                const userData = snapshot.val() as UserProfile;
 
-               // Automatically synchronize Google profile photo if missing, placeholder, or outdated
-               if (firebaseUser.photoURL && shouldSyncGooglePhoto(userData.avatar, firebaseUser.photoURL, userData.customAvatar)) {
-                 syncGoogleProfilePhoto(firebaseUser.uid, firebaseUser.photoURL, userData.avatar, userData.customAvatar).catch(() => {});
+               // Automatically synchronize Google / email profile photo if missing, placeholder, or outdated
+               const candidatePhoto = extractAuthPhotoUrl(firebaseUser) || getEmailAvatarUrl(firebaseUser.email || userData.email);
+               if (candidatePhoto && shouldSyncGooglePhoto(userData.avatar, candidatePhoto, userData.customAvatar)) {
+                 syncGoogleProfilePhoto(firebaseUser.uid, candidatePhoto, userData.avatar, userData.customAvatar).catch(() => {});
                }
 
                // Ensure uid is always set from Firebase Auth and avatar is correctly resolved

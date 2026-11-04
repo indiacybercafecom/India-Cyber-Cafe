@@ -1,10 +1,11 @@
 import React, { useState, useEffect } from 'react';
-import { resolveAvatarUrl, DEFAULT_AVATAR } from '../utils/avatar';
+import { resolveAvatarUrl, isPlaceholderAvatar, DEFAULT_AVATAR } from '../utils/avatar';
 import { UserProfile } from '../types';
+import { auth } from '../firebase';
 
 interface UserAvatarProps {
   user?: Partial<UserProfile> | null;
-  authUser?: { photoURL?: string | null } | null;
+  authUser?: { photoURL?: string | null; email?: string | null; providerData?: any[] } | null;
   src?: string | null;
   alt?: string;
   className?: string;
@@ -21,22 +22,29 @@ export function UserAvatar({
   onClick,
   title,
 }: UserAvatarProps) {
-  const resolvedSrc = src || resolveAvatarUrl(user, authUser);
+  const effectiveAuth = authUser || auth.currentUser;
+  
+  // If src is explicitly provided AND is not a generic placeholder, use it.
+  // Otherwise resolve through the centralized avatar hierarchy.
+  const hasValidExplicitSrc = Boolean(src && !isPlaceholderAvatar(src));
+  const resolvedSrc = hasValidExplicitSrc ? src! : resolveAvatarUrl(user, effectiveAuth);
+
   const [currentSrc, setCurrentSrc] = useState<string>(resolvedSrc);
   const [failed, setFailed] = useState(false);
 
-  // When resolvedSrc changes (e.g. auth user loaded or profile synced), update currentSrc
+  // When props change or user/auth is rehydrated, update currentSrc
   useEffect(() => {
-    setCurrentSrc(resolvedSrc);
+    const nextSrc = (src && !isPlaceholderAvatar(src)) ? src : resolveAvatarUrl(user, authUser || auth.currentUser);
+    setCurrentSrc(nextSrc);
     setFailed(false);
-  }, [resolvedSrc]);
+  }, [src, user, user?.avatar, user?.email, authUser, authUser?.photoURL]);
 
   const handleError = () => {
-    // If we haven't tried the fallback default avatar yet, try it
+    // If the image failed to load and was not the default avatar, fallback to DEFAULT_AVATAR
     if (currentSrc !== DEFAULT_AVATAR && !failed) {
       setCurrentSrc(DEFAULT_AVATAR);
     } else {
-      // Both original and flaticon failed (e.g. offline or CDN blocked), show clean vector fallback
+      // If even default fails (e.g., offline or network error), display clean vector silhouette
       setFailed(true);
     }
   };

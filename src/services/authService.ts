@@ -15,7 +15,7 @@ import { UserProfile } from '../types';
 import { sanitizeUserProfile, sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from './emailService';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
-import { shouldSyncGooglePhoto, DEFAULT_AVATAR } from '../utils/avatar';
+import { shouldSyncGooglePhoto, extractAuthPhotoUrl, getEmailAvatarUrl, DEFAULT_AVATAR } from '../utils/avatar';
 
 // Reusable Google Auth Provider instance
 export const googleAuthProvider = new GoogleAuthProvider();
@@ -149,8 +149,9 @@ export async function ensureUserProfile(firebaseUser: FirebaseUser, provider: 'g
       safeUpdates.authProvider = provider;
     }
     // Automatically recover and update Google profile photo if missing, placeholder, or outdated
-    if (firebaseUser.photoURL && shouldSyncGooglePhoto(existing.avatar, firebaseUser.photoURL, existing.customAvatar)) {
-      safeUpdates.avatar = firebaseUser.photoURL;
+    const candidatePhoto = extractAuthPhotoUrl(firebaseUser) || getEmailAvatarUrl(firebaseUser.email);
+    if (candidatePhoto && shouldSyncGooglePhoto(existing.avatar, candidatePhoto, existing.customAvatar)) {
+      safeUpdates.avatar = candidatePhoto;
     }
     await update(userRef, safeUpdates);
 
@@ -165,6 +166,7 @@ export async function ensureUserProfile(firebaseUser: FirebaseUser, provider: 'g
   const isSuperAdmin = userEmail === 'indiacybercafe.com@gmail.com';
   const role = isSuperAdmin ? 'admin' : 'user';
   const phone = firebaseUser.phoneNumber || '';
+  const initialPhoto = extractAuthPhotoUrl(firebaseUser) || getEmailAvatarUrl(userEmail) || DEFAULT_AVATAR;
 
   const newProfile: UserProfile = {
     uid: firebaseUser.uid,
@@ -172,7 +174,7 @@ export async function ensureUserProfile(firebaseUser: FirebaseUser, provider: 'g
     email: userEmail,
     phone,
     role,
-    avatar: firebaseUser.photoURL || DEFAULT_AVATAR,
+    avatar: initialPhoto,
     authProvider: provider,
     phoneVerified: Boolean(phone),
     profileCompleted: Boolean(phone),
