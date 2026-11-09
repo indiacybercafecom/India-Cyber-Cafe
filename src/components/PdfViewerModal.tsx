@@ -146,24 +146,32 @@ export function PdfViewerModal({
       try {
         const parts = window.location.pathname.split('/').filter(Boolean);
         const slug = parts[parts.length - 1];
+        const catSlug = parts.length >= 3 ? parts[parts.length - 2] : '';
         if (slug) {
-          const res = await fetch(`/api/documents/lookup?slug=${encodeURIComponent(slug)}`);
+          const res = await fetch(`/api/documents/lookup?slug=${encodeURIComponent(slug)}&category=${encodeURIComponent(catSlug)}&_t=${Date.now()}`);
           if (res.ok) {
             const data = await res.json();
             finalUrl = data?.document?.downloadUrl || data?.document?.previewUrl || '';
           }
           if (!finalUrl) {
-            const jsonRes = await fetch(`/data/documents.json`);
+            const jsonRes = await fetch(`/data/documents.json?_t=${Date.now()}`);
             if (jsonRes.ok) {
               const jsonData = await jsonRes.json();
-              const list = Array.isArray(jsonData?.documents) ? jsonData.documents : [];
-              const found = list.find((d: any) => d.id === slug || d.name?.toLowerCase().includes(slug.replace(/-/g, ' ')));
+              const list = Array.isArray(jsonData?.documents) ? jsonData.documents : Array.isArray(jsonData) ? jsonData : [];
+              const rawSlug = slug.toLowerCase().trim();
+              const cleanSlug = rawSlug.replace(/[_-]+/g, '');
+              const found = list.find((d: any) => {
+                const docId = (d.id || '').toLowerCase();
+                const docName = (d.name || '').toLowerCase();
+                const docClean = docName.replace(/[^a-z0-9]/g, '');
+                return docId === rawSlug || docName === rawSlug || docName.includes(rawSlug) || rawSlug.includes(docName) || docClean.includes(cleanSlug) || cleanSlug.includes(docClean);
+              });
               if (found) finalUrl = found.downloadUrl || found.previewUrl || '';
             }
           }
         }
       } catch (err) {
-        console.warn('[PdfViewerModal] Direct lookup before download error:', err);
+        console.warn('[PdfViewerModal] Direct lookup before download notice:', err);
       }
     }
 
@@ -176,9 +184,14 @@ export function PdfViewerModal({
 
     setDownloading(true);
 
+    const directDriveUrl = getDirectDownloadUrl(finalUrl);
+    const proxyDownloadUrl = finalUrl.startsWith('/')
+      ? finalUrl
+      : `/api/pdf-proxy?url=${encodeURIComponent(finalUrl)}&download=1&filename=${encodeURIComponent(fileName)}`;
+
+    // Try standard fetch blob download first
     try {
-      const proxyUrl = finalUrl.startsWith('/') ? finalUrl : `/api/pdf-proxy?url=${encodeURIComponent(finalUrl)}`;
-      const resp = await fetch(proxyUrl);
+      const resp = await fetch(proxyDownloadUrl);
       if (resp.ok) {
         const blob = await resp.blob();
         const blobUrl = window.URL.createObjectURL(blob);
@@ -196,13 +209,13 @@ export function PdfViewerModal({
         return;
       }
     } catch (blobErr) {
-      console.warn('[PdfViewerModal] Blob download notice, using direct navigation:', blobErr);
+      console.warn('[PdfViewerModal] Blob download notice, attempting direct download stream:', blobErr);
     }
 
-    const directUrl = getDirectDownloadUrl(finalUrl);
+    // Secondary fallback: Direct proxy download trigger (ideal for Android WebViews)
     try {
       const link = document.createElement('a');
-      link.href = directUrl;
+      link.href = proxyDownloadUrl;
       link.download = fileName;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
@@ -211,9 +224,11 @@ export function PdfViewerModal({
       setTimeout(() => {
         document.body.removeChild(link);
         setDownloading(false);
-      }, 1000);
+      }, 1500);
+      return;
     } catch {
-      window.open(directUrl, '_blank');
+      // Tertiary fallback: open direct Google Drive download link
+      window.open(directDriveUrl || finalUrl, '_blank');
       setDownloading(false);
     }
   };

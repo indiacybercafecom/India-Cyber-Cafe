@@ -54,7 +54,7 @@ async function startServer() {
         "worker-src 'self' blob: data:; " +
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
         "font-src 'self' https://fonts.gstatic.com data:; " +
-        "img-src 'self' data: blob: https://indiacybercafe.com https://cdn-icons-png.flaticon.com https://firebasestorage.googleapis.com https://api.dicebear.com https://www.google-analytics.com https://region1.google-analytics.com https://*.razorpay.com; " +
+        "img-src 'self' data: blob: https://indiacybercafe.com https://cdn-icons-png.flaticon.com https://firebasestorage.googleapis.com https://api.dicebear.com https://www.google-analytics.com https://region1.google-analytics.com https://*.razorpay.com https://*.googleusercontent.com https://*.ggpht.com https://*.gravatar.com; " +
         "media-src 'self'; " +
         "connect-src 'self' " +
           "https://firebase.googleapis.com " +
@@ -270,6 +270,12 @@ async function startServer() {
       res.setHeader("Content-Length", pdfBuffer.length.toString());
       res.setHeader("Accept-Ranges", "bytes");
       res.setHeader("Cache-Control", "public, max-age=3600, stale-while-revalidate=86400");
+      if (req.query.download === '1' || req.query.download === 'true') {
+        const downloadFilename = typeof req.query.filename === 'string' && req.query.filename.trim()
+          ? req.query.filename.trim()
+          : 'document.pdf';
+        res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(downloadFilename)}"`);
+      }
       return res.send(pdfBuffer);
     } catch (error: any) {
       console.error("PDF proxy error:", error.message);
@@ -896,6 +902,11 @@ async function startServer() {
       'prapatra',
       'praman',
       'patra',
+      'pyq',
+      'notes',
+      'paper',
+      'syllabus',
+      'solution',
     ]);
     return String(title)
       .toLowerCase()
@@ -1062,35 +1073,58 @@ async function startServer() {
   const SYNC_INTERVAL_MS = 12 * 60 * 60 * 1000; // 12 hours
   const run12HourDocumentSync = async () => {
     try {
-      console.log(`[12-HOUR SYNC] Starting scheduled documents refresh at ${new Date().toISOString()}...`);
-      // Sync document categories
-      await syncDataType('documentCategories');
-      // Sync documents
-      await syncDataType('documents');
-
-      // Also pull from live production domain if accessible (ensures newly published documents like BT-101 sync immediately)
+      console.log(`[12-HOUR SYNC] Starting scheduled documents refresh from database at ${new Date().toISOString()}...`);
+      
+      // Step 1: Fetch fresh documents directly from RTDB
+      let freshDocs: any[] = [];
       try {
-        const prodResp = await fetch("https://b.indiacybercafe.com/data/documents.json", {
-          signal: AbortSignal.timeout(5000),
+        const rtdbResp = await fetch("https://india-cyber-cafe-default-rtdb.firebaseio.com/documents.json", {
+          signal: AbortSignal.timeout(8000),
           headers: { 'Accept': 'application/json' }
         });
-        if (prodResp.ok) {
-          const prodData = await prodResp.json();
-          const prodDocs = Array.isArray(prodData?.documents) ? prodData.documents : [];
-          if (prodDocs.length > 0) {
-            const merged = [...readServerDocuments(), ...prodDocs];
-            saveServerDocuments(merged);
+        if (rtdbResp.ok) {
+          const rtdbData = await rtdbResp.json();
+          if (rtdbData && typeof rtdbData === 'object') {
+            freshDocs = Object.entries(rtdbData).map(([k, v]: [string, any]) => ({ id: k, ...v }));
           }
         }
-      } catch (prodErr: any) {
-        // Silently continue if external upstream unavailable
+      } catch (err: any) {
+        console.warn('[12-HOUR SYNC] RTDB documents fetch notice:', err?.message);
       }
 
-      // Re-read and atomically rewrite cleanly deduplicated snapshots
-      const currentDocs = readServerDocuments();
-      saveServerDocuments(currentDocs);
+      // Step 2: Fetch fresh categories directly from RTDB
+      let freshCats: any[] = [];
+      try {
+        const rtdbCatsResp = await fetch("https://india-cyber-cafe-default-rtdb.firebaseio.com/documentCategories.json", {
+          signal: AbortSignal.timeout(8000),
+          headers: { 'Accept': 'application/json' }
+        });
+        if (rtdbCatsResp.ok) {
+          const rtdbCatsData = await rtdbCatsResp.json();
+          if (rtdbCatsData && typeof rtdbCatsData === 'object') {
+            freshCats = Object.entries(rtdbCatsData).map(([k, v]: [string, any]) => ({ id: k, ...v }));
+          }
+        }
+      } catch (err: any) {
+        console.warn('[12-HOUR SYNC] RTDB categories fetch notice:', err?.message);
+      }
 
-      console.log(`[12-HOUR SYNC] ✅ Scheduled sync completed. Authoritative documents count: ${currentDocs.length}`);
+      // If RTDB returned documents, clear old JSON and write fresh deduplicated snapshot without duplicates or overlaps
+      if (freshDocs.length > 0) {
+        saveServerDocuments(freshDocs);
+      } else {
+        // Fallback: sync via runtime helper
+        await syncDataType('documents');
+      }
+
+      if (freshCats.length > 0) {
+        saveServerDocCategories(freshCats);
+      } else {
+        await syncDataType('documentCategories');
+      }
+
+      const finalDocs = readServerDocuments();
+      console.log(`[12-HOUR SYNC] ✅ Scheduled sync completed. Saved ${finalDocs.length} clean documents.`);
     } catch (err: any) {
       console.error('[12-HOUR SYNC] Error during scheduled sync:', err?.message || err);
     }
@@ -1258,11 +1292,17 @@ async function startServer() {
             match = remoteList.find((d: any) => {
               const docId = (d.id || '').trim();
               const docNameSlug = serverSlugify(d.name || '');
-              return docId === slug || docNameSlug === cleanTargetSlug || docNameSlug.replace(/-/g, '') === cleanTargetCompact;
+              const docSig = getDocSignature(d.name || '');
+              if (docId === slug || docId.toLowerCase() === rawTarget || docId === cleanTargetSlug) return true;
+              if (docNameSlug === cleanTargetSlug || docNameSlug.replace(/-/g, '') === cleanTargetCompact) return true;
+              if (targetSig && docSig && targetSig === docSig) return true;
+              if (cleanTargetSlug.length >= 3 && (docNameSlug.includes(cleanTargetSlug) || cleanTargetSlug.includes(docNameSlug))) return true;
+              if (rawTarget && (d.name || '').trim().toLowerCase() === rawTarget) return true;
+              return false;
             });
             if (match) {
-              docs.push(match);
-              saveServerDocuments(docs);
+              const existingList = readServerDocuments();
+              saveServerDocuments([...existingList, match]);
             }
           }
         }

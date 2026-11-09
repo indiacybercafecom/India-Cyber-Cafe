@@ -15,6 +15,7 @@ export interface UserProfile {
   profileCompleted?: boolean;
   createdAt: number;
   updatedAt?: number;
+  registrationNotified?: any;
 }
 
 export interface ServiceField {

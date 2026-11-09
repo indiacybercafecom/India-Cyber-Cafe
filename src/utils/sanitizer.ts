@@ -296,6 +296,7 @@ export function sanitizeUserProfile(profile: any): any {
     'profileCompleted',
     'createdAt',
     'updatedAt',
+    'registrationNotified',
   ];
   
   for (const key of profileKeys) {

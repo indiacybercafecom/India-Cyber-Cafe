@@ -11,7 +11,7 @@ import { motion } from 'motion/react';
 import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
 import { UserProfile } from '../types';
 import { sanitizeUserProfile, sanitizeEmail, sanitizePhone } from '../utils/sanitizer';
-import { signInWithGoogle, normalizeIndianMobile, checkPhoneRegistered, mapAuthError } from '../services/authService';
+import { signInWithGoogle, normalizeIndianMobile, checkPhoneRegistered, mapAuthError, sendRegistrationNotificationsOnce } from '../services/authService';
 import { DEFAULT_AVATAR } from '../utils/avatar';
 
 interface RegisterProps {
@@ -78,11 +78,7 @@ export function Register({ user }: RegisterProps) {
       const sanitizedProfile = sanitizeUserProfile(userProfile);
       await set(ref(rtdb, `users/${firebaseUser.uid}`), sanitizedProfile);
 
-      sendEmail(sanitizedEmail, 'Welcome to India Cyber Cafe', emailTemplates.registration(sanitizedName)).catch(() => {});
-      sendEmailToAllAdmins(
-        'New User Registered - India Cyber Cafe',
-        emailTemplates.adminUserRegistered(sanitizedName, sanitizedEmail, normalized, new Date().toLocaleString())
-      ).catch(() => {});
+      sendRegistrationNotificationsOnce(sanitizedProfile).catch(() => {});
 
       showToast(`Account Created Successfully as ${role}!`);
       navigate(redirectPath);

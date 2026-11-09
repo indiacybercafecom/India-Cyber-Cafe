@@ -9,7 +9,7 @@ import {
   User as FirebaseUser,
   ActionCodeSettings,
 } from 'firebase/auth';
-import { ref, get, set, update, query, orderByChild, equalTo } from 'firebase/database';
+import { ref, get, set, update, query, orderByChild, equalTo, runTransaction } from 'firebase/database';
 import { auth, rtdb } from '../firebase';
 import { UserProfile } from '../types';
 import { sanitizeUserProfile, sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
@@ -130,71 +130,184 @@ export async function syncGoogleProfilePhoto(
   }
 }
 
+// In-flight memoization to prevent concurrent race conditions in the same browser tab / JS process
+const inFlightEnsureProfile = new Map<string, Promise<{ profile: UserProfile; isNew: boolean }>>();
+const inFlightNotification = new Map<string, Promise<boolean>>();
+
+/**
+ * Sends welcome email to the user and new user notification to all admins exactly once.
+ * Uses atomic Realtime Database transactions (`runTransaction`) and process memoization
+ * to guarantee idempotency across concurrent callers, React StrictMode, or auth listeners.
+ */
+export function sendRegistrationNotificationsOnce(
+  profile: Pick<UserProfile, 'uid' | 'name' | 'email' | 'phone'>,
+  options?: { isGoogle?: boolean }
+): Promise<boolean> {
+  const uid = profile?.uid;
+  const userEmail = (profile?.email || '').toLowerCase().trim();
+  if (!uid || !userEmail) return Promise.resolve(false);
+
+  // In-process memoization: if a notification task is already active for this UID, reuse it
+  if (inFlightNotification.has(uid)) {
+    return inFlightNotification.get(uid)!;
+  }
+
+  const notificationPromise = (async (): Promise<boolean> => {
+    try {
+      const notifiedRef = ref(rtdb, `users/${uid}/registrationNotified`);
+
+      // Run an atomic RTDB transaction to claim the notification task
+      let wasClaimed = false;
+      const txResult = await runTransaction(notifiedRef, (currentVal) => {
+        // If already set to any value (status 'claimed' or 'sent' or true), abort claim
+        if (currentVal !== null && currentVal !== undefined) {
+          return; // Abort transaction
+        }
+        wasClaimed = true;
+        return {
+          status: 'claimed',
+          claimedAt: Date.now(),
+        };
+      });
+
+      // If aborted or not claimed, another execution won the race
+      if (!txResult.committed || !wasClaimed) {
+        console.log(`[authService] Registration notification already processed for ${uid}. Skipping.`);
+        return false;
+      }
+
+      const userName = profile.name?.trim() || userEmail.split('@')[0] || 'User';
+      const phone = profile.phone || 'Not provided';
+      const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+
+      // Send user welcome email
+      sendEmail(
+        userEmail,
+        'Welcome to India Cyber Cafe',
+        emailTemplates.registration(userName)
+      ).catch((err) => {
+        console.warn('[authService] Failed sending user welcome email:', err);
+      });
+
+      // Send admin notification
+      const adminSubject = options?.isGoogle
+        ? 'New Google User Registered - India Cyber Cafe'
+        : 'New User Registered - India Cyber Cafe';
+
+      sendEmailToAllAdmins(
+        adminSubject,
+        emailTemplates.adminUserRegistered(userName, userEmail, phone, timestamp)
+      ).catch((err) => {
+        console.warn('[authService] Failed sending admin registration notification:', err);
+      });
+
+      // Mark status as 'sent' in database
+      await update(notifiedRef, {
+        status: 'sent',
+        sentAt: Date.now(),
+      }).catch(() => {});
+
+      return true;
+    } catch (err) {
+      console.error('[authService] Error in sendRegistrationNotificationsOnce:', err);
+      return false;
+    } finally {
+      // Clear in-flight promise after a brief window
+      const timer = setTimeout(() => inFlightNotification.delete(uid), 15000);
+      if ((timer as any)?.unref) (timer as any).unref();
+    }
+  })();
+
+  inFlightNotification.set(uid, notificationPromise);
+  return notificationPromise;
+}
+
 /**
  * Ensures or creates a user profile in RTDB for an authenticated Firebase user.
  * Preserves all existing data, roles, and records if the profile already exists.
- * Automatically recovers and syncs Google profile photos if missing, placeholder, or updated.
+ * Deduplicates concurrent calls in flight and ensures only 1 registration notification is sent.
  */
-export async function ensureUserProfile(firebaseUser: FirebaseUser, provider: 'google' | 'password' = 'google'): Promise<{ profile: UserProfile; isNew: boolean }> {
-  const userRef = ref(rtdb, `users/${firebaseUser.uid}`);
-  const snapshot = await get(userRef);
-
-  if (snapshot.exists()) {
-    const existing = snapshot.val() as UserProfile;
-    // Update timestamp and authProvider if missing without touching role or personal data
-    const safeUpdates: Partial<UserProfile> = {
-      updatedAt: Date.now(),
-    };
-    if (!existing.authProvider) {
-      safeUpdates.authProvider = provider;
-    }
-    // Automatically recover and update Google profile photo if missing, placeholder, or outdated
-    const candidatePhoto = extractAuthPhotoUrl(firebaseUser) || getEmailAvatarUrl(firebaseUser.email);
-    if (candidatePhoto && shouldSyncGooglePhoto(existing.avatar, candidatePhoto, existing.customAvatar)) {
-      safeUpdates.avatar = candidatePhoto;
-    }
-    await update(userRef, safeUpdates);
-
-    return {
-      profile: { ...existing, ...safeUpdates },
-      isNew: false,
-    };
+export async function ensureUserProfile(
+  firebaseUser: FirebaseUser,
+  provider: 'google' | 'password' = 'google'
+): Promise<{ profile: UserProfile; isNew: boolean }> {
+  const uid = firebaseUser?.uid;
+  if (!uid) {
+    throw new Error('User UID is missing.');
   }
 
-  // Create new profile for Google or external registration
-  const userEmail = (firebaseUser.email || '').toLowerCase().trim();
-  const isSuperAdmin = userEmail === 'indiacybercafe.com@gmail.com';
-  const role = isSuperAdmin ? 'admin' : 'user';
-  const phone = firebaseUser.phoneNumber || '';
-  const initialPhoto = extractAuthPhotoUrl(firebaseUser) || getEmailAvatarUrl(userEmail) || DEFAULT_AVATAR;
-
-  const newProfile: UserProfile = {
-    uid: firebaseUser.uid,
-    name: firebaseUser.displayName?.trim() || userEmail.split('@')[0] || 'User',
-    email: userEmail,
-    phone,
-    role,
-    avatar: initialPhoto,
-    authProvider: provider,
-    phoneVerified: Boolean(phone),
-    profileCompleted: Boolean(phone),
-    createdAt: Date.now(),
-    updatedAt: Date.now(),
-  };
-
-  const sanitized = sanitizeUserProfile(newProfile);
-  await set(userRef, sanitized);
-
-  // Send welcome email in background
-  if (userEmail) {
-    sendEmail(userEmail, 'Welcome to India Cyber Cafe', emailTemplates.registration(newProfile.name)).catch(() => {});
-    sendEmailToAllAdmins(
-      'New Google User Registered - India Cyber Cafe',
-      emailTemplates.adminUserRegistered(newProfile.name, userEmail, phone || 'Not provided', new Date().toLocaleString())
-    ).catch(() => {});
+  // Deduplicate concurrent calls in flight for the same user
+  const inFlight = inFlightEnsureProfile.get(uid);
+  if (inFlight) {
+    return inFlight;
   }
 
-  return { profile: sanitized, isNew: true };
+  const task = (async (): Promise<{ profile: UserProfile; isNew: boolean }> => {
+    try {
+      const userRef = ref(rtdb, `users/${uid}`);
+      const snapshot = await get(userRef);
+
+      if (snapshot.exists()) {
+        const existing = snapshot.val() as UserProfile;
+        // Update timestamp and authProvider if missing without touching role or personal data
+        const safeUpdates: Partial<UserProfile> = {
+          updatedAt: Date.now(),
+        };
+        if (!existing.authProvider) {
+          safeUpdates.authProvider = provider;
+        }
+        // Automatically recover and update Google profile photo if missing, placeholder, or outdated
+        const candidatePhoto = extractAuthPhotoUrl(firebaseUser) || getEmailAvatarUrl(firebaseUser.email);
+        if (candidatePhoto && shouldSyncGooglePhoto(existing.avatar, candidatePhoto, existing.customAvatar)) {
+          safeUpdates.avatar = candidatePhoto;
+        }
+        await update(userRef, safeUpdates);
+
+        return {
+          profile: { ...existing, ...safeUpdates },
+          isNew: false,
+        };
+      }
+
+      // Create new profile for Google or external registration
+      const userEmail = (firebaseUser.email || '').toLowerCase().trim();
+      const isSuperAdmin = userEmail === 'indiacybercafe.com@gmail.com';
+      const role = isSuperAdmin ? 'admin' : 'user';
+      const phone = firebaseUser.phoneNumber || '';
+      const initialPhoto = extractAuthPhotoUrl(firebaseUser) || getEmailAvatarUrl(userEmail) || DEFAULT_AVATAR;
+
+      const newProfile: UserProfile = {
+        uid: firebaseUser.uid,
+        name: firebaseUser.displayName?.trim() || userEmail.split('@')[0] || 'User',
+        email: userEmail,
+        phone,
+        role,
+        avatar: initialPhoto,
+        authProvider: provider,
+        phoneVerified: Boolean(phone),
+        profileCompleted: Boolean(phone),
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+
+      const sanitized = sanitizeUserProfile(newProfile);
+      await set(userRef, sanitized);
+
+      // Trigger centralized idempotent notification (dispatches exactly once)
+      if (userEmail) {
+        sendRegistrationNotificationsOnce(sanitized, { isGoogle: provider === 'google' }).catch(() => {});
+      }
+
+      return { profile: sanitized, isNew: true };
+    } finally {
+      // Clear in-flight promise after a brief window
+      const timer = setTimeout(() => inFlightEnsureProfile.delete(uid), 3000);
+      if ((timer as any)?.unref) (timer as any).unref();
+    }
+  })();
+
+  inFlightEnsureProfile.set(uid, task);
+  return task;
 }
 
 /**

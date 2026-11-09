@@ -56,7 +56,7 @@ app.use((req, res, next) => {
     "worker-src 'self' blob:; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
     "font-src 'self' https://fonts.gstatic.com data:; " +
-    "img-src 'self' data: blob: https://indiacybercafe.com https://cdn-icons-png.flaticon.com https://firebasestorage.googleapis.com https://api.dicebear.com https://www.google-analytics.com https://region1.google-analytics.com https://*.razorpay.com; " +
+    "img-src 'self' data: blob: https://indiacybercafe.com https://cdn-icons-png.flaticon.com https://firebasestorage.googleapis.com https://api.dicebear.com https://www.google-analytics.com https://region1.google-analytics.com https://*.razorpay.com https://*.googleusercontent.com https://*.ggpht.com https://*.gravatar.com; " +
     "media-src 'self'; " +
     "connect-src 'self' " +
       "https://firebase.googleapis.com " +

@@ -14,6 +14,7 @@ import {
   checkPhoneRegistered,
   initiatePasswordReset,
   mapAuthError,
+  sendRegistrationNotificationsOnce,
 } from '../services/authService';
 import { UserProfile } from '../types';
 import { DEFAULT_AVATAR } from '../utils/avatar';
@@ -132,11 +133,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       const sanitizedProfile = sanitizeUserProfile(userProfile);
       await set(ref(rtdb, `users/${firebaseUser.uid}`), sanitizedProfile);
 
-      sendEmail(sanitizedEmail, 'Welcome to India Cyber Cafe', emailTemplates.registration(sanitizedName)).catch(() => {});
-      sendEmailToAllAdmins(
-        'New User Registered - India Cyber Cafe',
-        emailTemplates.adminUserRegistered(sanitizedName, sanitizedEmail, normalized, new Date().toLocaleString())
-      ).catch(() => {});
+      sendRegistrationNotificationsOnce(sanitizedProfile).catch(() => {});
 
       showToast(`Account Created Successfully as ${role}!`);
       onClose();
