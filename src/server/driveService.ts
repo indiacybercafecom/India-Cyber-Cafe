@@ -49,7 +49,7 @@ export interface DriveItem {
 
 // In-memory token and state cache with per-user isolation
 const tokenStore = new Map<string, DriveTokenRecord>();
-const stateStore = new Map<string, { uid: string; createdAt: number; redirectUrl: string }>();
+const stateStore = new Map<string, { uid: string; email?: string; createdAt: number; redirectUrl: string }>();
 
 // Clean up stale OAuth states every 15 minutes (unref so tests/processes can exit cleanly)
 const cleanupInterval = setInterval(() => {
@@ -72,24 +72,25 @@ export function getOAuthClientSecret(): string {
   return process.env.GOOGLE_CLIENT_SECRET || '';
 }
 
-export function generateOAuthState(uid: string, redirectUrl = '/my-documents/'): string {
+export function generateOAuthState(uid: string, redirectUrl = '/my-documents/', email?: string): string {
   const cryptoRandom = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
   stateStore.set(cryptoRandom, {
     uid,
+    email: email ? email.toLowerCase().trim() : undefined,
     createdAt: Date.now(),
     redirectUrl,
   });
   return cryptoRandom;
 }
 
-export function validateOAuthState(state: string): { uid: string; redirectUrl: string } | null {
+export function validateOAuthState(state: string): { uid: string; email?: string; redirectUrl: string } | null {
   const record = stateStore.get(state);
   if (!record) return null;
   stateStore.delete(state); // one-time use
-  return { uid: record.uid, redirectUrl: record.redirectUrl };
+  return { uid: record.uid, email: record.email, redirectUrl: record.redirectUrl };
 }
 
-export function buildOAuthUrl(state: string, redirectUri: string): string {
+export function buildOAuthUrl(state: string, redirectUri: string, loginHint?: string): string {
   const clientId = getOAuthClientId();
   const scopes = [DRIVE_FILE_SCOPE, USER_EMAIL_SCOPE].join(' ');
   const params = new URLSearchParams({
@@ -102,6 +103,9 @@ export function buildOAuthUrl(state: string, redirectUri: string): string {
     include_granted_scopes: 'true',
     state,
   });
+  if (loginHint) {
+    params.set('login_hint', loginHint.trim());
+  }
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 

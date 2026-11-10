@@ -12,8 +12,6 @@ import {
   Upload,
   FolderPlus,
   Search,
-  Grid,
-  List,
   MoreVertical,
   Download,
   Trash2,
@@ -24,17 +22,13 @@ import {
   HardDrive,
   LogOut,
   ChevronRight,
-  ChevronLeft,
   X,
   AlertCircle,
   CheckCircle2,
   ShieldCheck,
   Lock,
-  ArrowUpDown,
-  Filter,
   Plus,
   Loader2,
-  FileCheck,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { driveClient, DriveStatusResponse, DriveQuotaResponse } from '../services/driveClient';
@@ -47,9 +41,6 @@ interface BreadcrumbItem {
   id: string;
   name: string;
 }
-
-type SortOption = 'name_asc' | 'name_desc' | 'date_desc' | 'date_asc' | 'size_desc' | 'size_asc';
-type FilterCategory = 'all' | 'folder' | 'pdf' | 'image' | 'document' | 'spreadsheet';
 
 export function MyDocuments() {
   const navigate = useNavigate();
@@ -72,15 +63,9 @@ export function MyDocuments() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Search & Filter & Sort
+  // Search & Action Menu state
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterCategory, setFilterCategory] = useState<FilterCategory>('all');
-  const [sortBy, setSortBy] = useState<SortOption>(() => {
-    return (localStorage.getItem('icc_drive_sort') as SortOption) || 'date_desc';
-  });
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>(() => {
-    return (localStorage.getItem('icc_drive_view') as 'grid' | 'list') || 'grid';
-  });
+  const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
 
   // Modals state
   const [isNewFolderOpen, setIsNewFolderOpen] = useState(false);
@@ -124,9 +109,6 @@ export function MyDocuments() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isDragOver, setIsDragOver] = useState(false);
 
-  // Mobile Bottom Sheet for Main Actions
-  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
   // Check URL parameters (e.g. from OAuth callback or errors)
   useEffect(() => {
     const params = new URLSearchParams(location.search);
@@ -135,10 +117,9 @@ export function MyDocuments() {
 
     if (errorParam) {
       showToast(decodeURIComponent(errorParam), 'error');
-      // Clean query params from URL
       navigate('/my-documents/', { replace: true });
     } else if (connectedParam === '1') {
-      showToast('Google Drive connected successfully!', 'success');
+      showToast('Connected', 'success');
       navigate('/my-documents/', { replace: true });
     }
   }, [location.search, navigate]);
@@ -154,7 +135,6 @@ export function MyDocuments() {
       const status = await driveClient.getStatus();
       setDriveStatus(status);
       if (status.connected) {
-        // Fetch storage quota
         try {
           const quota = await driveClient.getStorage();
           setStorageQuota(quota);
@@ -204,25 +184,13 @@ export function MyDocuments() {
     }
   }, [currentFolderId, driveStatus?.connected]);
 
-  // Save viewMode & sort preference
-  const handleViewModeChange = (mode: 'grid' | 'list') => {
-    setViewMode(mode);
-    localStorage.setItem('icc_drive_view', mode);
-  };
-
-  const handleSortChange = (sort: SortOption) => {
-    setSortBy(sort);
-    localStorage.setItem('icc_drive_sort', sort);
-  };
-
   // Connect Drive action
   const handleConnectDrive = async () => {
     try {
-      showToast('Redirecting to Google authorization...', 'info');
       const { authUrl } = await driveClient.getConnectUrl('/my-documents/');
       window.location.href = authUrl;
     } catch (err: any) {
-      showToast(err.message || 'Failed to initiate Google Drive connection', 'error');
+      showToast(err.message || 'Operation failed', 'error');
     }
   };
 
@@ -234,9 +202,9 @@ export function MyDocuments() {
       setDriveStatus({ success: true, connected: false });
       setItems([]);
       setIsDisconnectOpen(false);
-      showToast('Google Drive disconnected. Your files remain safe in your Google Drive.', 'success');
+      showToast('Disconnected', 'success');
     } catch (err: any) {
-      showToast(err.message || 'Failed to disconnect Google Drive', 'error');
+      showToast(err.message || 'Operation failed', 'error');
     } finally {
       setDisconnecting(false);
     }
@@ -264,13 +232,13 @@ export function MyDocuments() {
     try {
       const res = await driveClient.createFolder(newFolderName.trim(), currentFolderId);
       if (res.success) {
-        showToast(`Folder "${newFolderName.trim()}" created successfully`, 'success');
+        showToast('Folder created', 'success');
         setIsNewFolderOpen(false);
         setNewFolderName('');
         loadFolderItems(currentFolderId);
       }
     } catch (err: any) {
-      showToast(err.message || 'Failed to create folder', 'error');
+      showToast(err.message || 'Operation failed', 'error');
     } finally {
       setCreatingFolder(false);
     }
@@ -284,12 +252,12 @@ export function MyDocuments() {
     setRenaming(true);
     try {
       await driveClient.renameItem(itemToRename.id, renameValue.trim());
-      showToast('Item renamed successfully', 'success');
+      showToast('Renamed', 'success');
       setIsRenameOpen(false);
       setItemToRename(null);
       loadFolderItems(currentFolderId);
     } catch (err: any) {
-      showToast(err.message || 'Failed to rename item', 'error');
+      showToast(err.message || 'Operation failed', 'error');
     } finally {
       setRenaming(false);
     }
@@ -303,7 +271,6 @@ export function MyDocuments() {
     setMoveDestinationId('');
 
     try {
-      // List root folder categories and subfolders for move targets
       const rootRes = await driveClient.listFiles(driveStatus?.documentsFolderId || 'root');
       if (rootRes.success) {
         const folders = rootRes.files.filter(f => f.isFolder && f.id !== item.id);
@@ -321,12 +288,12 @@ export function MyDocuments() {
     setMoving(true);
     try {
       await driveClient.moveItem(itemToMove.id, moveDestinationId, currentFolderId);
-      showToast('Item moved successfully', 'success');
+      showToast('Moved', 'success');
       setIsMoveOpen(false);
       setItemToMove(null);
       loadFolderItems(currentFolderId);
     } catch (err: any) {
-      showToast(err.message || 'Failed to move item', 'error');
+      showToast(err.message || 'Operation failed', 'error');
     } finally {
       setMoving(false);
     }
@@ -338,12 +305,12 @@ export function MyDocuments() {
     setDeleting(true);
     try {
       await driveClient.deleteItem(itemToDelete.id);
-      showToast(`"${itemToDelete.name}" moved to Google Drive Trash`, 'success');
+      showToast('Deleted', 'success');
       setIsDeleteOpen(false);
       setItemToDelete(null);
       loadFolderItems(currentFolderId);
     } catch (err: any) {
-      showToast(err.message || 'Failed to move item to Trash', 'error');
+      showToast(err.message || 'Operation failed', 'error');
     } finally {
       setDeleting(false);
     }
@@ -352,10 +319,9 @@ export function MyDocuments() {
   // Download item
   const handleDownload = async (item: DriveItem) => {
     try {
-      showToast(`Preparing "${item.name}" for download...`, 'info');
       await driveClient.triggerFileDownload(item.id, item.name);
     } catch (err: any) {
-      showToast(err.message || 'Failed to download file', 'error');
+      showToast(err.message || 'Operation failed', 'error');
     }
   };
 
@@ -365,7 +331,6 @@ export function MyDocuments() {
     const name = item.name.toLowerCase();
 
     if (mime === 'application/pdf' || name.endsWith('.pdf')) {
-      // Re-use PdfViewerModal!
       setPreviewPdfItem({ id: item.id, name: item.name });
     } else if (mime.startsWith('image/')) {
       setLoadingPreview(true);
@@ -373,7 +338,6 @@ export function MyDocuments() {
         const blobUrl = await driveClient.getPreviewBlobUrl(item.id);
         setPreviewImageItem({ id: item.id, name: item.name, url: blobUrl });
       } catch (err: any) {
-        showToast('Unable to preview image. Downloading instead...', 'info');
         handleDownload(item);
       } finally {
         setLoadingPreview(false);
@@ -386,15 +350,13 @@ export function MyDocuments() {
         const text = await resp.text();
         setPreviewTextItem({ name: item.name, content: text });
       } catch (err: any) {
-        showToast('Unable to preview text file.', 'error');
+        showToast('Operation failed', 'error');
       } finally {
         setLoadingPreview(false);
       }
     } else if (item.webViewLink) {
-      // Google Docs, Sheets, Slides or Office -> open in official Google Drive preview tab
       window.open(item.webViewLink, '_blank', 'noopener,noreferrer');
     } else {
-      showToast('No in-app preview for this file type. Starting download...', 'info');
       handleDownload(item);
     }
   };
@@ -422,9 +384,9 @@ export function MyDocuments() {
         uploadCancelRef.current = cancel;
 
         await promise;
-        showToast(`Uploaded "${file.name}" to your Google Drive`, 'success');
+        showToast('Uploaded', 'success');
       } catch (err: any) {
-        showToast(err.message || `Failed to upload "${file.name}"`, 'error');
+        showToast(err.message || 'Operation failed', 'error');
       } finally {
         uploadCancelRef.current = null;
       }
@@ -453,55 +415,71 @@ export function MyDocuments() {
     }
   };
 
-  // Filtered and sorted items
+  // Priority ranking for categories:
+  // 1. Identity Documents (10)
+  // 2. Education Documents (20)
+  // 3. Government Documents (30)
+  // 4. Certificates (40)
+  // 5. Banking Documents (50)
+  // 6. Personal Documents (60)
+  // User custom folders: (500)
+  // Other Documents: (999999 - bottom)
+  const getFolderRank = (name: string): number => {
+    const n = name.trim().toLowerCase();
+    if (n === 'other documents' || n === 'other' || n === 'others' || n.startsWith('other')) {
+      return 999999;
+    }
+    if (n.includes('identity') || n.includes('aadhaar') || n.includes('pan') || n.includes('voter')) {
+      return 10;
+    }
+    if (n.includes('education') || n.includes('marksheet') || n.includes('degree') || n.includes('school') || n.includes('college')) {
+      return 20;
+    }
+    if (n.includes('government') || n.includes('govt') || n.includes('ration') || n.includes('domicile') || n.includes('caste')) {
+      return 30;
+    }
+    if (n.includes('certificate')) {
+      return 40;
+    }
+    if (n.includes('bank') || n.includes('financial') || n.includes('passbook') || n.includes('income')) {
+      return 50;
+    }
+    if (n.includes('personal') || n.includes('resume') || n.includes('photo')) {
+      return 60;
+    }
+    return 500;
+  };
+
+  // Filtered and sorted items:
+  // Folders: Important categories first, custom folders middle, Other Documents at bottom.
+  // Files: Consistent order (newest modified first, alphabetical fallback).
   const { folderItems, fileItems } = useMemo(() => {
     let filtered = items;
 
-    // Apply text search
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase().trim();
       filtered = filtered.filter(item => item.name.toLowerCase().includes(q));
     }
 
-    // Apply category filter
-    if (filterCategory !== 'all') {
-      if (filterCategory === 'folder') {
-        filtered = filtered.filter(item => item.isFolder);
-      } else if (filterCategory === 'pdf') {
-        filtered = filtered.filter(item => !item.isFolder && (item.mimeType === 'application/pdf' || item.name.toLowerCase().endsWith('.pdf')));
-      } else if (filterCategory === 'image') {
-        filtered = filtered.filter(item => !item.isFolder && item.mimeType?.startsWith('image/'));
-      } else if (filterCategory === 'document') {
-        filtered = filtered.filter(item => !item.isFolder && (item.mimeType?.includes('document') || item.mimeType?.includes('word') || item.mimeType?.includes('text')));
-      } else if (filterCategory === 'spreadsheet') {
-        filtered = filtered.filter(item => !item.isFolder && (item.mimeType?.includes('sheet') || item.mimeType?.includes('excel') || item.mimeType?.includes('csv')));
-      }
-    }
+    const folders = filtered
+      .filter(item => item.isFolder)
+      .sort((a, b) => {
+        const rankDiff = getFolderRank(a.name) - getFolderRank(b.name);
+        if (rankDiff !== 0) return rankDiff;
+        return a.name.localeCompare(b.name);
+      });
 
-    // Sort items
-    const sorted = [...filtered].sort((a, b) => {
-      if (sortBy === 'name_asc') return a.name.localeCompare(b.name);
-      if (sortBy === 'name_desc') return b.name.localeCompare(a.name);
-      if (sortBy === 'date_desc') {
+    const files = filtered
+      .filter(item => !item.isFolder)
+      .sort((a, b) => {
         const tA = new Date(a.modifiedTime || 0).getTime();
         const tB = new Date(b.modifiedTime || 0).getTime();
-        return tB - tA;
-      }
-      if (sortBy === 'date_asc') {
-        const tA = new Date(a.modifiedTime || 0).getTime();
-        const tB = new Date(b.modifiedTime || 0).getTime();
-        return tA - tB;
-      }
-      if (sortBy === 'size_desc') return (b.size || 0) - (a.size || 0);
-      if (sortBy === 'size_asc') return (a.size || 0) - (b.size || 0);
-      return 0;
-    });
-
-    const folders = sorted.filter(item => item.isFolder);
-    const files = sorted.filter(item => !item.isFolder);
+        if (tB !== tA) return tB - tA;
+        return a.name.localeCompare(b.name);
+      });
 
     return { folderItems: folders, fileItems: files };
-  }, [items, searchQuery, filterCategory, sortBy]);
+  }, [items, searchQuery]);
 
   // Format file size
   const formatBytes = (bytes?: number): string => {
@@ -558,7 +536,7 @@ export function MyDocuments() {
     return (
       <div className="min-h-[70vh] flex flex-col items-center justify-center p-6 text-center">
         <Loader2 className="w-10 h-10 text-primary animate-spin mb-4" />
-        <h3 className="text-lg font-bold text-navy">Checking My Documents</h3>
+        <h3 className="text-lg font-bold text-navy">Checking Documents</h3>
         <p className="text-sm text-slate-500 mt-1">Verifying your Google Drive authorization...</p>
       </div>
     );
@@ -597,15 +575,18 @@ export function MyDocuments() {
     );
   }
 
-  // 3. Authenticated but Drive NOT Connected -> Premium Connect Google Drive Screen
+  // 3. Authenticated but Drive NOT Connected -> Connect Google Drive Screen
   if (!driveStatus?.connected) {
+    const loggedInEmail = user?.email || authUser?.email || '';
+    const hasMismatch = driveStatus?.accountMismatch;
+
     return (
       <div className="min-h-[80vh] flex items-center justify-center p-4">
         <SEO
           title="Connect Google Drive - My Documents - India Cyber Cafe"
           description="Connect your personal Google Drive to securely manage your documents with India Cyber Cafe."
         />
-        <div className="max-w-xl w-full bg-white rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-xl space-y-8">
+        <div className="max-w-xl w-full bg-white rounded-3xl p-6 sm:p-10 border border-slate-200 shadow-xl space-y-6">
           <div className="text-center space-y-3">
             <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-tr from-amber-50 to-orange-100 border border-amber-200 shadow-sm">
               <HardDrive className="w-8 h-8 text-primary" />
@@ -615,6 +596,27 @@ export function MyDocuments() {
               Connect your personal Google Drive to securely manage your documents.
             </p>
           </div>
+
+          {/* Account Mismatch Alert Banner */}
+          {hasMismatch && (
+            <div className="p-4 rounded-2xl bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm flex items-start gap-3">
+              <AlertCircle className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold">Account Mismatch</p>
+                <p className="mt-0.5">
+                  Please connect Google Drive using your logged-in Google account (<strong>{loggedInEmail}</strong>). Connecting with a different account is not permitted.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Account Indicator */}
+          {loggedInEmail && (
+            <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 flex items-center justify-between text-xs sm:text-sm">
+              <span className="text-slate-500">Logged in account:</span>
+              <span className="font-bold text-navy truncate max-w-[240px]">{loggedInEmail}</span>
+            </div>
+          )}
 
           {/* Benefits list */}
           <div className="bg-slate-50 rounded-2xl p-5 sm:p-6 border border-slate-200/80 space-y-3.5">
@@ -670,11 +672,11 @@ export function MyDocuments() {
     );
   }
 
-  // 4. Drive IS Connected -> Full Document Manager Dashboard
+  // 4. Drive IS Connected -> Simplified Header Document Manager Dashboard
   return (
-    <div className="space-y-6 pb-12" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
+    <div className="space-y-4 pb-20" onDragOver={handleDragOver} onDragLeave={handleDragLeave} onDrop={handleDrop}>
       <SEO
-        title="My Documents - Personal Google Drive Manager - India Cyber Cafe"
+        title="My Documents - India Cyber Cafe"
         description="Manage your personal documents, certificates, and ID proofs securely stored in your personal Google Drive."
       />
 
@@ -701,231 +703,104 @@ export function MyDocuments() {
               <Upload className="w-16 h-16 text-primary animate-bounce mb-3" />
               <h3 className="text-xl font-extrabold">Drop Files Here to Upload</h3>
               <p className="text-sm text-slate-500 mt-1">
-                Files will be uploaded directly to current folder in your Google Drive.
+                Files will be uploaded directly to your Google Drive.
               </p>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
-      {/* Header Dashboard Banner */}
-      <div className="bg-white rounded-3xl p-5 sm:p-7 border border-slate-200/90 shadow-sm space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1">
-            <div className="flex items-center gap-2.5">
-              <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary font-bold">
-                <HardDrive className="w-5 h-5" />
-              </div>
-              <div>
-                <h1 className="text-xl sm:text-2xl font-extrabold text-navy">My Documents</h1>
-                <p className="text-xs text-slate-500">
-                  Personal Document Management powered by Google Drive
-                </p>
-              </div>
-            </div>
-          </div>
-
-          {/* Connection badge & Storage quota */}
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-full text-xs font-semibold text-emerald-800">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              <span className="truncate max-w-[180px] sm:max-w-[220px]">
-                {driveStatus.googleEmail || user?.email}
-              </span>
-            </div>
-
-            {storageQuota?.quota?.limit && (
-              <div className="hidden sm:flex items-center gap-2 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-full text-xs text-slate-700">
-                <HardDrive className="w-3.5 h-3.5 text-slate-500" />
-                <span>
-                  {formatBytes(storageQuota.quota.usage)} of {formatBytes(storageQuota.quota.limit)}
-                </span>
-              </div>
-            )}
-
-            {/* Desktop Action Buttons */}
-            <div className="hidden md:flex items-center gap-2">
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                className="btn-primary text-xs px-3.5 py-2 rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer"
-              >
-                <Upload className="w-4 h-4" />
-                <span>Upload</span>
-              </button>
-              <button
-                onClick={() => setIsNewFolderOpen(true)}
-                className="bg-slate-100 hover:bg-slate-200 text-navy text-xs font-semibold px-3.5 py-2 rounded-xl flex items-center gap-1.5 border border-slate-200 transition-colors cursor-pointer"
-              >
-                <FolderPlus className="w-4 h-4 text-primary" />
-                <span>New Folder</span>
-              </button>
-              <button
-                onClick={() => loadFolderItems(currentFolderId)}
-                title="Refresh"
-                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 transition-colors cursor-pointer border border-slate-200"
-              >
-                <RefreshCw className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setIsDisconnectOpen(true)}
-                title="Disconnect Google Drive"
-                className="p-2 rounded-xl bg-slate-100 hover:bg-red-50 text-slate-500 hover:text-red-600 transition-colors cursor-pointer border border-slate-200"
-              >
-                <LogOut className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Mobile Three-dot button */}
-            <div className="md:hidden ml-auto">
-              <button
-                onClick={() => setIsMobileMenuOpen(true)}
-                className="p-2 rounded-xl bg-slate-100 text-slate-700 border border-slate-200"
-              >
-                <MoreVertical className="w-5 h-5" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Upload Progress Bar (if active) */}
-        {uploadProgress && (
-          <div className="p-3.5 bg-orange-50 border border-orange-200 rounded-2xl flex items-center justify-between gap-4">
-            <div className="flex items-center gap-3 min-w-0 flex-1">
-              <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-navy truncate">
-                  Uploading {uploadProgress.fileName}...
-                </p>
-                <div className="w-full bg-orange-200/60 h-1.5 rounded-full mt-1.5 overflow-hidden">
-                  <div
-                    className="bg-primary h-full transition-all duration-200"
-                    style={{ width: `${uploadProgress.percent}%` }}
-                  />
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs font-bold text-primary">{uploadProgress.percent}%</span>
-              {uploadCancelRef.current && (
-                <button
-                  onClick={() => uploadCancelRef.current?.()}
-                  className="p-1 hover:bg-orange-200 rounded text-slate-600"
-                  title="Cancel upload"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
-        {/* Search, Filter & View Controls */}
-        <div className="pt-2 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 border-t border-slate-100">
-          {/* Search bar */}
-          <div className="relative flex-1">
-            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-            <input
-              type="text"
-              placeholder="Search documents or folders..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-navy placeholder:text-slate-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
-            />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-navy"
-              >
-                <X className="w-3.5 h-3.5" />
-              </button>
-            )}
-          </div>
-
-          {/* Sort & Grid/List view buttons */}
-          <div className="flex items-center gap-2 shrink-0">
-            <select
-              value={sortBy}
-              onChange={(e) => handleSortChange(e.target.value as SortOption)}
-              className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary cursor-pointer"
-            >
-              <option value="date_desc">Modified (Newest)</option>
-              <option value="date_asc">Modified (Oldest)</option>
-              <option value="name_asc">Name (A-Z)</option>
-              <option value="name_desc">Name (Z-A)</option>
-              <option value="size_desc">Size (Largest)</option>
-              <option value="size_asc">Size (Smallest)</option>
-            </select>
-
-            <div className="flex items-center bg-slate-100 p-0.5 rounded-xl border border-slate-200">
-              <button
-                onClick={() => handleViewModeChange('grid')}
-                className={`p-1.5 rounded-lg transition-all ${
-                  viewMode === 'grid' ? 'bg-white shadow-sm text-navy' : 'text-slate-500 hover:text-navy'
-                }`}
-                title="Grid view"
-              >
-                <Grid className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => handleViewModeChange('list')}
-                className={`p-1.5 rounded-lg transition-all ${
-                  viewMode === 'list' ? 'bg-white shadow-sm text-navy' : 'text-slate-500 hover:text-navy'
-                }`}
-                title="List view"
-              >
-                <List className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none text-xs">
-          {[
-            { id: 'all', label: 'All Items' },
-            { id: 'folder', label: 'Folders' },
-            { id: 'pdf', label: 'PDFs' },
-            { id: 'image', label: 'Images' },
-            { id: 'document', label: 'Documents' },
-            { id: 'spreadsheet', label: 'Spreadsheets' },
-          ].map(f => (
+      {/* 1. SIMPLIFIED HEADER: ONLY ONE CLEAN HORIZONTAL ROW (Search on Left + Three-dot Menu on Right) */}
+      <div className="bg-white rounded-2xl p-2.5 sm:p-3 border border-slate-200/90 shadow-sm flex items-center gap-2.5">
+        <div className="relative flex-1">
+          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search documents and folders..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-navy placeholder:text-slate-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+          />
+          {searchQuery && (
             <button
-              key={f.id}
-              onClick={() => setFilterCategory(f.id as FilterCategory)}
-              className={`px-3 py-1 rounded-full font-medium whitespace-nowrap transition-colors cursor-pointer ${
-                filterCategory === f.id
-                  ? 'bg-navy text-white'
-                  : 'bg-slate-100 hover:bg-slate-200 text-slate-600'
-              }`}
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-navy cursor-pointer"
             >
-              {f.label}
+              <X className="w-3.5 h-3.5" />
             </button>
-          ))}
+          )}
         </div>
+
+        {/* Three-dot Action Menu Trigger */}
+        <button
+          type="button"
+          onClick={() => setIsActionMenuOpen(true)}
+          title="Actions"
+          className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer shrink-0"
+        >
+          <MoreVertical className="w-5 h-5" />
+        </button>
       </div>
 
-      {/* Breadcrumb Navigation */}
-      <div className="flex items-center gap-1.5 text-xs text-slate-600 overflow-x-auto py-1 scrollbar-none">
-        {breadcrumbs.map((crumb, idx) => {
-          const isLast = idx === breadcrumbs.length - 1;
-          return (
-            <React.Fragment key={crumb.id}>
-              {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+      {/* Upload Progress Bar (if active) */}
+      {uploadProgress && (
+        <div className="p-3.5 bg-orange-50 border border-orange-200 rounded-2xl flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3 min-w-0 flex-1">
+            <Loader2 className="w-5 h-5 text-primary animate-spin shrink-0" />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-bold text-navy truncate">
+                Uploading {uploadProgress.fileName}...
+              </p>
+              <div className="w-full bg-orange-200/60 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                <div
+                  className="bg-primary h-full transition-all duration-200"
+                  style={{ width: `${uploadProgress.percent}%` }}
+                />
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs font-bold text-primary">{uploadProgress.percent}%</span>
+            {uploadCancelRef.current && (
               <button
-                onClick={() => handleBreadcrumbClick(idx)}
-                disabled={isLast}
-                className={`whitespace-nowrap transition-colors ${
-                  isLast
-                    ? 'font-bold text-navy cursor-default'
-                    : 'text-slate-500 hover:text-primary cursor-pointer'
-                }`}
+                type="button"
+                onClick={() => uploadCancelRef.current?.()}
+                className="p-1 hover:bg-orange-200 rounded text-slate-600"
+                title="Cancel upload"
               >
-                {crumb.name}
+                <X className="w-4 h-4" />
               </button>
-            </React.Fragment>
-          );
-        })}
-      </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Breadcrumb Navigation when inside subfolders */}
+      {breadcrumbs.length > 1 && (
+        <div className="flex items-center gap-1.5 text-xs text-slate-600 overflow-x-auto py-1 scrollbar-none px-1">
+          {breadcrumbs.map((crumb, idx) => {
+            const isLast = idx === breadcrumbs.length - 1;
+            return (
+              <React.Fragment key={crumb.id}>
+                {idx > 0 && <ChevronRight className="w-3.5 h-3.5 text-slate-400 shrink-0" />}
+                <button
+                  type="button"
+                  onClick={() => handleBreadcrumbClick(idx)}
+                  disabled={isLast}
+                  className={`whitespace-nowrap transition-colors ${
+                    isLast
+                      ? 'font-bold text-navy cursor-default'
+                      : 'text-slate-500 hover:text-primary cursor-pointer'
+                  }`}
+                >
+                  {crumb.name}
+                </button>
+              </React.Fragment>
+            );
+          })}
+        </div>
+      )}
 
       {/* Main Content Area */}
       {loadingItems ? (
@@ -963,14 +838,14 @@ export function MyDocuments() {
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="btn-primary text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-sm"
+              className="btn-primary text-xs px-4 py-2.5 rounded-xl flex items-center gap-2 shadow-sm cursor-pointer"
             >
               <Upload className="w-4 h-4" />
               <span>Upload Document</span>
             </button>
             <button
               onClick={() => setIsNewFolderOpen(true)}
-              className="bg-slate-100 hover:bg-slate-200 text-navy text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 border border-slate-200 transition-colors"
+              className="bg-slate-100 hover:bg-slate-200 text-navy text-xs font-semibold px-4 py-2.5 rounded-xl flex items-center gap-2 border border-slate-200 transition-colors cursor-pointer"
             >
               <FolderPlus className="w-4 h-4 text-primary" />
               <span>New Folder</span>
@@ -979,10 +854,10 @@ export function MyDocuments() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* FOLDERS SECTION */}
+          {/* 2. ORGANIZED FOLDERS SECTION (Important categories first, Other Documents at bottom) */}
           {folderItems.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
                 Folders ({folderItems.length})
               </h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 sm:gap-4">
@@ -1002,7 +877,7 @@ export function MyDocuments() {
                           e.stopPropagation();
                           setActiveItemForMenu(folder);
                         }}
-                        className="p-1 rounded-lg text-slate-400 hover:text-navy hover:bg-slate-100"
+                        className="p-1 rounded-lg text-slate-400 hover:text-navy hover:bg-slate-100 cursor-pointer"
                         title="Folder options"
                       >
                         <MoreVertical className="w-4 h-4" />
@@ -1023,151 +898,178 @@ export function MyDocuments() {
             </div>
           )}
 
-          {/* FILES SECTION */}
+          {/* FILES SECTION (Consistent order, clean spacing & alignment) */}
           {fileItems.length > 0 && (
             <div className="space-y-3">
-              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
                 Files ({fileItems.length})
               </h3>
 
-              {viewMode === 'grid' ? (
-                /* Grid View */
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-                  {fileItems.map(file => (
-                    <div
-                      key={file.id}
-                      className="group bg-white rounded-2xl p-4 border border-slate-200 hover:border-primary/50 hover:shadow-md transition-all flex flex-col justify-between"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div
-                          className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center cursor-pointer"
-                          onClick={() => handlePreview(file)}
-                        >
-                          {getFileIcon(file)}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setActiveItemForMenu(file)}
-                          className="p-1 rounded-lg text-slate-400 hover:text-navy hover:bg-slate-100"
-                          title="File options"
-                        >
-                          <MoreVertical className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      <div className="mt-3">
-                        <h4
-                          className="font-bold text-navy text-xs sm:text-sm truncate cursor-pointer hover:text-primary transition-colors"
-                          title={file.name}
-                          onClick={() => handlePreview(file)}
-                        >
-                          {file.name}
-                        </h4>
-                        <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
-                          <span>{formatBytes(file.size)}</span>
-                          <span>{formatDate(file.modifiedTime)}</span>
-                        </div>
-                      </div>
-
-                      {/* Quick action buttons on card */}
-                      <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
-                        <button
-                          type="button"
-                          onClick={() => handlePreview(file)}
-                          className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
-                        >
-                          <Eye className="w-3.5 h-3.5" />
-                          <span>Preview</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDownload(file)}
-                          className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Download</span>
-                        </button>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                /* List View */
-                <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
-                  {fileItems.map(file => (
-                    <div
-                      key={file.id}
-                      className="p-3 sm:p-4 hover:bg-slate-50 flex items-center justify-between gap-3 transition-colors"
-                    >
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                {fileItems.map(file => (
+                  <div
+                    key={file.id}
+                    className="group bg-white rounded-2xl p-4 border border-slate-200 hover:border-primary/50 hover:shadow-md transition-all flex flex-col justify-between"
+                  >
+                    <div className="flex items-start justify-between gap-2">
                       <div
-                        className="flex items-center gap-3 min-w-0 flex-1 cursor-pointer"
+                        className="w-10 h-10 rounded-xl bg-slate-50 flex items-center justify-center cursor-pointer"
                         onClick={() => handlePreview(file)}
                       >
-                        <div className="w-9 h-9 rounded-xl bg-slate-50 flex items-center justify-center shrink-0">
-                          {getFileIcon(file)}
-                        </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-navy text-xs sm:text-sm truncate hover:text-primary transition-colors">
-                            {file.name}
-                          </p>
-                          <p className="text-[11px] text-slate-400 mt-0.5">
-                            {formatDate(file.modifiedTime)}
-                          </p>
-                        </div>
+                        {getFileIcon(file)}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveItemForMenu(file)}
+                        className="p-1 rounded-lg text-slate-400 hover:text-navy hover:bg-slate-100 cursor-pointer"
+                        title="File options"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+                    </div>
 
-                      <div className="flex items-center gap-3 shrink-0">
-                        <span className="text-xs text-slate-500 hidden sm:inline">
-                          {formatBytes(file.size)}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => handlePreview(file)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-navy hover:bg-slate-200 transition-colors"
-                          title="Preview"
-                        >
-                          <Eye className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDownload(file)}
-                          className="p-1.5 rounded-lg text-slate-500 hover:text-navy hover:bg-slate-200 transition-colors"
-                          title="Download"
-                        >
-                          <Download className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setActiveItemForMenu(file)}
-                          className="p-1.5 rounded-lg text-slate-400 hover:text-navy hover:bg-slate-200 transition-colors"
-                          title="More options"
-                        >
-                          <MoreVertical className="w-4 h-4" />
-                        </button>
+                    <div className="mt-3">
+                      <h4
+                        className="font-bold text-navy text-xs sm:text-sm truncate cursor-pointer hover:text-primary transition-colors"
+                        title={file.name}
+                        onClick={() => handlePreview(file)}
+                      >
+                        {file.name}
+                      </h4>
+                      <div className="flex items-center justify-between text-[11px] text-slate-400 mt-1">
+                        <span>{formatBytes(file.size)}</span>
+                        <span>{formatDate(file.modifiedTime)}</span>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
+
+                    {/* Quick action buttons on card */}
+                    <div className="mt-3 pt-2.5 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                      <button
+                        type="button"
+                        onClick={() => handlePreview(file)}
+                        className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Preview</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDownload(file)}
+                        className="flex items-center gap-1 hover:text-primary transition-colors cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                        <span>Download</span>
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
       )}
 
-      {/* Floating Action Button on Mobile */}
-      <div className="md:hidden fixed bottom-6 right-6 z-40">
+      {/* 3. FLOATING PLUS BUTTON: OPENS EXACT SAME ACTION MENU AS THREE-DOT BUTTON */}
+      <div className="fixed bottom-6 right-6 z-40">
         <button
-          onClick={() => fileInputRef.current?.click()}
-          className="w-14 h-14 rounded-full bg-primary text-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-transform"
-          title="Upload File"
+          type="button"
+          onClick={() => setIsActionMenuOpen(true)}
+          className="w-14 h-14 rounded-full bg-primary text-white shadow-xl flex items-center justify-center hover:scale-105 active:scale-95 transition-transform cursor-pointer"
+          title="Actions"
         >
           <Plus className="w-7 h-7" />
         </button>
       </div>
 
-      {/* --- MODALS & CONTEXT ACTIONS --- */}
+      {/* UNIFIED ACTION MENU MODAL / SHEET (Triggered by Header Three-Dot & Floating Plus Button) */}
+      <AnimatePresence>
+        {isActionMenuOpen && (
+          <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm">
+            <motion.div
+              initial={{ y: 120, opacity: 0 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: 120, opacity: 0 }}
+              className="bg-white w-full max-w-sm rounded-t-3xl sm:rounded-3xl p-5 shadow-2xl space-y-4"
+            >
+              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                <h3 className="font-bold text-navy text-sm">Document Actions</h3>
+                <button
+                  type="button"
+                  onClick={() => setIsActionMenuOpen(false)}
+                  className="p-1 rounded-full text-slate-400 hover:text-navy cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
 
-      {/* Item Action Sheet / Menu Modal */}
+              <div className="space-y-1.5 text-sm font-semibold text-slate-700">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    fileInputRef.current?.click();
+                  }}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left cursor-pointer"
+                >
+                  <Upload className="w-5 h-5 text-primary" />
+                  <span>Upload Files</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    setIsNewFolderOpen(true);
+                  }}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left cursor-pointer"
+                >
+                  <FolderPlus className="w-5 h-5 text-primary" />
+                  <span>New Folder</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    loadFolderItems(currentFolderId);
+                  }}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left cursor-pointer"
+                >
+                  <RefreshCw className="w-5 h-5 text-slate-500" />
+                  <span>Refresh Documents</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionMenuOpen(false);
+                    setIsDisconnectOpen(true);
+                  }}
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 text-red-600 transition-colors text-left cursor-pointer"
+                >
+                  <LogOut className="w-5 h-5 text-red-500" />
+                  <span>Disconnect Drive</span>
+                </button>
+              </div>
+
+              {/* Storage Quota display if available */}
+              {storageQuota?.quota?.limit && (
+                <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500 px-1">
+                  <div className="flex items-center gap-1.5">
+                    <HardDrive className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Google Drive Storage</span>
+                  </div>
+                  <span className="font-semibold text-slate-700">
+                    {formatBytes(storageQuota.quota.usage)} of {formatBytes(storageQuota.quota.limit)}
+                  </span>
+                </div>
+              )}
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Item Action Sheet / Context Modal */}
       <AnimatePresence>
         {activeItemForMenu && (
           <div className="fixed inset-0 z-[2000] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50 backdrop-blur-sm">
@@ -1191,8 +1093,9 @@ export function MyDocuments() {
                   </h4>
                 </div>
                 <button
+                  type="button"
                   onClick={() => setActiveItemForMenu(null)}
-                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-navy"
+                  className="p-1.5 rounded-full hover:bg-slate-100 text-slate-400 hover:text-navy cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1201,12 +1104,13 @@ export function MyDocuments() {
               <div className="space-y-1 text-sm font-semibold text-slate-700">
                 {activeItemForMenu.isFolder ? (
                   <button
+                    type="button"
                     onClick={() => {
                       const f = activeItemForMenu;
                       setActiveItemForMenu(null);
                       handleOpenFolder(f);
                     }}
-                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left"
+                    className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left cursor-pointer"
                   >
                     <Folder className="w-4 h-4 text-slate-500" />
                     <span>Open Folder</span>
@@ -1214,23 +1118,25 @@ export function MyDocuments() {
                 ) : (
                   <>
                     <button
+                      type="button"
                       onClick={() => {
                         const f = activeItemForMenu;
                         setActiveItemForMenu(null);
                         handlePreview(f);
                       }}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left"
+                      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left cursor-pointer"
                     >
                       <Eye className="w-4 h-4 text-slate-500" />
                       <span>Preview</span>
                     </button>
                     <button
+                      type="button"
                       onClick={() => {
                         const f = activeItemForMenu;
                         setActiveItemForMenu(null);
                         handleDownload(f);
                       }}
-                      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left"
+                      className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left cursor-pointer"
                     >
                       <Download className="w-4 h-4 text-slate-500" />
                       <span>Download</span>
@@ -1239,6 +1145,7 @@ export function MyDocuments() {
                 )}
 
                 <button
+                  type="button"
                   onClick={() => {
                     const f = activeItemForMenu;
                     setActiveItemForMenu(null);
@@ -1246,32 +1153,34 @@ export function MyDocuments() {
                     setRenameValue(f.name);
                     setIsRenameOpen(true);
                   }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left"
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left cursor-pointer"
                 >
                   <Edit2 className="w-4 h-4 text-slate-500" />
                   <span>Rename</span>
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => {
                     const f = activeItemForMenu;
                     setActiveItemForMenu(null);
                     openMoveModal(f);
                   }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left"
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors text-left cursor-pointer"
                 >
                   <Move className="w-4 h-4 text-slate-500" />
                   <span>Move</span>
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => {
                     const f = activeItemForMenu;
                     setActiveItemForMenu(null);
                     setItemToDelete(f);
                     setIsDeleteOpen(true);
                   }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 text-red-600 transition-colors text-left"
+                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 text-red-600 transition-colors text-left cursor-pointer"
                 >
                   <Trash2 className="w-4 h-4 text-red-500" />
                   <span>Move to Trash</span>
@@ -1298,8 +1207,9 @@ export function MyDocuments() {
                   <span>New Folder</span>
                 </h3>
                 <button
+                  type="button"
                   onClick={() => setIsNewFolderOpen(false)}
-                  className="p-1 rounded-full hover:bg-slate-100 text-slate-400"
+                  className="p-1 rounded-full hover:bg-slate-100 text-slate-400 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1325,14 +1235,14 @@ export function MyDocuments() {
                   <button
                     type="button"
                     onClick={() => setIsNewFolderOpen(false)}
-                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={creatingFolder || !newFolderName.trim()}
-                    className="btn-primary text-xs px-5 py-2.5 rounded-xl font-bold flex items-center gap-2"
+                    className="btn-primary text-xs px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 cursor-pointer"
                   >
                     {creatingFolder && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     <span>Create Folder</span>
@@ -1360,8 +1270,9 @@ export function MyDocuments() {
                   <span>Rename {itemToRename.isFolder ? 'Folder' : 'File'}</span>
                 </h3>
                 <button
+                  type="button"
                   onClick={() => setIsRenameOpen(false)}
-                  className="p-1 rounded-full hover:bg-slate-100 text-slate-400"
+                  className="p-1 rounded-full hover:bg-slate-100 text-slate-400 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1386,14 +1297,14 @@ export function MyDocuments() {
                   <button
                     type="button"
                     onClick={() => setIsRenameOpen(false)}
-                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                    className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={renaming || !renameValue.trim()}
-                    className="btn-primary text-xs px-5 py-2.5 rounded-xl font-bold flex items-center gap-2"
+                    className="btn-primary text-xs px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 cursor-pointer"
                   >
                     {renaming && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                     <span>Rename</span>
@@ -1421,8 +1332,9 @@ export function MyDocuments() {
                   <span>Move "{itemToMove.name}"</span>
                 </h3>
                 <button
+                  type="button"
                   onClick={() => setIsMoveOpen(false)}
-                  className="p-1 rounded-full hover:bg-slate-100 text-slate-400"
+                  className="p-1 rounded-full hover:bg-slate-100 text-slate-400 cursor-pointer"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -1442,7 +1354,7 @@ export function MyDocuments() {
                     <button
                       type="button"
                       onClick={() => setMoveDestinationId(driveStatus?.documentsFolderId || 'root')}
-                      className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl text-left text-xs font-semibold transition-colors ${
+                      className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl text-left text-xs font-semibold transition-colors cursor-pointer ${
                         moveDestinationId === (driveStatus?.documentsFolderId || 'root')
                           ? 'bg-primary text-white'
                           : 'hover:bg-slate-100 text-navy'
@@ -1457,7 +1369,7 @@ export function MyDocuments() {
                         key={folder.id}
                         type="button"
                         onClick={() => setMoveDestinationId(folder.id)}
-                        className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl text-left text-xs font-semibold transition-colors ${
+                        className={`w-full flex items-center gap-2.5 p-2.5 rounded-xl text-left text-xs font-semibold transition-colors cursor-pointer ${
                           moveDestinationId === folder.id
                             ? 'bg-primary text-white'
                             : 'hover:bg-slate-100 text-navy'
@@ -1475,7 +1387,7 @@ export function MyDocuments() {
                 <button
                   type="button"
                   onClick={() => setIsMoveOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1483,7 +1395,7 @@ export function MyDocuments() {
                   type="button"
                   onClick={handleMove}
                   disabled={moving || !moveDestinationId}
-                  className="btn-primary text-xs px-5 py-2.5 rounded-xl font-bold flex items-center gap-2"
+                  className="btn-primary text-xs px-5 py-2.5 rounded-xl font-bold flex items-center gap-2 cursor-pointer"
                 >
                   {moving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
                   <span>Move Here</span>
@@ -1521,7 +1433,7 @@ export function MyDocuments() {
                 <button
                   type="button"
                   onClick={() => setIsDeleteOpen(false)}
-                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1564,7 +1476,7 @@ export function MyDocuments() {
                 <button
                   type="button"
                   onClick={() => setIsDisconnectOpen(false)}
-                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100"
+                  className="px-5 py-2.5 rounded-xl text-xs font-semibold text-slate-600 hover:bg-slate-100 cursor-pointer"
                 >
                   Cancel
                 </button>
@@ -1583,86 +1495,9 @@ export function MyDocuments() {
         )}
       </AnimatePresence>
 
-      {/* Mobile Actions Bottom Sheet */}
-      <AnimatePresence>
-        {isMobileMenuOpen && (
-          <div className="fixed inset-0 z-[2000] flex items-end justify-center bg-black/50 backdrop-blur-sm">
-            <motion.div
-              initial={{ y: 200, opacity: 0 }}
-              animate={{ y: 0, opacity: 1 }}
-              exit={{ y: 200, opacity: 0 }}
-              className="bg-white w-full rounded-t-3xl p-5 shadow-2xl space-y-3"
-            >
-              <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-                <h3 className="font-bold text-navy text-sm">Document Actions</h3>
-                <button
-                  onClick={() => setIsMobileMenuOpen(false)}
-                  className="p-1 rounded-full text-slate-400 hover:text-navy"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="space-y-1.5 text-sm font-semibold text-slate-700">
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    fileInputRef.current?.click();
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors"
-                >
-                  <Upload className="w-5 h-5 text-primary" />
-                  <span>Upload Files</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    setIsNewFolderOpen(true);
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors"
-                >
-                  <FolderPlus className="w-5 h-5 text-primary" />
-                  <span>New Folder</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    loadFolderItems(currentFolderId);
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors"
-                >
-                  <RefreshCw className="w-5 h-5 text-slate-500" />
-                  <span>Refresh Documents</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    handleConnectDrive();
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors"
-                >
-                  <HardDrive className="w-5 h-5 text-slate-500" />
-                  <span>Reconnect Drive</span>
-                </button>
-                <button
-                  onClick={() => {
-                    setIsMobileMenuOpen(false);
-                    setIsDisconnectOpen(true);
-                  }}
-                  className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 text-red-600 transition-colors"
-                >
-                  <LogOut className="w-5 h-5 text-red-500" />
-                  <span>Disconnect Drive</span>
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
       {/* --- PREVIEWS --- */}
 
-      {/* PDF Preview Modal: Reusing PdfViewerModal! */}
+      {/* PDF Preview Modal: Reusing PdfViewerModal */}
       {previewPdfItem && (
         <PdfViewerModal
           title={previewPdfItem.name}
@@ -1679,6 +1514,7 @@ export function MyDocuments() {
             <h3 className="font-bold text-sm sm:text-base truncate">{previewImageItem.name}</h3>
             <div className="flex items-center gap-3">
               <button
+                type="button"
                 onClick={() => {
                   if (previewImageItem.url) {
                     const a = document.createElement('a');
@@ -1693,6 +1529,7 @@ export function MyDocuments() {
                 <Download className="w-5 h-5" />
               </button>
               <button
+                type="button"
                 onClick={() => {
                   if (previewImageItem.url) window.URL.revokeObjectURL(previewImageItem.url);
                   setPreviewImageItem(null);
@@ -1721,8 +1558,9 @@ export function MyDocuments() {
             <div className="flex items-center justify-between pb-3 border-b border-slate-200">
               <h3 className="font-bold text-navy truncate">{previewTextItem.name}</h3>
               <button
+                type="button"
                 onClick={() => setPreviewTextItem(null)}
-                className="p-1 rounded-full text-slate-400 hover:text-navy"
+                className="p-1 rounded-full text-slate-400 hover:text-navy cursor-pointer"
               >
                 <X className="w-5 h-5" />
               </button>

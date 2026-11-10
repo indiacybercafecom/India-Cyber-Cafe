@@ -38,10 +38,11 @@ export function getOAuthClientSecret() {
   return process.env.GOOGLE_CLIENT_SECRET || '';
 }
 
-export function generateOAuthState(uid, redirectUrl = '/my-documents/') {
+export function generateOAuthState(uid, redirectUrl = '/my-documents/', email) {
   const cryptoRandom = Math.random().toString(36).substring(2, 15) + Date.now().toString(36);
   stateStore.set(cryptoRandom, {
     uid,
+    email: email ? email.toLowerCase().trim() : undefined,
     createdAt: Date.now(),
     redirectUrl,
   });
@@ -52,10 +53,10 @@ export function validateOAuthState(state) {
   const record = stateStore.get(state);
   if (!record) return null;
   stateStore.delete(state); // one-time use
-  return { uid: record.uid, redirectUrl: record.redirectUrl };
+  return { uid: record.uid, email: record.email, redirectUrl: record.redirectUrl };
 }
 
-export function buildOAuthUrl(state, redirectUri) {
+export function buildOAuthUrl(state, redirectUri, loginHint) {
   const clientId = getOAuthClientId();
   const scopes = [DRIVE_FILE_SCOPE, USER_EMAIL_SCOPE].join(' ');
   const params = new URLSearchParams({
@@ -68,6 +69,9 @@ export function buildOAuthUrl(state, redirectUri) {
     include_granted_scopes: 'true',
     state,
   });
+  if (loginHint) {
+    params.set('login_hint', loginHint.trim());
+  }
   return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 }
 

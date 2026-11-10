@@ -120,6 +120,69 @@ async function getRtdbConnectionMeta(uid) {
   return null;
 }
 
+/**
+ * Retrieves the authoritative email address for the logged-in ICC user from Identity Toolkit or RTDB
+ */
+async function getAuthoritativeUserEmail(uid, fallbackEmail) {
+  if (fallbackEmail && typeof fallbackEmail === 'string' && fallbackEmail.trim()) {
+    return fallbackEmail.toLowerCase().trim();
+  }
+  try {
+    const userRes = await fetch(`${RTDB_URL}/users/${uid}.json`);
+    if (userRes.ok) {
+      const data = await userRes.json();
+      if (data?.email && typeof data.email === 'string') {
+        return data.email.toLowerCase().trim();
+      }
+    }
+  } catch (e) {
+    console.warn(`[driveRoutes] RTDB user email lookup notice for ${uid}:`, e);
+  }
+  return '';
+}
+
+/**
+ * Strict account verification helper for Drive access.
+ * Compares authenticated ICC user's verified email with connected Drive account email.
+ */
+async function getVerifiedDriveAccessToken(req, res) {
+  const authUser = await verifyFirebaseToken(req);
+  if (!authUser) {
+    res.status(401).json({ success: false, error: 'Authentication required' });
+    return null;
+  }
+
+  const iccEmail = await getAuthoritativeUserEmail(authUser.uid, authUser.email);
+  const rtdbMeta = await getRtdbConnectionMeta(authUser.uid);
+  const driveEmail = (getUserDriveEmail(authUser.uid) || rtdbMeta?.googleEmail || '').toLowerCase().trim();
+
+  // If Drive email is connected but does NOT match logged-in ICC account, reject immediately!
+  if (driveEmail && iccEmail && driveEmail !== iccEmail) {
+    console.warn(`[drive] Account mismatch rejected for user ${authUser.uid}: ICC(${iccEmail}) !== Drive(${driveEmail})`);
+    await disconnectUserDrive(authUser.uid);
+    await syncConnectionMetaToRtdb(authUser.uid, {
+      connected: false,
+      status: 'mismatch',
+      error: 'Please connect Google Drive using your logged-in Google account.',
+      updatedAt: Date.now(),
+    });
+    res.status(403).json({
+      success: false,
+      accountMismatch: true,
+      error: 'Please connect Google Drive using your logged-in Google account.',
+    });
+    return null;
+  }
+
+  try {
+    const accessToken = await getValidAccessToken(authUser.uid);
+    return { uid: authUser.uid, accessToken, iccEmail };
+  } catch (err) {
+    res.status(401).json({ success: false, error: err.message });
+    return null;
+  }
+}
+
 // -------------------------------------------------------------
 // Endpoints
 // -------------------------------------------------------------
@@ -134,16 +197,36 @@ driveRouter.get('/status', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Authentication required' });
     }
 
+    const iccEmail = await getAuthoritativeUserEmail(authUser.uid, authUser.email);
     const connectedInMem = hasDriveToken(authUser.uid);
     const rtdbMeta = await getRtdbConnectionMeta(authUser.uid);
 
-    const isConnected = connectedInMem || (Boolean(rtdbMeta?.connected) && rtdbMeta?.status === 'active');
-    const googleEmail = getUserDriveEmail(authUser.uid) || rtdbMeta?.googleEmail || authUser.email;
+    const driveEmail = (getUserDriveEmail(authUser.uid) || rtdbMeta?.googleEmail || '').toLowerCase().trim();
+
+    // Strict account matching check on every status query
+    if (driveEmail && iccEmail && driveEmail !== iccEmail) {
+      console.warn(`[drive/status] Account mismatch detected for user ${authUser.uid}: ICC(${iccEmail}) vs Drive(${driveEmail})`);
+      await disconnectUserDrive(authUser.uid);
+      await syncConnectionMetaToRtdb(authUser.uid, {
+        connected: false,
+        status: 'mismatch',
+        error: 'Please connect Google Drive using your logged-in Google account.',
+        updatedAt: Date.now(),
+      });
+      return res.json({
+        success: true,
+        connected: false,
+        accountMismatch: true,
+        error: 'Please connect Google Drive using your logged-in Google account.',
+      });
+    }
+
+    const isConnected = (connectedInMem || (Boolean(rtdbMeta?.connected) && rtdbMeta?.status === 'active')) && Boolean(driveEmail);
 
     return res.json({
       success: true,
       connected: isConnected,
-      googleEmail: isConnected ? googleEmail : undefined,
+      googleEmail: isConnected ? driveEmail : undefined,
       rootFolderId: rtdbMeta?.rootFolderId,
       documentsFolderId: rtdbMeta?.documentsFolderId,
       defaultFolders: rtdbMeta?.defaultFolders || {},
@@ -165,14 +248,16 @@ driveRouter.get('/connect', async (req, res) => {
       return res.status(401).json({ success: false, error: 'Authentication required to connect Drive' });
     }
 
+    const iccEmail = await getAuthoritativeUserEmail(authUser.uid, authUser.email);
     const redirectPath = typeof req.query.returnUrl === 'string' ? req.query.returnUrl : '/my-documents/';
-    const state = generateOAuthState(authUser.uid, redirectPath);
+    const state = generateOAuthState(authUser.uid, redirectPath, iccEmail);
 
     const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
     const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
     const redirectUri = `${proto}://${host}/api/drive/callback`;
 
-    const authUrl = buildOAuthUrl(state, redirectUri);
+    // Pass iccEmail as login_hint to pre-select and prompt the user's logged-in Google account
+    const authUrl = buildOAuthUrl(state, redirectUri, iccEmail);
 
     return res.json({
       success: true,
@@ -214,6 +299,38 @@ driveRouter.get('/callback', async (req, res) => {
 
     const tokenData = await exchangeOAuthCode(code, redirectUri);
 
+    // Retrieve verified ICC user email
+    let iccEmail = (validated.email || '').toLowerCase().trim();
+    if (!iccEmail) {
+      iccEmail = await getAuthoritativeUserEmail(validated.uid);
+    }
+
+    const driveEmail = (tokenData.email || '').toLowerCase().trim();
+
+    // STRICT ACCOUNT MATCHING ENFORCEMENT:
+    // The Google account used for ICC login MUST match the Google Drive account
+    if (!iccEmail || !driveEmail || iccEmail !== driveEmail) {
+      console.warn(`[drive/callback] Account mismatch blocked: ICC(${iccEmail}) !== Drive(${driveEmail})`);
+      // Discard tokens and revoke immediately
+      if (tokenData.accessToken) {
+        try {
+          await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(tokenData.accessToken)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          });
+        } catch (revokeErr) {}
+      }
+      await disconnectUserDrive(validated.uid);
+      await syncConnectionMetaToRtdb(validated.uid, {
+        connected: false,
+        status: 'mismatch',
+        error: 'Please connect Google Drive using your logged-in Google account.',
+        attemptedDriveEmail: driveEmail,
+        updatedAt: Date.now(),
+      });
+      return res.redirect(`/my-documents/?error=${encodeURIComponent('Please connect Google Drive using your logged-in Google account.')}`);
+    }
+
     saveUserCredentials(
       validated.uid,
       tokenData.accessToken,
@@ -234,6 +351,7 @@ driveRouter.get('/callback', async (req, res) => {
       defaultFolders: folders.defaultFolders,
       connectedAt: Date.now(),
       status: 'active',
+      error: null,
     });
 
     return res.redirect(`${validated.redirectUrl || '/my-documents/'}?connected=1`);
@@ -276,16 +394,13 @@ driveRouter.post('/disconnect', async (req, res) => {
  */
 driveRouter.get('/files', async (req, res) => {
   try {
-    const authUser = await verifyFirebaseToken(req);
-    if (!authUser) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
-
-    const accessToken = await getValidAccessToken(authUser.uid);
+    const auth = await getVerifiedDriveAccessToken(req, res);
+    if (!auth) return;
+    const { uid, accessToken } = auth;
 
     let folderId = req.query.folderId;
     if (!folderId || folderId === 'root') {
-      const rtdbMeta = await getRtdbConnectionMeta(authUser.uid);
+      const rtdbMeta = await getRtdbConnectionMeta(uid);
       folderId = rtdbMeta?.documentsFolderId;
       if (!folderId) {
         const folders = await ensureDefaultFolders(accessToken);
@@ -319,21 +434,19 @@ driveRouter.get('/files', async (req, res) => {
  */
 driveRouter.post('/folders', async (req, res) => {
   try {
-    const authUser = await verifyFirebaseToken(req);
-    if (!authUser) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
+    const auth = await getVerifiedDriveAccessToken(req, res);
+    if (!auth) return;
+    const { uid, accessToken } = auth;
 
     const { name, parentId } = req.body;
     if (!name || typeof name !== 'string') {
       return res.status(400).json({ success: false, error: 'Folder name is required' });
     }
 
-    const accessToken = await getValidAccessToken(authUser.uid);
     let targetParentId = parentId;
 
     if (!targetParentId || targetParentId === 'root') {
-      const rtdbMeta = await getRtdbConnectionMeta(authUser.uid);
+      const rtdbMeta = await getRtdbConnectionMeta(uid);
       targetParentId = rtdbMeta?.documentsFolderId;
       if (!targetParentId) {
         const folders = await ensureDefaultFolders(accessToken);
@@ -358,10 +471,9 @@ driveRouter.post('/folders', async (req, res) => {
  */
 driveRouter.patch('/files/:id', async (req, res) => {
   try {
-    const authUser = await verifyFirebaseToken(req);
-    if (!authUser) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
+    const auth = await getVerifiedDriveAccessToken(req, res);
+    if (!auth) return;
+    const { accessToken } = auth;
 
     const fileId = req.params.id;
     const { name } = req.body;
@@ -369,7 +481,6 @@ driveRouter.patch('/files/:id', async (req, res) => {
       return res.status(400).json({ success: false, error: 'New name is required' });
     }
 
-    const accessToken = await getValidAccessToken(authUser.uid);
     const updatedItem = await renameDriveItem(accessToken, fileId, name);
 
     return res.json({
@@ -387,21 +498,19 @@ driveRouter.patch('/files/:id', async (req, res) => {
  */
 driveRouter.post('/upload', upload.single('file'), async (req, res) => {
   try {
-    const authUser = await verifyFirebaseToken(req);
-    if (!authUser) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
+    const auth = await getVerifiedDriveAccessToken(req, res);
+    if (!auth) return;
+    const { uid, accessToken } = auth;
 
     const file = req.file;
     if (!file) {
       return res.status(400).json({ success: false, error: 'No file provided for upload' });
     }
 
-    const accessToken = await getValidAccessToken(authUser.uid);
     let parentId = req.body.parentId;
 
     if (!parentId || parentId === 'root') {
-      const rtdbMeta = await getRtdbConnectionMeta(authUser.uid);
+      const rtdbMeta = await getRtdbConnectionMeta(uid);
       parentId = rtdbMeta?.documentsFolderId;
       if (!parentId) {
         const folders = await ensureDefaultFolders(accessToken);
@@ -435,14 +544,11 @@ driveRouter.post('/upload', upload.single('file'), async (req, res) => {
  */
 driveRouter.get('/download/:id', async (req, res) => {
   try {
-    const authUser = await verifyFirebaseToken(req);
-    if (!authUser) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
+    const auth = await getVerifiedDriveAccessToken(req, res);
+    if (!auth) return;
+    const { accessToken } = auth;
 
     const fileId = req.params.id;
-    const accessToken = await getValidAccessToken(authUser.uid);
-
     const streamInfo = await getFileDownloadStream(accessToken, fileId);
 
     res.setHeader('Content-Type', streamInfo.mimeType);
@@ -460,12 +566,15 @@ driveRouter.get('/download/:id', async (req, res) => {
 
     if (streamInfo.body) {
       const reader = streamInfo.body.getReader();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        res.write(Buffer.from(value));
-      }
-      res.end();
+      const pump = async () => {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          res.write(Buffer.from(value));
+        }
+        res.end();
+      };
+      await pump();
     } else {
       res.end();
     }
@@ -482,14 +591,11 @@ driveRouter.get('/download/:id', async (req, res) => {
  */
 driveRouter.get('/preview/:id', async (req, res) => {
   try {
-    const authUser = await verifyFirebaseToken(req);
-    if (!authUser) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
+    const auth = await getVerifiedDriveAccessToken(req, res);
+    if (!auth) return;
+    const { accessToken } = auth;
 
     const fileId = req.params.id;
-    const accessToken = await getValidAccessToken(authUser.uid);
-
     const streamInfo = await getFileDownloadStream(accessToken, fileId);
 
     res.setHeader('Content-Type', streamInfo.mimeType);
@@ -523,14 +629,11 @@ driveRouter.get('/preview/:id', async (req, res) => {
  */
 driveRouter.delete('/files/:id', async (req, res) => {
   try {
-    const authUser = await verifyFirebaseToken(req);
-    if (!authUser) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
+    const auth = await getVerifiedDriveAccessToken(req, res);
+    if (!auth) return;
+    const { accessToken } = auth;
 
     const fileId = req.params.id;
-    const accessToken = await getValidAccessToken(authUser.uid);
-
     const result = await trashDriveItem(accessToken, fileId);
 
     return res.json({
@@ -549,17 +652,15 @@ driveRouter.delete('/files/:id', async (req, res) => {
  */
 driveRouter.post('/move', async (req, res) => {
   try {
-    const authUser = await verifyFirebaseToken(req);
-    if (!authUser) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
+    const auth = await getVerifiedDriveAccessToken(req, res);
+    if (!auth) return;
+    const { accessToken } = auth;
 
     const { fileId, newParentId, oldParentId } = req.body;
     if (!fileId || !newParentId) {
       return res.status(400).json({ success: false, error: 'fileId and newParentId are required' });
     }
 
-    const accessToken = await getValidAccessToken(authUser.uid);
     const moved = await moveDriveItem(accessToken, fileId, newParentId, oldParentId);
 
     return res.json({
@@ -577,16 +678,14 @@ driveRouter.post('/move', async (req, res) => {
  */
 driveRouter.get('/search', async (req, res) => {
   try {
-    const authUser = await verifyFirebaseToken(req);
-    if (!authUser) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
+    const auth = await getVerifiedDriveAccessToken(req, res);
+    if (!auth) return;
+    const { uid, accessToken } = auth;
 
     const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
 
-    const accessToken = await getValidAccessToken(authUser.uid);
-    const rtdbMeta = await getRtdbConnectionMeta(authUser.uid);
+    const rtdbMeta = await getRtdbConnectionMeta(uid);
     const documentsFolderId = rtdbMeta?.documentsFolderId || 'root';
 
     const items = await searchUserDrive(accessToken, documentsFolderId, query, category);
@@ -606,12 +705,10 @@ driveRouter.get('/search', async (req, res) => {
  */
 driveRouter.get('/storage', async (req, res) => {
   try {
-    const authUser = await verifyFirebaseToken(req);
-    if (!authUser) {
-      return res.status(401).json({ success: false, error: 'Authentication required' });
-    }
+    const auth = await getVerifiedDriveAccessToken(req, res);
+    if (!auth) return;
+    const { accessToken } = auth;
 
-    const accessToken = await getValidAccessToken(authUser.uid);
     const quotaData = await getDriveStorageQuota(accessToken);
 
     return res.json({

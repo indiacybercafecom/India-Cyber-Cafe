@@ -10,6 +10,7 @@ export interface DriveStatusResponse {
   defaultFolders?: Record<string, string>;
   connectedAt?: number;
   error?: string;
+  accountMismatch?: boolean;
 }
 
 export interface DriveFilesResponse {
