@@ -11,9 +11,15 @@ function getEncryptionKey(): Buffer {
   if (envKey && envKey.trim().length >= 32) {
     return crypto.createHash('sha256').update(envKey.trim()).digest();
   }
-  // Internal fallback derived from machine / project identity for secure development
-  const secretSeed = process.env.FIREBASE_PROJECT_ID || process.env.APP_URL || 'india-cyber-cafe-drive-secure-seed-key-2026';
-  return crypto.createHash('sha256').update(`icc-drive-aes256-${secretSeed}`).digest();
+
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error(
+      'CRITICAL SECURITY ERROR: TOKEN_ENCRYPTION_KEY environment variable is required in production and must be at least 32 characters long. Insecure fallback keys are disabled in production.'
+    );
+  }
+
+  // Development fallback only
+  return crypto.createHash('sha256').update('icc-local-dev-fallback-key-strictly-non-production').digest();
 }
 
 /**
