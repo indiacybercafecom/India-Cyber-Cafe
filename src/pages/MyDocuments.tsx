@@ -29,6 +29,7 @@ import {
   Lock,
   Plus,
   Loader2,
+  FolderOpen,
 } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { driveClient, DriveStatusResponse, DriveQuotaResponse } from '../services/driveClient';
@@ -36,6 +37,7 @@ import { DriveItem } from '../server/driveService';
 import { showToast } from '../components/Toast';
 import { MyDocumentsPdfViewerModal } from '../components/MyDocumentsPdfViewerModal';
 import { SEO } from '../components/SEO';
+import { sortFolders, sortFiles } from '../utils/driveOrdering';
 
 interface BreadcrumbItem {
   id: string;
@@ -63,9 +65,16 @@ export function MyDocuments() {
   const [loadingItems, setLoadingItems] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
-  // Search & Action Menu state
-  const [searchQuery, setSearchQuery] = useState('');
+  // Action Menu state
   const [isActionMenuOpen, setIsActionMenuOpen] = useState(false);
+
+  // Advanced Global Search state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<DriveItem[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isSearchFocused, setIsSearchFocused] = useState(false);
+  const searchRequestIdRef = useRef(0);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
 
   // Modals state
   const [isNewFolderOpen, setIsNewFolderOpen] = useState(false);
@@ -124,7 +133,68 @@ export function MyDocuments() {
     }
   }, [location.search, navigate]);
 
-  // Check status on mount or auth change
+  // Click outside search container to close live suggestions
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setIsSearchFocused(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Keyboard escape listener to close search
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsSearchFocused(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Advanced Global Search: Debounced recursive search across entire hierarchy
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (q.length < 2) {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    const currentRequestId = ++searchRequestIdRef.current;
+    setIsSearching(true);
+
+    const debounceTimer = setTimeout(async () => {
+      try {
+        const res = await driveClient.search(q);
+        if (searchRequestIdRef.current === currentRequestId) {
+          if (res.success) {
+            setSearchResults(res.items || []);
+          } else {
+            setSearchResults([]);
+          }
+        }
+      } catch (err) {
+        if (searchRequestIdRef.current === currentRequestId) {
+          console.warn('[MyDocuments] Global search notice:', err);
+          setSearchResults([]);
+        }
+      } finally {
+        if (searchRequestIdRef.current === currentRequestId) {
+          setIsSearching(false);
+        }
+      }
+    }, 300);
+
+    return () => {
+      clearTimeout(debounceTimer);
+    };
+  }, [searchQuery]);
+
+  // Check status on mount or auth change (restores connection automatically after restarts)
   const refreshStatus = async () => {
     if (!authUser) {
       setCheckingStatus(false);
@@ -210,10 +280,41 @@ export function MyDocuments() {
     }
   };
 
-  // Open a folder
+  // Open a folder from list
   const handleOpenFolder = (folder: DriveItem) => {
     setCurrentFolderId(folder.id);
     setBreadcrumbs(prev => [...prev, { id: folder.id, name: folder.name }]);
+  };
+
+  // Navigate directly to a specific folder (e.g. from search results)
+  const handleNavigateToFolder = (folderId: string, customBreadcrumbs?: BreadcrumbItem[]) => {
+    setCurrentFolderId(folderId);
+    if (customBreadcrumbs && customBreadcrumbs.length > 0) {
+      setBreadcrumbs(customBreadcrumbs);
+    } else {
+      setBreadcrumbs([
+        { id: 'root', name: 'My Documents' },
+        { id: folderId, name: 'Folder' },
+      ]);
+    }
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearchFocused(false);
+  };
+
+  // Navigate to a file's actual location from search results and open its action menu
+  const handleGoToFileLocation = (file: DriveItem) => {
+    const parentId = file.parents?.[0] || 'root';
+    const parentBreadcrumbs = (file.breadcrumbs && file.breadcrumbs.length > 1)
+      ? file.breadcrumbs.slice(0, -1)
+      : [{ id: 'root', name: 'My Documents' }];
+
+    setCurrentFolderId(parentId);
+    setBreadcrumbs(parentBreadcrumbs);
+    setSearchQuery('');
+    setSearchResults([]);
+    setIsSearchFocused(false);
+    setActiveItemForMenu(file);
   };
 
   // Breadcrumb click
@@ -274,7 +375,7 @@ export function MyDocuments() {
       const rootRes = await driveClient.listFiles(driveStatus?.documentsFolderId || 'root');
       if (rootRes.success) {
         const folders = rootRes.files.filter(f => f.isFolder && f.id !== item.id);
-        setAvailableFolders(folders);
+        setAvailableFolders(sortFolders(folders));
       }
     } catch (err) {
       console.warn('Failed to load move folders:', err);
@@ -415,71 +516,18 @@ export function MyDocuments() {
     }
   };
 
-  // Priority ranking for categories:
-  // 1. Identity Documents (10)
-  // 2. Education Documents (20)
-  // 3. Government Documents (30)
-  // 4. Certificates (40)
-  // 5. Banking Documents (50)
-  // 6. Personal Documents (60)
-  // User custom folders: (500)
-  // Other Documents: (999999 - bottom)
-  const getFolderRank = (name: string): number => {
-    const n = name.trim().toLowerCase();
-    if (n === 'other documents' || n === 'other' || n === 'others' || n.startsWith('other')) {
-      return 999999;
-    }
-    if (n.includes('identity') || n.includes('aadhaar') || n.includes('pan') || n.includes('voter')) {
-      return 10;
-    }
-    if (n.includes('education') || n.includes('marksheet') || n.includes('degree') || n.includes('school') || n.includes('college')) {
-      return 20;
-    }
-    if (n.includes('government') || n.includes('govt') || n.includes('ration') || n.includes('domicile') || n.includes('caste')) {
-      return 30;
-    }
-    if (n.includes('certificate')) {
-      return 40;
-    }
-    if (n.includes('bank') || n.includes('financial') || n.includes('passbook') || n.includes('income')) {
-      return 50;
-    }
-    if (n.includes('personal') || n.includes('resume') || n.includes('photo')) {
-      return 60;
-    }
-    return 500;
-  };
-
-  // Filtered and sorted items:
-  // Folders: Important categories first, custom folders middle, Other Documents at bottom.
-  // Files: Consistent order (newest modified first, alphabetical fallback).
+  // Consistently sort current folder's items:
+  // Folders: Priority categories 1-6 first, custom folders middle, Other Documents at bottom.
+  // Files: Newest modified date first, alphabetical fallback.
   const { folderItems, fileItems } = useMemo(() => {
-    let filtered = items;
+    const rawFolders = items.filter(item => item.isFolder);
+    const rawFiles = items.filter(item => !item.isFolder);
 
-    if (searchQuery.trim()) {
-      const q = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(item => item.name.toLowerCase().includes(q));
-    }
-
-    const folders = filtered
-      .filter(item => item.isFolder)
-      .sort((a, b) => {
-        const rankDiff = getFolderRank(a.name) - getFolderRank(b.name);
-        if (rankDiff !== 0) return rankDiff;
-        return a.name.localeCompare(b.name);
-      });
-
-    const files = filtered
-      .filter(item => !item.isFolder)
-      .sort((a, b) => {
-        const tA = new Date(a.modifiedTime || 0).getTime();
-        const tB = new Date(b.modifiedTime || 0).getTime();
-        if (tB !== tA) return tB - tA;
-        return a.name.localeCompare(b.name);
-      });
-
-    return { folderItems: folders, fileItems: files };
-  }, [items, searchQuery]);
+    return {
+      folderItems: sortFolders(rawFolders),
+      fileItems: sortFiles(rawFiles),
+    };
+  }, [items]);
 
   // Format file size
   const formatBytes = (bytes?: number): string => {
@@ -511,24 +559,24 @@ export function MyDocuments() {
     const name = item.name.toLowerCase();
 
     if (mime === 'application/pdf' || name.endsWith('.pdf')) {
-      return <FileText className="w-6 h-6 text-red-500" />;
+      return <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-red-500 shrink-0" />;
     }
     if (mime.startsWith('image/')) {
-      return <FileImage className="w-6 h-6 text-blue-500" />;
+      return <FileImage className="w-5 h-5 sm:w-6 sm:h-6 text-blue-500 shrink-0" />;
     }
     if (mime.includes('sheet') || mime.includes('excel') || mime.includes('csv')) {
-      return <FileSpreadsheet className="w-6 h-6 text-emerald-500" />;
+      return <FileSpreadsheet className="w-5 h-5 sm:w-6 sm:h-6 text-emerald-500 shrink-0" />;
     }
     if (mime.includes('document') || mime.includes('word')) {
-      return <FileText className="w-6 h-6 text-indigo-500" />;
+      return <FileText className="w-5 h-5 sm:w-6 sm:h-6 text-indigo-500 shrink-0" />;
     }
     if (mime.includes('zip') || mime.includes('compressed') || mime.includes('tar')) {
-      return <FileArchive className="w-6 h-6 text-amber-500" />;
+      return <FileArchive className="w-5 h-5 sm:w-6 sm:h-6 text-amber-500 shrink-0" />;
     }
     if (mime.includes('text/')) {
-      return <FileCode className="w-6 h-6 text-slate-600" />;
+      return <FileCode className="w-5 h-5 sm:w-6 sm:h-6 text-slate-600 shrink-0" />;
     }
-    return <FileIcon className="w-6 h-6 text-slate-400" />;
+    return <FileIcon className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400 shrink-0" />;
   };
 
   // 1. Loading state during auth check
@@ -710,37 +758,187 @@ export function MyDocuments() {
         )}
       </AnimatePresence>
 
-      {/* 1. SIMPLIFIED HEADER: ONLY ONE CLEAN HORIZONTAL ROW (Search on Left + Three-dot Menu on Right) */}
-      <div className="bg-white rounded-2xl p-2.5 sm:p-3 border border-slate-200/90 shadow-sm flex items-center gap-2.5">
-        <div className="relative flex-1">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
-          <input
-            type="text"
-            placeholder="Search documents and folders..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-navy placeholder:text-slate-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
-          />
-          {searchQuery && (
-            <button
-              type="button"
-              onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-navy cursor-pointer"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          )}
+      {/* 1. SIMPLIFIED HEADER WITH ADVANCED RECURSIVE SEARCH (Search on Left + Three-dot Menu on Right) */}
+      <div ref={searchContainerRef} className="relative z-30">
+        <div className="bg-white rounded-2xl p-2.5 sm:p-3 border border-slate-200/90 shadow-sm flex items-center gap-2.5">
+          <div className="relative flex-1">
+            <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+            <input
+              type="text"
+              placeholder="Search all documents and folders..."
+              value={searchQuery}
+              onFocus={() => setIsSearchFocused(true)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsSearchFocused(true);
+              }}
+              className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs sm:text-sm text-navy placeholder:text-slate-400 focus:outline-none focus:border-primary focus:bg-white transition-colors"
+            />
+            {searchQuery && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSearchResults([]);
+                  setIsSearchFocused(false);
+                }}
+                className="absolute right-2.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-navy cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
+
+          {/* Three-dot Action Menu Trigger */}
+          <button
+            type="button"
+            onClick={() => setIsActionMenuOpen(true)}
+            title="Actions"
+            className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer shrink-0"
+          >
+            <MoreVertical className="w-5 h-5" />
+          </button>
         </div>
 
-        {/* Three-dot Action Menu Trigger */}
-        <button
-          type="button"
-          onClick={() => setIsActionMenuOpen(true)}
-          title="Actions"
-          className="p-2.5 rounded-xl bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200 transition-colors cursor-pointer shrink-0"
-        >
-          <MoreVertical className="w-5 h-5" />
-        </button>
+        {/* 2. ADVANCED LIVE SEARCH SUGGESTIONS OVERLAY */}
+        <AnimatePresence>
+          {isSearchFocused && searchQuery.trim().length >= 2 && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -6 }}
+              className="absolute left-0 right-0 top-full mt-2 bg-white rounded-2xl border border-slate-200 shadow-2xl overflow-hidden z-50 flex flex-col max-h-[75vh]"
+            >
+              {/* Header Status Bar */}
+              <div className="flex items-center justify-between px-4 py-2.5 bg-slate-50 border-b border-slate-200/80 text-xs">
+                <span className="font-semibold text-slate-500">
+                  {isSearching ? (
+                    <span className="flex items-center gap-2 text-primary font-bold">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      Searching across all folders...
+                    </span>
+                  ) : (
+                    <span>
+                      Found <strong>{searchResults.length}</strong> matching item{searchResults.length === 1 ? '' : 's'}
+                    </span>
+                  )}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsSearchFocused(false)}
+                  className="p-1 rounded-md text-slate-400 hover:text-navy hover:bg-slate-200/60 transition-colors cursor-pointer"
+                  title="Close search results"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Results List */}
+              <div className="overflow-y-auto divide-y divide-slate-100 p-1">
+                {isSearching && searchResults.length === 0 ? (
+                  <div className="py-12 flex flex-col items-center justify-center text-center p-4">
+                    <Loader2 className="w-6 h-6 text-primary animate-spin mb-2" />
+                    <p className="text-xs font-semibold text-slate-600">
+                      Searching entire My Documents hierarchy...
+                    </p>
+                  </div>
+                ) : searchResults.length === 0 ? (
+                  /* Clear Empty State */
+                  <div className="py-12 px-6 text-center space-y-2">
+                    <Search className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-sm font-bold text-navy">No documents or folders found</p>
+                    <p className="text-xs text-slate-500 max-w-xs mx-auto">
+                      No items matched &ldquo;{searchQuery}&rdquo; across all categories and subfolders.
+                    </p>
+                  </div>
+                ) : (
+                  searchResults.map(item => (
+                    <div
+                      key={item.id}
+                      className="p-3 hover:bg-slate-50 rounded-xl flex items-center justify-between gap-3 transition-colors cursor-pointer group"
+                      onClick={() => {
+                        if (item.isFolder) {
+                          handleNavigateToFolder(item.id, item.breadcrumbs);
+                        } else {
+                          handleGoToFileLocation(item);
+                        }
+                      }}
+                    >
+                      {/* Left: Icon & Info */}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0">
+                          {item.isFolder ? (
+                            <Folder className="w-5 h-5 text-amber-500 fill-amber-500" />
+                          ) : (
+                            getFileIcon(item)
+                          )}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-bold text-navy text-xs sm:text-sm truncate group-hover:text-primary transition-colors">
+                              {item.name}
+                            </p>
+                            <span className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+                              {item.isFolder ? 'Folder' : formatBytes(item.size)}
+                            </span>
+                          </div>
+                          {/* Complete Folder Path */}
+                          <div className="flex items-center gap-1 text-[11px] text-slate-400 mt-0.5 truncate">
+                            <FolderOpen className="w-3 h-3 shrink-0 text-slate-400" />
+                            <span className="truncate" title={item.folderPath}>
+                              {item.folderPath || 'My Documents'}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Right: Quick action buttons */}
+                      <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {item.isFolder ? (
+                          <button
+                            type="button"
+                            onClick={() => handleNavigateToFolder(item.id, item.breadcrumbs)}
+                            className="px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-primary hover:text-white text-navy text-xs font-semibold flex items-center gap-1 transition-colors cursor-pointer"
+                          >
+                            <span>Open</span>
+                            <ChevronRight className="w-3.5 h-3.5" />
+                          </button>
+                        ) : (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handlePreview(item)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-navy hover:bg-slate-200 transition-colors cursor-pointer"
+                              title="Preview document"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDownload(item)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-navy hover:bg-slate-200 transition-colors cursor-pointer"
+                              title="Download document"
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleGoToFileLocation(item)}
+                              className="p-1.5 rounded-lg text-slate-400 hover:text-navy hover:bg-slate-200 transition-colors cursor-pointer"
+                              title="Go to file location"
+                            >
+                              <MoreVertical className="w-4 h-4" />
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Upload Progress Bar (if active) */}
@@ -854,7 +1052,7 @@ export function MyDocuments() {
         </div>
       ) : (
         <div className="space-y-6">
-          {/* 2. ORGANIZED FOLDERS SECTION (Important categories first, Other Documents at bottom) */}
+          {/* FOLDERS SECTION: Consistent Category Priority (Identity, Education, Govt, Cert, Bank, Personal, Custom, Other) */}
           {folderItems.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
@@ -898,7 +1096,7 @@ export function MyDocuments() {
             </div>
           )}
 
-          {/* FILES SECTION (Consistent order, clean spacing & alignment) */}
+          {/* FILES SECTION: Consistent date/name ordering */}
           {fileItems.length > 0 && (
             <div className="space-y-3">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider px-1">
@@ -1505,7 +1703,6 @@ export function MyDocuments() {
           onClose={() => setPreviewPdfItem(null)}
         />
       )}
-
 
       {/* Image Preview Modal */}
       {previewImageItem && (

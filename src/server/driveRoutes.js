@@ -10,6 +10,7 @@ import {
   disconnectUserDrive,
   hasDriveToken,
   getUserDriveEmail,
+  getPersistedMeta,
   ensureDefaultFolders,
   listFolderContents,
   createSubFolder,
@@ -198,10 +199,15 @@ driveRouter.get('/status', async (req, res) => {
     }
 
     const iccEmail = await getAuthoritativeUserEmail(authUser.uid, authUser.email);
-    const connectedInMem = hasDriveToken(authUser.uid);
+    const persistedMeta = getPersistedMeta(authUser.uid);
     const rtdbMeta = await getRtdbConnectionMeta(authUser.uid);
 
-    const driveEmail = (getUserDriveEmail(authUser.uid) || rtdbMeta?.googleEmail || '').toLowerCase().trim();
+    const driveEmail = (
+      getUserDriveEmail(authUser.uid) ||
+      rtdbMeta?.googleEmail ||
+      persistedMeta?.googleEmail ||
+      ''
+    ).toLowerCase().trim();
 
     // Strict account matching check on every status query
     if (driveEmail && iccEmail && driveEmail !== iccEmail) {
@@ -221,16 +227,16 @@ driveRouter.get('/status', async (req, res) => {
       });
     }
 
-    const isConnected = (connectedInMem || (Boolean(rtdbMeta?.connected) && rtdbMeta?.status === 'active')) && Boolean(driveEmail);
+    const isConnected = hasDriveToken(authUser.uid) && Boolean(driveEmail);
 
     return res.json({
       success: true,
       connected: isConnected,
       googleEmail: isConnected ? driveEmail : undefined,
-      rootFolderId: rtdbMeta?.rootFolderId,
-      documentsFolderId: rtdbMeta?.documentsFolderId,
-      defaultFolders: rtdbMeta?.defaultFolders || {},
-      connectedAt: rtdbMeta?.connectedAt,
+      rootFolderId: rtdbMeta?.rootFolderId || persistedMeta?.rootFolderId,
+      documentsFolderId: rtdbMeta?.documentsFolderId || persistedMeta?.documentsFolderId,
+      defaultFolders: rtdbMeta?.defaultFolders || persistedMeta?.defaultFolders || {},
+      connectedAt: rtdbMeta?.connectedAt || persistedMeta?.connectedAt,
     });
   } catch (error) {
     console.error('[drive/status] Error:', error);
@@ -331,16 +337,21 @@ driveRouter.get('/callback', async (req, res) => {
       return res.redirect(`/my-documents/?error=${encodeURIComponent('Please connect Google Drive using your logged-in Google account.')}`);
     }
 
+    const folders = await ensureDefaultFolders(tokenData.accessToken);
+
     saveUserCredentials(
       validated.uid,
       tokenData.accessToken,
       tokenData.refreshToken || '',
       tokenData.expiresIn,
       tokenData.email,
-      tokenData.sub
+      tokenData.sub,
+      {
+        rootFolderId: folders.rootFolderId,
+        documentsFolderId: folders.documentsFolderId,
+        defaultFolders: folders.defaultFolders,
+      }
     );
-
-    const folders = await ensureDefaultFolders(tokenData.accessToken);
 
     await syncConnectionMetaToRtdb(validated.uid, {
       connected: true,
@@ -684,15 +695,24 @@ driveRouter.get('/search', async (req, res) => {
 
     const query = typeof req.query.q === 'string' ? req.query.q.trim() : '';
     const category = typeof req.query.category === 'string' ? req.query.category.trim() : '';
+    const pageToken = typeof req.query.pageToken === 'string' ? req.query.pageToken.trim() : undefined;
+    const pageSize = typeof req.query.pageSize === 'string' ? parseInt(req.query.pageSize, 10) : 100;
 
     const rtdbMeta = await getRtdbConnectionMeta(uid);
-    const documentsFolderId = rtdbMeta?.documentsFolderId || 'root';
+    const persistedMeta = getPersistedMeta(uid);
+    const documentsFolderId = rtdbMeta?.documentsFolderId || persistedMeta?.documentsFolderId || 'root';
 
-    const items = await searchUserDrive(accessToken, documentsFolderId, query, category);
+    const searchResult = await searchUserDrive(accessToken, documentsFolderId, query, {
+      category,
+      pageToken,
+      pageSize,
+    });
 
     return res.json({
       success: true,
-      items,
+      items: searchResult.items,
+      nextPageToken: searchResult.nextPageToken,
+      totalFound: searchResult.items.length,
     });
   } catch (error) {
     console.error('[drive/search] Error:', error);

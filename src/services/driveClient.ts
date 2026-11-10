@@ -243,12 +243,17 @@ export const driveClient = {
   },
 
   /**
-   * Search files inside My Documents
+   * Recursive global search across entire My Documents hierarchy
    */
-  async search(query: string, category?: string): Promise<{ success: boolean; items: DriveItem[] }> {
+  async search(
+    query: string,
+    options?: { category?: string; pageToken?: string; pageSize?: number }
+  ): Promise<{ success: boolean; items: DriveItem[]; nextPageToken?: string; totalFound?: number }> {
     const params = new URLSearchParams();
     if (query) params.set('q', query);
-    if (category && category !== 'all') params.set('category', category);
+    if (options?.category && options.category !== 'all') params.set('category', options.category);
+    if (options?.pageToken) params.set('pageToken', options.pageToken);
+    if (options?.pageSize) params.set('pageSize', options.pageSize.toString());
 
     return driveFetch(`/api/drive/search?${params.toString()}`);
   },

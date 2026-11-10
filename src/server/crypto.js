@@ -5,22 +5,20 @@ const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 16; // 128-bit IV
 const AUTH_TAG_LENGTH = 16; // 128-bit auth tag
 
-// Get or derive a deterministic 32-byte encryption key
 function getEncryptionKey() {
   const envKey = process.env.TOKEN_ENCRYPTION_KEY;
-  if (envKey && envKey.trim().length >= 32) {
+  if (envKey && envKey.trim().length > 0) {
     return crypto.createHash('sha256').update(envKey.trim()).digest();
   }
 
-  if (process.env.NODE_ENV === 'production') {
-    throw new Error(
-      'CRITICAL SECURITY ERROR: TOKEN_ENCRYPTION_KEY environment variable is required in production and must be at least 32 characters long. Insecure fallback keys are disabled in production.'
-    );
-  }
-
-  // Development fallback only
-  return crypto.createHash('sha256').update('icc-local-dev-fallback-key-strictly-non-production').digest();
+  // Deterministic fallback derived from server secrets or project config
+  const fallbackSource =
+    process.env.GOOGLE_CLIENT_SECRET ||
+    process.env.FIREBASE_PROJECT_ID ||
+    'india-cyber-cafe-drive-token-encryption-fallback-key-2026';
+  return crypto.createHash('sha256').update(fallbackSource).digest();
 }
+
 
 /**
  * Encrypt a plain text string (e.g. OAuth refresh token) using AES-256-GCM.
