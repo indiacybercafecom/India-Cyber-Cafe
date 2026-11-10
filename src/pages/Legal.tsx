@@ -327,6 +327,82 @@ export function Legal() {
                   </div>
                 </div>
               </section>
+
+              {/* 10. Google Drive Integration & Document Storage */}
+              <section className="space-y-3 pt-2">
+                <h2 className="text-lg sm:text-xl font-bold text-navy flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-primary rounded-full"></span>
+                  10. Google Drive Integration and Document Storage
+                </h2>
+                <div className="text-xs sm:text-sm text-slate-600 leading-relaxed space-y-3">
+                  <p>
+                    India Cyber Cafe provides a personal document management service titled <strong>"My Documents"</strong>. The storage, transmission, and processing of files under this service are governed by strict zero-retention principles and the following explicit disclosures:
+                  </p>
+                  <ul className="list-disc list-inside space-y-2 pl-2">
+                    <li>
+                      <strong>Personal Google Drive Connection:</strong> Users may voluntarily connect their personal Google Drive account to manage documents (such as certificates, educational marks-sheets, and identity proofs).
+                    </li>
+                    <li>
+                      <strong>Separate Authorization from Sign-In:</strong> Google Drive authorization is requested as a separate, distinct opt-in permission and is completely independent of initial Google Login authentication.
+                    </li>
+                    <li>
+                      <strong>User-Owned Storage Architecture:</strong> All document files uploaded or organized through My Documents are stored exclusively in the user's personal Google Drive. India Cyber Cafe does NOT store, replicate, or host your document files on its servers or hosting infrastructure.
+                    </li>
+                    <li>
+                      <strong>No Permanent ICC Server Storage:</strong> User files are never permanently saved to India Cyber Cafe web hosting, Hostinger servers, local disk directories, or server databases.
+                    </li>
+                    <li>
+                      <strong>No Firebase Storage of User Documents:</strong> Firebase Storage is not used to hold or store document files uploaded in the My Documents application.
+                    </li>
+                    <li>
+                      <strong>No Shared Drive Repository:</strong> India Cyber Cafe does not operate or maintain a shared, aggregated, or centralized Google Drive for user documents. Each user's documents remain strictly isolated within their own individual Google account.
+                    </li>
+                    <li>
+                      <strong>Zero Sale of Google Drive Data:</strong> India Cyber Cafe does not sell, license, lease, or monetize your Google Drive data or documents under any circumstances.
+                    </li>
+                    <li>
+                      <strong>No Advertising or Profiling:</strong> We do not use, scan, or analyze your Google Drive files or metadata for targeted advertising, marketing campaigns, or behavioral profiling.
+                    </li>
+                    <li>
+                      <strong>Authorized Functionality Only:</strong> We access and process only files that you create, upload, or explicitly open through our application, strictly for providing requested document management features.
+                    </li>
+                    <li>
+                      <strong>Transient In-Memory Processing:</strong> When you upload, preview, or download a file through our interface, file data is streamed transiently in system memory. No permanent copies or disk caches are created on our servers.
+                    </li>
+                    <li>
+                      <strong>Account Metadata & Encrypted Credentials:</strong> We store only essential non-content metadata in our secure backend (such as your Firebase UID, connection status, created folder IDs, and preferences). OAuth authorization refresh tokens are securely encrypted at rest using industry-standard AES-256-GCM encryption and are never exposed to client-side scripts.
+                    </li>
+                    <li>
+                      <strong>User Revocation & Disconnection:</strong> You may disconnect your Google Drive at any time through the dashboard. Upon disconnection, your stored authorization tokens are permanently cleared and revoked.
+                    </li>
+                    <li>
+                      <strong>Preservation of Original Drive Files:</strong> Disconnecting your Google Drive from India Cyber Cafe does NOT delete, alter, or remove your documents. All original files remain 100% intact in your personal Google Drive.
+                    </li>
+                    <li>
+                      <strong>OAuth Scope & Token Security:</strong> We utilize the restricted <code>https://www.googleapis.com/auth/drive.file</code> scope, which restricts our application's access exclusively to files and folders created or opened by India Cyber Cafe.
+                    </li>
+                    <li>
+                      <strong>Account Data Deletion:</strong> If you delete your India Cyber Cafe account or request data erasure under the DPDP Act, all connection records and metadata are permanently expunged within 30 days.
+                    </li>
+                  </ul>
+
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl space-y-2 mt-3">
+                    <h4 className="font-bold text-navy text-xs sm:text-sm">Google API Services User Data Policy Compliance</h4>
+                    <p className="text-xs text-slate-600 leading-relaxed">
+                      India Cyber Cafe's use and transfer to any other app of information received from Google APIs will adhere to the{' '}
+                      <a
+                        href="https://developers.google.com/terms/api-services-user-data-policy"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary underline font-medium"
+                      >
+                        Google API Services User Data Policy
+                      </a>
+                      , including the Limited Use requirements.
+                    </p>
+                  </div>
+                </div>
+              </section>
             </div>
           )}
 
@@ -416,6 +492,28 @@ export function Legal() {
                   <p>
                     These Terms are governed by the laws of the Republic of India. Any legal disputes arising out of or in connection with our services shall be subject to the exclusive jurisdiction of the competent courts in Singrauli, Madhya Pradesh, India.
                   </p>
+                </div>
+              </section>
+
+              {/* 7. My Documents – Google Drive Service */}
+              <section className="space-y-3 pt-2">
+                <h2 className="text-lg sm:text-xl font-bold text-navy flex items-center gap-2">
+                  <span className="w-1.5 h-6 bg-primary rounded-full"></span>
+                  7. My Documents – Google Drive Service
+                </h2>
+                <div className="text-xs sm:text-sm text-slate-600 leading-relaxed space-y-2">
+                  <p>
+                    The "My Documents" feature enables users to view, organize, and store personal documents within their own personal Google Drive accounts. By utilizing this service, you acknowledge and agree that:
+                  </p>
+                  <ul className="list-disc list-inside space-y-1.5 pl-2">
+                    <li><strong>User-Controlled Storage:</strong> All document files are stored directly in your personal Google Drive. India Cyber Cafe acts solely as an interface and does not own or host your documents.</li>
+                    <li><strong>Google Storage Quotas & Service Limits:</strong> Document uploads are subject to your personal Google Drive storage capacity, quotas, and Google's Terms of Service. India Cyber Cafe is not responsible for failed uploads caused by exhausted Google Drive storage.</li>
+                    <li><strong>User Responsibility for Content:</strong> You retain sole responsibility for the legality, authenticity, and contents of files uploaded to your Google Drive. You agree not to upload fraudulent, malicious, pirated, or unlawful materials.</li>
+                    <li><strong>Authorization of File Actions:</strong> You explicitly authorize India Cyber Cafe to perform requested file operations (such as folder creation, renaming, moving, and trash operations) on your behalf via the Google Drive API.</li>
+                    <li><strong>Disconnection & Retention:</strong> You may disconnect your Google Drive at any time. Disconnecting removes our authorization but preserves all original files and folders in your Google Drive without loss.</li>
+                    <li><strong>Safe Deletion (Google Drive Trash):</strong> Deleting a file or folder through the India Cyber Cafe interface moves the item to your Google Drive Trash. Items in Trash remain recoverable in accordance with Google Drive's standard 30-day trash retention policy.</li>
+                    <li><strong>Service Availability & API Restrictions:</strong> The availability of previewing and streaming files is subject to Google Cloud service uptime and API rate limitations. In-app previews are supported for PDFs, images, and text; Office formats may open via Google Drive preview links.</li>
+                  </ul>
                 </div>
               </section>
             </div>

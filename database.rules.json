@@ -92,6 +92,30 @@
     "gateways": {
       ".read": "auth != null",
       ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+    },
+
+    "driveConnections": {
+      "$uid": {
+        ".read": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+      }
+    },
+
+    "documentPreferences": {
+      "$uid": {
+        ".read": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+      }
+    },
+
+    "privacy_requests": {
+      ".indexOn": ["ticketId", "email", "status", "category"],
+      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+      ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+      "$ticketId": {
+        ".read": true,
+        ".write": true
+      }
     }
   }
 }

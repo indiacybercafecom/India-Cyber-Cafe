@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from './src/server/dataSyncRuntime.js';
 import { getMetadataForUrl, injectOpenGraphMetadata, isSocialCrawler } from './src/server/shareMetadata.js';
+import { driveRouter } from './src/server/driveRoutes.js';
 
 // Load environment variables
 dotenv.config();
@@ -838,6 +839,9 @@ app.get('/api/pdf-proxy', async (req, res) => {
     return res.status(502).json({ success: false, error: 'Unable to fetch PDF' });
   }
 });
+
+// Mount Google Drive API routes
+app.use('/api/drive', driveRouter);
 
 // API 404 handler
 app.use('/api', (req, res) => {

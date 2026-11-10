@@ -52,6 +52,7 @@ const PriceList = lazy(() => import('./pages/PriceList').then(m => ({ default: m
 const Pay = lazy(() => import('./pages/Pay').then(m => ({ default: m.Pay })));
 const FormsDocuments = lazy(() => import('./pages/FormsDocuments').then(m => ({ default: m.FormsDocuments })));
 const FormsDocumentDetail = lazy(() => import('./pages/FormsDocuments').then(m => ({ default: m.FormsDocumentDetail })));
+const MyDocuments = lazy(() => import('./pages/MyDocuments').then(m => ({ default: m.MyDocuments })));
 
 // Preload function
 const preloadPages = () => {
@@ -276,6 +277,10 @@ function AppContent() {
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             <Route path="/legal/:type" element={<Legal />} />
+            <Route path="/privacy-policy" element={<Navigate to="/legal/privacy" replace />} />
+            <Route path="/terms-and-conditions" element={<Navigate to="/legal/terms" replace />} />
+            <Route path="/my-documents" element={<MyDocuments />} />
+            <Route path="/my-documents/*" element={<MyDocuments />} />
             <Route path="/about" element={<Legal />} />
             <Route path="/contact" element={<Legal />} />
             <Route path="/privacy-request" element={<PrivacyRequest />} />

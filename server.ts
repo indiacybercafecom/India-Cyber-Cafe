@@ -7,6 +7,7 @@ import fs from "fs";
 import crypto from "crypto";
 import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSyncRuntime.js";
 import { getMetadataForUrl, injectOpenGraphMetadata, isSocialCrawler } from "./src/server/shareMetadata.js";
+import { driveRouter } from "./src/server/driveRoutes.js";
 
 dotenv.config();
 
@@ -1706,6 +1707,9 @@ async function startServer() {
       res.status(500).json({ success: false, error: "Failed to update request" });
     }
   });
+
+  // Mount Google Drive API routes
+  app.use('/api/drive', driveRouter);
 
   app.use('/api', (req, res) => {
     res.status(404).json({ success: false, error: 'API endpoint not found' });

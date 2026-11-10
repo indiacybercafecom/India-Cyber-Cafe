@@ -58,7 +58,9 @@ import {
   PackageX,
   RefreshCw,
   Share2,
-  Copy
+  Copy,
+  HardDrive,
+  Folder
 } from 'lucide-react';
 
 export const Icons = {
@@ -134,6 +136,8 @@ export function IconRenderer({ name, className }: { name: string; className?: st
   
   if (lowerName.includes('fingerprint')) return <Icons.Fingerprint className={className} />;
   if (lowerName.includes('id-card')) return <Icons.IdCard className={className} />;
+  if (lowerName.includes('hard-drive') || lowerName.includes('drive')) return <HardDrive className={className} />;
+  if (lowerName.includes('folder')) return <Folder className={className} />;
   if (lowerName.includes('house') || lowerName.includes('home')) return <Icons.Home className={className} />;
   if (lowerName.includes('layer-group')) return <Icons.Layers className={className} />;
   if (lowerName.includes('list-check')) return <Icons.ClipboardList className={className} />;
