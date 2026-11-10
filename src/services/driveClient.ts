@@ -310,4 +310,36 @@ export const driveClient = {
     const blob = await resp.blob();
     return window.URL.createObjectURL(blob);
   },
+
+  /**
+   * Fetches authenticated PDF bytes and creates a blob URL for preview
+   */
+  async getPreviewPdfBytes(fileId: string): Promise<{ buffer: ArrayBuffer; blob: Blob; blobUrl: string }> {
+    const token = await getAuthToken();
+    const previewUrl = `/api/drive/preview/${fileId}`;
+
+    const resp = await fetch(previewUrl, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/pdf,application/octet-stream,*/*',
+      },
+    });
+
+    if (!resp.ok) {
+      let errMsg = `Failed to load file preview (${resp.status})`;
+      try {
+        const data = await resp.json();
+        if (data?.error) errMsg = data.error;
+      } catch {
+        // ignore JSON parse errors
+      }
+      throw new Error(errMsg);
+    }
+
+    const blob = await resp.blob();
+    const buffer = await blob.arrayBuffer();
+    const blobUrl = window.URL.createObjectURL(blob);
+    return { buffer, blob, blobUrl };
+  },
 };
+

@@ -34,7 +34,7 @@ import { useAuth } from '../hooks/useAuth';
 import { driveClient, DriveStatusResponse, DriveQuotaResponse } from '../services/driveClient';
 import { DriveItem } from '../server/driveService';
 import { showToast } from '../components/Toast';
-import { PdfViewerModal } from '../components/PdfViewerModal';
+import { MyDocumentsPdfViewerModal } from '../components/MyDocumentsPdfViewerModal';
 import { SEO } from '../components/SEO';
 
 interface BreadcrumbItem {
@@ -1497,15 +1497,15 @@ export function MyDocuments() {
 
       {/* --- PREVIEWS --- */}
 
-      {/* PDF Preview Modal: Reusing PdfViewerModal */}
+      {/* PDF Preview Modal: Isolated for My Documents with authenticated fetch */}
       {previewPdfItem && (
-        <PdfViewerModal
-          title={previewPdfItem.name}
-          sourceUrl={`/api/drive/preview/${previewPdfItem.id}`}
-          downloadUrl={`/api/drive/download/${previewPdfItem.id}`}
+        <MyDocumentsPdfViewerModal
+          fileId={previewPdfItem.id}
+          fileName={previewPdfItem.name}
           onClose={() => setPreviewPdfItem(null)}
         />
       )}
+
 
       {/* Image Preview Modal */}
       {previewImageItem && (
