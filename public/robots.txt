@@ -1,48 +1,46 @@
-# Robots.txt for India Cyber Cafe
-# Allow all bots to crawl the website
+# Robots.txt for India Cyber Cafe (Production)
+# Comprehensive Crawling & Indexing Policy
 
 User-agent: *
+# Allow crawling of all public routes
 Allow: /
-Allow: /index.html
 Allow: /services
+Allow: /services/
+Allow: /price-list
 Allow: /store
-Allow: /login
-Allow: /register
-Allow: /apply
-Allow: /track
-Allow: /profile
+Allow: /store/
 Allow: /forms-documents
-Allow: /admin
-Allow: /operator
-Allow: /legal
-Allow: /forgot-password
-Allow: /order-confirmation
-Allow: /service-detail
-Allow: /store-checkout
-Allow: /store-product
+Allow: /forms-documents/
+Allow: /about
+Allow: /contact
+Allow: /pay
+Allow: /legal/
 
-# Disallow admin-only paths
+# Disallow private user portals, admin dashboard & payment checkouts
+Disallow: /admin
 Disallow: /admin/
+Disallow: /operator
 Disallow: /operator/
-
-# Prevent access to sensitive data
+Disallow: /profile
+Disallow: /track
+Disallow: /track/
+Disallow: /my-documents
+Disallow: /my-documents/
+Disallow: /store/*/*/checkout
+Disallow: /store/order-confirmation
 Disallow: /api/
 Disallow: /*.env
-Disallow: /*.config.js
-Disallow: /*.config.ts
+Disallow: /*.json$
 
-# Sitemap location
-Sitemap: https://b.indiacybercafe.com/sitemap.xml
-
-# Crawl delay for all bots (optional, no delay for faster crawling)
-Crawl-delay: 0
-
-# Specific rules for Googlebot
+# Googlebot specific
 User-agent: Googlebot
 Allow: /
 Crawl-delay: 0
 
-# Specific rules for Bingbot
+# Bingbot specific
 User-agent: Bingbot
 Allow: /
 Crawl-delay: 1
+
+# XML Sitemap
+Sitemap: https://b.indiacybercafe.com/sitemap.xml

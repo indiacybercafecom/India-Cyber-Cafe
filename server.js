@@ -8,6 +8,9 @@ import { fileURLToPath } from 'url';
 import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from './src/server/dataSyncRuntime.js';
 import { getMetadataForUrl, injectOpenGraphMetadata, isSocialCrawler } from './src/server/shareMetadata.js';
 import { driveRouter } from './src/server/driveRoutes.js';
+import { renderUniversalPage, injectSsrIntoTemplate } from './src/server/universalHtmlRenderer.js';
+import { generateSitemapXml, generateRobotsTxt } from './src/server/sitemapService.js';
+import { invalidatePublicDataCache } from './src/server/publicDataService.js';
 
 // Load environment variables
 dotenv.config();
@@ -305,7 +308,18 @@ app.get('/robots.txt', (req, res) => {
     baseUrl = `${protocol}://${host}`;
   }
   res.type('text/plain');
-  res.send(`User-agent: *\nAllow: /\nSitemap: ${baseUrl}/sitemap.xml`);
+  res.send(generateRobotsTxt(baseUrl));
+});
+
+app.get('/sitemap.xml', (req, res) => {
+  let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, '') : '';
+  if (!baseUrl) {
+    const protocol = req.protocol;
+    const host = req.get('host');
+    baseUrl = `${protocol}://${host}`;
+  }
+  res.type('application/xml');
+  res.send(generateSitemapXml(baseUrl, APP_ROOT));
 });
 
 const getSitemapBaseUrl = (req) => process.env.APP_URL
@@ -874,6 +888,7 @@ app.post('/api/sync-data', async (req, res) => {
     console.log('[DATA SYNC] Manual sync triggered from API');
     const result = await syncAllPublicJson();
     if (result.success) {
+      invalidatePublicDataCache();
       return res.json({ success: true, message: 'Data synchronization completed', results: result.results });
     }
     return res.status(202).json({ success: false, message: 'Synchronization completed with errors', results: result.results });
@@ -901,6 +916,7 @@ app.post('/api/sync-data/:type', async (req, res) => {
       : undefined;
     const result = await syncDataType(type, firebaseToken);
     if (result.success) {
+      invalidatePublicDataCache();
       return res.json({ success: true, message: `${type} synchronized`, result });
     }
     return res.status(202).json({ success: false, message: `Failed to sync ${type}`, result });
@@ -1778,14 +1794,14 @@ app.get(/^\/(?!api\/|data\/|assets\/|manifest\.json$|robots\.txt$|sitemap\.xml$|
         const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
         const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
         const baseUrl = process.env.APP_URL || (host.includes('localhost') ? `${proto}://${host}` : `https://${host}`);
-        const metadata = getMetadataForUrl(req.path, baseUrl, APP_ROOT);
-        const injectedHtml = injectOpenGraphMetadata(rawHtml, metadata);
-        return res.status(200).set({
+        const pageResult = renderUniversalPage(req.path, baseUrl, APP_ROOT);
+        const injectedHtml = injectSsrIntoTemplate(rawHtml, pageResult);
+        return res.status(pageResult.status).set({
           'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache, no-store, must-revalidate'
+          'Cache-Control': pageResult.status === 200 ? 'public, max-age=300, stale-while-revalidate=86400' : 'no-cache, no-store, must-revalidate'
         }).send(injectedHtml);
       } catch (err) {
-        console.error('[SERVER.JS] Failed to inject metadata into index.html:', err);
+        console.error('[SERVER.JS] Failed to render SSR HTML:', err);
         return res.sendFile(distIndex);
       }
     } else {

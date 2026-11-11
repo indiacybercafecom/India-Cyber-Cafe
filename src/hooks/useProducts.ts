@@ -19,11 +19,14 @@ interface JSONData {
  * Suitable for Store, StoreProduct, Home pages
  */
 export function useProducts() {
-  const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialProducts = typeof window !== 'undefined' && Array.isArray((window as any).__INITIAL_DATA__?.products)
+    ? (window as any).__INITIAL_DATA__.products
+    : [];
+  const [products, setProducts] = useState<Product[]>(initialProducts);
+  const [loading, setLoading] = useState(initialProducts.length === 0);
   const [error, setError] = useState<Error | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  const [hasJsonData, setHasJsonData] = useState(false);
+  const [hasJsonData, setHasJsonData] = useState(initialProducts.length > 0);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;

@@ -1,14 +1,14 @@
-import { useParams, Link } from 'react-router-dom';
+import { useParams, useLocation, Link } from 'react-router-dom';
 import { motion } from 'motion/react';
 import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
 
 export function Legal() {
-  const { type = 'privacy' } = useParams<{ type: string }>();
+  const { type } = useParams<{ type?: string }>();
+  const location = useLocation();
 
-  const activeType = ['terms', 'privacy', 'refund', 'disclaimer', 'about', 'contact'].includes(type)
-    ? type
-    : 'privacy';
+  const pathType = location.pathname === '/about' ? 'about' : location.pathname === '/contact' ? 'contact' : undefined;
+  const activeType = pathType || (type && ['terms', 'privacy', 'refund', 'disclaimer', 'about', 'contact'].includes(type) ? type : 'privacy');
 
   return (
     <>

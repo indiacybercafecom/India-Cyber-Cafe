@@ -18,11 +18,14 @@ interface JSONData {
  * Suitable for Home, Services, ServiceDetail pages
  */
 export function useServices() {
-  const [services, setServices] = useState<Service[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialServices = typeof window !== 'undefined' && Array.isArray((window as any).__INITIAL_DATA__?.services)
+    ? (window as any).__INITIAL_DATA__.services
+    : [];
+  const [services, setServices] = useState<Service[]>(initialServices);
+  const [loading, setLoading] = useState(initialServices.length === 0);
   const [error, setError] = useState<Error | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  const [hasJsonData, setHasJsonData] = useState(false);
+  const [hasJsonData, setHasJsonData] = useState(initialServices.length > 0);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;

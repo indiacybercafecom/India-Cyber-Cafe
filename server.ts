@@ -8,6 +8,9 @@ import crypto from "crypto";
 import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSyncRuntime.js";
 import { getMetadataForUrl, injectOpenGraphMetadata, isSocialCrawler } from "./src/server/shareMetadata.js";
 import { driveRouter } from "./src/server/driveRoutes.js";
+import { renderUniversalPage, injectSsrIntoTemplate } from "./src/server/universalHtmlRenderer.js";
+import { generateSitemapXml, generateRobotsTxt } from "./src/server/sitemapService.js";
+import { invalidatePublicDataCache } from "./src/server/publicDataService.js";
 
 dotenv.config();
 
@@ -293,143 +296,31 @@ async function startServer() {
       baseUrl = `${protocol}://${host}`;
     }
     res.type("text/plain");
-    res.send(`User-agent: *\nAllow: /\nSitemap: ${baseUrl}/sitemap.xml`);
+    res.send(generateRobotsTxt(baseUrl));
   });
 
-  const getSitemapBaseUrl = (req: any) => {
+  app.get("/sitemap.xml", (req, res) => {
     let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
-    if (!baseUrl) baseUrl = `${req.protocol}://${req.get('host')}`;
-    return baseUrl;
-  };
-
-  const escapeSitemapXml = (value: unknown) => String(value).replace(/[<>&'\"]/g, character => ({
-    '<': '&lt;',
-    '>': '&gt;',
-    '&': '&amp;',
-    "'": '&apos;',
-    '"': '&quot;'
-  }[character] || character));
-
-  const sitemapCacheTtlMs = 5 * 60 * 1000;
-  let sitemapDataCache: { expiresAt: number; data: { services: any[]; productCategories: any[]; products: any[] } } | null = null;
-
-  const loadSitemapData = async () => {
-    if (sitemapDataCache && sitemapDataCache.expiresAt > Date.now()) {
-      return sitemapDataCache.data;
+    if (!baseUrl) {
+      const protocol = req.protocol;
+      const host = req.get('host');
+      baseUrl = `${protocol}://${host}`;
     }
-
-    const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
-    const localFiles: Record<string, string> = {
-      services: 'services.json',
-      productCategories: 'product-categories.json',
-      products: 'products.json'
-    };
-    const readCollection = async (name: string): Promise<any[]> => {
-      let remoteItems: any[] = [];
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 4000);
-        const response = await fetch(`${databaseURL}/${name}.json`, { signal: controller.signal });
-        clearTimeout(timeout);
-        if (response.ok) {
-          const data = await response.json();
-          remoteItems = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
-        }
-      } catch (error) {
-        console.error(`Error fetching ${name} for sitemap:`, error);
-      }
-      try {
-        const localData = JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'public/data', localFiles[name]), 'utf8'));
-        const localItems = localData?.[name === 'productCategories' ? 'categories' : name] || [];
-        const merged = new Map([...localItems, ...remoteItems].filter(item => item?.id).map(item => [item.id, item]));
-        return [...merged.values()];
-      } catch (error) {
-        return remoteItems;
-      }
-    };
-    const [services, productCategories, products] = await Promise.all([
-      readCollection('services'),
-      readCollection('productCategories'),
-      readCollection('products')
-    ]);
-    const data = { services, productCategories, products };
-    sitemapDataCache = { data, expiresAt: Date.now() + sitemapCacheTtlMs };
-    return data;
-  };
-
-  const createSitemapXml = (urls: Array<{ url: string; priority?: string }>) => {
-    const today = new Date().toISOString().split('T')[0];
-    const entries = urls.map(({ url, priority = '0.8' }) => `  <url>\n    <loc>${escapeSitemapXml(url)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>${priority}</priority>\n  </url>`).join('\n');
-    return `<?xml version="1.0" encoding="UTF-8"?>\n<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries}\n</urlset>`;
-  };
-
-  const slugifySitemap = (text: string) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
-
-  app.get("/sitemap.xml", async (req, res) => {
-    try {
-      const baseUrl = getSitemapBaseUrl(req);
-      const { services, productCategories, products } = await loadSitemapData();
-      const staticPages = ['', '/services', '/store', '/price-list', '/forms-documents', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund', '/legal/disclaimer'];
-      const pageUrls = staticPages.map(url => ({ url: `${baseUrl}${url}`, priority: url === '' ? '1.0' : '0.8' }));
-      const serviceUrls = services.filter(service => service?.id).map(service => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}`, priority: '0.7' }));
-      const subserviceUrls = services.flatMap(service => (service?.subservices || []).filter((subservice: any) => subservice?.name).map((subservice: any) => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}/${slugifySitemap(subservice.name)}`, priority: '0.6' })));
-      const categoryUrls = productCategories.filter(category => category?.id).map(category => ({ url: `${baseUrl}/store/${encodeURIComponent(category.id)}`, priority: '0.7' }));
-      const productUrls = products.filter(product => product?.id && product?.category).map(product => ({ url: `${baseUrl}/store/${encodeURIComponent(product.category)}/${encodeURIComponent(product.id)}`, priority: '0.6' }));
-      res.type("application/xml").send(createSitemapXml([...pageUrls, ...serviceUrls, ...subserviceUrls, ...categoryUrls, ...productUrls]));
-    } catch (error) {
-      console.error("Sitemap generation error:", error);
-      res.type("application/xml").send(createSitemapXml([]));
-    }
+    res.type("application/xml");
+    res.send(generateSitemapXml(baseUrl, APP_ROOT));
   });
 
-  app.get("/page-sitemap.xml", (req, res) => {
-    const baseUrl = getSitemapBaseUrl(req);
-    const pages = ['', '/services', '/store', '/price-list', '/forms-documents', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund', '/legal/disclaimer'];
-    res.type("application/xml").send(createSitemapXml(pages.map(url => ({ url: `${baseUrl}${url}`, priority: url === '' ? '1.0' : '0.8' }))));
+  app.get(["/page-sitemap.xml", "/service-sitemap.xml", "/subservice-sitemap.xml", "/product-sitemap.xml"], (req, res) => {
+    let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, "") : "";
+    if (!baseUrl) {
+      const protocol = req.protocol;
+      const host = req.get('host');
+      baseUrl = `${protocol}://${host}`;
+    }
+    res.type("application/xml");
+    res.send(generateSitemapXml(baseUrl, APP_ROOT));
   });
 
-  app.get("/service-sitemap.xml", async (req, res) => {
-    try {
-      const baseUrl = getSitemapBaseUrl(req);
-      const { services } = await loadSitemapData();
-      const urls = services.filter(service => service && service.id).map(service => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}`, priority: '0.7' }));
-      res.type("application/xml").send(createSitemapXml(urls));
-    } catch (error) {
-      console.error("Service sitemap generation error:", error);
-      res.type("application/xml").send(createSitemapXml([]));
-    }
-  });
-
-  app.get("/subservice-sitemap.xml", async (req, res) => {
-    try {
-      const baseUrl = getSitemapBaseUrl(req);
-      const { services } = await loadSitemapData();
-      const urls = services.flatMap(service => (service?.subservices || []).filter((ss: any) => ss && ss.name).map((ss: any) => ({
-        url: `${baseUrl}/services/${encodeURIComponent(service.id)}/${slugifySitemap(ss.name)}`,
-        priority: '0.6'
-      })));
-      res.type("application/xml").send(createSitemapXml(urls));
-    } catch (error) {
-      console.error("Subservice sitemap generation error:", error);
-      res.type("application/xml").send(createSitemapXml([]));
-    }
-  });
-
-  app.get("/product-sitemap.xml", async (req, res) => {
-    try {
-      const baseUrl = getSitemapBaseUrl(req);
-      const { productCategories, products } = await loadSitemapData();
-      const categoryUrls = productCategories.filter(category => category && category.id).map(category => ({ url: `${baseUrl}/store/${encodeURIComponent(category.id)}`, priority: '0.7' }));
-      const productUrls = products.filter(product => product && product.id && product.category).map(product => ({
-        url: `${baseUrl}/store/${encodeURIComponent(product.category)}/${encodeURIComponent(product.id)}`,
-        priority: '0.6'
-      }));
-      res.type("application/xml").send(createSitemapXml([...categoryUrls, ...productUrls]));
-    } catch (error) {
-      console.error("Product sitemap generation error:", error);
-      res.type("application/xml").send(createSitemapXml([]));
-    }
-  });
 
   // Helper function to validate and convert amount to exact integer paise
   function validateAndParsePayAmount(rawAmount: any): { valid: boolean; paise: number; error?: string } {
@@ -782,6 +673,7 @@ async function startServer() {
       const result = await syncAllPublicJson();
       
       if (result.success) {
+        invalidatePublicDataCache();
         res.json({
           success: true,
           message: "Data synchronization completed",
@@ -824,6 +716,7 @@ async function startServer() {
       const result = await syncDataType(type as 'services' | 'products' | 'categories' | 'documents' | 'documentCategories', firebaseToken);
       
       if (result.success) {
+        invalidatePublicDataCache();
         res.json({
           success: true,
           message: `${type} synchronized`,
@@ -1752,7 +1645,7 @@ async function startServer() {
       appType: "spa",
     });
 
-    // In development: intercept HTML page requests to dynamically inject Open Graph tags
+    // In development: intercept HTML page requests to dynamically render complete SSR HTML
     app.get(/^\/(?!api\/|data\/|assets\/|@|node_modules\/|src\/|manifest\.json$|robots\.txt$|sitemap\.xml$|favicon\.?\w*$).*/, async (req, res, next) => {
       if (req.path.startsWith('/api/') || req.path.startsWith('/data/') || req.path.startsWith('/assets/')) {
         return next();
@@ -1771,9 +1664,9 @@ async function startServer() {
         const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
         const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
         const baseUrl = process.env.APP_URL || (host.includes('localhost') ? `${proto}://${host}` : `https://${host}`);
-        const metadata = getMetadataForUrl(req.path, baseUrl, APP_ROOT);
-        const injectedHtml = injectOpenGraphMetadata(rawHtml, metadata);
-        return res.status(200).set({
+        const pageResult = renderUniversalPage(req.path, baseUrl, APP_ROOT);
+        const injectedHtml = injectSsrIntoTemplate(rawHtml, pageResult);
+        return res.status(pageResult.status).set({
           'Content-Type': 'text/html; charset=utf-8',
           'Cache-Control': 'no-cache, no-store, must-revalidate',
         }).send(injectedHtml);
@@ -1819,27 +1712,18 @@ async function startServer() {
           const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
           const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
           const baseUrl = process.env.APP_URL || (host.includes('localhost') ? `${proto}://${host}` : `https://${host}`);
-          const metadata = getMetadataForUrl(req.path, baseUrl, APP_ROOT);
-          const injectedHtml = injectOpenGraphMetadata(rawHtml, metadata);
-          return res.status(200).set({
+          const pageResult = renderUniversalPage(req.path, baseUrl, APP_ROOT);
+          const injectedHtml = injectSsrIntoTemplate(rawHtml, pageResult);
+          return res.status(pageResult.status).set({
             'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'no-cache, no-store, must-revalidate'
+            'Cache-Control': pageResult.status === 200 ? 'public, max-age=300, stale-while-revalidate=86400' : 'no-cache, no-store, must-revalidate'
           }).send(injectedHtml);
         } catch (err) {
           console.error('[SERVER] HTML injection error:', err);
           return res.sendFile(distIndex);
         }
       }
-
       next();
-    });
-
-    app.get('/robots.txt', (req, res) => {
-      res.sendFile(path.join(DIST_PATH, 'robots.txt'));
-    });
-
-    app.get('/sitemap.xml', (req, res) => {
-      res.sendFile(path.join(DIST_PATH, 'sitemap.xml'));
     });
 
     app.get('/manifest.json', (req, res) => {

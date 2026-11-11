@@ -34,9 +34,15 @@ export function sanitizeFirebasePayload<T>(payload: T): T {
 }
 
 export function useDocuments(includeInactive = false) {
-  const [documents, setDocuments] = useState<FormDocument[]>([]);
-  const [categories, setCategories] = useState<DocumentCategory[]>([]);
-  const [loading, setLoading] = useState(true);
+  const initialDocs = typeof window !== 'undefined' && Array.isArray((window as any).__INITIAL_DATA__?.documents)
+    ? (window as any).__INITIAL_DATA__.documents
+    : [];
+  const initialCats = typeof window !== 'undefined' && Array.isArray((window as any).__INITIAL_DATA__?.documentCategories)
+    ? (window as any).__INITIAL_DATA__.documentCategories
+    : [];
+  const [documents, setDocuments] = useState<FormDocument[]>(initialDocs);
+  const [categories, setCategories] = useState<DocumentCategory[]>(initialCats);
+  const [loading, setLoading] = useState(initialDocs.length === 0);
   const [error, setError] = useState<Error | null>(null);
 
   // Track if authoritative Firebase snapshots have already arrived

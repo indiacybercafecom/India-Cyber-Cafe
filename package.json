@@ -10,7 +10,8 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "sync:data": "tsx scripts/sync-data.ts"
+    "sync:data": "tsx scripts/sync-data.ts",
+    "test:seo": "tsx scripts/test-seo.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",
