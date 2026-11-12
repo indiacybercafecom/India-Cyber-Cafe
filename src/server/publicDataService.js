@@ -140,6 +140,7 @@ function getAllPublicUrls(baseUrl = "https://b.indiacybercafe.com", appRoot) {
   add("/privacy-request", "Submit Privacy & Grievance Redressal Request", "0.5", "monthly");
   add("/privacy-request/track", "Track Privacy Request Status", "0.4", "monthly");
   add("/pay", "Online Payment Portal - Pay by Link", "0.6", "weekly");
+  add("/sitemap.html", "HTML Sitemap & Directory - Complete Website Services", "0.7", "weekly");
   for (const s of data.services) {
     if (!s.id) continue;
     add(`/services/${s.id}`, `${s.name} - Online Application & Guidelines`, "0.8", "weekly");

@@ -30,6 +30,8 @@
 # Serve WebAssembly with the MIME type required by instantiateStreaming.
 <IfModule mod_mime.c>
   AddType application/wasm .wasm
+  AddType "application/xml; charset=UTF-8" .xml
+  AddType "text/html; charset=UTF-8" .html
 </IfModule>
 
 # Security headers
@@ -64,12 +66,14 @@
     RewriteRule ^$ http://127.0.0.1:3000/ [P,L]
   </IfModule>
 
-  # Serve only existing physical files directly (never match directories like "/")
+  # Serve only existing physical files directly (exclude sitemap.xml and sitemap.html so Node.js SSR handles them)
+  RewriteCond %{REQUEST_URI} !^/sitemap\.xml$ [NC]
+  RewriteCond %{REQUEST_URI} !^/sitemap\.html$ [NC]
   RewriteCond %{REQUEST_FILENAME} -f
   RewriteRule ^ - [L]
 
   # Keep API, data, assets, and site metadata requests passing through to Node.js
-  RewriteRule ^(?:api(?:/|$)|data(?:/|$)|assets(?:/|$)|favicon(?:[^/]*)?$|manifest\.json$|robots\.txt$|sitemap\.xml$) - [L,NC]
+  RewriteRule ^(?:api(?:/|$)|data(?:/|$)|assets(?:/|$)|favicon(?:[^/]*)?$|manifest\.json$|robots\.txt$|sitemap\.xml$|sitemap\.html$) - [L,NC]
 
   # On Hostinger Node.js (Passenger or Reverse Proxy):
   # All public routes MUST reach the Node.js SSR handler to deliver complete, crawlable HTML.

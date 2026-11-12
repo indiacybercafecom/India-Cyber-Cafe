@@ -287,6 +287,7 @@ export function getAllPublicUrls(baseUrl: string = 'https://b.indiacybercafe.com
   add('/privacy-request', 'Submit Privacy & Grievance Redressal Request', '0.5', 'monthly');
   add('/privacy-request/track', 'Track Privacy Request Status', '0.4', 'monthly');
   add('/pay', 'Online Payment Portal - Pay by Link', '0.6', 'weekly');
+  add('/sitemap.html', 'HTML Sitemap & Directory - Complete Website Services', '0.7', 'weekly');
 
   // 2. Services
   for (const s of data.services) {

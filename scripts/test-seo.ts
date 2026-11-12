@@ -648,12 +648,16 @@ async function runAudit() {
   console.log('\n--- SITEMAP.XML & ROBOTS.TXT VERIFICATION ---');
   const sitemapXml = generateSitemapXml(canonicalBaseUrl, appRoot);
   const sitemapUrlsCount = (sitemapXml.match(/<loc>/g) || []).length;
-  const sitemapValid = sitemapUrlsCount >= discoveredRoutes.length && sitemapXml.includes('<urlset') && sitemapXml.includes('/services/driving-license');
+  const hasNoXslt = !sitemapXml.includes('xml-stylesheet') && !sitemapXml.includes('.xsl');
+  const sitemapValid = sitemapUrlsCount >= discoveredRoutes.length &&
+    sitemapXml.includes('<urlset') &&
+    sitemapXml.includes('/services/driving-license') &&
+    hasNoXslt;
 
   const robotsTxt = generateRobotsTxt(canonicalBaseUrl);
   const robotsValid = robotsTxt.includes('User-agent: *') && robotsTxt.includes('Disallow: /admin') && robotsTxt.includes('Sitemap:');
 
-  console.log(`   - Sitemap XML: ${sitemapValid ? '✅ PASS' : '❌ FAIL'} (${sitemapUrlsCount} URLs indexed, Driving License included: ${sitemapXml.includes('/services/driving-license') ? 'YES' : 'NO'})`);
+  console.log(`   - Sitemap XML: ${sitemapValid ? '✅ PASS' : '❌ FAIL'} (${sitemapUrlsCount} URLs indexed, No XSLT: ${hasNoXslt ? 'YES' : 'NO'}, Driving License included: ${sitemapXml.includes('/services/driving-license') ? 'YES' : 'NO'})`);
   console.log(`   - Robots TXT: ${robotsValid ? '✅ PASS' : '❌ FAIL'}`);
 
   // ==========================================================================

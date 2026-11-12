@@ -5,7 +5,8 @@ import {
   findProduct,
   findProductCategory,
   findDocument,
-  slugify
+  slugify,
+  getAllPublicUrls
 } from "./publicDataService.js";
 const DEFAULT_ICC_IMAGE = "https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png";
 const DEFAULT_ICC_TITLE = "India Cyber Cafe - Digital Services, CSC & Online Form Portal";
@@ -133,7 +134,7 @@ function renderFooter() {
         </div>
         <div class="mt-12 pt-6 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500">
           <p>\xA9 2026 India Cyber Cafe. All rights reserved. Managed with strict consumer protection &amp; DPDP 2023 compliance.</p>
-          <p><a href="/sitemap.xml" class="hover:text-slate-400">XML Sitemap</a> \u2022 <a href="/robots.txt" class="hover:text-slate-400">Robots.txt</a></p>
+          <p><a href="/sitemap.html" class="hover:text-slate-400">HTML Sitemap</a> \u2022 <a href="/sitemap.xml" class="hover:text-slate-400">XML Sitemap</a> \u2022 <a href="/robots.txt" class="hover:text-slate-400">Robots.txt</a></p>
         </div>
       </div>
     </footer>
@@ -1389,6 +1390,241 @@ function renderUniversalPage(rawPath, baseUrl = PRODUCTION_DOMAIN, appRoot) {
           name: "Pay Online - Secure Payment Portal | India Cyber Cafe",
           description: "Make online payments for India Cyber Cafe digital services, application fees, and print orders via UPI, cards, and net banking.",
           url: `${rootUrl}/pay`
+        }
+      }
+    );
+  }
+  if (cleanPath === "/sitemap.html" || cleanPath === "/sitemap") {
+    const breadcrumbs = [{ label: "Home", href: "/" }, { label: "HTML Sitemap" }];
+    const allUrls = getAllPublicUrls(rootUrl, appRoot);
+    const mainPages = [
+      { name: "Home Page & Portal Overview", path: "/", desc: "Primary landing hub, quick access to CSC services, order tracking, and price calculator" },
+      { name: "All Digital & CSC Services", path: "/services", desc: "Complete catalog of online government schemes, Aadhaar UCL, GST, PAN, and certificates" },
+      { name: "Official Price List & Charges", path: "/price-list", desc: "Transparent fee schedule, government charges, and processing turnaround timelines" },
+      { name: "Online Store - PVC Cards & Devices", path: "/store", desc: "High-durability smart ID cards, biometric RD service scanners, and student medical guides" },
+      { name: "Government Forms & PDF Documents", path: "/forms-documents", desc: "Free verified PDF application formats, state affidavits, and official document downloads" },
+      { name: "About India Cyber Cafe", path: "/about", desc: "Company mission, Singrauli operational hub, team ethics, and citizen service commitment" },
+      { name: "Contact & Grievance Redressal", path: "/contact", desc: "Customer support hotline, email, Singrauli physical address, and grievance desk" },
+      { name: "Online Payment Portal", path: "/pay", desc: "Instant UPI, QR code, debit/credit card, and net banking payment gateway" },
+      { name: "Submit Privacy & Grievance Request", path: "/privacy-request", desc: "DPDP Act 2023 statutory rights, data correction, and grievance submission" },
+      { name: "Track Privacy Request Status", path: "/privacy-request/track", desc: "Real-time tracking of submitted data protection requests with token number" }
+    ];
+    const legalPages = [
+      { name: "Terms and Conditions", path: "/legal/terms", desc: "Service agreement, client obligations, and cyber cafe facilitation terms" },
+      { name: "Privacy Notice (DPDP Act 2023)", path: "/legal/privacy", desc: "Statutory privacy notice, data minimization, consent management, and rights" },
+      { name: "Refund & Cancellation Policy", path: "/legal/refund", desc: "Fair refund terms, processing dispute rules, and transaction rollback norms" },
+      { name: "Non-Affiliation Disclaimer", path: "/legal/disclaimer", desc: "Government non-affiliation notice, independent facilitation declaration" }
+    ];
+    const bodyHtml2 = `
+      <div class="space-y-8 max-w-6xl mx-auto">
+        ${renderBreadcrumbs(breadcrumbs)}
+
+        <!-- Header Panel -->
+        <article class="bg-white rounded-3xl border border-slate-200 p-6 sm:p-10 shadow-sm space-y-6">
+          <div class="border-b border-slate-100 pb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div>
+              <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-orange-100 text-orange">
+                <span class="w-2 h-2 rounded-full bg-orange"></span> Universal Directory &amp; Sitemap
+              </span>
+              <h1 class="text-3xl sm:text-4xl font-extrabold text-navy mt-2">India Cyber Cafe HTML Sitemap &amp; Directory</h1>
+              <p class="text-xs sm:text-sm text-slate-500 mt-2 max-w-2xl leading-relaxed">
+                A complete, human-readable overview of all public pages, digital government services, store products, and official documents available on India Cyber Cafe.
+              </p>
+            </div>
+            <div class="flex flex-wrap sm:flex-nowrap gap-3 items-center">
+              <a href="/sitemap.xml" class="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-navy text-white text-xs font-bold hover:bg-slate-800 transition-colors shadow-sm">
+                <span>View XML Sitemap (Crawlers)</span>
+                <span class="px-2 py-0.5 rounded-full bg-white/20 text-[11px] font-mono">${allUrls.length} URLs</span>
+              </a>
+              <a href="/robots.txt" class="inline-flex items-center gap-1.5 px-3 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-xs font-semibold hover:bg-slate-50 transition-colors">
+                Robots.txt
+              </a>
+            </div>
+          </div>
+
+          <!-- Quick Jumps -->
+          <div class="flex flex-wrap gap-2 pt-2">
+            <span class="text-xs font-bold text-slate-400 self-center mr-1">Jump to:</span>
+            <a href="#main-pages" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-orange hover:text-white text-xs font-semibold text-slate-700 transition-all">Main Portals</a>
+            <a href="#services-list" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-orange hover:text-white text-xs font-semibold text-slate-700 transition-all">Digital Services (${data.services.length})</a>
+            <a href="#store-products" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-orange hover:text-white text-xs font-semibold text-slate-700 transition-all">Store Products (${data.products.length})</a>
+            <a href="#forms-documents" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-orange hover:text-white text-xs font-semibold text-slate-700 transition-all">Documents (${data.documents.length})</a>
+            <a href="#legal-policies" class="px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-orange hover:text-white text-xs font-semibold text-slate-700 transition-all">Legal &amp; Statutory</a>
+          </div>
+        </article>
+
+        <!-- 1. MAIN PAGES -->
+        <section id="main-pages" class="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h2 class="text-xl font-extrabold text-navy">1. Core Portals &amp; Navigation Pages</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Primary entry points and key utility portals</p>
+            </div>
+            <span class="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">${mainPages.length} Pages</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${mainPages.map((page) => `
+              <div class="p-4 rounded-2xl border border-slate-100 hover:border-orange hover:bg-orange/5 transition-all">
+                <a href="${page.path}" class="text-sm font-bold text-navy hover:text-orange transition-colors flex items-center justify-between">
+                  <span>${escapeHtml(page.name)}</span>
+                  <span class="text-xs text-slate-400 font-mono">${page.path}</span>
+                </a>
+                <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">${escapeHtml(page.desc)}</p>
+              </div>
+            `).join("")}
+          </div>
+        </section>
+
+        <!-- 2. DIGITAL & GOVERNMENT SERVICES -->
+        <section id="services-list" class="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h2 class="text-xl font-extrabold text-navy">2. Digital Government Services &amp; CSC Applications</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Aadhaar UCL, GST, PAN, Driving License, fast-track forms, and official certificate services</p>
+            </div>
+            <span class="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">${data.services.length} Categories</span>
+          </div>
+          <div class="space-y-6">
+            ${data.services.map((s) => `
+              <div class="border border-slate-100 rounded-2xl p-5 bg-slate-50/50 space-y-3">
+                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200/60 pb-3">
+                  <div>
+                    <a href="/services/${s.id}" class="text-base font-extrabold text-navy hover:text-orange transition-colors">
+                      ${escapeHtml(s.name)}
+                    </a>
+                    ${s.description ? `<p class="text-xs text-slate-500 mt-0.5">${escapeHtml(cleanText(s.description))}</p>` : ""}
+                  </div>
+                  <a href="/services/${s.id}" class="text-xs font-semibold text-orange hover:underline whitespace-nowrap self-start sm:self-auto">
+                    View Service Page \u2192
+                  </a>
+                </div>
+                ${s.subservices && s.subservices.length > 0 ? `
+                  <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 pt-1">
+                    ${s.subservices.map((sub) => {
+      const subSlug = slugify(sub.name);
+      return `
+                        <a href="/services/${s.id}/${subSlug}" class="p-3 bg-white rounded-xl border border-slate-200 hover:border-orange hover:shadow-xs transition-all flex flex-col justify-between group">
+                          <span class="text-xs font-bold text-slate-800 group-hover:text-orange transition-colors">${escapeHtml(sub.name)}</span>
+                          <div class="flex items-center justify-between mt-2 pt-2 border-t border-slate-100 text-[11px] text-slate-500">
+                            <span class="font-bold text-navy">\u20B9${sub.charge ?? 0}</span>
+                            <span>${escapeHtml(sub.turnaroundTime || "Fast Track")}</span>
+                          </div>
+                        </a>
+                      `;
+    }).join("")}
+                  </div>
+                ` : '<p class="text-xs text-slate-400">Direct consultation available.</p>'}
+              </div>
+            `).join("")}
+          </div>
+        </section>
+
+        <!-- 3. STORE PRODUCTS & PVC CARDS -->
+        <section id="store-products" class="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h2 class="text-xl font-extrabold text-navy">3. Online Store - PVC Smart Cards &amp; Print Products</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Smart ID card printing, biometric RD service scanners, and student medical reference guides</p>
+            </div>
+            <span class="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">${data.products.length} Products</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            ${data.products.map((p) => `
+              <div class="p-4 rounded-2xl border border-slate-100 hover:border-orange hover:shadow-xs transition-all flex flex-col justify-between">
+                <div>
+                  <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">${escapeHtml(p.category || "General")}</span>
+                  <a href="/store/${p.category}/${p.id}" class="block text-sm font-bold text-navy hover:text-orange transition-colors mt-0.5">
+                    ${escapeHtml(p.name)}
+                  </a>
+                  ${p.shortDescription ? `<p class="text-xs text-slate-500 mt-1 line-clamp-2">${escapeHtml(cleanText(p.shortDescription))}</p>` : ""}
+                </div>
+                <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                  <span class="font-bold text-navy">\u20B9${p.price}</span>
+                  <a href="/store/${p.category}/${p.id}" class="text-orange font-semibold hover:underline">View Product \u2192</a>
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        </section>
+
+        <!-- 4. FORMS & DOCUMENTS -->
+        <section id="forms-documents" class="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h2 class="text-xl font-extrabold text-navy">4. Government Forms &amp; PDF Document Downloads</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Verified application formats, legal declarations, and official state forms</p>
+            </div>
+            <span class="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">${data.documents.length} Documents</span>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            ${data.documents.map((doc) => {
+      const catSlug = slugify(doc.category || "general");
+      const docSlug = slugify(doc.name);
+      return `
+                <div class="p-4 rounded-2xl border border-slate-100 hover:border-orange hover:shadow-xs transition-all flex flex-col justify-between">
+                  <div>
+                    <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">${escapeHtml(doc.category || "Forms")}</span>
+                    <a href="/forms-documents/${catSlug}/${docSlug}" class="block text-sm font-bold text-navy hover:text-orange transition-colors mt-0.5">
+                      ${escapeHtml(doc.name)}
+                    </a>
+                    ${doc.description ? `<p class="text-xs text-slate-500 mt-1 line-clamp-2">${escapeHtml(cleanText(doc.description))}</p>` : ""}
+                  </div>
+                  <div class="mt-4 pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                    <span class="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded">
+                      PDF Document
+                    </span>
+                    <a href="/forms-documents/${catSlug}/${docSlug}" class="text-orange font-semibold hover:underline">Download \u2192</a>
+                  </div>
+                </div>
+              `;
+    }).join("")}
+          </div>
+        </section>
+
+        <!-- 5. LEGAL POLICIES -->
+        <section id="legal-policies" class="bg-white rounded-3xl border border-slate-200 p-6 sm:p-8 shadow-sm space-y-6">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h2 class="text-xl font-extrabold text-navy">5. Legal, Statutory &amp; Compliance Policies</h2>
+              <p class="text-xs text-slate-500 mt-0.5">Consumer protection and privacy framework strictly adhered to by India Cyber Cafe</p>
+            </div>
+            <span class="px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-bold">${legalPages.length} Policies</span>
+          </div>
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            ${legalPages.map((page) => `
+              <div class="p-4 rounded-2xl border border-slate-100 hover:border-orange hover:bg-orange/5 transition-all">
+                <a href="${page.path}" class="text-sm font-bold text-navy hover:text-orange transition-colors flex items-center justify-between">
+                  <span>${escapeHtml(page.name)}</span>
+                  <span class="text-xs text-slate-400 font-mono">${page.path}</span>
+                </a>
+                <p class="text-xs text-slate-500 mt-1.5 leading-relaxed">${escapeHtml(page.desc)}</p>
+              </div>
+            `).join("")}
+          </div>
+        </section>
+      </div>
+    `;
+    return buildResult(
+      200,
+      "HTML Sitemap & Directory | India Cyber Cafe",
+      "Complete human-readable sitemap and directory of India Cyber Cafe. Browse all digital services, CSC forms, price list, store products, and legal policies.",
+      "/sitemap.html",
+      bodyHtml2,
+      {
+        ogType: "website",
+        structuredData: {
+          "@context": "https://schema.org",
+          "@type": "WebPage",
+          name: "India Cyber Cafe HTML Sitemap & Directory",
+          description: "Complete human-readable directory and index of all public URLs on India Cyber Cafe.",
+          url: `${rootUrl}/sitemap.html`,
+          breadcrumb: {
+            "@type": "BreadcrumbList",
+            itemListElement: [
+              { "@type": "ListItem", position: 1, name: "Home", item: `${rootUrl}/` },
+              { "@type": "ListItem", position: 2, name: "HTML Sitemap", item: `${rootUrl}/sitemap.html` }
+            ]
+          }
         }
       }
     );

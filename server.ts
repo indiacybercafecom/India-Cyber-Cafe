@@ -306,7 +306,10 @@ async function startServer() {
       const host = req.get('host');
       baseUrl = `${protocol}://${host}`;
     }
-    res.type("application/xml");
+    res.set({
+      "Content-Type": "application/xml; charset=utf-8",
+      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400"
+    });
     res.send(generateSitemapXml(baseUrl, APP_ROOT));
   });
 
@@ -317,7 +320,10 @@ async function startServer() {
       const host = req.get('host');
       baseUrl = `${protocol}://${host}`;
     }
-    res.type("application/xml");
+    res.set({
+      "Content-Type": "application/xml; charset=utf-8",
+      "Cache-Control": "public, max-age=3600, stale-while-revalidate=86400"
+    });
     res.send(generateSitemapXml(baseUrl, APP_ROOT));
   });
 

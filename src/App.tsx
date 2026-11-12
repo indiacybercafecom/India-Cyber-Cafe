@@ -53,6 +53,7 @@ const Pay = lazy(() => import('./pages/Pay').then(m => ({ default: m.Pay })));
 const FormsDocuments = lazy(() => import('./pages/FormsDocuments').then(m => ({ default: m.FormsDocuments })));
 const FormsDocumentDetail = lazy(() => import('./pages/FormsDocuments').then(m => ({ default: m.FormsDocumentDetail })));
 const MyDocuments = lazy(() => import('./pages/MyDocuments').then(m => ({ default: m.MyDocuments })));
+const Sitemap = lazy(() => import('./pages/Sitemap').then(m => ({ default: m.Sitemap })));
 
 // Preload function
 const preloadPages = () => {
@@ -288,6 +289,8 @@ function AppContent() {
             <Route path="/payment-policy" element={<Navigate to="/legal/terms" />} />
             <Route path="/refund-policy" element={<Navigate to="/legal/refund" />} />
             <Route path="/pay" element={<Pay />} />
+            <Route path="/sitemap.html" element={<Sitemap services={services} products={products} categories={productCategories} documents={documents} />} />
+            <Route path="/sitemap" element={<Navigate to="/sitemap.html" replace />} />
             <Route path="/404" element={<NotFound />} />
             {/* Services - public data only */}
             <Route path="/services" element={<Services services={services} />} />

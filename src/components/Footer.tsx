@@ -85,10 +85,17 @@ export function Footer() {
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto pt-8 border-t border-white/10 text-center">
+      <div className="max-w-7xl mx-auto pt-8 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-left">
         <p className="text-slate-500 text-xs">
           © {new Date().getFullYear()} India Cyber Cafe. All rights reserved. Designed for speed and security.
         </p>
+        <div className="flex items-center gap-3 text-xs text-slate-400">
+          <Link to="/sitemap.html" className="hover:text-primary transition-colors">HTML Sitemap</Link>
+          <span>•</span>
+          <a href="/sitemap.xml" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">XML Sitemap</a>
+          <span>•</span>
+          <a href="/robots.txt" target="_blank" rel="noopener noreferrer" className="hover:text-primary transition-colors">Robots.txt</a>
+        </div>
       </div>
       <ConsentPreferencesModal
         isOpen={isPreferencesOpen}
