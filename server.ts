@@ -1718,9 +1718,48 @@ async function startServer() {
             'Content-Type': 'text/html; charset=utf-8',
             'Cache-Control': pageResult.status === 200 ? 'public, max-age=300, stale-while-revalidate=86400' : 'no-cache, no-store, must-revalidate'
           }).send(injectedHtml);
-        } catch (err) {
-          console.error('[SERVER] HTML injection error:', err);
-          return res.sendFile(distIndex);
+        } catch (err: any) {
+          const requestId = `ssr_prod_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+          console.error(`[SSR_ERROR] RequestID=${requestId} Route=${req.path} Error:`, err?.stack || err?.message || err);
+          const errorHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Temporarily Unavailable | India Cyber Cafe</title>
+    <link rel="icon" type="image/png" href="https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" />
+    <style>
+      body { font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; color: #0f172a; margin: 0; padding: 24px; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+      .card { max-width: 540px; width: 100%; text-align: center; background: #ffffff; border-radius: 16px; padding: 40px 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+      h1 { font-size: 26px; font-weight: 800; color: #0f172a; margin: 16px 0 10px; }
+      p { color: #64748b; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+      .btn { display: inline-block; padding: 10px 20px; font-size: 14px; font-weight: 600; border-radius: 8px; text-decoration: none; }
+      .btn-primary { background: #FF9933; color: #ffffff; }
+      .btn-secondary { background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; }
+      .ref { margin-top: 28px; font-size: 11px; color: #94a3b8; font-family: monospace; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <img src="https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" alt="India Cyber Cafe" width="60" height="60" style="margin: 0 auto;" />
+      <h1>Temporarily Unavailable</h1>
+      <p>We encountered an issue preparing this page. Our technical team has been notified. You can return to our homepage or explore our catalog of services.</p>
+      <div class="actions">
+        <a href="/" class="btn btn-primary">Return to Home</a>
+        <a href="/services" class="btn btn-secondary">Browse Services</a>
+        <a href="/contact" class="btn btn-secondary">Contact Support</a>
+      </div>
+      <div class="ref">Request ID: ${requestId}</div>
+    </div>
+  </body>
+</html>`;
+          return res.status(500).set({
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-cache, no-store, must-revalidate',
+            'X-Request-Id': requestId,
+          }).send(errorHtml);
         }
       }
       next();

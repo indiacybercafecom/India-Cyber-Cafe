@@ -17,7 +17,13 @@ import {
 import * as pdfjsLib from 'pdfjs-dist';
 import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+if (typeof window !== 'undefined' && workerSrc) {
+  try {
+    pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
+  } catch {
+    // Ignore in non-browser environments
+  }
+}
 
 export interface PdfViewerModalProps {
   title: string;

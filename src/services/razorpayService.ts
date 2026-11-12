@@ -1,7 +1,8 @@
+import { getFriendlyErrorMessage } from '../utils/errorHandler';
+
 // Razorpay Configuration - Frontend Only (Key ID)
 // The Key Secret is kept safe on the backend only
-import { getFriendlyErrorMessage } from '../utils/errorHandler';
-const RAZORPAY_KEY_ID = import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_SO0ZFBCZTJT9Tu';
+const RAZORPAY_KEY_ID = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_RAZORPAY_KEY_ID) || (typeof process !== 'undefined' && process.env?.VITE_RAZORPAY_KEY_ID) || 'rzp_live_SO0ZFBCZTJT9Tu';
 
 export interface RazorpayOptions {
   key: string;

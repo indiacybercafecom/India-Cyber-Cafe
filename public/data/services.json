@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-21T10:01:51.270Z",
+  "generatedAt": "2026-11-11T19:43:56.247Z",
   "services": [
     {
       "id": "aadhaar-ucl-opretor",
@@ -305,6 +305,98 @@
           "paymentMethods": [
             "razorpay",
             "cash"
+          ]
+        }
+      ],
+      "css": ""
+    },
+    {
+      "id": "driving-license",
+      "name": "Driving License",
+      "icon": "https://indiacybercafe.com/wp-content/uploads/2026/11/driving_licence_services.png",
+      "iconType": "url",
+      "description": "Apply for Learning, Permanent and Renew Licence and other all RTO services.",
+      "fields": [
+        {
+          "label": "Mobile Number",
+          "type": "phone"
+        }
+      ],
+      "subservices": [
+        {
+          "charge": 600,
+          "fields": [
+            {
+              "label": "Aadhaar Number",
+              "type": "text"
+            },
+            {
+              "label": "Applicant Photo",
+              "type": "file"
+            },
+            {
+              "label": "Applicant Signature",
+              "type": "file"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/11/apply_learning_licence.png",
+          "imageType": "url",
+          "name": "Apply for Learning Licence",
+          "originalCharge": 1000,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 1500,
+          "fields": [
+            {
+              "label": "Aadhaar Number",
+              "type": "text"
+            },
+            {
+              "label": "Applicant Photo",
+              "type": "file"
+            },
+            {
+              "label": "Applicant Signature",
+              "type": "file"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/11/apply_permanent_licence.png",
+          "imageType": "url",
+          "name": "Apply for Permanent Driving Licence",
+          "originalCharge": 2500,
+          "paymentMethods": [
+            "razorpay"
+          ]
+        },
+        {
+          "charge": 1500,
+          "fields": [
+            {
+              "label": "Aadhaar Number",
+              "type": "text"
+            },
+            {
+              "label": "Applicant Photo",
+              "type": "file"
+            },
+            {
+              "label": "Applicant Signature",
+              "type": "file"
+            },
+            {
+              "label": "Licence Photo",
+              "type": "file"
+            }
+          ],
+          "image": "https://indiacybercafe.com/wp-content/uploads/2026/11/renew_driving_licence.png",
+          "imageType": "url",
+          "name": "Renewal Driving Licence",
+          "originalCharge": 1999,
+          "paymentMethods": [
+            "razorpay"
           ]
         }
       ],
@@ -1333,7 +1425,7 @@
       "name": "Explore All Services",
       "icon": "https://indiacybercafe.com/wp-content/uploads/2026/03/speedy.png",
       "iconType": "url",
-      "description": "Need your work done urgently? Choose Super Fast Service for quick processing of all online forms and digital services. An advance payment is required to start the service. The final price will be determined based on the work. The advance amount you paid will be adjusted in the final payment.",
+      "description": "Need your work done urgently? Choose Super Fast Service for quick processing of all online forms and digital services. An advance payment is required to start the service. The final price, will be determined based on the work. The advance amount you paid will be adjusted in the final payment.",
       "fields": [
         {
           "label": "Name",

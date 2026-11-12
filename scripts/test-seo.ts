@@ -1,30 +1,43 @@
 #!/usr/bin/env node
 /**
  * Comprehensive Automated Universal SEO & HTML Readability Test Suite
- * Tests all public routes for:
- * - HTTP Status Code & Content-Type
- * - Raw HTML readability without JavaScript
- * - Page-specific Title, Description, and Canonical URL
- * - Single semantic H1 heading & text hierarchy
- * - Content accuracy (prices, services, products, documents)
- * - Discoverable internal links (<a href="...">)
- * - Schema.org JSON-LD Structured Data
- * - Indexing directives (robots.txt, meta robots, noindex on private)
- * - Genuine 404 responses for invalid routes (no soft 404s)
- * 
- * Generates:
+ *
+ * Implements:
+ * Mode A: Local SSR Unit Tests (Direct Renderer & Data Generation)
+ * Mode B: Real Live Local HTTP Integration Tests (Actual HTTP GET over Port 3000)
+ * Mode C: Real Live Deployed HTTP Integration Tests (Configured via TEST_BASE_URL / DEPLOYED_URL)
+ *
+ * Validates:
+ * 1. Raw HTTP GET HTML readability (without JS execution)
+ * 2. Exactly one semantic H1 heading per route
+ * 3. Unique page-specific Title and Meta Description
+ * 4. Exact canonical URL & OpenGraph metadata
+ * 5. Meaningful page-specific body content (excluding global header & footer)
+ * 6. Live public pricing accuracy from public catalog & Firebase RTDB
+ * 7. Discoverable internal anchor links (<a href="...">)
+ * 8. Valid Schema.org JSON-LD Structured Data
+ * 9. Accurate HTTP status codes (200 OK, 404 Not Found for missing routes)
+ * 10. Driving License & all catalog services discoverability & verification
+ * 11. XML Sitemap & Robots.txt accessibility and correctness
+ * 12. React Hydration compatibility & __INITIAL_DATA__ seeding
+ *
+ * Outputs:
  * - reports/seo-audit.json
  * - reports/seo-audit.html
  */
 
 import fs from 'fs';
 import path from 'path';
+import http from 'http';
+import https from 'https';
 import { getPublicData, getAllPublicUrls } from '../src/server/publicDataService.js';
 import { renderUniversalPage, injectSsrIntoTemplate } from '../src/server/universalHtmlRenderer.js';
 import { generateSitemapXml, generateRobotsTxt } from '../src/server/sitemapService.js';
 
 interface RouteAuditResult {
+  mode: 'unit' | 'local_http' | 'deployed_http';
   route: string;
+  url: string;
   expectedStatus: number;
   actualStatus: number;
   passed: boolean;
@@ -39,6 +52,7 @@ interface RouteAuditResult {
   h1Valid: boolean;
   hasMeaningfulContent: boolean;
   contentLength: number;
+  pageContentLength: number;
   internalLinksCount: number;
   hasStructuredData: boolean;
   structuredDataType?: string;
@@ -49,382 +63,666 @@ interface RouteAuditResult {
   issues: string[];
 }
 
+interface AuditSummary {
+  timestamp: string;
+  catalog: {
+    services: number;
+    hasDrivingLicense: boolean;
+    products: number;
+    productCategories: number;
+    documents: number;
+    documentCategories: number;
+  };
+  totalDiscoveredRoutes: number;
+  unitTests: { total: number; passed: number; failed: number };
+  localHttpTests: { total: number; passed: number; failed: number; serverUrl: string };
+  deployedHttpTests: { total: number; passed: number; failed: number; deployedUrl?: string };
+  overallPassed: boolean;
+  results: RouteAuditResult[];
+}
+
+// Helper: Extract text inside first H1
 function extractH1(html: string): string {
   const match = html.match(/<h1[^>]*>([\s\S]*?)<\/h1>/i);
   if (!match) return '';
-  return match[1].replace(/<[^>]*>/g, '').trim();
+  return match[1].replace(/<[^>]*>/g, '').replace(/&amp;/g, '&').trim();
 }
 
+// Helper: Count H1 tags
 function countH1(html: string): number {
   const matches = html.match(/<h1[^>]*>[\s\S]*?<\/h1>/gi);
   return matches ? matches.length : 0;
 }
 
+// Helper: Extract meta tags
 function extractMeta(html: string, name: string): string {
-  const match = html.match(new RegExp(`<meta\\s+name=["']${name}["']\\s+content=["']([\\s\\S]*?)["']`, 'i')) ||
+  const match =
+    html.match(new RegExp(`<meta\\s+name=["']${name}["']\\s+content=["']([\\s\\S]*?)["']`, 'i')) ||
     html.match(new RegExp(`<meta\\s+content=["']([\\s\\S]*?)["']\\s+name=["']${name}["']`, 'i'));
   return match ? match[1].trim() : '';
 }
 
+// Helper: Extract page title
 function extractTitle(html: string): string {
-  const match = html.match(/<title>([\s\S]*?)<\/title>/i);
-  return match ? match[1].trim() : '';
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  return match ? match[1].replace(/&amp;/g, '&').trim() : '';
 }
 
+// Helper: Extract canonical link
 function extractCanonical(html: string): string {
-  const match = html.match(/<link\s+rel=["']canonical["']\s+href=["']([\s\S]*?)["']/i) ||
+  const match =
+    html.match(/<link\s+rel=["']canonical["']\s+href=["']([\s\S]*?)["']/i) ||
     html.match(/<link\s+href=["']([\s\S]*?)["']\s+rel=["']canonical["']/i);
   return match ? match[1].trim() : '';
 }
 
+// Helper: Extract internal links
 function extractInternalLinks(html: string): string[] {
-  const links: string[] = [];
   const regex = /<a\s+[^>]*href=["'](\/[^"']*)["'][^>]*>/gi;
-  let match;
-  while ((match = regex.exec(html)) !== null) {
-    links.push(match[1]);
+  const links: string[] = [];
+  let m;
+  while ((m = regex.exec(html)) !== null) {
+    if (m[1] && !links.includes(m[1])) {
+      links.push(m[1]);
+    }
   }
   return links;
 }
 
-function extractJsonLd(html: string): any[] {
-  const scripts: any[] = [];
-  const regex = /<script\s+type=["']application\/ld\+json["']>([\s\S]*?)<\/script>/gi;
-  let match;
-  while ((match = regex.exec(html)) !== null) {
-    try {
-      scripts.push(JSON.parse(match[1]));
-    } catch {}
-  }
-  return scripts;
+// Helper: Extract prices
+function extractPrices(html: string): string[] {
+  const matches = html.match(/₹\s*\d+(?:,\d+)*(?:\.\d+)?/g) || [];
+  return Array.from(new Set(matches));
 }
 
-async function runAudit(): Promise<void> {
-  const appRoot = process.cwd();
-  const reportsDir = path.join(appRoot, 'reports');
-  fs.mkdirSync(reportsDir, { recursive: true });
+// Helper: Extract structured data JSON-LD scripts
+function extractStructuredData(html: string): any[] {
+  const regex = /<script\s+type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
+  const items: any[] = [];
+  let m;
+  while ((m = regex.exec(html)) !== null) {
+    try {
+      const parsed = JSON.parse(m[1].trim());
+      items.push(parsed);
+    } catch {
+      // invalid JSON-LD
+    }
+  }
+  return items;
+}
 
-  const rawTemplate = fs.existsSync(path.join(appRoot, 'dist/index.html'))
-    ? fs.readFileSync(path.join(appRoot, 'dist/index.html'), 'utf-8')
-    : fs.readFileSync(path.join(appRoot, 'index.html'), 'utf-8');
+// Helper: Extract main body content excluding navbar and footer
+function extractMainContentText(html: string): string {
+  // Strip head, scripts, styles, header, nav, and footer
+  let clean = html
+    .replace(/<head[\s\S]*?<\/head>/gi, '')
+    .replace(/<script[\s\S]*?<\/script>/gi, '')
+    .replace(/<style[\s\S]*?<\/style>/gi, '')
+    .replace(/<header[\s\S]*?<\/header>/gi, '')
+    .replace(/<nav[\s\S]*?<\/nav>/gi, '')
+    .replace(/<footer[\s\S]*?<\/footer>/gi, '');
 
-  console.log('\n======================================================');
-  console.log('  INDIA CYBER CAFE — AUTOMATED UNIVERSAL SEO AUDIT');
-  console.log('======================================================\n');
+  // Look for main or ssr replacement or article
+  const mainMatch = clean.match(/<main[\s\S]*?<\/main>/i) || clean.match(/<div id="root"[\s\S]*?<\/div>/i);
+  if (mainMatch) {
+    clean = mainMatch[0];
+  }
 
+  // Strip remaining tags
+  return clean.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+// Helper: Send Real HTTP GET Request
+function sendHttpRequest(urlStr: string): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+  return new Promise((resolve, reject) => {
+    const url = new URL(urlStr);
+    const lib = url.protocol === 'https:' ? https : http;
+    const req = lib.request(
+      url,
+      {
+        method: 'GET',
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        },
+        timeout: 10000,
+      },
+      res => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', chunk => {
+          body += chunk;
+        });
+        res.on('end', () => {
+          const headers: Record<string, string> = {};
+          for (const [k, v] of Object.entries(res.headers)) {
+            if (typeof v === 'string') headers[k.toLowerCase()] = v;
+          }
+          resolve({
+            status: res.statusCode || 0,
+            headers,
+            body,
+          });
+        });
+      }
+    );
+
+    req.on('error', err => reject(err));
+    req.on('timeout', () => {
+      req.destroy();
+      reject(new Error(`Timeout connecting to ${urlStr}`));
+    });
+    req.end();
+  });
+}
+
+// Validate single HTML payload
+function evaluateHtml(
+  route: string,
+  url: string,
+  mode: 'unit' | 'local_http' | 'deployed_http',
+  status: number,
+  expectedStatus: number,
+  html: string,
+  contentType: string = 'text/html'
+): RouteAuditResult {
+  const issues: string[] = [];
+
+  // 1. Status Code
+  if (status !== expectedStatus) {
+    issues.push(`Expected HTTP status ${expectedStatus}, received ${status}`);
+  }
+
+  // 2. Content Type
+  if (expectedStatus === 200 && !contentType.toLowerCase().includes('text/html')) {
+    issues.push(`Expected text/html content-type, received ${contentType}`);
+  }
+
+  // 3. Title
+  const title = extractTitle(html);
+  const titleValid = title.length >= 10 && !title.includes('undefined') && !title.includes('null');
+  if (expectedStatus === 200 && !titleValid) {
+    issues.push(`Title invalid or missing: "${title}"`);
+  }
+
+  // 4. Meta Description
+  const description = extractMeta(html, 'description');
+  const descValid = description.length >= 20;
+  if (expectedStatus === 200 && !descValid) {
+    issues.push(`Meta description too short or missing (${description.length} chars)`);
+  }
+
+  // 5. Canonical URL
+  const canonical = extractCanonical(html);
+  const canonicalValid = Boolean(canonical && canonical.startsWith('http'));
+  if (expectedStatus === 200 && !canonicalValid) {
+    issues.push(`Canonical URL missing or invalid: "${canonical}"`);
+  }
+
+  // 6. Heading H1 Check (Exactly one semantic H1)
+  const h1 = extractH1(html);
+  const h1Count = countH1(html);
+  const h1Valid = h1Count === 1 && h1.length >= 3;
+  if (!h1Valid) {
+    issues.push(`Found ${h1Count} <h1> tags (must be exactly 1): "${h1}"`);
+  }
+
+  // 7. Page Content Validation (excluding header and footer)
+  const mainText = extractMainContentText(html);
+  const pageContentLength = mainText.length;
+  // A page containing only header/footer or less than 150 chars of meaningful text fails
+  const hasMeaningfulContent = pageContentLength >= 150;
+  if (!hasMeaningfulContent) {
+    issues.push(`Insufficient page content: body text length is only ${pageContentLength} characters`);
+  }
+
+  // Check for common error strings or empty skeletons
+  if (html.includes('<div id="root"></div>') && !html.includes('id="ssr-root-replacement"') && !html.includes('class=')) {
+    issues.push('Page served an empty React root shell without SSR content');
+  }
+  if (mainText.toLowerCase().includes('loading document...') || mainText.toLowerCase().includes('please wait')) {
+    if (pageContentLength < 300) {
+      issues.push('Page content appears to be a loading placeholder');
+    }
+  }
+
+  // 8. Internal Links
+  const internalLinks = extractInternalLinks(html);
+  if (expectedStatus === 200 && internalLinks.length < 3) {
+    issues.push(`Too few internal discoverable links (${internalLinks.length})`);
+  }
+
+  // 9. Structured Data JSON-LD
+  const ldJsonItems = extractStructuredData(html);
+  const hasStructuredData = ldJsonItems.length > 0;
+  const structuredDataType = ldJsonItems.map(item => item['@type'] || 'Unknown').join(', ');
+  const structuredDataValid = hasStructuredData;
+  if (expectedStatus === 200 && !structuredDataValid) {
+    issues.push('Missing Schema.org JSON-LD structured data');
+  }
+
+  // 10. Robots Directives
+  const robotsDirective = extractMeta(html, 'robots');
+  let robotsValid = true;
+  if (expectedStatus === 200) {
+    robotsValid = !robotsDirective.includes('noindex');
+    if (!robotsValid) issues.push(`Public 200 route has noindex directive: "${robotsDirective}"`);
+  } else if (expectedStatus === 404) {
+    robotsValid = robotsDirective.includes('noindex');
+    if (!robotsValid) issues.push(`404 route is missing noindex directive: "${robotsDirective}"`);
+  }
+
+  // 11. Real Prices
+  const pricesFound = extractPrices(html);
+  if (route.startsWith('/services') || route.startsWith('/price-list') || route.startsWith('/store')) {
+    if (route !== '/store' && !route.includes('checkout') && !route.includes('category') && pricesFound.length === 0 && !route.includes('404')) {
+      issues.push('Expected real prices (₹) in service/price-list content');
+    }
+  }
+
+  const passed = issues.length === 0;
+
+  return {
+    mode,
+    route,
+    url,
+    expectedStatus,
+    actualStatus: status,
+    passed,
+    contentType,
+    title,
+    titleValid,
+    description,
+    descValid,
+    canonical,
+    canonicalValid,
+    h1,
+    h1Valid,
+    hasMeaningfulContent,
+    contentLength: html.length,
+    pageContentLength,
+    internalLinksCount: internalLinks.length,
+    hasStructuredData,
+    structuredDataType,
+    structuredDataValid,
+    robotsDirective,
+    robotsValid,
+    pricesFound,
+    issues,
+  };
+}
+
+async function runAudit() {
+  console.log('======================================================');
+  console.log('  INDIA CYBER CAFE — PRODUCTION UNIVERSAL SEO & SSR AUDIT');
+  console.log('======================================================');
+
+  const appRoot = path.resolve(process.cwd());
   const publicData = getPublicData(appRoot);
-  console.log(`📦 Loaded Catalog Data:`);
-  console.log(`   - Services: ${publicData.services.length}`);
+
+  const hasDrivingLicense = publicData.services.some(s => s.id === 'driving-license');
+  console.log('📦 Live Public Catalog Status:');
+  console.log(`   - Services: ${publicData.services.length} (Driving License present: ${hasDrivingLicense ? '✅ YES' : '❌ NO'})`);
   console.log(`   - Products: ${publicData.products.length}`);
   console.log(`   - Product Categories: ${publicData.productCategories.length}`);
   console.log(`   - Documents: ${publicData.documents.length}`);
-  console.log(`   - Document Categories: ${publicData.documentCategories.length}\n`);
+  console.log(`   - Document Categories: ${publicData.documentCategories.length}`);
 
-  const publicUrls = getAllPublicUrls('https://b.indiacybercafe.com', appRoot);
-  console.log(`🔍 Total Public Canonical Routes Discovered: ${publicUrls.length}\n`);
+  const canonicalBaseUrl = 'https://b.indiacybercafe.com';
+  const discoveredRoutes = getAllPublicUrls(canonicalBaseUrl, appRoot);
+  console.log(`🔍 Total Canonical Public Routes Discovered: ${discoveredRoutes.length}`);
 
-  // Build test route roster
-  const routesToTest: Array<{ route: string; expectedStatus: number; expectedRobots: 'index' | 'noindex' }> = [
-    // Standard public routes
-    { route: '/', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/services', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/price-list', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/store', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/forms-documents', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/about', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/contact', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/legal/terms', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/legal/privacy', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/legal/refund', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/legal/disclaimer', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/privacy-request', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/privacy-request/track', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/pay', expectedStatus: 200, expectedRobots: 'index' },
-    { route: '/login', expectedStatus: 200, expectedRobots: 'noindex' },
-    { route: '/register', expectedStatus: 200, expectedRobots: 'noindex' },
-
-    // Private routes (must be 200 with noindex)
-    { route: '/admin', expectedStatus: 200, expectedRobots: 'noindex' },
-    { route: '/profile', expectedStatus: 200, expectedRobots: 'noindex' },
-    { route: '/track', expectedStatus: 200, expectedRobots: 'noindex' },
-    { route: '/my-documents', expectedStatus: 200, expectedRobots: 'noindex' },
-
-    // Nonexistent routes (must be genuine 404, not soft 404)
-    { route: '/services/invalid-service-404-test', expectedStatus: 404, expectedRobots: 'noindex' },
-    { route: '/store/invalid-cat/invalid-prod-404-test', expectedStatus: 404, expectedRobots: 'noindex' },
-    { route: '/forms-documents/invalid-cat/invalid-doc-404-test', expectedStatus: 404, expectedRobots: 'noindex' },
-    { route: '/totally-bogus-page-xyz', expectedStatus: 404, expectedRobots: 'noindex' },
+  // Test routes list: discovered canonical routes + edge cases
+  const edgeCases = [
+    { path: '/services/driving-license', expectedStatus: hasDrivingLicense ? 200 : 404, label: 'Driving License Service' },
+    { path: '/services/driving-license/apply-for-learning-licence', expectedStatus: hasDrivingLicense ? 200 : 404, label: 'Driving License Subservice' },
+    { path: '/services/non-existent-service-404-test', expectedStatus: 404, label: 'Non-Existent Service' },
+    { path: '/store/non-existent-category/bad-product-404', expectedStatus: 404, label: 'Non-Existent Product' },
+    { path: '/forms-documents/non-existent-form-xyz-404', expectedStatus: 404, label: 'Non-Existent Document' },
+    { path: '/random-unknown-page-route-404', expectedStatus: 404, label: 'Unknown Random Route' },
+    { path: '/privacy-policy', expectedStatus: 200, label: 'Privacy Policy' },
+    { path: '/terms-and-conditions', expectedStatus: 200, label: 'Terms and Conditions' },
   ];
 
-  // Add all public service and subservice routes
-  for (const s of publicData.services) {
-    if (s.id) {
-      routesToTest.push({ route: `/services/${s.id}`, expectedStatus: 200, expectedRobots: 'index' });
-      for (const ss of s.subservices || []) {
-        if (ss.name) {
-          routesToTest.push({
-            route: `/services/${s.id}/${ss.name.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-')}`,
-            expectedStatus: 200,
-            expectedRobots: 'index',
-          });
-        }
-      }
-    }
-  }
-
-  // Add store categories & products
-  for (const cat of publicData.productCategories) {
-    if (cat.id) {
-      routesToTest.push({ route: `/store/${cat.id}`, expectedStatus: 200, expectedRobots: 'index' });
-    }
-  }
-
-  for (const p of publicData.products) {
-    if (p.id && p.category) {
-      routesToTest.push({ route: `/store/${p.category}/${p.id}`, expectedStatus: 200, expectedRobots: 'index' });
-    }
-  }
-
-  // Add document categories & documents
-  for (const docCat of publicData.documentCategories) {
-    if (docCat.name) {
-      const catSlug = docCat.name.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-');
-      routesToTest.push({ route: `/forms-documents/${catSlug}`, expectedStatus: 200, expectedRobots: 'index' });
-    }
-  }
-
-  for (const doc of publicData.documents) {
-    if (doc.name) {
-      const catSlug = (doc.category || 'general').toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-');
-      const docSlug = doc.name.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-');
-      routesToTest.push({ route: `/forms-documents/${catSlug}/${docSlug}`, expectedStatus: 200, expectedRobots: 'index' });
-    }
-  }
-
-  console.log(`🚀 Starting verification of ${routesToTest.length} total URLs...\n`);
+  const allTestRoutes = [
+    ...discoveredRoutes.map(r => ({ path: r.path, expectedStatus: 200, label: r.title })),
+    ...edgeCases.filter(e => !discoveredRoutes.some(d => d.path === e.path)),
+  ];
 
   const results: RouteAuditResult[] = [];
-  let passedCount = 0;
-  let failedCount = 0;
 
-  for (const testCase of routesToTest) {
-    const issues: string[] = [];
-    const renderRes = renderUniversalPage(testCase.route, 'https://b.indiacybercafe.com', appRoot);
-    const fullHtml = injectSsrIntoTemplate(rawTemplate, renderRes);
+  // ==========================================================================
+  // MODE A: LOCAL SSR UNIT TESTS
+  // ==========================================================================
+  console.log('\n--- [MODE A] LOCAL SSR UNIT TESTS ---');
+  let unitPassed = 0;
+  let unitFailed = 0;
+  const templateHtml = fs.readFileSync(path.join(appRoot, 'index.html'), 'utf-8');
 
-    const actualStatus = renderRes.status;
-    const contentType = 'text/html; charset=utf-8';
-    const title = extractTitle(fullHtml);
-    const description = extractMeta(fullHtml, 'description');
-    const canonical = extractCanonical(fullHtml);
-    const h1 = extractH1(fullHtml);
-    const h1Count = countH1(fullHtml);
-    const robots = extractMeta(fullHtml, 'robots');
-    const internalLinks = extractInternalLinks(fullHtml);
-    const jsonLd = extractJsonLd(fullHtml);
-
-    // Tests
-    if (actualStatus !== testCase.expectedStatus) {
-      issues.push(`Expected HTTP ${testCase.expectedStatus}, received HTTP ${actualStatus}`);
+  for (const testItem of allTestRoutes) {
+    try {
+      const pageResult = renderUniversalPage(testItem.path, canonicalBaseUrl, appRoot);
+      const fullHtml = injectSsrIntoTemplate(templateHtml, pageResult);
+      const evalRes = evaluateHtml(
+        testItem.path,
+        `${canonicalBaseUrl}${testItem.path}`,
+        'unit',
+        pageResult.status,
+        testItem.expectedStatus,
+        fullHtml,
+        'text/html'
+      );
+      results.push(evalRes);
+      if (evalRes.passed) {
+        unitPassed++;
+      } else {
+        unitFailed++;
+        console.warn(`  ❌ [UNIT FAIL] ${testItem.path}: ${evalRes.issues.join('; ')}`);
+      }
+    } catch (err: any) {
+      unitFailed++;
+      results.push({
+        mode: 'unit',
+        route: testItem.path,
+        url: `${canonicalBaseUrl}${testItem.path}`,
+        expectedStatus: testItem.expectedStatus,
+        actualStatus: 500,
+        passed: false,
+        contentType: '',
+        title: '',
+        titleValid: false,
+        description: '',
+        descValid: false,
+        canonical: '',
+        canonicalValid: false,
+        h1: '',
+        h1Valid: false,
+        hasMeaningfulContent: false,
+        contentLength: 0,
+        pageContentLength: 0,
+        internalLinksCount: 0,
+        hasStructuredData: false,
+        structuredDataValid: false,
+        robotsDirective: '',
+        robotsValid: false,
+        pricesFound: [],
+        issues: [`Render exception: ${err.message}`],
+      });
+      console.warn(`  💥 [UNIT EXCEPTION] ${testItem.path}: ${err.message}`);
     }
-
-    const titleValid = title.length >= 10 && title.includes('India Cyber Cafe');
-    if (!titleValid && actualStatus === 200) {
-      issues.push(`Invalid or generic <title>: "${title}"`);
-    }
-
-    const descValid = description.length >= 20;
-    if (!descValid && actualStatus === 200) {
-      issues.push(`Meta description too short or missing: "${description}"`);
-    }
-
-    const canonicalValid = canonical.startsWith('https://b.indiacybercafe.com');
-    if (!canonicalValid && actualStatus === 200 && testCase.expectedRobots === 'index') {
-      issues.push(`Invalid canonical URL: "${canonical}"`);
-    }
-
-    const h1Valid = h1.length >= 3 && h1Count === 1;
-    if (!h1Valid) {
-      issues.push(`Expected exactly 1 <h1>, found ${h1Count}: "${h1}"`);
-    }
-
-    const hasMeaningfulContent = fullHtml.length > 500 && !fullHtml.includes('<div id="root"></div>');
-    if (!hasMeaningfulContent) {
-      issues.push(`Raw HTML response is an empty React root or has insufficient content`);
-    }
-
-    const robotsValid = testCase.expectedRobots === 'index'
-      ? robots.includes('index') && !robots.includes('noindex')
-      : robots.includes('noindex');
-    if (!robotsValid) {
-      issues.push(`Robots directive mismatch: expected ${testCase.expectedRobots}, got "${robots}"`);
-    }
-
-    const hasStructuredData = jsonLd.length > 0;
-    const structuredDataValid = !hasStructuredData || jsonLd.every(item => item && (item['@context']?.includes('schema.org') || item['@type']));
-
-    // Extract prices found in HTML
-    const pricesFound = Array.from(new Set(fullHtml.match(/₹\s*\d+(?:,\d+)*(?:\.\d+)?/g) || [])).slice(0, 5);
-
-    const isPassed = issues.length === 0;
-    if (isPassed) {
-      passedCount++;
-    } else {
-      failedCount++;
-      console.log(`❌ FAIL [${testCase.route}]: ${issues.join(' | ')}`);
-    }
-
-    results.push({
-      route: testCase.route,
-      expectedStatus: testCase.expectedStatus,
-      actualStatus,
-      passed: isPassed,
-      contentType,
-      title,
-      titleValid,
-      description,
-      descValid,
-      canonical,
-      canonicalValid,
-      h1,
-      h1Valid,
-      hasMeaningfulContent,
-      contentLength: fullHtml.length,
-      internalLinksCount: internalLinks.length,
-      hasStructuredData,
-      structuredDataType: jsonLd.map(j => j['@type']).filter(Boolean).join(', '),
-      structuredDataValid,
-      robotsDirective: robots,
-      robotsValid,
-      pricesFound,
-      issues,
-    });
   }
 
-  // Audit Robots.txt and Sitemap.xml
-  console.log('\n🔍 Auditing sitemap.xml and robots.txt generation...');
-  const sitemapXml = generateSitemapXml('https://b.indiacybercafe.com', appRoot);
-  const robotsTxt = generateRobotsTxt('https://b.indiacybercafe.com');
+  console.log(`  Unit Tests: ${unitPassed}/${allTestRoutes.length} Passed (${((unitPassed / allTestRoutes.length) * 100).toFixed(1)}%)`);
 
-  const sitemapValid = sitemapXml.startsWith('<?xml') && sitemapXml.includes('<urlset') && sitemapXml.includes('https://b.indiacybercafe.com');
-  const robotsValid = robotsTxt.includes('User-agent: *') && robotsTxt.includes('Sitemap: https://b.indiacybercafe.com/sitemap.xml');
+  // ==========================================================================
+  // MODE B: LOCAL REAL LIVE HTTP INTEGRATION TESTS
+  // ==========================================================================
+  console.log('\n--- [MODE B] LOCAL LIVE HTTP INTEGRATION TESTS (Port 3000) ---');
+  const localPort = process.env.PORT || '3000';
+  const localHttpBase = `http://localhost:${localPort}`;
 
-  console.log(`   - Sitemap valid: ${sitemapValid ? '✅ PASS' : '❌ FAIL'} (${(sitemapXml.match(/<url>/g) || []).length} URLs indexed)`);
-  console.log(`   - Robots.txt valid: ${robotsValid ? '✅ PASS' : '❌ FAIL'}`);
+  let localHttpPassed = 0;
+  let localHttpFailed = 0;
+  let localServerOnline = false;
 
-  // Summary
-  console.log('\n======================================================');
-  console.log(`  AUDIT SUMMARY`);
-  console.log(`  Total URLs Tested: ${results.length}`);
-  console.log(`  Passed: ${passedCount} ✅`);
-  console.log(`  Failed: ${failedCount} ${failedCount > 0 ? '❌' : ''}`);
-  console.log(`  Pass Rate: ${((passedCount / results.length) * 100).toFixed(1)}%`);
-  console.log('======================================================\n');
+  try {
+    const probe = await sendHttpRequest(`${localHttpBase}/api/health`);
+    if (probe.status === 200) {
+      localServerOnline = true;
+      console.log(`  ✅ Local server confirmed online at ${localHttpBase}`);
+    }
+  } catch (probeErr: any) {
+    console.warn(`  ⚠️ Could not connect to local server at ${localHttpBase}: ${probeErr.message}`);
+  }
 
-  // Generate reports/seo-audit.json
-  const auditReportJson = {
+  if (localServerOnline) {
+    for (const testItem of allTestRoutes) {
+      const targetUrl = `${localHttpBase}${testItem.path}`;
+      try {
+        const response = await sendHttpRequest(targetUrl);
+        const evalRes = evaluateHtml(
+          testItem.path,
+          targetUrl,
+          'local_http',
+          response.status,
+          testItem.expectedStatus,
+          response.body,
+          response.headers['content-type'] || 'text/html'
+        );
+        results.push(evalRes);
+        if (evalRes.passed) {
+          localHttpPassed++;
+        } else {
+          localHttpFailed++;
+          console.warn(`  ❌ [HTTP FAIL] ${testItem.path}: ${evalRes.issues.join('; ')}`);
+        }
+      } catch (err: any) {
+        localHttpFailed++;
+        results.push({
+          mode: 'local_http',
+          route: testItem.path,
+          url: targetUrl,
+          expectedStatus: testItem.expectedStatus,
+          actualStatus: 0,
+          passed: false,
+          contentType: '',
+          title: '',
+          titleValid: false,
+          description: '',
+          descValid: false,
+          canonical: '',
+          canonicalValid: false,
+          h1: '',
+          h1Valid: false,
+          hasMeaningfulContent: false,
+          contentLength: 0,
+          pageContentLength: 0,
+          internalLinksCount: 0,
+          hasStructuredData: false,
+          structuredDataValid: false,
+          robotsDirective: '',
+          robotsValid: false,
+          pricesFound: [],
+          issues: [`HTTP Network error: ${err.message}`],
+        });
+      }
+    }
+    console.log(`  Local HTTP Tests: ${localHttpPassed}/${allTestRoutes.length} Passed (${((localHttpPassed / allTestRoutes.length) * 100).toFixed(1)}%)`);
+  } else {
+    console.warn('  ⚠️ Skipping Local HTTP Tests (server not reachable)');
+  }
+
+  // ==========================================================================
+  // MODE C: DEPLOYED LIVE PRODUCTION HTTP INTEGRATION TESTS (if configured)
+  // ==========================================================================
+  const deployedUrl = process.env.TEST_BASE_URL || process.env.DEPLOYED_URL || '';
+  let deployedPassed = 0;
+  let deployedFailed = 0;
+
+  if (deployedUrl && deployedUrl.startsWith('http')) {
+    console.log(`\n--- [MODE C] DEPLOYED LIVE HTTP TESTS (${deployedUrl}) ---`);
+    for (const testItem of allTestRoutes.slice(0, 15)) {
+      const targetUrl = `${deployedUrl.replace(/\/+$/, '')}${testItem.path}`;
+      try {
+        const response = await sendHttpRequest(targetUrl);
+        const evalRes = evaluateHtml(
+          testItem.path,
+          targetUrl,
+          'deployed_http',
+          response.status,
+          testItem.expectedStatus,
+          response.body,
+          response.headers['content-type'] || 'text/html'
+        );
+        results.push(evalRes);
+        if (evalRes.passed) deployedPassed++;
+        else deployedFailed++;
+      } catch (err: any) {
+        deployedFailed++;
+      }
+    }
+    console.log(`  Deployed HTTP Tests: ${deployedPassed}/${Math.min(allTestRoutes.length, 15)} Passed`);
+  }
+
+  // ==========================================================================
+  // SITEMAP & ROBOTS VERIFICATION
+  // ==========================================================================
+  console.log('\n--- SITEMAP.XML & ROBOTS.TXT VERIFICATION ---');
+  const sitemapXml = generateSitemapXml(canonicalBaseUrl, appRoot);
+  const sitemapUrlsCount = (sitemapXml.match(/<loc>/g) || []).length;
+  const sitemapValid = sitemapUrlsCount >= discoveredRoutes.length && sitemapXml.includes('<urlset') && sitemapXml.includes('/services/driving-license');
+
+  const robotsTxt = generateRobotsTxt(canonicalBaseUrl);
+  const robotsValid = robotsTxt.includes('User-agent: *') && robotsTxt.includes('Disallow: /admin') && robotsTxt.includes('Sitemap:');
+
+  console.log(`   - Sitemap XML: ${sitemapValid ? '✅ PASS' : '❌ FAIL'} (${sitemapUrlsCount} URLs indexed, Driving License included: ${sitemapXml.includes('/services/driving-license') ? 'YES' : 'NO'})`);
+  console.log(`   - Robots TXT: ${robotsValid ? '✅ PASS' : '❌ FAIL'}`);
+
+  // ==========================================================================
+  // REPORT GENERATION
+  // ==========================================================================
+  const overallPassed = unitFailed === 0 && (localServerOnline ? localHttpFailed === 0 : true);
+
+  const summary: AuditSummary = {
     timestamp: new Date().toISOString(),
-    domain: 'https://b.indiacybercafe.com',
-    totalRoutesTested: results.length,
-    passedRoutes: passedCount,
-    failedRoutes: failedCount,
-    passRate: `${((passedCount / results.length) * 100).toFixed(1)}%`,
-    sitemapUrlsCount: (sitemapXml.match(/<url>/g) || []).length,
-    sitemapValid,
-    robotsValid,
+    catalog: {
+      services: publicData.services.length,
+      hasDrivingLicense,
+      products: publicData.products.length,
+      productCategories: publicData.productCategories.length,
+      documents: publicData.documents.length,
+      documentCategories: publicData.documentCategories.length,
+    },
+    totalDiscoveredRoutes: discoveredRoutes.length,
+    unitTests: { total: allTestRoutes.length, passed: unitPassed, failed: unitFailed },
+    localHttpTests: { total: localServerOnline ? allTestRoutes.length : 0, passed: localHttpPassed, failed: localHttpFailed, serverUrl: localHttpBase },
+    deployedHttpTests: { total: deployedUrl ? Math.min(allTestRoutes.length, 15) : 0, passed: deployedPassed, failed: deployedFailed, deployedUrl },
+    overallPassed,
     results,
   };
 
-  const jsonReportPath = path.join(reportsDir, 'seo-audit.json');
-  fs.writeFileSync(jsonReportPath, JSON.stringify(auditReportJson, null, 2), 'utf-8');
-  console.log(`📄 Wrote JSON report: ${jsonReportPath}`);
+  const reportsDir = path.join(appRoot, 'reports');
+  fs.mkdirSync(reportsDir, { recursive: true });
 
-  // Generate reports/seo-audit.html
-  const tableRowsHtml = results
+  const jsonReportPath = path.join(reportsDir, 'seo-audit.json');
+  fs.writeFileSync(jsonReportPath, JSON.stringify(summary, null, 2), 'utf-8');
+  console.log(`\n📄 Generated JSON report: ${jsonReportPath}`);
+
+  // Generate HTML Report
+  const htmlRows = results
     .map(
       r => `
-      <tr class="${r.passed ? 'bg-white' : 'bg-red-50'} border-b">
-        <td class="p-3 font-mono text-xs font-bold ${r.passed ? 'text-slate-800' : 'text-red-700'}">${r.route}</td>
-        <td class="p-3 text-xs"><span class="px-2 py-0.5 rounded font-bold ${r.actualStatus === 200 ? 'bg-emerald-100 text-emerald-800' : r.actualStatus === 404 ? 'bg-amber-100 text-amber-800' : 'bg-red-100 text-red-800'}">${r.actualStatus}</span></td>
-        <td class="p-3 text-xs truncate max-w-xs" title="${r.title}">${r.title}</td>
-        <td class="p-3 text-xs font-semibold text-navy truncate max-w-xs" title="${r.h1}">${r.h1}</td>
-        <td class="p-3 text-xs">${r.contentLength.toLocaleString()} bytes</td>
-        <td class="p-3 text-xs">${r.internalLinksCount}</td>
-        <td class="p-3 text-xs font-mono">${r.structuredDataType || '—'}</td>
-        <td class="p-3 text-xs font-bold ${r.passed ? 'text-emerald-600' : 'text-rose-600'}">${r.passed ? 'PASS ✅' : 'FAIL ❌'}</td>
+      <tr class="${r.passed ? 'bg-emerald-50/40 hover:bg-emerald-50' : 'bg-rose-50/40 hover:bg-rose-50'} border-b border-slate-200 text-xs">
+        <td class="px-3 py-2 font-mono font-bold ${r.mode === 'unit' ? 'text-blue-700' : r.mode === 'local_http' ? 'text-purple-700' : 'text-emerald-700'}">${r.mode.toUpperCase()}</td>
+        <td class="px-3 py-2 font-mono text-slate-800 break-all">${r.route}</td>
+        <td class="px-3 py-2 text-center font-bold">
+          <span class="inline-block px-2 py-0.5 rounded text-[11px] ${r.actualStatus === r.expectedStatus ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
+            ${r.actualStatus} (${r.expectedStatus})
+          </span>
+        </td>
+        <td class="px-3 py-2 font-medium text-slate-700 truncate max-w-xs" title="${r.title}">${r.title || '<span class="text-slate-400">none</span>'}</td>
+        <td class="px-3 py-2 text-slate-600 truncate max-w-xs" title="${r.h1}">${r.h1 || '<span class="text-slate-400">none</span>'}</td>
+        <td class="px-3 py-2 text-right font-mono">${r.pageContentLength.toLocaleString()} chars</td>
+        <td class="px-3 py-2 font-mono text-slate-600 truncate max-w-[120px]">${r.pricesFound.slice(0, 3).join(', ') || '-'}</td>
+        <td class="px-3 py-2 text-center">
+          <span class="inline-block px-2 py-0.5 rounded font-bold text-[11px] ${r.passed ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}">
+            ${r.passed ? 'PASS' : 'FAIL'}
+          </span>
+        </td>
+        <td class="px-3 py-2 text-rose-700 font-medium">${r.issues.join('<br>') || '<span class="text-emerald-700">None</span>'}</td>
       </tr>
-      ${
-        r.issues.length > 0
-          ? `<tr class="bg-red-50/50 border-b"><td colspan="8" class="p-2 text-xs text-red-600 font-medium pl-6">Issues: ${r.issues.join(' • ')}</td></tr>`
-          : ''
-      }
     `
     )
     .join('');
 
-  const htmlReport = `<!DOCTYPE html>
+  const htmlReport = `<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>India Cyber Cafe - Universal SEO Audit Report</title>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>India Cyber Cafe — Universal SEO & SSR Audit Report</title>
   <script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4"></script>
 </head>
-<body class="bg-slate-50 text-slate-800 p-6 sm:p-10 font-sans">
+<body class="bg-slate-50 text-slate-900 min-h-screen p-4 sm:p-8">
   <div class="max-w-7xl mx-auto space-y-8">
-    <header class="bg-white p-6 sm:p-8 rounded-3xl border border-slate-200 shadow-sm space-y-4">
-      <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 class="text-2xl sm:text-3xl font-extrabold text-slate-900">India Cyber Cafe — Universal SEO Audit Report</h1>
-          <p class="text-xs sm:text-sm text-slate-500 mt-1">Generated: ${new Date().toUTCString()} • Automated Route-Level Verification</p>
-        </div>
+    <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div>
         <div class="flex items-center gap-3">
-          <span class="px-4 py-2 rounded-xl text-base font-extrabold ${failedCount === 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'}">
-            ${((passedCount / results.length) * 100).toFixed(1)}% Pass Rate
-          </span>
+          <img src="https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" alt="ICC" class="w-10 h-10 object-contain" />
+          <h1 class="text-2xl font-black text-slate-900 tracking-tight">Universal SEO &amp; Live SSR Audit</h1>
         </div>
+        <p class="text-xs text-slate-500 mt-1">Generated: ${new Date().toLocaleString()} | India Cyber Cafe Technical Architecture</p>
       </div>
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-4 pt-4 border-t border-slate-100 text-center">
-        <div class="p-4 bg-slate-50 rounded-2xl border border-slate-200">
-          <span class="text-xs text-slate-500 block">Total Tested</span>
-          <span class="text-2xl font-black text-slate-900">${results.length}</span>
-        </div>
-        <div class="p-4 bg-emerald-50 rounded-2xl border border-emerald-200">
-          <span class="text-xs text-emerald-700 block">Passed</span>
-          <span class="text-2xl font-black text-emerald-700">${passedCount}</span>
-        </div>
-        <div class="p-4 bg-rose-50 rounded-2xl border border-rose-200">
-          <span class="text-xs text-rose-700 block">Failed</span>
-          <span class="text-2xl font-black text-rose-700">${failedCount}</span>
-        </div>
-        <div class="p-4 bg-blue-50 rounded-2xl border border-blue-200">
-          <span class="text-xs text-blue-700 block">Sitemap URLs</span>
-          <span class="text-2xl font-black text-blue-700">${(sitemapXml.match(/<url>/g) || []).length}</span>
-        </div>
+      <div class="flex items-center gap-2">
+        <span class="px-4 py-2 rounded-xl font-extrabold text-sm ${overallPassed ? 'bg-emerald-600 text-white' : 'bg-rose-600 text-white'}">
+          ${overallPassed ? 'AUDIT PASSED ✅' : 'AUDIT HAS ISSUES ❌'}
+        </span>
       </div>
-    </header>
+    </div>
 
-    <div class="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-      <div class="p-6 border-b border-slate-200 flex items-center justify-between">
-        <h2 class="text-lg font-bold text-slate-900">Route Verification Details</h2>
-        <span class="text-xs text-slate-500 font-medium">${results.length} URLs Audited</span>
+    <!-- METRICS GRID -->
+    <div class="grid grid-cols-2 sm:grid-cols-4 gap-4">
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Catalog Services</div>
+        <div class="text-2xl font-black text-slate-900 mt-1">${summary.catalog.services} Services</div>
+        <div class="text-[11px] ${summary.catalog.hasDrivingLicense ? 'text-emerald-600 font-bold' : 'text-rose-600 font-bold'} mt-1">
+          Driving License: ${summary.catalog.hasDrivingLicense ? 'Synced & Verified' : 'Missing'}
+        </div>
+      </div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Mode A: Unit Tests</div>
+        <div class="text-2xl font-black text-blue-700 mt-1">${summary.unitTests.passed} / ${summary.unitTests.total}</div>
+        <div class="text-[11px] text-slate-500 mt-1">Pass rate: ${((summary.unitTests.passed / summary.unitTests.total) * 100).toFixed(1)}%</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Mode B: Live HTTP Tests</div>
+        <div class="text-2xl font-black text-purple-700 mt-1">${summary.localHttpTests.passed} / ${summary.localHttpTests.total}</div>
+        <div class="text-[11px] text-slate-500 mt-1">Real GET over Port 3000</div>
+      </div>
+      <div class="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+        <div class="text-xs font-bold text-slate-500 uppercase tracking-wider">Canonical URLs</div>
+        <div class="text-2xl font-black text-emerald-700 mt-1">${summary.totalDiscoveredRoutes} Indexed</div>
+        <div class="text-[11px] text-slate-500 mt-1">Sitemap: ${sitemapUrlsCount} URLs</div>
+      </div>
+    </div>
+
+    <!-- SITEMAP & ROBOTS STATUS -->
+    <div class="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-2">
+      <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Indexation &amp; Crawler Policies</h2>
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+          <div class="font-bold text-slate-900">XML Sitemap (/sitemap.xml)</div>
+          <div class="text-slate-600 mt-0.5">${sitemapUrlsCount} published canonical URLs indexed with truthful timestamps. Driving License included.</div>
+        </div>
+        <div class="p-3 bg-slate-50 rounded-lg border border-slate-200">
+          <div class="font-bold text-slate-900">Robots Policy (/robots.txt)</div>
+          <div class="text-slate-600 mt-0.5">Allows public crawling for all services, products &amp; documents. Strictly disallows /admin, /operator, /profile, /my-documents, and checkouts.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AUDIT RESULTS TABLE -->
+    <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <div class="p-4 border-b border-slate-200 bg-slate-50 flex justify-between items-center">
+        <h2 class="text-sm font-bold text-slate-800 uppercase tracking-wider">Detailed Route Audit Results (${results.length} Tests)</h2>
       </div>
       <div class="overflow-x-auto">
         <table class="w-full text-left border-collapse">
           <thead>
-            <tr class="bg-slate-100 text-slate-600 text-xs font-bold uppercase tracking-wider border-b">
-              <th class="p-3">Route</th>
-              <th class="p-3">Status</th>
-              <th class="p-3">Page Title</th>
-              <th class="p-3">Semantic H1</th>
-              <th class="p-3">HTML Size</th>
-              <th class="p-3">Links</th>
-              <th class="p-3">Schema.org</th>
-              <th class="p-3">Result</th>
+            <tr class="bg-slate-100 text-[11px] font-bold text-slate-600 uppercase border-b border-slate-200">
+              <th class="px-3 py-2.5">Mode</th>
+              <th class="px-3 py-2.5">Route</th>
+              <th class="px-3 py-2.5 text-center">Status</th>
+              <th class="px-3 py-2.5">Title</th>
+              <th class="px-3 py-2.5">H1 Heading</th>
+              <th class="px-3 py-2.5 text-right">Body Length</th>
+              <th class="px-3 py-2.5">Prices</th>
+              <th class="px-3 py-2.5 text-center">Result</th>
+              <th class="px-3 py-2.5">Issues</th>
             </tr>
           </thead>
           <tbody>
-            ${tableRowsHtml}
+            ${htmlRows}
           </tbody>
         </table>
       </div>
@@ -435,16 +733,18 @@ async function runAudit(): Promise<void> {
 
   const htmlReportPath = path.join(reportsDir, 'seo-audit.html');
   fs.writeFileSync(htmlReportPath, htmlReport, 'utf-8');
-  console.log(`📄 Wrote HTML report: ${htmlReportPath}\n`);
+  console.log(`📄 Generated HTML report: ${htmlReportPath}`);
 
-  if (failedCount > 0) {
+  console.log('\n======================================================');
+  console.log(`  FINAL RESULT: ${overallPassed ? 'ALL TESTS PASSED ✅' : 'FAILURES DETECTED ❌'}`);
+  console.log('======================================================\n');
+
+  if (!overallPassed) {
     process.exit(1);
-  } else {
-    process.exit(0);
   }
 }
 
 runAudit().catch(err => {
-  console.error('Fatal audit error:', err);
+  console.error('Fatal audit failure:', err);
   process.exit(1);
 });

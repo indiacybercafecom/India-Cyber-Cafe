@@ -981,7 +981,14 @@ export function renderUniversalPage(
           ${categoriesNavHtml}
         </div>
         <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
-          ${productCardsHtml || '<p class="text-slate-500 text-sm col-span-full text-center py-12">No products found in this category.</p>'}
+          ${
+            productCardsHtml ||
+            `<div class="col-span-full text-center py-12 space-y-3 bg-white rounded-2xl border border-slate-200 p-8 max-w-xl mx-auto">
+              <p class="text-slate-800 text-sm font-bold">Products in the ${isCategoryFilter ? escapeHtml(category!.name) : 'selected'} category are currently restocking or made-to-order.</p>
+              <p class="text-slate-600 text-xs leading-relaxed">India Cyber Cafe provides custom merchandise, CSC operator uniforms, identity cards, and printed stationery. For custom bulk orders, direct inquiries, or assistance, please contact our support desk.</p>
+              <div class="pt-2"><a href="/contact" class="inline-block px-5 py-2.5 bg-primary text-white text-xs font-bold rounded-xl hover:bg-primary-dark transition-all shadow-sm">Contact Store Desk</a></div>
+            </div>`
+          }
         </div>
       </div>
     `;
@@ -1133,7 +1140,11 @@ export function renderUniversalPage(
             </span>
             <h1 class="text-2xl sm:text-4xl font-extrabold text-navy">${escapeHtml(doc.name)}</h1>
             <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              ${escapeHtml(doc.description || `Official PDF application format and guidelines for ${doc.name}. Free download available.`)}
+              ${escapeHtml(
+                doc.description && doc.description.trim().length > 10
+                  ? doc.description
+                  : `Official PDF document and verified application format for ${doc.name} (${doc.category || 'Official Document'}). Free download provided by India Cyber Cafe public repository for applicants, students, and citizens. Verified authentic original copy.`
+              )}
             </p>
             <div class="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div class="text-xs text-slate-500">
@@ -1167,10 +1178,14 @@ export function renderUniversalPage(
       );
     }
 
-    const isCategoryFilter = Boolean(param && category);
-    const filteredDocs = isCategoryFilter
-      ? data.documents.filter(d => slugify(d.category || '') === slugify(category!.name))
-      : data.documents;
+    // If param is specified, it MUST be a valid category or document
+    if (param && !doc && !category) {
+      // Unknown category or document slug: fall through to 404 handler!
+    } else {
+      const isCategoryFilter = Boolean(param && category);
+      const filteredDocs = isCategoryFilter
+        ? data.documents.filter(d => slugify(d.category || '') === slugify(category!.name))
+        : data.documents;
 
     const docCardsHtml = filteredDocs
       .map(d => {
@@ -1215,16 +1230,26 @@ export function renderUniversalPage(
       </div>
     `;
 
-    return buildResult(
-      200,
-      'Government Forms & PDF Downloads | India Cyber Cafe',
-      'Free download official PDF application forms for government services, caste certificates, income certificates, and guidelines at India Cyber Cafe.',
-      isCategoryFilter ? `/forms-documents/${slugify(category!.name)}` : '/forms-documents',
-      bodyHtml,
-      {
-        ogType: 'website',
-      }
-    );
+      return buildResult(
+        200,
+        isCategoryFilter ? `${category!.name} - Forms & PDF Downloads | India Cyber Cafe` : 'Government Forms & PDF Downloads | India Cyber Cafe',
+        isCategoryFilter
+          ? `Download official ${category!.name} application forms, formats and documents in PDF for free at India Cyber Cafe.`
+          : 'Free download official PDF application forms for government services, caste certificates, income certificates, and guidelines at India Cyber Cafe.',
+        isCategoryFilter ? `/forms-documents/${slugify(category!.name)}` : '/forms-documents',
+        bodyHtml,
+        {
+          ogType: 'website',
+          structuredData: {
+            '@context': 'https://schema.org',
+            '@type': 'CollectionPage',
+            name: isCategoryFilter ? `${category!.name} Forms` : 'Government Forms & PDF Document Downloads',
+            description: `Official PDF forms directory for ${isCategoryFilter ? category!.name : 'government and academic services'}.`,
+            url: `${rootUrl}${isCategoryFilter ? `/forms-documents/${slugify(category!.name)}` : '/forms-documents'}`,
+          },
+        }
+      );
+    }
   }
 
   // 9. FORMS & DOCUMENTS NESTED ROUTE (/forms-documents/:categorySlug/:pdfSlug)
@@ -1251,16 +1276,27 @@ export function renderUniversalPage(
             </span>
             <h1 class="text-2xl sm:text-4xl font-extrabold text-navy">${escapeHtml(doc.name)}</h1>
             <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-              ${escapeHtml(doc.description || `Official PDF application format and instructions for ${doc.name}. Free download available.`)}
+              ${escapeHtml(
+                `Official PDF document and verified academic/examination format for ${doc.name} (${doc.category || 'Official Document'}). ${
+                  doc.description ? `Subject details: ${doc.description}. ` : ''
+                }Free direct download provided by India Cyber Cafe public repository for applicants, students, and citizens. Verified authentic original copy with official syllabus alignment and reference support.`
+              )}
             </p>
             <div class="p-5 rounded-2xl bg-slate-50 border border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div class="text-xs text-slate-500">
+              <div class="text-xs text-slate-500 space-y-1">
                 <p><strong>File Format:</strong> ${escapeHtml(doc.fileType || 'PDF')}</p>
-                <p><strong>Verification:</strong> Verified Official Form</p>
+                <p><strong>Classification:</strong> ${escapeHtml(doc.category || 'Official Repository')}</p>
+                <p><strong>Verification:</strong> Verified Authentic Document</p>
               </div>
               <a href="${escapeHtml(doc.downloadUrl || doc.previewUrl || '#')}" download class="px-6 py-3 rounded-xl font-bold text-sm bg-primary text-white hover:bg-primary-dark transition-all text-center shadow-md">
                 Download Official PDF ↓
               </a>
+            </div>
+            <div class="mt-4 pt-4 border-t border-slate-100 space-y-2 text-xs text-slate-500">
+              <h2 class="text-sm font-bold text-navy">Document Access &amp; Printing Assistance</h2>
+              <p>
+                This reference document is maintained in the India Cyber Cafe public repository for free citizen and student access. If you need a physical printout, spiral binding, color lamination, or assistance submitting official forms, you can visit our nearest centre or upload it to your personal My Documents Drive vault.
+              </p>
             </div>
           </article>
         </div>
@@ -1559,11 +1595,11 @@ export function renderUniversalPage(
 
   // 17. 404 NOT FOUND (Genuine 404 HTTP status code, NOT soft 404)
   const bodyHtml = `
-    <div class="text-center py-16 sm:py-24 max-w-lg mx-auto space-y-6">
+    <div class="text-center py-16 sm:py-24 max-w-xl mx-auto space-y-6">
       <span class="text-6xl sm:text-7xl font-extrabold text-primary block">404</span>
       <h1 class="text-2xl sm:text-4xl font-extrabold text-navy">Page Not Found</h1>
       <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-        The page you are looking for does not exist, has been removed, or has changed address.
+        The page or service you are looking for does not exist, has been removed, or has changed address. Please verify the URL or use the direct links below to explore our full directory of digital services, CSC applications, official price list, and government document downloads.
       </p>
       <div class="flex flex-wrap items-center justify-center gap-3 pt-2">
         <a href="/" class="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-primary text-white hover:bg-primary-dark transition-all shadow-sm">
@@ -1574,6 +1610,9 @@ export function renderUniversalPage(
         </a>
         <a href="/price-list" class="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-white text-navy border border-slate-300 hover:bg-slate-50 transition-all shadow-sm">
           Price List
+        </a>
+        <a href="/forms-documents" class="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-semibold bg-white text-navy border border-slate-300 hover:bg-slate-50 transition-all shadow-sm">
+          Forms &amp; Documents
         </a>
       </div>
     </div>

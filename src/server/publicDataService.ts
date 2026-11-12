@@ -256,8 +256,8 @@ export function findDocument(
   return { category: matchedCatSingle };
 }
 
-export function getAllPublicUrls(baseUrl: string, appRoot?: string): Array<{ path: string; fullUrl: string; title: string; priority: string; changefreq: string }> {
-  const root = baseUrl.replace(/\/+$/, '');
+export function getAllPublicUrls(baseUrl: string = 'https://b.indiacybercafe.com', appRoot?: string): Array<{ path: string; fullUrl: string; title: string; priority: string; changefreq: string }> {
+  const root = (baseUrl || 'https://b.indiacybercafe.com').replace(/\/+$/, '');
   const data = getPublicData(appRoot);
   const list: Array<{ path: string; fullUrl: string; title: string; priority: string; changefreq: string }> = [];
 

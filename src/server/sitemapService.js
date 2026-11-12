@@ -1,61 +1,58 @@
-import fs from 'fs';
-import path from 'path';
-import { getAllPublicUrls } from './publicDataService.js';
-
-export function escapeXml(value) {
-  return String(value ?? '').replace(/[<>&'"]/g, c => {
+import fs from "fs";
+import path from "path";
+import { getAllPublicUrls } from "./publicDataService.js";
+function escapeXml(value) {
+  return String(value ?? "").replace(/[<>&'"]/g, (c) => {
     switch (c) {
-      case '<': return '&lt;';
-      case '>': return '&gt;';
-      case '&': return '&amp;';
-      case "'": return '&apos;';
-      case '"': return '&quot;';
-      default: return c;
+      case "<":
+        return "&lt;";
+      case ">":
+        return "&gt;";
+      case "&":
+        return "&amp;";
+      case "'":
+        return "&apos;";
+      case '"':
+        return "&quot;";
+      default:
+        return c;
     }
   });
 }
-
 function resolveAppRoot() {
   const cwd = process.cwd();
-  if (fs.existsSync(path.join(cwd, 'package.json'))) return cwd;
-  const parent = path.resolve(cwd, '..');
-  if (fs.existsSync(path.join(parent, 'package.json'))) return parent;
+  if (fs.existsSync(path.join(cwd, "package.json"))) return cwd;
+  const parent = path.resolve(cwd, "..");
+  if (fs.existsSync(path.join(parent, "package.json"))) return parent;
   return cwd;
 }
-
 function getDataFileModificationDate(appRoot, filename) {
   try {
-    const p = path.join(appRoot, 'public/data', filename);
+    const p = path.join(appRoot, "public/data", filename);
     if (fs.existsSync(p)) {
       const stat = fs.statSync(p);
-      return stat.mtime.toISOString().split('T')[0];
+      return stat.mtime.toISOString().split("T")[0];
     }
-  } catch {}
-  return new Date().toISOString().split('T')[0];
+  } catch {
+  }
+  return (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
 }
-
-export function generateSitemapXml(
-  baseUrl = 'https://b.indiacybercafe.com',
-  appRoot = resolveAppRoot()
-) {
-  const root = baseUrl.replace(/\/+$/, '');
+function generateSitemapXml(baseUrl = "https://b.indiacybercafe.com", appRoot = resolveAppRoot()) {
+  const root = baseUrl.replace(/\/+$/, "");
   const urlList = getAllPublicUrls(root, appRoot);
-
-  const servicesLastMod = getDataFileModificationDate(appRoot, 'services.json');
-  const productsLastMod = getDataFileModificationDate(appRoot, 'products.json');
-  const documentsLastMod = getDataFileModificationDate(appRoot, 'documents.json');
-  const defaultLastMod = new Date().toISOString().split('T')[0];
-
-  const entries = urlList.map(item => {
+  const servicesLastMod = getDataFileModificationDate(appRoot, "services.json");
+  const productsLastMod = getDataFileModificationDate(appRoot, "products.json");
+  const documentsLastMod = getDataFileModificationDate(appRoot, "documents.json");
+  const defaultLastMod = (/* @__PURE__ */ new Date()).toISOString().split("T")[0];
+  const entries = urlList.map((item) => {
     let lastmod = defaultLastMod;
-    if (item.path.startsWith('/services')) {
+    if (item.path.startsWith("/services")) {
       lastmod = servicesLastMod;
-    } else if (item.path.startsWith('/store')) {
+    } else if (item.path.startsWith("/store")) {
       lastmod = productsLastMod;
-    } else if (item.path.startsWith('/forms-documents')) {
+    } else if (item.path.startsWith("/forms-documents")) {
       lastmod = documentsLastMod;
     }
-
     return `  <url>
     <loc>${escapeXml(item.fullUrl)}</loc>
     <lastmod>${escapeXml(lastmod)}</lastmod>
@@ -63,15 +60,13 @@ export function generateSitemapXml(
     <priority>${escapeXml(item.priority)}</priority>
   </url>`;
   });
-
   return `<?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-${entries.join('\n')}
+${entries.join("\n")}
 </urlset>`;
 }
-
-export function generateRobotsTxt(baseUrl = 'https://b.indiacybercafe.com') {
-  const root = baseUrl.replace(/\/+$/, '');
+function generateRobotsTxt(baseUrl = "https://b.indiacybercafe.com") {
+  const root = baseUrl.replace(/\/+$/, "");
   return `# Robots.txt for India Cyber Cafe (Production)
 # Comprehensive Crawling & Indexing Policy
 
@@ -120,3 +115,8 @@ Crawl-delay: 1
 Sitemap: ${root}/sitemap.xml
 `;
 }
+export {
+  escapeXml,
+  generateRobotsTxt,
+  generateSitemapXml
+};

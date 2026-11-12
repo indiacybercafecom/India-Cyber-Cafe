@@ -322,214 +322,15 @@ app.get('/sitemap.xml', (req, res) => {
   res.send(generateSitemapXml(baseUrl, APP_ROOT));
 });
 
-const getSitemapBaseUrl = (req) => process.env.APP_URL
-  ? process.env.APP_URL.replace(/\/$/, '')
-  : `${req.protocol}://${req.get('host')}`;
-
-const escapeSitemapXml = (value) => String(value).replace(/[<>&'\"]/g, character => ({
-  '<': '&lt;', '>': '&gt;', '&': '&amp;', "'": '&apos;', '"': '&quot;'
-}[character]));
-
-const sitemapCacheTtlMs = 5 * 60 * 1000;
-let sitemapDataCache = null;
-
-const loadSitemapData = async () => {
-  if (sitemapDataCache && sitemapDataCache.expiresAt > Date.now()) {
-    return sitemapDataCache.data;
-  }
-
-  const databaseURL = 'https://india-cyber-cafe-default-rtdb.firebaseio.com';
-  const localFiles = {
-    services: 'services.json',
-    productCategories: 'product-categories.json',
-    products: 'products.json'
-  };
-  const readCollection = async (name) => {
-    let remoteItems = [];
-    try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
-      const response = await fetch(`${databaseURL}/${name}.json`, { signal: controller.signal });
-      clearTimeout(timeout);
-      if (response.ok) {
-        const data = await response.json();
-        remoteItems = data ? (Array.isArray(data) ? data : Object.values(data)) : [];
-      }
-    } catch (error) {
-      console.error(`Error fetching ${name} for sitemap:`, error);
-    }
-    try {
-      const localData = JSON.parse(fs.readFileSync(path.join(APP_ROOT, 'public/data', localFiles[name]), 'utf8'));
-      const localItems = localData?.[name === 'productCategories' ? 'categories' : name] || [];
-      const merged = new Map([...localItems, ...remoteItems].filter(item => item?.id).map(item => [item.id, item]));
-      return [...merged.values()];
-    } catch (error) {
-      return remoteItems;
-    }
-  };
-  const [services, productCategories, products] = await Promise.all([
-    readCollection('services'), readCollection('productCategories'), readCollection('products')
-  ]);
-  const data = { services, productCategories, products };
-  sitemapDataCache = { data, expiresAt: Date.now() + sitemapCacheTtlMs };
-  return data;
-};
-
-const createSitemapXml = (urls) => {
-  const today = new Date().toISOString().split('T')[0];
-  const entries = urls.map(({ url, priority = '0.8' }) => `  <url>\n    <loc>${escapeSitemapXml(url)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>${priority}</priority>\n  </url>`).join('\n');
-  return `<?xml version="1.0" encoding="UTF-8"?>\n<?xml-stylesheet type="text/xsl" href="/sitemap.xsl"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${entries}\n</urlset>`;
-};
-
-const slugifySitemap = text => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
-
-// Sitemap Route
-app.get('/sitemap.xml', async (req, res) => {
-  const baseUrl = getSitemapBaseUrl(req);
-  const { services, productCategories, products } = await loadSitemapData();
-  const staticPages = ['', '/services', '/store', '/price-list', '/forms-documents', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund', '/legal/disclaimer'];
-  const pageUrls = staticPages.map(url => ({ url: `${baseUrl}${url}`, priority: url === '' ? '1.0' : '0.8' }));
-  const serviceUrls = services.filter(service => service?.id).map(service => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}`, priority: '0.7' }));
-  const subserviceUrls = services.flatMap(service => (service?.subservices || []).filter(subservice => subservice?.name).map(subservice => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}/${slugifySitemap(subservice.name)}`, priority: '0.6' })));
-  const categoryUrls = productCategories.filter(category => category?.id).map(category => ({ url: `${baseUrl}/store/${encodeURIComponent(category.id)}`, priority: '0.7' }));
-  const productUrls = products.filter(product => product?.id && product?.category).map(product => ({ url: `${baseUrl}/store/${encodeURIComponent(product.category)}/${encodeURIComponent(product.id)}`, priority: '0.6' }));
-  return res.type('application/xml').send(createSitemapXml([...pageUrls, ...serviceUrls, ...subserviceUrls, ...categoryUrls, ...productUrls]));
-  /*
+app.get(['/page-sitemap.xml', '/service-sitemap.xml', '/subservice-sitemap.xml', '/product-sitemap.xml'], (req, res) => {
   let baseUrl = process.env.APP_URL ? process.env.APP_URL.replace(/\/$/, '') : '';
-
   if (!baseUrl) {
     const protocol = req.protocol;
     const host = req.get('host');
     baseUrl = `${protocol}://${host}`;
   }
-
-  const databaseURL = 'https://india-cyber-cafe-default-rtdb.firebaseio.com';
-
-  let services = [];
-  let productCategories = [];
-  let products = [];
-
-  try {
-    const response = await fetch(`${databaseURL}/services.json`);
-    if (response.ok) {
-      const data = await response.json();
-      if (data) {
-        services = Array.isArray(data) ? data : Object.values(data);
-      }
-    }
-  } catch (error) {
-    console.error('Error fetching services for sitemap:', error);
-  }
-
-  try {
-    const response = await fetch(`${databaseURL}/productCategories.json`);
-    if (response.ok) {
-      const data = await response.json();
-      if (data) {
-        productCategories = Array.isArray(data) ? data : Object.values(data);
-      }
-    }
-  } catch (error) {
-    console.error('Error fetching product categories for sitemap:', error);
-  }
-
-  try {
-    const response = await fetch(`${databaseURL}/products.json`);
-    if (response.ok) {
-      const data = await response.json();
-      if (data) {
-        products = Array.isArray(data) ? data : Object.values(data);
-      }
-    }
-  } catch (error) {
-    console.error('Error fetching products for sitemap:', error);
-  }
-
-  const staticPages = ['', '/services', '/store', '/price-list', '/track', '/profile', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund'];
-
-  const slugify = (text) => text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
-
-  let sitemap = `<?xml version="1.0" encoding="UTF-8"?>\n`;
-  sitemap += `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n`;
-
-  const today = new Date().toISOString().split('T')[0];
-
-  staticPages.forEach(page => {
-    sitemap += `  <url>\n    <loc>${baseUrl}${page}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>${page === '' ? '1.0' : '0.8'}</priority>\n  </url>\n`;
-  });
-
-  services.forEach(service => {
-    if (service && service.id) {
-      sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.7</priority>\n  </url>\n`;
-
-      if (service.subservices && Array.isArray(service.subservices)) {
-        service.subservices.forEach(ss => {
-          if (ss && ss.name) {
-            sitemap += `  <url>\n    <loc>${baseUrl}/services/${service.id}/${slugify(ss.name)}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.6</priority>\n  </url>\n`;
-          }
-        });
-      }
-    }
-  });
-
-  productCategories.forEach(category => {
-    if (category && category.id) {
-      sitemap += `  <url>\n    <loc>${baseUrl}/store/${category.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.7</priority>\n  </url>\n`;
-    }
-  });
-
-  products.forEach(product => {
-    if (product && product.id && product.category) {
-      sitemap += `  <url>\n    <loc>${baseUrl}/store/${product.category}/${product.id}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>daily</changefreq>\n    <priority>0.6</priority>\n  </url>\n`;
-    }
-  });
-
-  sitemap += `</urlset>`;
   res.type('application/xml');
-  res.send(sitemap); */
-});
-
-app.get('/page-sitemap.xml', (req, res) => {
-  const baseUrl = getSitemapBaseUrl(req);
-  const pages = ['', '/services', '/store', '/price-list', '/forms-documents', '/about', '/contact', '/legal/terms', '/legal/privacy', '/legal/refund', '/legal/disclaimer'];
-  res.type('application/xml').send(createSitemapXml(pages.map(url => ({ url: `${baseUrl}${url}`, priority: url === '' ? '1.0' : '0.8' }))));
-});
-
-app.get('/service-sitemap.xml', async (req, res) => {
-  try {
-    const baseUrl = getSitemapBaseUrl(req);
-    const { services } = await loadSitemapData();
-    const urls = services.filter(service => service && service.id).map(service => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}`, priority: '0.7' }));
-    res.type('application/xml').send(createSitemapXml(urls));
-  } catch (error) {
-    console.error('Service sitemap generation error:', error);
-    res.type('application/xml').send(createSitemapXml([]));
-  }
-});
-
-app.get('/subservice-sitemap.xml', async (req, res) => {
-  try {
-    const baseUrl = getSitemapBaseUrl(req);
-    const { services } = await loadSitemapData();
-    const urls = services.flatMap(service => (service?.subservices || []).filter(ss => ss && ss.name).map(ss => ({ url: `${baseUrl}/services/${encodeURIComponent(service.id)}/${slugifySitemap(ss.name)}`, priority: '0.6' })));
-    res.type('application/xml').send(createSitemapXml(urls));
-  } catch (error) {
-    console.error('Subservice sitemap generation error:', error);
-    res.type('application/xml').send(createSitemapXml([]));
-  }
-});
-
-app.get('/product-sitemap.xml', async (req, res) => {
-  try {
-    const baseUrl = getSitemapBaseUrl(req);
-    const { productCategories, products } = await loadSitemapData();
-    const categoryUrls = productCategories.filter(category => category && category.id).map(category => ({ url: `${baseUrl}/store/${encodeURIComponent(category.id)}`, priority: '0.7' }));
-    const productUrls = products.filter(product => product && product.id && product.category).map(product => ({ url: `${baseUrl}/store/${encodeURIComponent(product.category)}/${encodeURIComponent(product.id)}`, priority: '0.6' }));
-    res.type('application/xml').send(createSitemapXml([...categoryUrls, ...productUrls]));
-  } catch (error) {
-    console.error('Product sitemap generation error:', error);
-    res.type('application/xml').send(createSitemapXml([]));
-  }
+  res.send(generateSitemapXml(baseUrl, APP_ROOT));
 });
 
 // ============================================================================
@@ -1801,8 +1602,47 @@ app.get(/^\/(?!api\/|data\/|assets\/|manifest\.json$|robots\.txt$|sitemap\.xml$|
           'Cache-Control': pageResult.status === 200 ? 'public, max-age=300, stale-while-revalidate=86400' : 'no-cache, no-store, must-revalidate'
         }).send(injectedHtml);
       } catch (err) {
-        console.error('[SERVER.JS] Failed to render SSR HTML:', err);
-        return res.sendFile(distIndex);
+        const requestId = `ssr_prod_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        console.error(`[SSR_ERROR] RequestID=${requestId} Route=${req.path} Error:`, err?.stack || err?.message || err);
+        const errorHtml = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex, nofollow" />
+    <title>Temporarily Unavailable | India Cyber Cafe</title>
+    <link rel="icon" type="image/png" href="https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" />
+    <style>
+      body { font-family: system-ui, -apple-system, sans-serif; background: #f8fafc; color: #0f172a; margin: 0; padding: 24px; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+      .card { max-width: 540px; width: 100%; text-align: center; background: #ffffff; border-radius: 16px; padding: 40px 24px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }
+      h1 { font-size: 26px; font-weight: 800; color: #0f172a; margin: 16px 0 10px; }
+      p { color: #64748b; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+      .actions { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+      .btn { display: inline-block; padding: 10px 20px; font-size: 14px; font-weight: 600; border-radius: 8px; text-decoration: none; }
+      .btn-primary { background: #FF9933; color: #ffffff; }
+      .btn-secondary { background: #f1f5f9; color: #0f172a; border: 1px solid #cbd5e1; }
+      .ref { margin-top: 28px; font-size: 11px; color: #94a3b8; font-family: monospace; }
+    </style>
+  </head>
+  <body>
+    <div class="card">
+      <img src="https://indiacybercafe.com/wp-content/uploads/2026/02/icc-logo-bgremoved.png" alt="India Cyber Cafe" width="60" height="60" style="margin: 0 auto;" />
+      <h1>Temporarily Unavailable</h1>
+      <p>We encountered an issue preparing this page. Our technical team has been notified. You can return to our homepage or explore our catalog of services.</p>
+      <div class="actions">
+        <a href="/" class="btn btn-primary">Return to Home</a>
+        <a href="/services" class="btn btn-secondary">Browse Services</a>
+        <a href="/contact" class="btn btn-secondary">Contact Support</a>
+      </div>
+      <div class="ref">Request ID: ${requestId}</div>
+    </div>
+  </body>
+</html>`;
+        return res.status(500).set({
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'X-Request-Id': requestId,
+        }).send(errorHtml);
       }
     } else {
       return res.status(404).send('dist/index.html not found');

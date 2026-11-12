@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-10-21T10:01:51.747Z",
+  "generatedAt": "2026-11-11T19:43:56.718Z",
   "products": [
     {
       "id": "-OnAp1lEhlTb3WRi_rsw",
@@ -50,7 +50,8 @@
         "https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe.firebasestorage.app/o/products%2F1782010374995-Medical%20Books%20%26%20PDF%20Guides%20Main%20Product%20Images.6.jpg?alt=media&token=252b6a80-eded-4862-9aef-10865d60c0c2",
         "https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe.firebasestorage.app/o/products%2F1782010377064-Medical%20Books%20%26%20PDF%20Guides%20Main%20Product%20Images.7.jpg?alt=media&token=c0b3a832-9512-4c86-ac94-94382ea41993",
         "https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe.firebasestorage.app/o/products%2F1782010379133-Medical%20Books%20%26%20PDF%20Guides%20Main%20Product%20Images.8.jpg?alt=media&token=4b608a7a-23a4-4b61-96c1-f0caeed8fde8",
-        "https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe.firebasestorage.app/o/products%2F1782010381207-Medical%20Books%20%26%20PDF%20Guides%20Main%20Product%20Images.9.jpg?alt=media&token=1f03db8e-5fca-4561-afc8-3fa33ae4c633"
+        "https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe.firebasestorage.app/o/products%2F1782010381207-Medical%20Books%20%26%20PDF%20Guides%20Main%20Product%20Images.9.jpg?alt=media&token=1f03db8e-5fca-4561-afc8-3fa33ae4c633",
+        "https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe-free/o/products%2F1794243952081-131133.png?alt=media&token=d2eaab8e-5a40-4c49-b3fd-293bc57afec4"
       ],
       "requiresCustomImage": false,
       "customImageInstructions": "",
@@ -65,7 +66,7 @@
       "seoDescription": "Download the complete Diseases & Treatment PDF containing 125 diseases, symptoms, diagnosis, treatment options and medicine information. 351-page medical refere",
       "seoKeywords": "diseases and treatment pdf, medical book pdf, disease treatment guide, pharmacy study material, medical reference book, healthcare pdf, medical students book, disease symptoms treatment, medical education pdf, pharmacy notes pdf",
       "paymentMethods": [
-        "online"
+        "both"
       ]
     },
     {
