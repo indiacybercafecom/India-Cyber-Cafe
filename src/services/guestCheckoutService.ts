@@ -62,30 +62,25 @@ export async function findUserByEmail(email: string) {
 export async function findUserByPhone(phone: string) {
   try {
     const normalizedPhone = sanitizePhone(phone, true); // Remove non-digits
-    console.log('🔎 Searching for phone in database:', normalizedPhone);
-    
-    const usersRef = dbRef(rtdb, 'users');
-    const snapshot = await get(usersRef);
-    
-    if (!snapshot.exists()) {
-      console.log('❌ No users found in database');
-      return null;
-    }
-    
-    const users = snapshot.val() as Record<string, any>;
-    console.log('📋 Total users in database:', Object.keys(users).length);
-    
-    for (const [uid, userData] of Object.entries(users)) {
-      const userPhone = sanitizePhone(userData.phone || '', true);
-      console.log('🔍 Comparing:', userPhone, '===', normalizedPhone, '→', userPhone === normalizedPhone);
-      
-      if (userPhone === normalizedPhone) {
-        console.log('✅ Found matching user:', uid);
-        return { uid, ...userData };
+    console.log('🔎 Searching for phone via backend API:', normalizedPhone);
+
+    const response = await fetch('/api/auth/lookup-phone', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: normalizedPhone }),
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.found && data.email) {
+        return {
+          email: data.email,
+          phone: normalizedPhone,
+          isGoogleOnly: Boolean(data.isGoogleOnly),
+        };
       }
     }
-    
-    console.log('❌ No matching user found');
+
     return null;
   } catch (error) {
     console.error('❌ Error finding user by phone:', error);

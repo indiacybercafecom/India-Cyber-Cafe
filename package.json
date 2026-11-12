@@ -12,7 +12,8 @@
     "lint": "tsc --noEmit",
     "sync:data": "tsx scripts/sync-data.ts",
     "test:seo": "tsx scripts/test-seo.ts",
-    "test:seo:live": "tsx scripts/test-seo.ts --live"
+    "test:seo:live": "tsx scripts/test-seo.ts --live",
+    "test:rules": "tsx scripts/test-rules.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

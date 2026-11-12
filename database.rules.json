@@ -8,11 +8,16 @@
       ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'operator')",
 
       "$uid": {
-        ".read": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".read": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'operator')",
         ".write": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".validate": "(!data.exists() ? (newData.hasChildren(['uid', 'email']) && newData.child('uid').val() === $uid) : true) && (!newData.hasChild('password')) && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!newData.hasChild('role') || newData.child('role').val() === 'user' || (data.exists() && newData.child('role').val() === data.child('role').val())))",
 
         "role": {
-          ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+          ".validate": "newData.val() === 'user' || (data.exists() && newData.val() === data.val()) || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin'"
+        },
+
+        "password": {
+          ".validate": false
         }
       }
     },
@@ -23,13 +28,12 @@
     },
 
     "applications": {
-      ".indexOn": ["userId", "uid", "email", "phone", "status"],
-      ".read": "auth != null",
-      ".write": "auth != null",
+      ".indexOn": ["userId", "uid", "email", "phone", "status", "assignedTo"],
+      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'uid' && query.equalTo === auth.uid) || (query.orderByChild === 'userId' && query.equalTo === auth.uid) || (query.orderByChild === 'assignedTo' && query.equalTo === auth.token.email))",
 
       "$appId": {
-        ".read": "auth != null && (data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'operator')",
-        ".write": "auth != null && (!data.exists() || data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+        ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid || (data.child('assignedTo').exists() && data.child('assignedTo').val() === auth.token.email))",
+        ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && (newData.child('uid').val() === auth.uid || newData.child('userId').val() === auth.uid)) || (data.exists() && (data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid) && (!newData.exists() || (newData.child('uid').val() === data.child('uid').val() && (!data.hasChild('userId') || newData.child('userId').val() === data.child('userId').val())))) || (root.child('users').child(auth.uid).child('role').val() === 'operator' && data.child('assignedTo').val() === auth.token.email))"
       }
     },
 
@@ -54,7 +58,7 @@
 
     "documents": {
       ".indexOn": ["active", "category"],
-      ".read": "true",
+      ".read": true,
       ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
 
       "$documentId": {
@@ -63,9 +67,13 @@
     },
 
     "orders": {
-      ".indexOn": ["userId", "uid", "email", "phone", "orderStatus"],
-      ".read": "true",
-      ".write": "true"
+      ".indexOn": ["userId", "uid", "email", "phone", "orderStatus", "paymentStatus"],
+      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'uid' && query.equalTo === auth.uid) || (query.orderByChild === 'userId' && query.equalTo === auth.uid))",
+
+      "$orderId": {
+        ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid)",
+        ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && (newData.child('uid').val() === auth.uid || newData.child('userId').val() === auth.uid)) || (data.exists() && (data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid) && (!newData.exists() || (newData.child('uid').val() === data.child('uid').val() && (!data.hasChild('userId') || newData.child('userId').val() === data.child('userId').val())))))"
+      }
     },
 
     "payments": {
@@ -73,19 +81,19 @@
       ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
 
       "$paymentKey": {
-        ".write": "!data.exists() && newData.exists()",
-        ".validate": "newData.hasChildren(['id', 'amount', 'currency', 'paymentId', 'orderId', 'status', 'type', 'createdAt']) && newData.child('id').isString() && newData.child('id').val().matches(/^[A-Z0-9]{6}$/) && newData.child('amount').isNumber() && newData.child('amount').val() >= 1 && newData.child('amount').val() <= 100000 && newData.child('currency').val() === 'INR' && newData.child('paymentId').isString() && newData.child('paymentId').val().matches(/^pay_[A-Za-z0-9]+$/) && newData.child('orderId').isString() && newData.child('orderId').val().matches(/^order_[A-Za-z0-9]+$/) && newData.child('status').val() === 'completed' && newData.child('type').val() === 'direct_payment' && newData.child('createdAt').isString()"
+        ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".validate": "newData.hasChildren(['id', 'amount', 'currency', 'paymentId', 'orderId', 'status', 'type', 'createdAt']) && newData.child('id').isString() && newData.child('amount').isNumber() && newData.child('amount').val() >= 1 && newData.child('amount').val() <= 100000 && newData.child('currency').val() === 'INR' && newData.child('paymentId').isString() && newData.child('orderId').isString() && newData.child('status').val() === 'completed' && newData.child('createdAt').isString()"
       }
     },
 
     "productReviews": {
       ".indexOn": ["productId", "rating"],
       ".read": true,
-      ".write": "auth != null",
 
       "$reviewId": {
         ".read": true,
-        ".write": "auth != null && (!data.exists() || data.child('uid').val() === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+        ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && newData.child('uid').val() === auth.uid) || (data.exists() && data.child('uid').val() === auth.uid && (!newData.exists() || newData.child('uid').val() === auth.uid)))",
+        ".validate": "newData.hasChildren(['productId', 'rating', 'uid', 'userName', 'comment']) && newData.child('productId').isString() && newData.child('rating').isNumber() && newData.child('rating').val() >= 1 && newData.child('rating').val() <= 5 && newData.child('uid').val() === auth.uid && (!newData.hasChild('comment') || (newData.child('comment').isString() && newData.child('comment').val().length <= 2000))"
       }
     },
 
@@ -97,7 +105,8 @@
     "driveConnections": {
       "$uid": {
         ".read": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".write": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+        ".write": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".validate": "!newData.hasChild('refreshToken') && !newData.hasChild('clientSecret')"
       }
     },
 
@@ -111,11 +120,7 @@
     "privacy_requests": {
       ".indexOn": ["ticketId", "email", "status", "category"],
       ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-      ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-      "$ticketId": {
-        ".read": true,
-        ".write": true
-      }
+      ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')"
     }
   }
 }

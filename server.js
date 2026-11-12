@@ -127,6 +127,132 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// --- Phone Lookup & Authentication Protection Endpoints ---
+const PHONE_INDEX_PATH = path.join(APP_ROOT, 'data/users_phone_index.json');
+
+function normalizeMobile(raw) {
+  if (!raw || typeof raw !== 'string') return { valid: false, normalized: '' };
+  let cleaned = raw.trim().replace(/[\s\-\(\)]/g, '');
+  if (cleaned.startsWith('+91')) cleaned = cleaned.slice(3);
+  else if (cleaned.startsWith('0') && cleaned.length === 11) cleaned = cleaned.slice(1);
+  else if (cleaned.startsWith('91') && cleaned.length === 12) cleaned = cleaned.slice(2);
+  if (!/^[6-9]\d{9}$/.test(cleaned)) return { valid: false, normalized: cleaned };
+  return { valid: true, normalized: cleaned };
+}
+
+const phoneLookupRateLimits = new Map();
+function checkPhoneRateLimit(ip, maxRequests = 20, windowMs = 60000) {
+  const now = Date.now();
+  const record = phoneLookupRateLimits.get(ip);
+  if (!record || now > record.resetTime) {
+    phoneLookupRateLimits.set(ip, { count: 1, resetTime: now + windowMs });
+    return true;
+  }
+  if (record.count >= maxRequests) {
+    return false;
+  }
+  record.count++;
+  return true;
+}
+
+function readPhoneIndex() {
+  try {
+    if (fs.existsSync(PHONE_INDEX_PATH)) {
+      return JSON.parse(fs.readFileSync(PHONE_INDEX_PATH, 'utf-8'));
+    }
+  } catch (e) {
+    console.warn("Could not read phone index:", e);
+  }
+  return {};
+}
+
+function updatePhoneIndex(phone, data) {
+  try {
+    const current = readPhoneIndex();
+    current[phone] = data;
+    fs.mkdirSync(path.dirname(PHONE_INDEX_PATH), { recursive: true });
+    fs.writeFileSync(PHONE_INDEX_PATH, JSON.stringify(current, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn("Could not update phone index:", e);
+  }
+}
+
+// Secure Phone Lookup: Returns only email & provider flag for login; zero PII leakage
+app.post("/api/auth/lookup-phone", (req, res) => {
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+  if (!checkPhoneRateLimit(clientIp, 20, 60000)) {
+    return res.status(429).json({ success: false, error: "Too many attempts. Please try again shortly." });
+  }
+
+  const { phone } = req.body;
+  const { valid, normalized } = normalizeMobile(phone);
+  if (!valid) {
+    return res.status(400).json({ success: false, error: "Invalid 10-digit Indian mobile number format." });
+  }
+
+  const phoneIndex = readPhoneIndex();
+  const entry = phoneIndex[normalized];
+  if (entry) {
+    return res.json({
+      success: true,
+      found: true,
+      email: entry.email,
+      isGoogleOnly: Boolean(entry.isGoogleOnly)
+    });
+  }
+
+  return res.json({
+    success: true,
+    found: false
+  });
+});
+
+// Phone Uniqueness Check for Registration and Checkout
+app.post("/api/auth/check-phone", (req, res) => {
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+  if (!checkPhoneRateLimit(clientIp, 30, 60000)) {
+    return res.status(429).json({ success: false, error: "Too many attempts. Please try again shortly." });
+  }
+
+  const { phone, excludeUid } = req.body;
+  const { valid, normalized } = normalizeMobile(phone);
+  if (!valid) {
+    return res.status(400).json({ success: false, error: "Invalid 10-digit Indian mobile number format." });
+  }
+
+  const phoneIndex = readPhoneIndex();
+  const entry = phoneIndex[normalized];
+  if (entry && (!excludeUid || entry.uid !== excludeUid)) {
+    return res.json({
+      success: true,
+      inUse: true,
+      isGoogleOnly: Boolean(entry.isGoogleOnly)
+    });
+  }
+
+  return res.json({
+    success: true,
+    inUse: false
+  });
+});
+
+// Secure Phone Index Sync from Client on Profile Update or Registration
+app.post("/api/auth/sync-phone", (req, res) => {
+  const { phone, email, uid, isGoogleOnly } = req.body;
+  const { valid, normalized } = normalizeMobile(phone);
+  if (!valid || !email || typeof email !== 'string') {
+    return res.status(400).json({ success: false, error: "Invalid parameters" });
+  }
+
+  updatePhoneIndex(normalized, {
+    uid: typeof uid === 'string' ? uid : undefined,
+    email: email.trim().toLowerCase(),
+    isGoogleOnly: Boolean(isGoogleOnly)
+  });
+
+  return res.json({ success: true });
+});
+
 // Email API Route
 app.post('/api/send-email', async (req, res) => {
   const { to, subject, text, html } = req.body;

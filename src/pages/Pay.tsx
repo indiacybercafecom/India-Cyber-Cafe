@@ -159,27 +159,8 @@ export function Pay() {
               throw new Error(verification.error || 'Server payment verification failed.');
             }
 
-            // 4. Save transaction record to client RTDB
-            try {
-              const recordRef = push(dbRef(rtdb, 'payments'));
-              await set(recordRef, {
-                id: orderData.receiptId,
-                payment_id: response.razorpay_payment_id,
-                paymentId: response.razorpay_payment_id,
-                order_id: response.razorpay_order_id,
-                orderId: response.razorpay_order_id,
-                amount: orderData.amountInRupees,
-                currency: 'INR',
-                status: 'completed',
-                reference: activeReference || orderData.receiptId,
-                receiptId: orderData.receiptId,
-                type: hasUrlAmountParam ? 'pay_link' : 'direct_pay',
-                created_at: new Date().toISOString(),
-                createdAt: new Date().toISOString()
-              });
-            } catch (rtdbErr) {
-              console.warn('Client RTDB write notice:', rtdbErr);
-            }
+            // 4. Note: Transaction record is securely verified and persisted server-side via /api/pay-link/verify
+
 
             // 5. Notify administrators via email
             void sendEmailToAllAdmins(

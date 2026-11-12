@@ -47,21 +47,25 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       if (isPhone) {
         const { valid, normalized } = normalizeIndianMobile(sanitizedEmail);
         const searchPhone = valid ? normalized : sanitizedEmail;
-        const usersRef = ref(rtdb, 'users');
 
-        let snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(searchPhone)));
-        if (!snapshot.exists() && searchPhone !== sanitizedEmail) {
-          snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(sanitizedEmail)));
-        }
+        const response = await fetch('/api/auth/lookup-phone', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: searchPhone }),
+        });
 
-        if (snapshot.exists()) {
-          const userData = Object.values(snapshot.val())[0] as any;
-          if (userData.authProvider === 'google' && !userData.password) {
-            throw new Error('This account was created with Google Sign-In. Please click "Continue with Google".');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.found && data.email) {
+            if (data.isGoogleOnly) {
+              throw new Error('This account was created with Google Sign-In. Please click "Continue with Google".');
+            }
+            loginEmail = sanitizeEmail(data.email);
+          } else {
+            throw new Error('No account found with this mobile number.');
           }
-          loginEmail = sanitizeEmail(userData.email);
         } else {
-          throw new Error('No account found with this mobile number.');
+          throw new Error('Unable to verify mobile number. Please try again.');
         }
       }
 
@@ -120,7 +124,6 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         name: sanitizedName,
         email: sanitizedEmail,
         phone: normalized,
-        password: sanitizedPassword,
         role,
         avatar: DEFAULT_AVATAR,
         authProvider: 'password',
@@ -132,6 +135,18 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
 
       const sanitizedProfile = sanitizeUserProfile(userProfile);
       await set(ref(rtdb, `users/${firebaseUser.uid}`), sanitizedProfile);
+
+      // Securely index phone number for mobile login
+      fetch('/api/auth/sync-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: firebaseUser.uid,
+          phone: normalized,
+          email: sanitizedEmail,
+          isGoogleOnly: false
+        })
+      }).catch(err => console.warn('Phone index sync notice:', err));
 
       sendRegistrationNotificationsOnce(sanitizedProfile).catch(() => {});
 

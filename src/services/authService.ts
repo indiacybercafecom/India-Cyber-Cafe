@@ -69,21 +69,18 @@ export async function checkPhoneRegistered(
     const { valid, normalized } = normalizeIndianMobile(phoneNumber);
     if (!valid) return { inUse: false };
 
-    const usersRef = ref(rtdb, 'users');
-    const snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(normalized)));
+    const response = await fetch('/api/auth/check-phone', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: normalized, excludeUid }),
+    });
 
-    if (snapshot.exists()) {
-      const users = snapshot.val();
-      for (const [uid, data] of Object.entries(users as Record<string, any>)) {
-        if (!excludeUid || uid !== excludeUid) {
-          return {
-            inUse: true,
-            existingUid: uid,
-            existingEmail: data.email || '',
-            isGoogleOnly: data.authProvider === 'google' && !data.password,
-          };
-        }
-      }
+    if (response.ok) {
+      const data = await response.json();
+      return {
+        inUse: Boolean(data.inUse),
+        isGoogleOnly: Boolean(data.isGoogleOnly),
+      };
     }
 
     return { inUse: false };
@@ -408,22 +405,20 @@ export async function initiatePasswordReset(identifier: string): Promise<{
         return { success: false, message: phoneErr || 'Please enter a valid mobile number or email address.' };
       }
 
-      // Search RTDB for user with this mobile across standard formats (normalized, +91, 91)
-      const usersRef = ref(rtdb, 'users');
-      let snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(normalized)));
-      
-      if (!snapshot.exists()) {
-        snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(`+91${normalized}`)));
-      }
-      if (!snapshot.exists()) {
-        snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(`91${normalized}`)));
-      }
+      // Lookup email associated with this mobile via secure backend API
+      const response = await fetch('/api/auth/lookup-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone: normalized }),
+      });
 
-      if (snapshot.exists()) {
-        const userData = Object.values(snapshot.val())[0] as any;
-        targetEmail = sanitizeEmail(userData.email || '');
-        if (userData.authProvider === 'google' && !userData.password) {
-          isGoogleOnly = true;
+      if (response.ok) {
+        const lookup = await response.json();
+        if (lookup.found && lookup.email) {
+          targetEmail = sanitizeEmail(lookup.email);
+          if (lookup.isGoogleOnly) {
+            isGoogleOnly = true;
+          }
         }
       }
     }

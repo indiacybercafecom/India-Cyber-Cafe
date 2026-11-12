@@ -286,7 +286,6 @@ export function sanitizeUserProfile(profile: any): any {
     'name',
     'email',
     'phone',
-    'password',
     'role',
     'avatar',
     'customAvatar',

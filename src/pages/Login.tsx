@@ -48,21 +48,25 @@ export function Login({ authUser, authLoading }: LoginProps) {
       if (isPhone) {
         const { valid, normalized } = normalizeIndianMobile(sanitizedIdentifier);
         const searchPhone = valid ? normalized : sanitizedIdentifier;
-        const usersRef = ref(rtdb, 'users');
 
-        let snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(searchPhone)));
-        if (!snapshot.exists() && searchPhone !== sanitizedIdentifier) {
-          snapshot = await get(query(usersRef, orderByChild('phone'), equalTo(sanitizedIdentifier)));
-        }
+        const response = await fetch('/api/auth/lookup-phone', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: searchPhone }),
+        });
 
-        if (snapshot.exists()) {
-          const userData = Object.values(snapshot.val())[0] as any;
-          if (userData.authProvider === 'google' && !userData.password) {
-            throw new Error('This account was created with Google Sign-In. Please click "Continue with Google" below.');
+        if (response.ok) {
+          const data = await response.json();
+          if (data.found && data.email) {
+            if (data.isGoogleOnly) {
+              throw new Error('This account was created with Google Sign-In. Please click "Continue with Google" below.');
+            }
+            loginEmail = sanitizeEmail(data.email);
+          } else {
+            throw new Error('No account found with this phone number.');
           }
-          loginEmail = sanitizeEmail(userData.email);
         } else {
-          throw new Error('No account found with this phone number.');
+          throw new Error('Unable to verify phone number. Please try again.');
         }
       } else {
         loginEmail = sanitizeEmail(sanitizedIdentifier);

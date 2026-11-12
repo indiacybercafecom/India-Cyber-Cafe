@@ -65,7 +65,6 @@ export function Register({ user }: RegisterProps) {
         name: sanitizedName,
         email: sanitizedEmail,
         phone: normalized,
-        password: sanitizedPassword,
         role: role,
         avatar: DEFAULT_AVATAR,
         authProvider: 'password',
@@ -77,6 +76,18 @@ export function Register({ user }: RegisterProps) {
 
       const sanitizedProfile = sanitizeUserProfile(userProfile);
       await set(ref(rtdb, `users/${firebaseUser.uid}`), sanitizedProfile);
+
+      // Securely index phone number for mobile login
+      fetch('/api/auth/sync-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: firebaseUser.uid,
+          phone: normalized,
+          email: sanitizedEmail,
+          isGoogleOnly: false
+        })
+      }).catch(err => console.warn('Phone index sync notice:', err));
 
       sendRegistrationNotificationsOnce(sanitizedProfile).catch(() => {});
 
