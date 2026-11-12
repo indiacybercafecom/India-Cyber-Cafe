@@ -1645,17 +1645,7 @@ async function startServer() {
       appType: "spa",
     });
 
-    // In development: intercept HTML page requests to dynamically render complete SSR HTML
-    app.get(/^\/(?!api\/|data\/|assets\/|@|node_modules\/|src\/|manifest\.json$|robots\.txt$|sitemap\.xml$|favicon\.?\w*$).*/, async (req, res, next) => {
-      if (req.path.startsWith('/api/') || req.path.startsWith('/data/') || req.path.startsWith('/assets/')) {
-        return next();
-      }
-      const ua = req.get('user-agent') || '';
-      const isCrawler = isSocialCrawler(ua);
-      const isPageRequest = isCrawler || req.accepts('html') || !req.path.includes('.');
-      if (!isPageRequest) {
-        return next();
-      }
+    const executeDevSsr = async (req: express.Request, res: express.Response, next: express.NextFunction) => {
       try {
         const indexPath = path.join(APP_ROOT, 'index.html');
         if (!fs.existsSync(indexPath)) return next();
@@ -1673,6 +1663,25 @@ async function startServer() {
       } catch (err) {
         next(err);
       }
+    };
+
+    // Explicit Homepage Route in dev mode
+    app.get('/', async (req, res, next) => {
+      return executeDevSsr(req, res, next);
+    });
+
+    // In development: intercept HTML page requests to dynamically render complete SSR HTML
+    app.get(/^\/(?!api\/|data\/|assets\/|@|node_modules\/|src\/|manifest\.json$|robots\.txt$|sitemap\.xml$|favicon\.?\w*$).*/, async (req, res, next) => {
+      if (req.path.startsWith('/api/') || req.path.startsWith('/data/') || req.path.startsWith('/assets/')) {
+        return next();
+      }
+      const ua = req.get('user-agent') || '';
+      const isCrawler = isSocialCrawler(ua);
+      const isPageRequest = isCrawler || req.accepts('html') || !req.path.includes('.');
+      if (!isPageRequest) {
+        return next();
+      }
+      return executeDevSsr(req, res, next);
     });
 
     app.use(vite.middlewares);
@@ -1694,34 +1703,25 @@ async function startServer() {
     }));
     app.use('/data', express.static(path.join(DIST_PATH, 'data')));
 
-    app.get(/^\/(?!api\/|data\/|assets\/|manifest\.json$|robots\.txt$|sitemap\.xml$|favicon\.?\w*$).*/, (req, res, next) => {
-      if (req.path.startsWith('/api/') || req.path.startsWith('/data/') || req.path.startsWith('/assets/')) {
-        return next();
+    const executeProdSsr = (req: express.Request, res: express.Response) => {
+      if (!fs.existsSync(distIndex)) {
+        return res.status(404).send('dist/index.html not found');
       }
-
-      const ua = req.get('user-agent') || '';
-      const isCrawler = isSocialCrawler(ua);
-      const isPageRequest = isCrawler || req.accepts('html') || !req.path.includes('.');
-
-      if (isPageRequest) {
-        if (!fs.existsSync(distIndex)) {
-          return res.status(404).send('dist/index.html not found');
-        }
-        try {
-          const rawHtml = fs.readFileSync(distIndex, 'utf-8');
-          const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
-          const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
-          const baseUrl = process.env.APP_URL || (host.includes('localhost') ? `${proto}://${host}` : `https://${host}`);
-          const pageResult = renderUniversalPage(req.path, baseUrl, APP_ROOT);
-          const injectedHtml = injectSsrIntoTemplate(rawHtml, pageResult);
-          return res.status(pageResult.status).set({
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': pageResult.status === 200 ? 'public, max-age=300, stale-while-revalidate=86400' : 'no-cache, no-store, must-revalidate'
-          }).send(injectedHtml);
-        } catch (err: any) {
-          const requestId = `ssr_prod_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
-          console.error(`[SSR_ERROR] RequestID=${requestId} Route=${req.path} Error:`, err?.stack || err?.message || err);
-          const errorHtml = `<!doctype html>
+      try {
+        const rawHtml = fs.readFileSync(distIndex, 'utf-8');
+        const host = req.get('x-forwarded-host') || req.get('host') || 'b.indiacybercafe.com';
+        const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
+        const baseUrl = process.env.APP_URL || (host.includes('localhost') ? `${proto}://${host}` : `https://${host}`);
+        const pageResult = renderUniversalPage(req.path, baseUrl, APP_ROOT);
+        const injectedHtml = injectSsrIntoTemplate(rawHtml, pageResult);
+        return res.status(pageResult.status).set({
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': pageResult.status === 200 ? 'public, max-age=300, stale-while-revalidate=86400' : 'no-cache, no-store, must-revalidate'
+        }).send(injectedHtml);
+      } catch (err: any) {
+        const requestId = `ssr_prod_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+        console.error(`[SSR_ERROR] RequestID=${requestId} Route=${req.path} Error:`, err?.stack || err?.message || err);
+        const errorHtml = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -1755,12 +1755,30 @@ async function startServer() {
     </div>
   </body>
 </html>`;
-          return res.status(500).set({
-            'Content-Type': 'text/html; charset=utf-8',
-            'Cache-Control': 'no-cache, no-store, must-revalidate',
-            'X-Request-Id': requestId,
-          }).send(errorHtml);
-        }
+        return res.status(500).set({
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'X-Request-Id': requestId,
+        }).send(errorHtml);
+      }
+    };
+
+    // Explicit Homepage Route - Guarantees root request "/" reaches authoritative SSR renderer
+    app.get('/', (req, res) => {
+      return executeProdSsr(req, res);
+    });
+
+    app.get(/^\/(?!api\/|data\/|assets\/|manifest\.json$|robots\.txt$|sitemap\.xml$|favicon\.?\w*$).*/, (req, res, next) => {
+      if (req.path.startsWith('/api/') || req.path.startsWith('/data/') || req.path.startsWith('/assets/')) {
+        return next();
+      }
+
+      const ua = req.get('user-agent') || '';
+      const isCrawler = isSocialCrawler(ua);
+      const isPageRequest = isCrawler || req.accepts('html') || !req.path.includes('.');
+
+      if (isPageRequest) {
+        return executeProdSsr(req, res);
       }
       next();
     });

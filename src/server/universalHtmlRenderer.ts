@@ -215,7 +215,7 @@ export function renderUniversalPage(
   ): PageRenderResult => {
     const safeTitle = escapeHtml(title.includes('India Cyber Cafe') ? title : `${title} | India Cyber Cafe`);
     const safeDesc = escapeHtml(cleanText(description));
-    const canonicalUrl = `${rootUrl}${canonicalPath === '/' ? '' : canonicalPath}`;
+    const canonicalUrl = canonicalPath === '/' ? `${rootUrl}/` : `${rootUrl}${canonicalPath}`;
     const safeImage = escapeHtml(options.image || DEFAULT_ICC_IMAGE);
     const robots = options.robots || (status === 200 ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' : 'noindex, nofollow');
     const ogType = options.ogType || 'website';
@@ -263,35 +263,27 @@ export function renderUniversalPage(
 
   // 1. HOMEPAGE
   if (cleanPath === '/') {
-    const popularServices = data.services.slice(0, 6);
-    const popularProducts = data.products.filter(p => p.inStock).slice(0, 4);
+    const popularServices = data.services.slice(0, 3);
+    const popularProducts = data.products.filter(p => p.inStock).slice(0, 3);
 
     const servicesGridHtml = popularServices
       .map(
         s => `
-        <article class="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-          <div>
-            <div class="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center mb-4 overflow-hidden">
-              ${
-                s.icon && s.icon.startsWith('http')
-                  ? `<img src="${escapeHtml(s.icon)}" alt="${escapeHtml(s.name)}" class="w-8 h-8 object-contain" width="32" height="32" loading="lazy" />`
-                  : `<span class="text-primary font-bold text-lg">⚡</span>`
-              }
-            </div>
-            <h3 class="text-lg font-bold text-navy mb-2">
-              <a href="/services/${escapeHtml(s.id)}" class="hover:text-primary transition-colors">${escapeHtml(s.name)}</a>
-            </h3>
-            <p class="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4 line-clamp-3">
-              ${escapeHtml(cleanText(s.description, 130))}
-            </p>
+        <a href="/services/${escapeHtml(s.id)}" class="card group cursor-pointer p-4 sm:p-6 block">
+          <div class="flex items-center justify-center mx-auto mb-3 sm:mb-4 transition-all ${
+            s.icon && s.icon.startsWith('http')
+              ? 'w-full h-40 sm:h-48 rounded-xl border border-slate-200 overflow-hidden'
+              : 'w-12 h-12 sm:w-16 sm:h-16 bg-gradient-to-br from-primary/10 to-navy/10 rounded-full group-hover:rotate-12 overflow-hidden'
+          }">
+            ${
+              s.icon && s.icon.startsWith('http')
+                ? `<img src="${escapeHtml(s.icon)}" alt="${escapeHtml(s.name)}" class="w-full h-full object-cover" width="200" height="200" loading="lazy" />`
+                : `<span class="text-primary font-bold text-lg">⚡</span>`
+            }
           </div>
-          <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
-            <span class="text-xs text-slate-500 font-medium">${(s.subservices || []).length} sub-services</span>
-            <a href="/services/${escapeHtml(s.id)}" class="text-xs font-bold text-primary hover:underline">
-              View &amp; Apply →
-            </a>
-          </div>
-        </article>
+          <h3 class="text-base sm:text-lg font-bold text-navy mb-1">${escapeHtml(s.name)}</h3>
+          <p class="text-slate-500 text-[10px] sm:text-xs line-clamp-2">${escapeHtml(cleanText(s.description, 130))}</p>
+        </a>
       `
       )
       .join('');
@@ -299,107 +291,153 @@ export function renderUniversalPage(
     const productsGridHtml = popularProducts
       .map(
         p => `
-        <article class="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between">
-          <div>
-            <div class="aspect-square rounded-xl bg-slate-100 mb-4 overflow-hidden flex items-center justify-center">
-              ${
-                p.images && p.images[0]
-                  ? `<img src="${escapeHtml(p.images[0])}" alt="${escapeHtml(p.name)}" class="w-full h-full object-cover" width="300" height="300" loading="lazy" />`
-                  : `<span class="text-3xl">📦</span>`
-              }
-            </div>
-            <h3 class="text-sm sm:text-base font-bold text-navy mb-1 line-clamp-2">
-              <a href="/store/${escapeHtml(p.category)}/${escapeHtml(p.id)}" class="hover:text-primary transition-colors">${escapeHtml(p.name)}</a>
-            </h3>
-            <p class="text-xs text-slate-500 line-clamp-2 mb-3">${escapeHtml(cleanText(p.shortDescription, 80))}</p>
+        <a href="/store/${escapeHtml(p.category)}/${escapeHtml(p.id)}" class="group cursor-pointer bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-slate-200 hover:border-primary hover:shadow-lg transition-all block">
+          <div class="relative aspect-square overflow-hidden bg-slate-100">
+            ${
+              p.images && p.images[0]
+                ? `<img src="${escapeHtml(p.images[0])}" alt="${escapeHtml(p.name)}" class="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" width="300" height="300" loading="lazy" />`
+                : `<span class="text-3xl">📦</span>`
+            }
+            ${
+              p.discountedPrice && p.price > p.discountedPrice
+                ? `<div class="absolute top-2 right-2 bg-red-500 text-white px-2 sm:px-3 py-1 rounded-full text-xs sm:text-sm font-bold">${Math.round(((p.price - p.discountedPrice) / p.price) * 100)}% OFF</div>`
+                : ''
+            }
           </div>
-          <div class="pt-3 border-t border-slate-100 flex items-center justify-between">
-            <div>
-              <span class="text-base font-extrabold text-navy">₹${p.discountedPrice || p.price}</span>
-              ${p.discountedPrice && p.price > p.discountedPrice ? `<span class="text-xs text-slate-400 line-through ml-1.5">₹${p.price}</span>` : ''}
+          <div class="p-3 sm:p-4">
+            <h3 class="text-xs sm:text-sm font-bold text-navy mb-1 sm:mb-2 line-clamp-2 group-hover:text-primary transition-colors">${escapeHtml(p.name)}</h3>
+            <p class="text-[9px] sm:text-xs text-slate-500 mb-2 sm:mb-3 line-clamp-1">${escapeHtml(cleanText(p.shortDescription, 80))}</p>
+            <div class="flex items-center gap-2">
+              <span class="text-xs sm:text-sm font-bold text-navy">₹${p.discountedPrice || p.price}</span>
+              ${p.discountedPrice && p.price > p.discountedPrice ? `<span class="text-[8px] sm:text-[9px] text-slate-400 line-through">₹${p.price}</span>` : ''}
             </div>
-            <a href="/store/${escapeHtml(p.category)}/${escapeHtml(p.id)}" class="text-xs font-bold text-primary hover:underline">Buy Now →</a>
           </div>
-        </article>
+        </a>
       `
       )
       .join('');
 
     const bodyHtml = `
-      <div class="space-y-16">
+      <div class="space-y-8 sm:space-y-12">
         <!-- Hero Section -->
-        <section class="text-center max-w-4xl mx-auto py-8 sm:py-14 space-y-6">
-          <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
-            <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Verified CSC &amp; Digital Seva Portal
-          </span>
-          <h1 class="text-3xl sm:text-5xl lg:text-6xl font-extrabold text-navy tracking-tight leading-tight">
-            India Cyber Cafe — Your Trusted Digital Partner
-          </h1>
-          <p class="text-sm sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            Apply online for government documents, Aadhaar UCL, PAN cards, certificates, forms filling, PVC smart cards, and cyber cafe supplies with fast, expert support.
-          </p>
-          <div class="flex flex-wrap items-center justify-center gap-3 pt-2">
-            <a href="/services" class="px-6 py-3 rounded-xl font-bold text-sm bg-primary text-white hover:bg-primary-dark transition-all shadow-md">
-              Explore All Services
-            </a>
-            <a href="/price-list" class="px-6 py-3 rounded-xl font-bold text-sm bg-white text-navy border border-slate-300 hover:bg-slate-50 transition-all shadow-sm">
-              View Price List &amp; Fees
-            </a>
-            <a href="/forms-documents" class="px-6 py-3 rounded-xl font-bold text-sm bg-white text-navy border border-slate-300 hover:bg-slate-50 transition-all shadow-sm">
-              Free PDF Documents
-            </a>
+        <section class="bg-white p-6 sm:p-10 lg:p-12 rounded-3xl shadow-xl flex flex-col md:flex-row items-center justify-between gap-6 md:gap-10 border border-slate-100">
+          <div class="flex-1 space-y-3 sm:space-y-5 text-center md:text-left">
+            <span class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-100 text-emerald-800">
+              <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Verified CSC &amp; Digital Seva Portal
+            </span>
+            <h1 class="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-navy leading-tight">
+              India Cyber Cafe <br />
+              <span class="text-primary">Digital Seva Simplified</span>
+            </h1>
+            <p class="text-sm sm:text-base lg:text-lg text-slate-600 max-w-md mx-auto md:mx-0">
+              Apply for Government Services, Jobs &amp; Documents online with India&#039;s trusted digital partner. Fast, secure, and reliable digital solutions.
+            </p>
+            <div class="flex flex-col sm:flex-row flex-wrap gap-3 justify-center md:justify-start pt-2">
+              <a href="/services" class="btn-primary text-sm sm:text-base px-6 sm:px-8 py-2.5 sm:py-3 text-center inline-block">Apply Now</a>
+              <a href="/track" class="btn-outline text-sm sm:text-base px-6 sm:px-8 py-2.5 sm:py-3 text-center inline-block">Track Status</a>
+              <a href="/price-list" class="btn-outline text-sm sm:text-base px-6 sm:px-8 py-2.5 sm:py-3 text-center inline-block">Price List</a>
+            </div>
+          </div>
+          <div class="hidden md:flex items-center justify-center shrink-0 w-[280px] h-[280px] bg-gradient-to-br from-primary/5 to-navy/5 rounded-3xl p-6 text-center">
+            <div class="space-y-3">
+              <div class="w-20 h-20 mx-auto rounded-2xl bg-white shadow-md flex items-center justify-center text-4xl">🏛️</div>
+              <div class="font-extrabold text-navy text-lg">One-Stop Digital Hub</div>
+              <p class="text-xs text-slate-500">Government forms, PVC cards &amp; verified legal assistance</p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Stats Section -->
+        <section class="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6">
+          <div class="bg-white p-4 sm:p-8 rounded-2xl text-center shadow-md border-t-4 border-primary">
+            <h3 class="text-xl sm:text-3xl font-bold text-navy mb-1">5000+</h3>
+            <p class="text-[10px] sm:text-sm text-slate-500 font-medium uppercase tracking-wider">Active Users</p>
+          </div>
+          <div class="bg-white p-4 sm:p-8 rounded-2xl text-center shadow-md border-t-4 border-primary">
+            <h3 class="text-xl sm:text-3xl font-bold text-navy mb-1">2500+</h3>
+            <p class="text-[10px] sm:text-sm text-slate-500 font-medium uppercase tracking-wider">Applications</p>
+          </div>
+          <div class="bg-white p-4 sm:p-8 rounded-2xl text-center shadow-md border-t-4 border-primary">
+            <h3 class="text-xl sm:text-3xl font-bold text-navy mb-1">24/7</h3>
+            <p class="text-[10px] sm:text-sm text-slate-500 font-medium uppercase tracking-wider">Support</p>
+          </div>
+          <div class="bg-white p-4 sm:p-8 rounded-2xl text-center shadow-md border-t-4 border-primary">
+            <h3 class="text-xl sm:text-3xl font-bold text-navy mb-1">4.9/5</h3>
+            <p class="text-[10px] sm:text-sm text-slate-500 font-medium uppercase tracking-wider">Rating</p>
           </div>
         </section>
 
         <!-- Popular Services Section -->
-        <section class="space-y-6">
-          <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-            <div>
-              <h2 class="text-2xl sm:text-3xl font-extrabold text-navy">Popular Digital Services</h2>
-              <p class="text-xs sm:text-sm text-slate-500 mt-1">Direct online application with guidance &amp; document checklist</p>
-            </div>
-            <a href="/services" class="text-sm font-bold text-primary hover:underline">View All ${data.services.length} Services →</a>
+        <section class="space-y-6 sm:space-y-8">
+          <div class="text-center space-y-3 sm:space-y-4">
+            <h2 class="text-2xl sm:text-3xl font-bold text-navy">Popular Services</h2>
+            <p class="text-sm sm:text-base text-slate-600">Online form application assistance with verified checklists</p>
           </div>
-          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             ${servicesGridHtml}
           </div>
+          <div class="text-center">
+            <a href="/services" class="btn-primary inline-block">View All Services →</a>
+          </div>
         </section>
 
-        <!-- Featured Products Section -->
-        <section class="space-y-6">
-          <div class="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-            <div>
-              <h2 class="text-2xl sm:text-3xl font-extrabold text-navy">Featured Store Products</h2>
-              <p class="text-xs sm:text-sm text-slate-500 mt-1">PVC cards, custom prints, books &amp; reference guides</p>
+        <!-- Features Section (Why Choose Us) -->
+        <section class="space-y-6 sm:space-y-10">
+          <h2 class="text-2xl sm:text-3xl font-bold text-navy text-center">Why Choose Us?</h2>
+          <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-6 lg:gap-8">
+            <div class="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl text-center shadow-md border-t-4 border-primary">
+              <h3 class="text-sm sm:text-base lg:text-xl font-bold text-navy mb-1 sm:mb-2">100% Secure</h3>
+              <p class="text-[10px] sm:text-sm text-slate-600">Encrypted &amp; protected data under DPDP Act</p>
             </div>
-            <a href="/store" class="text-sm font-bold text-primary hover:underline">Browse Store (${data.products.length} Products) →</a>
+            <div class="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl text-center shadow-md border-t-4 border-primary">
+              <h3 class="text-sm sm:text-base lg:text-xl font-bold text-navy mb-1 sm:mb-2">Lightning Fast</h3>
+              <p class="text-[10px] sm:text-sm text-slate-600">Instant application processing &amp; tracking</p>
+            </div>
+            <div class="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl text-center shadow-md border-t-4 border-primary">
+              <h3 class="text-sm sm:text-base lg:text-xl font-bold text-navy mb-1 sm:mb-2">Mobile Friendly</h3>
+              <p class="text-[10px] sm:text-sm text-slate-600">Access documents anywhere on phone or tablet</p>
+            </div>
+            <div class="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl text-center shadow-md border-t-4 border-primary">
+              <h3 class="text-sm sm:text-base lg:text-xl font-bold text-navy mb-1 sm:mb-2">Expert Support</h3>
+              <p class="text-[10px] sm:text-sm text-slate-600">Dedicated assistance via phone and WhatsApp</p>
+            </div>
+            <div class="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl text-center shadow-md border-t-4 border-primary">
+              <h3 class="text-sm sm:text-base lg:text-xl font-bold text-navy mb-1 sm:mb-2">Easy Process</h3>
+              <p class="text-[10px] sm:text-sm text-slate-600">Simple 3-step digital application flow</p>
+            </div>
+            <div class="bg-white p-4 sm:p-6 lg:p-10 rounded-2xl text-center shadow-md border-t-4 border-primary">
+              <h3 class="text-sm sm:text-base lg:text-xl font-bold text-navy mb-1 sm:mb-2">Real-time Updates</h3>
+              <p class="text-[10px] sm:text-sm text-slate-600">Instant SMS, portal and tracking alerts</p>
+            </div>
           </div>
-          <div class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+        </section>
+
+        <!-- Popular Products Section -->
+        <section class="space-y-6 sm:space-y-8">
+          <div class="text-center space-y-3 sm:space-y-4">
+            <h2 class="text-2xl sm:text-3xl font-bold text-navy">Popular Products</h2>
+            <p class="text-sm sm:text-base text-slate-600">Premium prints &amp; supplies with custom options</p>
+          </div>
+          <div class="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5 lg:gap-6">
             ${productsGridHtml}
           </div>
+          <div class="text-center">
+            <a href="/store" class="btn-primary inline-block">Explore Store →</a>
+          </div>
         </section>
 
-        <!-- Trust & Compliance Highlights -->
-        <section class="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-3xl p-8 sm:p-12">
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <div class="space-y-2">
-              <h3 class="font-bold text-navy text-base sm:text-lg">🔒 DPDP Act 2023 Compliant</h3>
-              <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                Your personal documents and identity files are processed under strict privacy guidelines and grievance redressal mechanisms.
+        <!-- Forms & Documents CTA -->
+        <section class="rounded-3xl border border-primary/20 bg-white px-6 py-8 shadow-sm sm:px-10 lg:px-14">
+          <div class="flex flex-col items-center justify-between gap-6 text-center md:flex-row md:text-left">
+            <div class="max-w-3xl">
+              <p class="text-xs font-black uppercase tracking-[0.24em] text-primary">Forms &amp; Documents</p>
+              <p class="mt-3 text-sm font-medium leading-relaxed text-slate-600 sm:text-base lg:text-lg">
+                If you need any forms or documents, visit our Forms &amp; Documents page for free verified original formats.
               </p>
             </div>
-            <div class="space-y-2">
-              <h3 class="font-bold text-navy text-base sm:text-lg">⚡ Transparent Government Fees</h3>
-              <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                Clear separation between official government fees and cyber cafe portal service charges on our public price list.
-              </p>
-            </div>
-            <div class="space-y-2">
-              <h3 class="font-bold text-navy text-base sm:text-lg">📍 Physical Center &amp; Support</h3>
-              <p class="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                Operating in Singrauli, MP with active phone and email assistance. Reach out to our team anytime.
-              </p>
-            </div>
+            <a href="/forms-documents" class="btn-primary whitespace-nowrap px-7 py-3 text-sm sm:text-base inline-block">
+              View Forms &amp; Documents
+            </a>
           </div>
         </section>
       </div>
@@ -416,15 +454,38 @@ export function renderUniversalPage(
         image: DEFAULT_ICC_IMAGE,
         structuredData: {
           '@context': 'https://schema.org',
-          '@type': 'WebSite',
-          name: 'India Cyber Cafe',
-          url: rootUrl,
-          description: DEFAULT_ICC_DESC,
-          potentialAction: {
-            '@type': 'SearchAction',
-            target: `${rootUrl}/services?q={search_term_string}`,
-            'query-input': 'required name=search_term_string',
-          },
+          '@graph': [
+            {
+              '@type': 'WebSite',
+              '@id': `${rootUrl}/#website`,
+              url: `${rootUrl}/`,
+              name: 'India Cyber Cafe',
+              description: DEFAULT_ICC_DESC,
+              publisher: {
+                '@id': `${rootUrl}/#organization`,
+              },
+              potentialAction: {
+                '@type': 'SearchAction',
+                target: `${rootUrl}/services?q={search_term_string}`,
+                'query-input': 'required name=search_term_string',
+              },
+            },
+            {
+              '@type': 'Organization',
+              '@id': `${rootUrl}/#organization`,
+              name: 'India Cyber Cafe',
+              url: `${rootUrl}/`,
+              logo: DEFAULT_ICC_IMAGE,
+              description: 'Your trusted partner for digital government forms, CSC applications, and citizen services in India.',
+              contactPoint: {
+                '@type': 'ContactPoint',
+                telephone: '+91-9203251821',
+                contactType: 'customer service',
+                areaServed: 'IN',
+                availableLanguage: ['en', 'hi'],
+              },
+            },
+          ],
         },
       }
     );
@@ -1469,7 +1530,16 @@ export function renderUniversalPage(
       `Official ${titles[policyType] || 'legal policy'} for India Cyber Cafe. Compliant with Consumer Protection Act & DPDP Act 2023.`,
       `/legal/${policyType}`,
       bodyHtml,
-      { ogType: 'article' }
+      {
+        ogType: 'article',
+        structuredData: {
+          '@context': 'https://schema.org',
+          '@type': 'WebPage',
+          name: `${titles[policyType] || 'Legal'} | India Cyber Cafe`,
+          description: `Official ${titles[policyType] || 'legal policy'} for India Cyber Cafe. Compliant with Consumer Protection Act & DPDP Act 2023.`,
+          url: `${rootUrl}/legal/${policyType}`,
+        },
+      }
     );
   }
 
@@ -1503,7 +1573,16 @@ export function renderUniversalPage(
       'Submit and track data privacy requests or consumer grievances with India Cyber Cafe Grievance Officer.',
       cleanPath,
       bodyHtml,
-      { ogType: 'website' }
+      {
+        ogType: 'website',
+        structuredData: {
+          '@context': 'https://schema.org',
+          '@type': 'ContactPage',
+          name: `${isTrack ? 'Track Request' : 'Privacy Request'} - Grievance Redressal | India Cyber Cafe`,
+          description: 'Submit and track data privacy requests or consumer grievances with India Cyber Cafe Grievance Officer.',
+          url: `${rootUrl}${cleanPath}`,
+        },
+      }
     );
   }
 
@@ -1531,7 +1610,16 @@ export function renderUniversalPage(
       'Make online payments for India Cyber Cafe digital services, application fees, and print orders via UPI, cards, and net banking.',
       '/pay',
       bodyHtml,
-      { ogType: 'website' }
+      {
+        ogType: 'website',
+        structuredData: {
+          '@context': 'https://schema.org',
+          '@type': 'CheckoutPage',
+          name: 'Pay Online - Secure Payment Portal | India Cyber Cafe',
+          description: 'Make online payments for India Cyber Cafe digital services, application fees, and print orders via UPI, cards, and net banking.',
+          url: `${rootUrl}/pay`,
+        },
+      }
     );
   }
 

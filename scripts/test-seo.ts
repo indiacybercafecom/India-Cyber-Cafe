@@ -172,47 +172,70 @@ function extractMainContentText(html: string): string {
   return clean.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
 }
 
-// Helper: Send Real HTTP GET Request
-function sendHttpRequest(urlStr: string): Promise<{ status: number; headers: Record<string, string>; body: string }> {
+// Helper: Send Real HTTP GET Request with Redirect Following
+function sendHttpRequest(
+  urlStr: string,
+  maxRedirects: number = 5
+): Promise<{ status: number; headers: Record<string, string>; body: string; finalUrl: string; redirectChain: string[] }> {
   return new Promise((resolve, reject) => {
-    const url = new URL(urlStr);
-    const lib = url.protocol === 'https:' ? https : http;
-    const req = lib.request(
-      url,
-      {
-        method: 'GET',
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
-          Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-        timeout: 10000,
-      },
-      res => {
-        let body = '';
-        res.setEncoding('utf8');
-        res.on('data', chunk => {
-          body += chunk;
-        });
-        res.on('end', () => {
-          const headers: Record<string, string> = {};
-          for (const [k, v] of Object.entries(res.headers)) {
-            if (typeof v === 'string') headers[k.toLowerCase()] = v;
-          }
-          resolve({
-            status: res.statusCode || 0,
-            headers,
-            body,
-          });
-        });
-      }
-    );
+    const redirectChain: string[] = [];
 
-    req.on('error', err => reject(err));
-    req.on('timeout', () => {
-      req.destroy();
-      reject(new Error(`Timeout connecting to ${urlStr}`));
-    });
-    req.end();
+    function makeRequest(currentUrl: string, redirectsLeft: number) {
+      try {
+        const url = new URL(currentUrl);
+        const lib = url.protocol === 'https:' ? https : http;
+        const req = lib.request(
+          url,
+          {
+            method: 'GET',
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)',
+              Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            },
+            timeout: 10000,
+          },
+          res => {
+            const statusCode = res.statusCode || 0;
+            if ([301, 302, 307, 308].includes(statusCode) && res.headers.location && redirectsLeft > 0) {
+              const nextUrl = new URL(res.headers.location, currentUrl).toString();
+              redirectChain.push(`${statusCode} -> ${nextUrl}`);
+              res.resume();
+              return makeRequest(nextUrl, redirectsLeft - 1);
+            }
+
+            let body = '';
+            res.setEncoding('utf8');
+            res.on('data', chunk => {
+              body += chunk;
+            });
+            res.on('end', () => {
+              const headers: Record<string, string> = {};
+              for (const [k, v] of Object.entries(res.headers)) {
+                if (typeof v === 'string') headers[k.toLowerCase()] = v;
+              }
+              resolve({
+                status: statusCode,
+                headers,
+                body,
+                finalUrl: currentUrl,
+                redirectChain,
+              });
+            });
+          }
+        );
+
+        req.on('error', err => reject(err));
+        req.on('timeout', () => {
+          req.destroy();
+          reject(new Error(`Timeout connecting to ${currentUrl}`));
+        });
+        req.end();
+      } catch (err) {
+        reject(err);
+      }
+    }
+
+    makeRequest(urlStr, maxRedirects);
   });
 }
 
@@ -533,15 +556,34 @@ async function runAudit() {
   }
 
   // ==========================================================================
-  // MODE C: DEPLOYED LIVE PRODUCTION HTTP INTEGRATION TESTS (if configured)
+  // MODE C: DEPLOYED LIVE PRODUCTION HTTP INTEGRATION TESTS
   // ==========================================================================
-  const deployedUrl = process.env.TEST_BASE_URL || process.env.DEPLOYED_URL || '';
+  const isLiveFlag = process.argv.includes('--live');
+  const deployedUrl = process.env.TEST_BASE_URL || process.env.DEPLOYED_URL || (isLiveFlag ? 'https://b.indiacybercafe.com' : '');
   let deployedPassed = 0;
   let deployedFailed = 0;
 
+  const liveTestTargets = [
+    { path: '/', expectedStatus: 200, label: 'Homepage' },
+    { path: '/services', expectedStatus: 200, label: 'Services Catalog' },
+    { path: '/price-list', expectedStatus: 200, label: 'Price List' },
+    { path: '/services/pan-card', expectedStatus: 200, label: 'PAN Card Service' },
+    { path: '/services/pan-card/apply-new-pan-card', expectedStatus: 200, label: 'PAN Card Subservice' },
+    { path: '/store/devices/mfs110-with-aadhaar-rd-service-l1-biometric-fingerprint-scanner', expectedStatus: 200, label: 'Store Product' },
+    { path: '/services/driving-license', expectedStatus: 200, label: 'Driving License Service' },
+    { path: '/services/driving-license/apply-for-learning-licence', expectedStatus: 200, label: 'Driving License Subservice' },
+    { path: '/forms-documents', expectedStatus: 200, label: 'Forms & Documents' },
+    { path: '/about', expectedStatus: 200, label: 'About Us' },
+    { path: '/contact', expectedStatus: 200, label: 'Contact Us' },
+    { path: '/privacy-policy', expectedStatus: 200, label: 'Privacy Policy' },
+    { path: '/terms-and-conditions', expectedStatus: 200, label: 'Terms and Conditions' },
+    { path: '/services/non-existent-service-404-test', expectedStatus: 404, label: 'Missing Service (404)' },
+    { path: '/random-unknown-page-route-404', expectedStatus: 404, label: 'Unknown Route (404)' },
+  ];
+
   if (deployedUrl && deployedUrl.startsWith('http')) {
     console.log(`\n--- [MODE C] DEPLOYED LIVE HTTP TESTS (${deployedUrl}) ---`);
-    for (const testItem of allTestRoutes.slice(0, 15)) {
+    for (const testItem of liveTestTargets) {
       const targetUrl = `${deployedUrl.replace(/\/+$/, '')}${testItem.path}`;
       try {
         const response = await sendHttpRequest(targetUrl);
@@ -555,13 +597,49 @@ async function runAudit() {
           response.headers['content-type'] || 'text/html'
         );
         results.push(evalRes);
-        if (evalRes.passed) deployedPassed++;
-        else deployedFailed++;
+        if (evalRes.passed) {
+          deployedPassed++;
+          console.log(`  ✅ [DEPLOYED PASS] ${testItem.path} (Status: ${response.status}${response.redirectChain.length ? `, Redirects: ${response.redirectChain.join(' ')}` : ''}, H1: "${evalRes.h1}", Content: ${evalRes.pageContentLength} chars)`);
+        } else {
+          deployedFailed++;
+          console.warn(`  ❌ [DEPLOYED FAIL] ${testItem.path} (Status: ${response.status}${response.redirectChain.length ? `, Redirects: ${response.redirectChain.join(' ')}` : ''}): ${evalRes.issues.join('; ')}`);
+        }
       } catch (err: any) {
         deployedFailed++;
+        results.push({
+          mode: 'deployed_http',
+          route: testItem.path,
+          url: targetUrl,
+          expectedStatus: testItem.expectedStatus,
+          actualStatus: 0,
+          passed: false,
+          contentType: '',
+          title: '',
+          titleValid: false,
+          description: '',
+          descValid: false,
+          canonical: '',
+          canonicalValid: false,
+          h1: '',
+          h1Valid: false,
+          hasMeaningfulContent: false,
+          contentLength: 0,
+          pageContentLength: 0,
+          internalLinksCount: 0,
+          hasStructuredData: false,
+          structuredDataValid: false,
+          robotsDirective: '',
+          robotsValid: false,
+          pricesFound: [],
+          issues: [`Connection error to deployed server: ${err.message}`],
+        });
+        console.warn(`  💥 [DEPLOYED ERROR] ${testItem.path}: ${err.message}`);
       }
     }
-    console.log(`  Deployed HTTP Tests: ${deployedPassed}/${Math.min(allTestRoutes.length, 15)} Passed`);
+    console.log(`  Deployed HTTP Tests: ${deployedPassed}/${liveTestTargets.length} Passed (${((deployedPassed / liveTestTargets.length) * 100).toFixed(1)}%)`);
+  } else {
+    console.log('\n--- [MODE C] DEPLOYED LIVE HTTP TESTS ---');
+    console.log('  ℹ️ Pass --live or set DEPLOYED_URL to execute live deployed HTTP verification.');
   }
 
   // ==========================================================================

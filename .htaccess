@@ -48,6 +48,9 @@
   RewriteEngine On
   Options -MultiViews
 
+  # Prevent Apache DirectoryIndex from serving static index.html on root "/"
+  DirectoryIndex disabled
+
   # Force HTTPS
   RewriteCond %{HTTPS} off
   RewriteRule ^(.*)$ https://%{HTTP_HOST}%{REQUEST_URI} [L,R=301]
@@ -56,9 +59,13 @@
   RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
   RewriteRule ^(.*)$ https://%1%{REQUEST_URI} [L,R=301]
 
-  # Serve existing physical static files, scripts, styles, images, and documents directly
-  RewriteCond %{REQUEST_FILENAME} -f [OR]
-  RewriteCond %{REQUEST_FILENAME} -d
+  # Homepage must always reach Node.js SSR (never intercepted by directory index or static index.html)
+  <IfModule mod_proxy.c>
+    RewriteRule ^$ http://127.0.0.1:3000/ [P,L]
+  </IfModule>
+
+  # Serve only existing physical files directly (never match directories like "/")
+  RewriteCond %{REQUEST_FILENAME} -f
   RewriteRule ^ - [L]
 
   # Keep API, data, assets, and site metadata requests passing through to Node.js

@@ -97,8 +97,8 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
             Apply for Government Services, Jobs & Documents online with India's trusted digital partner.
           </p>
           <div className="flex flex-col sm:flex-row flex-wrap gap-3 justify-center md:justify-start pt-2">
-            <button className="btn-primary text-sm sm:text-base px-6 sm:px-8 py-2.5 sm:py-3" onClick={() => onNavigate('services')}>Apply Now</button>
-            <button className="btn-outline text-sm sm:text-base px-6 sm:px-8 py-2.5 sm:py-3" onClick={() => onNavigate('track')}>Track Status</button>
+            <Link to="/services" className="btn-primary text-sm sm:text-base px-6 sm:px-8 py-2.5 sm:py-3 text-center inline-block">Apply Now</Link>
+            <Link to="/track" className="btn-outline text-sm sm:text-base px-6 sm:px-8 py-2.5 sm:py-3 text-center inline-block">Track Status</Link>
           </div>
         </div>
         <div className="hidden md:flex items-center justify-center shrink-0 h-[300px] lg:h-[300px]">
@@ -168,10 +168,10 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {filteredServices.map(service => (
-              <div 
+              <Link 
                 key={service.id} 
-                className="card group cursor-pointer p-4 sm:p-6"
-                onClick={() => navigate(`/services/${service.id}`)}
+                to={`/services/${service.id}`}
+                className="card group cursor-pointer p-4 sm:p-6 block"
               >
                 <div className={`flex items-center justify-center mx-auto mb-3 sm:mb-4 transition-all ${
                   service.iconType === 'url' && service.icon
@@ -190,7 +190,7 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
                 </div>
                 <h3 className="text-base sm:text-lg font-bold text-navy mb-1">{service.name || 'Service'}</h3>
                 <p className="text-slate-500 text-[10px] sm:text-xs line-clamp-2">{service.description || ''}</p>
-              </div>
+              </Link>
             ))}
             {filteredServices.length === 0 && searchTerm && (
               <div className="col-span-full p-10 text-center text-slate-400 italic">No services found for "{searchTerm}"</div>
@@ -199,7 +199,7 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
         )}
 
         <div className="text-center">
-          <button className="btn-primary" onClick={() => onNavigate('services')}>View All Services →</button>
+          <Link to="/services" className="btn-primary inline-block">View All Services →</Link>
         </div>
       </section>
 
@@ -245,10 +245,10 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
           <>
             <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-5 lg:gap-6">
               {popularProducts.map(product => (
-                <div
+                <Link
                   key={product.id}
-                  className="group cursor-pointer bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-slate-200 hover:border-primary hover:shadow-lg transition-all"
-                  onClick={() => navigate(`/store/${product.category}/${product.id}`)}
+                  to={`/store/${product.category}/${product.id}`}
+                  className="group cursor-pointer bg-white rounded-xl sm:rounded-2xl overflow-hidden border border-slate-200 hover:border-primary hover:shadow-lg transition-all block"
                 >
                   {/* Image Container */}
                   <div className="relative aspect-square overflow-hidden bg-slate-100">
@@ -304,14 +304,14 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
                       )}
                     </div>
                   </div>
-                </div>
+                </Link>
               ))}
             </div>
 
             <div className="text-center">
-              <button className="btn-primary" onClick={() => navigate('store')}>
+              <Link to="/store" className="btn-primary inline-block">
                 Explore Store →
-              </button>
+              </Link>
             </div>
           </>
         ) : (
@@ -323,9 +323,9 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
             </div>
             <h3 className="text-lg sm:text-xl font-bold text-navy mb-2">No Products Available</h3>
             <p className="text-sm text-slate-500 mb-6">Our store is coming soon with amazing products!</p>
-            <button className="btn-primary" onClick={() => navigate('store')}>
+            <Link to="/store" className="btn-primary inline-block">
               View Store
-            </button>
+            </Link>
           </div>
         )}
       </section>
