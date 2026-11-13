@@ -1,54 +1,54 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-13T10:11:44.616Z",
+  "generatedAt": "2026-11-13T10:36:35.274Z",
   "categories": [
     {
       "id": "affidavit-declaration",
-      "name": "Affidavit & Declaration",
       "description": "Official affidavits, declarations, undertakings, and related legal documents for various personal and official purposes.",
       "icon": "file-text",
+      "name": "Affidavit & Declaration",
       "order": 0
     },
     {
       "id": "banking-forms",
-      "name": "Banking Forms",
       "description": "Official banking forms for account opening, KYC, updates, transactions, and other banking services.",
       "icon": "file-text",
+      "name": "Banking Forms",
       "order": 0
     },
     {
       "id": "central-government-forms",
-      "name": "Central Government Forms",
       "description": "Official Central Government forms, applications, certificates, and essential documents for citizens across India.",
       "icon": "file-text",
+      "name": "Central Government Forms",
       "order": 0
     },
     {
       "id": "education-forms",
-      "name": "Education Forms",
       "description": "Education forms, admission applications, scholarships, certificates, and other academic documents.",
       "icon": "file-text",
+      "name": "Education Forms",
       "order": 0
     },
     {
       "id": "mp-government-forms",
-      "name": "MP Government Forms",
       "description": "Government forms, applications, certificates, and official documents for Madhya Pradesh.",
       "icon": "file-text",
+      "name": "MP Government Forms",
       "order": 0
     },
     {
       "id": "pan-card",
-      "name": "PAN CARD",
       "description": "Official PAN Card forms, applications, corrections, updates, and related documents for Indian citizens.",
       "icon": "file-text",
+      "name": "PAN CARD",
       "order": 0
     },
     {
       "id": "tit-advance",
-      "name": "TIT Advance",
       "description": "",
       "icon": "file-text",
+      "name": "TIT Advance",
       "order": 0
     }
   ]

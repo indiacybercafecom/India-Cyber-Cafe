@@ -115,8 +115,13 @@ async function run() {
       assert.strictEqual(data.status, 'ok');
       assert.strictEqual(data.publicDataAvailable, true);
       assert.strictEqual(typeof data.firebaseAdminConfigured, 'boolean');
+      assert.strictEqual(typeof data.credentialSource, 'string');
+      assert.strictEqual(typeof data.projectId, 'string');
+      assert.strictEqual(typeof data.rtdbConnected, 'boolean');
+      assert.strictEqual(typeof data.rtdbChecked, 'boolean');
       assert.strictEqual(typeof data.razorpayConfigured, 'boolean');
       assert.strictEqual(typeof data.testMode, 'boolean');
+      assert(!JSON.stringify(data).includes('PRIVATE KEY'), '/api/health must never leak credentials');
     });
 
     // 2. Verify /data/*.json endpoints serve fresh public/data files with no-store headers

@@ -1,0 +1,190 @@
+{
+  "ICC/STORE-13112026-103555-68342": {
+    "id": "ICC/STORE-13112026-103555-68342",
+    "uid": "uid_new_user",
+    "userId": "uid_new_user",
+    "isGuest": false,
+    "guestTokenHash": "c50466e842167945add230b6759b184c3e5d5e421ff5b8612cd16e71bce018e7",
+    "email": "rahul.test@example.com",
+    "items": [
+      {
+        "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+        "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
+        "price": 499,
+        "discountedPrice": 49,
+        "quantity": 2
+      }
+    ],
+    "deliveryAddress": {
+      "name": "Rahul Sharma",
+      "email": "rahul.test@example.com",
+      "phone": "9876543210",
+      "addressLine1": "12 Main Market Road",
+      "addressLine2": "Near Bus Stand",
+      "city": "Singrauli",
+      "state": "Madhya Pradesh",
+      "pincode": "486886",
+      "country": "India"
+    },
+    "subtotal": 98,
+    "deliveryCharges": 0,
+    "total": 98,
+    "paymentMethod": "cash",
+    "paymentStatus": "pending",
+    "orderStatus": "pending",
+    "notes": [
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Order placed with Cash on Delivery (COD)",
+        "time": "2026-11-13T10:35:55.381Z"
+      }
+    ],
+    "createdAt": "2026-11-13T10:35:55.381Z",
+    "updatedAt": "2026-11-13T10:35:55.381Z",
+    "linkedAt": "2026-11-13T10:35:55.666Z"
+  },
+  "ICC/STORE-13112026-103555-25965": {
+    "id": "ICC/STORE-13112026-103555-25965",
+    "uid": "uid_cust_1",
+    "userId": "uid_cust_1",
+    "isGuest": false,
+    "email": "cust1@example.com",
+    "items": [
+      {
+        "productId": "-OnAp1lEhlTb3WRi_rsw",
+        "productName": "Men’s T-Shirts",
+        "price": 500,
+        "discountedPrice": 299,
+        "quantity": 1,
+        "customImageUrl": "/uploads/custom-images/custom_1794566155477_86a11da03d98.png"
+      }
+    ],
+    "deliveryAddress": {
+      "name": "Rahul Sharma",
+      "email": "cust1@example.com",
+      "phone": "9876543210",
+      "addressLine1": "12 Main Market Road",
+      "addressLine2": "Near Bus Stand",
+      "city": "Singrauli",
+      "state": "Madhya Pradesh",
+      "pincode": "486886",
+      "country": "India"
+    },
+    "subtotal": 299,
+    "deliveryCharges": 0,
+    "total": 299,
+    "paymentMethod": "razorpay",
+    "paymentStatus": "completed",
+    "razorpayOrderId": "order_test_5c292ea7f480",
+    "orderStatus": "processing",
+    "notes": [
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment initiated via Razorpay (Ref: order_test_5c292ea7f480)",
+        "time": "2026-11-13T10:35:55.485Z"
+      },
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment verified via Razorpay (pay_test_111)",
+        "time": "2026-11-13T10:35:55.557Z"
+      }
+    ],
+    "createdAt": "2026-11-13T10:35:55.485Z",
+    "updatedAt": "2026-11-13T10:35:55.557Z",
+    "razorpayPaymentId": "pay_test_111"
+  },
+  "ICC/STORE-13112026-103555-53117": {
+    "id": "ICC/STORE-13112026-103555-53117",
+    "uid": "guest",
+    "userId": "guest",
+    "isGuest": true,
+    "guestTokenHash": "ca87aac57df2f2bae62a8d4c3987dca92ab2c122d3f7bfff1b3671d55f9d4e5b",
+    "email": "rahul.test@example.com",
+    "items": [
+      {
+        "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+        "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
+        "price": 499,
+        "discountedPrice": 49,
+        "quantity": 1
+      }
+    ],
+    "deliveryAddress": {
+      "name": "Rahul Sharma",
+      "email": "rahul.test@example.com",
+      "phone": "9876543210",
+      "addressLine1": "12 Main Market Road",
+      "addressLine2": "Near Bus Stand",
+      "city": "Singrauli",
+      "state": "Madhya Pradesh",
+      "pincode": "486886",
+      "country": "India"
+    },
+    "subtotal": 49,
+    "deliveryCharges": 0,
+    "total": 49,
+    "paymentMethod": "razorpay",
+    "paymentStatus": "completed",
+    "razorpayOrderId": "order_test_a03551c2a871",
+    "orderStatus": "processing",
+    "notes": [
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment initiated via Razorpay (Ref: order_test_a03551c2a871)",
+        "time": "2026-11-13T10:35:55.566Z"
+      },
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment confirmed via Razorpay webhook (pay_webhook_222)",
+        "time": "2026-11-13T10:35:55.577Z"
+      }
+    ],
+    "createdAt": "2026-11-13T10:35:55.566Z",
+    "updatedAt": "2026-11-13T10:35:55.577Z",
+    "razorpayPaymentId": "pay_webhook_222"
+  },
+  "ICC/STORE-LEGACY-1": {
+    "id": "ICC/STORE-LEGACY-1",
+    "userId": "uid_cust_1",
+    "email": "cust1@example.com",
+    "items": [
+      {
+        "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+        "productName": "Legacy Book",
+        "price": 49,
+        "quantity": 1
+      }
+    ],
+    "deliveryAddress": {
+      "name": "Rahul Sharma",
+      "email": "cust1@example.com",
+      "phone": "9876543210",
+      "addressLine1": "12 Main Market Road",
+      "addressLine2": "Near Bus Stand",
+      "city": "Singrauli",
+      "state": "Madhya Pradesh",
+      "pincode": "486886",
+      "country": "India"
+    },
+    "subtotal": 49,
+    "deliveryCharges": 0,
+    "total": 49,
+    "paymentMethod": "cash",
+    "paymentStatus": "pending",
+    "orderStatus": "pending",
+    "notes": [],
+    "createdAt": "2026-11-13T10:35:55.592Z",
+    "updatedAt": "2026-11-13T10:35:55.592Z",
+    "uid": "uid_cust_1"
+  }
+}

@@ -1,3 +1,4 @@
+import "dotenv/config";
 import express from "express";
 import { createServer as createViteServer } from "vite";
 import nodemailer from "nodemailer";
@@ -23,10 +24,13 @@ import {
   handleLinkGuestOrders,
   handleLookupEmail,
   handleUploadCustomImage,
-  getStoreServiceStatus
+  getStoreServiceHealth
 } from "./src/server/storeOrderService.js";
 
-dotenv.config();
+const resolvedRoot = fs.existsSync(path.join(process.cwd(), 'package.json'))
+  ? process.cwd()
+  : path.resolve(process.cwd(), '..');
+dotenv.config({ path: path.join(resolvedRoot, '.env'), quiet: true } as any);
 
 async function startServer() {
   const app = express();
@@ -164,7 +168,7 @@ async function startServer() {
   }
 
   // Health check
-  app.get("/api/health", (req, res) => {
+  app.get("/api/health", async (req, res) => {
     const dataDir = path.join(APP_ROOT, 'public/data');
     const hasPublicData =
       fs.existsSync(path.join(dataDir, 'services.json')) &&
@@ -173,12 +177,17 @@ async function startServer() {
       fs.existsSync(path.join(dataDir, 'documents.json')) &&
       fs.existsSync(path.join(dataDir, 'document-categories.json'));
 
+    const forceCheck = req.query?.force === '1' || req.query?.deep === '1';
+    const health = await getStoreServiceHealth({ checkConnectivity: true, force: forceCheck });
+
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
     res.json({
       status: "ok",
       success: true,
       publicDataAvailable: hasPublicData,
-      ...getStoreServiceStatus(),
+      ...health,
+      environment: process.env.NODE_ENV || 'production',
+      uptime: Math.round(process.uptime()),
       timestamp: new Date().toISOString(),
     });
   });
@@ -990,11 +999,6 @@ async function startServer() {
       'prapatra',
       'praman',
       'patra',
-      'pyq',
-      'notes',
-      'paper',
-      'syllabus',
-      'solution',
     ]);
     return String(title)
       .toLowerCase()

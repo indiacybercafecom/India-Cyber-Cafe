@@ -1,3 +1,4 @@
+import 'dotenv/config';
 import express from 'express';
 import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
@@ -23,14 +24,14 @@ import {
   handleLinkGuestOrders,
   handleLookupEmail,
   handleUploadCustomImage,
-  getStoreServiceStatus
+  getStoreServiceHealth
 } from './src/server/storeOrderService.js';
-
-// Load environment variables
-dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Ensure .env in __dirname is also loaded even if cwd differs on Hostinger
+dotenv.config({ path: path.join(__dirname, '.env'), quiet: true });
 
 // Server configuration
 const PORT = Number(process.env.PORT) || 3000;
@@ -140,7 +141,7 @@ const transporter = nodemailer.createTransport({
 // API ROUTES - Define these BEFORE the SPA fallback
 // ============================================================================
 // Health check endpoint
-app.get('/api/health', (req, res) => {
+app.get('/api/health', async (req, res) => {
   const dataDir = path.join(APP_ROOT, 'public/data');
   const hasPublicData =
     fs.existsSync(path.join(dataDir, 'services.json')) &&
@@ -149,13 +150,16 @@ app.get('/api/health', (req, res) => {
     fs.existsSync(path.join(dataDir, 'documents.json')) &&
     fs.existsSync(path.join(dataDir, 'document-categories.json'));
 
+  const forceCheck = req.query?.force === '1' || req.query?.deep === '1';
+  const health = await getStoreServiceHealth({ checkConnectivity: true, force: forceCheck });
+
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.status(200).json({
     status: 'ok',
     success: true,
     message: 'Backend is running',
     publicDataAvailable: hasPublicData,
-    ...getStoreServiceStatus(),
+    ...health,
     environment: process.env.NODE_ENV || 'production',
     uptime: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
@@ -964,11 +968,6 @@ const extractCoreTokens = (title) => {
     'prapatra',
     'praman',
     'patra',
-    'pyq',
-    'notes',
-    'paper',
-    'syllabus',
-    'solution',
   ]);
   return String(title)
     .toLowerCase()

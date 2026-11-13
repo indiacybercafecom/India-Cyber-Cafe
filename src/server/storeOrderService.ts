@@ -1,3 +1,5 @@
+import 'dotenv/config';
+import dotenv from 'dotenv';
 import { Request, Response } from 'express';
 import crypto from 'crypto';
 import fs from 'fs';
@@ -16,7 +18,11 @@ const ORDERS_STORE_PATH = path.join(APP_ROOT, 'data/orders_store.json');
 const PRODUCTS_DATA_PATH = path.join(APP_ROOT, 'public/data/products.json');
 const DIST_PRODUCTS_PATH = path.join(APP_ROOT, 'dist/data/products.json');
 const CUSTOM_UPLOADS_DIR = path.join(APP_ROOT, 'data/uploads/custom-images');
-const RTDB_PUBLIC_URL = (process.env.FIREBASE_DATABASE_URL || 'https://india-cyber-cafe-default-rtdb.firebaseio.com').replace(/\/+$/, '');
+const DEFAULT_PROJECT_ID = 'india-cyber-cafe';
+const DEFAULT_RTDB_URL = 'https://india-cyber-cafe-default-rtdb.firebaseio.com';
+
+const getRtdbDatabaseUrl = () => (process.env.FIREBASE_DATABASE_URL || DEFAULT_RTDB_URL).replace(/\/+$/, '');
+const getConfiguredProjectId = () => (process.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID).trim() || DEFAULT_PROJECT_ID;
 
 const isTestMode = () => process.env.STORE_ORDER_TEST_MODE === '1';
 
@@ -48,16 +54,47 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   });
 }
 
-function parseServiceAccountRaw(raw: string): ServiceAccount | null {
+function parseServiceAccountRaw(raw: string): (ServiceAccount & { type?: string; project_id?: string; client_email?: string; private_key?: string }) | null {
   try {
-    const trimmed = raw.trim();
+    let trimmed = String(raw || '').trim();
     if (!trimmed) return null;
-    if (trimmed.startsWith('{')) {
-      return JSON.parse(trimmed) as ServiceAccount;
+    if ((trimmed.startsWith("'") && trimmed.endsWith("'")) || (trimmed.startsWith('"') && trimmed.endsWith('"'))) {
+      const inner = trimmed.slice(1, -1).trim();
+      if (inner.startsWith('{') || /^[A-Za-z0-9+/=]+$/.test(inner)) {
+        trimmed = inner;
+      }
     }
-    const decoded = Buffer.from(trimmed, 'base64').toString('utf-8');
-    if (decoded.trim().startsWith('{')) {
-      return JSON.parse(decoded) as ServiceAccount;
+
+    let parsed: any = null;
+    if (trimmed.startsWith('{')) {
+      try {
+        parsed = JSON.parse(trimmed);
+      } catch {
+        parsed = JSON.parse(trimmed.replace(/\r?\n/g, '\\n'));
+      }
+    } else {
+      const decoded = Buffer.from(trimmed, 'base64').toString('utf-8');
+      if (decoded.trim().startsWith('{')) {
+        parsed = JSON.parse(decoded);
+      }
+    }
+
+    if (parsed && typeof parsed === 'object') {
+      const clientEmail = typeof parsed.client_email === 'string' ? parsed.client_email.trim() : typeof parsed.clientEmail === 'string' ? parsed.clientEmail.trim() : '';
+      const rawKey = typeof parsed.private_key === 'string' ? parsed.private_key : typeof parsed.privateKey === 'string' ? parsed.privateKey : '';
+      const privateKey = rawKey.replace(/\\n/g, '\n');
+
+      // Strictly reject client Firebase configs or incomplete credentials
+      if (parsed.type !== 'service_account' || !clientEmail || !privateKey.includes('PRIVATE KEY')) {
+        console.warn('⚠️ Ignoring non-service-account Firebase credential payload (requires type="service_account", client_email, private_key).');
+        return null;
+      }
+
+      return {
+        ...parsed,
+        client_email: clientEmail,
+        private_key: privateKey,
+      };
     }
   } catch (err: any) {
     console.warn('⚠️ Invalid service account JSON/base64:', err?.message || err);
@@ -65,31 +102,68 @@ function parseServiceAccountRaw(raw: string): ServiceAccount | null {
   return null;
 }
 
-function resolveFirebaseCredential(): { credential: any | null; source: string } {
+function loadAppRootEnvIfPresent() {
+  try {
+    const envPath = path.join(APP_ROOT, '.env');
+    if (fs.existsSync(envPath)) {
+      dotenv.config({ path: envPath, quiet: true } as any);
+    }
+  } catch {}
+}
+
+function resolveFirebaseCredential(): { credential: any | null; source: string; method: string; projectId?: string } {
   const inlineEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
   if (inlineEnv) {
+    const methodName = process.env.FIREBASE_SERVICE_ACCOUNT_JSON ? 'FIREBASE_SERVICE_ACCOUNT_JSON' : 'FIREBASE_SERVICE_ACCOUNT';
     const parsed = parseServiceAccountRaw(inlineEnv);
-    if (parsed) return { credential: cert(parsed), source: 'FIREBASE_SERVICE_ACCOUNT_JSON' };
+    if (parsed) {
+      return {
+        credential: cert(parsed),
+        source: 'environment',
+        method: methodName,
+        projectId: parsed.project_id
+      };
+    }
   }
 
   if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
     const parsed = parseServiceAccountRaw(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64);
-    if (parsed) return { credential: cert(parsed), source: 'FIREBASE_SERVICE_ACCOUNT_BASE64' };
+    if (parsed) {
+      return {
+        credential: cert(parsed),
+        source: 'environment',
+        method: 'FIREBASE_SERVICE_ACCOUNT_BASE64',
+        projectId: parsed.project_id
+      };
+    }
   }
 
   if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
-    return {
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID || 'india-cyber-cafe',
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL.trim(),
-        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      }),
-      source: 'FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY'
-    };
+    const normalizedEmail = process.env.FIREBASE_CLIENT_EMAIL.trim();
+    const normalizedKey = process.env.FIREBASE_PRIVATE_KEY.trim().replace(/^['"]|['"]$/g, '').replace(/\\n/g, '\n');
+    if (normalizedEmail && normalizedKey.includes('PRIVATE KEY')) {
+      return {
+        credential: cert({
+          projectId: getConfiguredProjectId(),
+          clientEmail: normalizedEmail,
+          privateKey: normalizedKey,
+        }),
+        source: 'environment',
+        method: 'FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY',
+        projectId: getConfiguredProjectId()
+      };
+    }
+    console.warn('⚠️ Ignoring incomplete FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY environment variables.');
   }
 
+  const envGacPath = process.env.GOOGLE_APPLICATION_CREDENTIALS
+    ? path.isAbsolute(process.env.GOOGLE_APPLICATION_CREDENTIALS)
+      ? process.env.GOOGLE_APPLICATION_CREDENTIALS
+      : path.join(APP_ROOT, process.env.GOOGLE_APPLICATION_CREDENTIALS)
+    : null;
+
   const candidatePaths = [
-    process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    envGacPath,
     path.join(APP_ROOT, 'firebase-service-account.json'),
     path.join(APP_ROOT, 'service-account.json'),
     path.join(APP_ROOT, 'data/firebase-service-account.json'),
@@ -99,7 +173,14 @@ function resolveFirebaseCredential(): { credential: any | null; source: string }
     try {
       if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
         const parsed = parseServiceAccountRaw(fs.readFileSync(filePath, 'utf-8'));
-        if (parsed) return { credential: cert(parsed), source: path.basename(filePath) };
+        if (parsed) {
+          return {
+            credential: cert(parsed),
+            source: 'file',
+            method: envGacPath && filePath === envGacPath ? 'GOOGLE_APPLICATION_CREDENTIALS' : path.basename(filePath),
+            projectId: parsed.project_id
+          };
+        }
       }
     } catch {}
   }
@@ -112,47 +193,143 @@ function resolveFirebaseCredential(): { credential: any | null; source: string }
     process.env.GCE_METADATA_HOST
   );
   if (isGcpRuntime) {
-    return { credential: undefined, source: 'GCP_ADC' };
+    return { credential: undefined, source: 'gcp_adc', method: 'GCP_ADC' };
   }
 
-  return { credential: null, source: 'none' };
+  return { credential: null, source: 'none', method: 'none' };
 }
 
-// Initialize Firebase Admin SDK safely (singleton) ONLY when valid credentials are present
+// Initialize Firebase Admin SDK safely (singleton & re-entrant if .env loads after import)
 let rtdbAdmin: Database | null = null;
 let authAdmin: Auth | null = null;
 let hasAdminCredential = false;
 let credentialSource = 'none';
+let credentialMethod = 'none';
+let activeProjectId = DEFAULT_PROJECT_ID;
+let loggedMissingWarning = false;
 
-try {
-  const { credential, source } = resolveFirebaseCredential();
-  credentialSource = source;
-  if (source !== 'none') {
-    const appConfig: any = {
-      projectId: process.env.FIREBASE_PROJECT_ID || 'india-cyber-cafe',
-      databaseURL: RTDB_PUBLIC_URL
-    };
-    if (credential) {
-      appConfig.credential = credential;
-    }
-    const app = getApps().length ? getApps()[0] : initializeApp(appConfig);
-    rtdbAdmin = getDatabase(app);
-    authAdmin = getAuth(app);
-    hasAdminCredential = true;
-    console.log(`✅ Firebase Admin SDK initialized (${source})`);
-  } else if (!isTestMode()) {
-    console.warn('⚠️ Firebase Admin credentials not configured (set FIREBASE_SERVICE_ACCOUNT_JSON or firebase-service-account.json). Protected /orders writes will fail fast instead of hanging.');
+function ensureFirebaseAdminInitialized(): boolean {
+  if (hasAdminCredential && rtdbAdmin && authAdmin) {
+    return true;
   }
-} catch (err: any) {
-  console.warn('⚠️ Firebase Admin SDK init warning:', err?.message || err);
+
+  loadAppRootEnvIfPresent();
+
+  try {
+    const { credential, source, method, projectId } = resolveFirebaseCredential();
+    credentialSource = source;
+    credentialMethod = method;
+    activeProjectId = projectId || getConfiguredProjectId();
+
+    if (source !== 'none') {
+      const appConfig: any = {
+        projectId: activeProjectId,
+        databaseURL: getRtdbDatabaseUrl()
+      };
+      if (credential) {
+        appConfig.credential = credential;
+      }
+      const app = getApps().length ? getApps()[0] : initializeApp(appConfig);
+      rtdbAdmin = getDatabase(app);
+      authAdmin = getAuth(app);
+      hasAdminCredential = true;
+      console.log(`✅ Firebase Admin SDK initialized (source=${source}, method=${method}, projectId=${activeProjectId})`);
+      return true;
+    } else if (!isTestMode() && !loggedMissingWarning) {
+      loggedMissingWarning = true;
+      console.warn('⚠️ Firebase Admin credentials not configured (set FIREBASE_SERVICE_ACCOUNT_JSON or firebase-service-account.json). Protected /orders writes will fail fast instead of hanging.');
+    }
+  } catch (err: any) {
+    console.warn('⚠️ Firebase Admin SDK init warning:', err?.message || err);
+  }
+
+  return false;
+}
+
+ensureFirebaseAdminInitialized();
+
+let connectivityCache: {
+  expiresAt: number;
+  result: { rtdbConnected: boolean; rtdbChecked: boolean; rtdbLatencyMs: number | null; rtdbError?: string };
+} = {
+  expiresAt: 0,
+  result: { rtdbConnected: false, rtdbChecked: false, rtdbLatencyMs: null }
+};
+
+export async function checkFirebaseAdminConnectivity(options: { force?: boolean; timeoutMs?: number } = {}) {
+  const { force = false, timeoutMs = 4000 } = options;
+  const now = Date.now();
+  if (!force && connectivityCache.expiresAt > now) {
+    return connectivityCache.result;
+  }
+
+  const ready = ensureFirebaseAdminInitialized();
+  if (!ready || !rtdbAdmin) {
+    const res = {
+      rtdbConnected: false,
+      rtdbChecked: false,
+      rtdbLatencyMs: null,
+      rtdbError: 'Firebase Admin credentials not configured'
+    };
+    connectivityCache = { expiresAt: now + 5000, result: res };
+    return res;
+  }
+
+  if (isTestMode()) {
+    return {
+      rtdbConnected: false,
+      rtdbChecked: false,
+      rtdbLatencyMs: 0
+    };
+  }
+
+  const startedAt = Date.now();
+  try {
+    // Locked /orders read proves real Admin-privileged RTDB connectivity (anonymous clients are denied by rules)
+    await withTimeout(rtdbAdmin.ref('orders').limitToFirst(1).once('value'), timeoutMs, 'Firebase Admin RTDB connectivity check');
+    const res = {
+      rtdbConnected: true,
+      rtdbChecked: true,
+      rtdbLatencyMs: Date.now() - startedAt
+    };
+    connectivityCache = { expiresAt: Date.now() + 15000, result: res };
+    return res;
+  } catch (err: any) {
+    const rawMsg = String(err?.message || 'RTDB connectivity check failed');
+    const safeMsg = rawMsg.replace(/https?:\/\/[^\s]+/g, '[redacted-url]').slice(0, 180);
+    const res = {
+      rtdbConnected: false,
+      rtdbChecked: true,
+      rtdbLatencyMs: Date.now() - startedAt,
+      rtdbError: safeMsg
+    };
+    connectivityCache = { expiresAt: Date.now() + 5000, result: res };
+    return res;
+  }
 }
 
 export function getStoreServiceStatus() {
+  ensureFirebaseAdminInitialized();
   return {
     firebaseAdminConfigured: hasAdminCredential,
     credentialSource,
+    credentialMethod,
+    projectId: activeProjectId,
+    databaseUrl: getRtdbDatabaseUrl(),
     razorpayConfigured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
     testMode: isTestMode()
+  };
+}
+
+export async function getStoreServiceHealth(options: { checkConnectivity?: boolean; force?: boolean } = {}) {
+  const status = getStoreServiceStatus();
+  if (options.checkConnectivity === false) {
+    return status;
+  }
+  const connectivity = await checkFirebaseAdminConnectivity({ force: Boolean(options.force) });
+  return {
+    ...status,
+    ...connectivity
   };
 }
 
@@ -303,6 +480,7 @@ async function loadProductCatalog(): Promise<any[]> {
     return catalogCache.products;
   }
 
+  ensureFirebaseAdminInitialized();
   if (hasAdminCredential && rtdbAdmin && !isTestMode()) {
     try {
       const snap = await withTimeout(rtdbAdmin.ref('products').once('value'), 5000, 'RTDB Admin catalog read');
@@ -324,7 +502,7 @@ async function loadProductCatalog(): Promise<any[]> {
   // Public RTDB REST read (/products is public read in database.rules.json) with strict timeout
   if (!isTestMode()) {
     try {
-      const resp = await fetch(`${RTDB_PUBLIC_URL}/products.json`, {
+      const resp = await fetch(`${getRtdbDatabaseUrl()}/products.json`, {
         signal: AbortSignal.timeout(4500),
         headers: { Accept: 'application/json' }
       });
@@ -395,6 +573,7 @@ async function getVerifiedAuthUser(req: Request): Promise<{ uid: string; email: 
     return null;
   }
 
+  ensureFirebaseAdminInitialized();
   if (hasAdminCredential && authAdmin) {
     try {
       const decoded = await withTimeout(authAdmin.verifyIdToken(token), 5000, 'Auth ID token verification');
@@ -438,6 +617,7 @@ async function getVerifiedAuthUser(req: Request): Promise<{ uid: string; email: 
 }
 
 function requireAdminDatabase(): Database {
+  ensureFirebaseAdminInitialized();
   if (!hasAdminCredential || !rtdbAdmin) {
     throw new DatabaseConfigError('Order database service is unavailable: Firebase Admin credentials are not configured on the server.');
   }
@@ -740,6 +920,7 @@ function sendOrderEmails(order: any, type: 'cod' | 'online') {
 }
 
 async function recordVerifiedPaymentTransaction(order: any, paymentId: string, razorpayOrderId: string, now: string) {
+  ensureFirebaseAdminInitialized();
   if (isTestMode() || !hasAdminCredential || !rtdbAdmin) return;
   try {
     const paymentKey = `pay_${toRtdbOrderKey(paymentId)}`;
@@ -1387,7 +1568,7 @@ export async function handleGetMyOrders(req: Request, res: Response) {
           collectOrder(ord);
         }
       }
-    } else if (hasAdminCredential && rtdbAdmin) {
+    } else if (ensureFirebaseAdminInitialized() && rtdbAdmin) {
       // 1. Canonical uid query
       const uidSnap = await withTimeout(rtdbAdmin.ref('orders').orderByChild('uid').equalTo(uid).once('value'), 9000, 'Querying user orders');
       if (uidSnap.exists()) {
@@ -1598,7 +1779,7 @@ export async function handleLinkGuestOrders(req: Request, res: Response) {
             linkedCount++;
           }
         }
-      } else if (hasAdminCredential && rtdbAdmin) {
+      } else if (ensureFirebaseAdminInitialized() && rtdbAdmin) {
         const snap = await withTimeout(rtdbAdmin.ref('orders').orderByChild('email').equalTo(email).once('value'), 9000, 'Linking orders by email');
         if (snap.exists()) {
           for (const [key, ord] of Object.entries(snap.val() || {}) as [string, any][]) {
@@ -1638,6 +1819,7 @@ export async function handleLookupEmail(req: Request, res: Response) {
       return res.json({ success: true, found: false });
     }
 
+    ensureFirebaseAdminInitialized();
     if (hasAdminCredential && authAdmin && !isTestMode()) {
       try {
         const userRecord = await withTimeout(authAdmin.getUserByEmail(email), 4000, 'Email lookup');

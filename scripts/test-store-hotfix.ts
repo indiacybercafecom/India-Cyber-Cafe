@@ -446,10 +446,10 @@ async function runTests() {
         const { spawnSync } = await import('child_process');
         const script = `
           import express from 'express';
-          import { handleCodOrder, handleCreatePaymentOrder, getStoreServiceStatus } from './src/server/storeOrderService.js';
-          const status = getStoreServiceStatus();
-          if (status.firebaseAdminConfigured !== false) {
-            throw new Error('Expected firebaseAdminConfigured === false without credentials');
+          import { handleCodOrder, handleCreatePaymentOrder, getStoreServiceHealth } from './src/server/storeOrderService.js';
+          const status = await getStoreServiceHealth({ checkConnectivity: true });
+          if (status.firebaseAdminConfigured !== false || status.credentialSource !== 'none' || status.rtdbConnected !== false) {
+            throw new Error('Unexpected status without credentials: ' + JSON.stringify(status));
           }
           const app = express();
           app.use(express.json());
@@ -487,6 +487,9 @@ async function runTests() {
           STORE_ORDER_TEST_MODE: '0',
           FIREBASE_SERVICE_ACCOUNT_JSON: '',
           FIREBASE_SERVICE_ACCOUNT: '',
+          FIREBASE_SERVICE_ACCOUNT_BASE64: '',
+          FIREBASE_CLIENT_EMAIL: '',
+          FIREBASE_PRIVATE_KEY: '',
           GOOGLE_APPLICATION_CREDENTIALS: ''
         };
         const res = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
@@ -498,7 +501,73 @@ async function runTests() {
         assert.strictEqual(res.status, 0, `Fast-fail child check failed: ${res.stderr || res.stdout}`);
       });
 
-      // 14. Static UI & client reliability invariants
+      // 14. ESM .env loading + rejection of client config JSON as Admin credentials
+      await check('Loads FIREBASE_SERVICE_ACCOUNT_JSON from .env before Admin init and rejects client config payloads', async () => {
+        const { spawnSync } = await import('child_process');
+        const { pathToFileURL } = await import('url');
+        const os = await import('os');
+
+        const { privateKey } = crypto.generateKeyPairSync('rsa', {
+          modulusLength: 2048,
+          publicKeyEncoding: { type: 'spki', format: 'pem' },
+          privateKeyEncoding: { type: 'pkcs8', format: 'pem' }
+        });
+
+        const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'icc-env-test-'));
+        try {
+          fs.writeFileSync(path.join(tmpDir, 'package.json'), '{"type":"module"}', 'utf-8');
+          const svcUrl = pathToFileURL(path.resolve('src/server/storeOrderService.js')).href;
+
+          // A. Rejects Firebase Web Client config passed into FIREBASE_SERVICE_ACCOUNT_JSON
+          const badEnvRes = spawnSync(
+            process.execPath,
+            ['--input-type=module', '-e', `import { getStoreServiceStatus } from '${svcUrl}'; const st = getStoreServiceStatus(); if (st.firebaseAdminConfigured !== false) process.exit(2);`],
+            {
+              cwd: tmpDir,
+              env: {
+                PATH: process.env.PATH || '',
+                NODE_ENV: 'production',
+                STORE_ORDER_TEST_MODE: '0',
+                FIREBASE_SERVICE_ACCOUNT_JSON: JSON.stringify({ apiKey: 'AIzaTestClientKey', projectId: 'india-cyber-cafe' })
+              },
+              encoding: 'utf-8',
+              timeout: 8000
+            }
+          );
+          assert.strictEqual(badEnvRes.status, 0, `Client config rejection check failed: ${badEnvRes.stderr || badEnvRes.stdout}`);
+
+          // B. Valid service_account in .env is loaded properly by ESM import & reports source="environment"
+          const fakeSa = {
+            type: 'service_account',
+            project_id: 'india-cyber-cafe',
+            private_key_id: 'key123',
+            private_key: privateKey,
+            client_email: 'firebase-adminsdk-test@india-cyber-cafe.iam.gserviceaccount.com',
+            client_id: '1234567890'
+          };
+          fs.writeFileSync(path.join(tmpDir, '.env'), `FIREBASE_SERVICE_ACCOUNT_JSON=${JSON.stringify(fakeSa)}\n`, 'utf-8');
+
+          const goodEnvRes = spawnSync(
+            process.execPath,
+            ['--input-type=module', '-e', `import { getStoreServiceStatus } from '${svcUrl}'; const st = getStoreServiceStatus(); if (!st.firebaseAdminConfigured || st.credentialSource !== 'environment' || st.credentialMethod !== 'FIREBASE_SERVICE_ACCOUNT_JSON') { console.error(st); process.exit(2); }`],
+            {
+              cwd: tmpDir,
+              env: {
+                PATH: process.env.PATH || '',
+                NODE_ENV: 'production',
+                STORE_ORDER_TEST_MODE: '0'
+              },
+              encoding: 'utf-8',
+              timeout: 8000
+            }
+          );
+          assert.strictEqual(goodEnvRes.status, 0, `ESM .env loading check failed: ${goodEnvRes.stderr || goodEnvRes.stdout}`);
+        } finally {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        }
+      });
+
+      // 15. Static UI & client reliability invariants
       await check('StoreCheckout, razorpayService, and main.tsx maintain timeout, recovery, and non-hydration invariants', () => {
         const checkoutSrc = fs.readFileSync(path.resolve('src/pages/StoreCheckout.tsx'), 'utf-8');
         const razorpaySrc = fs.readFileSync(path.resolve('src/services/razorpayService.ts'), 'utf-8');

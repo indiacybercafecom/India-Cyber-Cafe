@@ -6,6 +6,10 @@ coverage/
 *.log
 .env*
 !.env.example
+firebase-service-account.json
+service-account.json
+data/firebase-service-account.json
+*-firebase-adminsdk-*.json
 icc_data/
 uploads/
 persistent_uploads/
