@@ -405,7 +405,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
   };
 
   return (
-    <div className="w-full min-h-screen px-2 sm:px-4 py-4 sm:py-8 flex flex-col">
+    <div className="w-full px-2 sm:px-4 py-4 sm:py-8 pb-24 sm:pb-12 flex flex-col">
       {paymentProcessing && (
         <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm" role="alert" aria-live="assertive">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl sm:p-8">
@@ -414,8 +414,8 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
           </div>
         </div>
       )}
-      <div className="flex-1 max-w-2xl mx-auto w-full bg-white rounded-2xl sm:rounded-3xl shadow-xl overflow-hidden">
-        <div className="p-3 sm:p-6 md:p-10 space-y-4 sm:space-y-6 md:space-y-8 max-h-screen overflow-y-auto">
+      <div className="max-w-2xl mx-auto w-full bg-white rounded-2xl sm:rounded-3xl shadow-xl mb-8">
+        <div className="p-3 sm:p-6 md:p-10 space-y-4 sm:space-y-6 md:space-y-8">
           <SEO 
             title={selectedSubService ? `${selectedSubService.name} - ${service.name} | India Cyber Cafe` : `${service.name} - Apply Online | India Cyber Cafe`}
             description={`Apply online for ${selectedSubService?.name || service.name} under ${service.name} at India Cyber Cafe. ${selectedSubService?.charge ? `Service charge: ₹${selectedSubService.charge}. ` : ''}Fast, secure & reliable digital assistance.`}

@@ -1,40 +1,71 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
-import { signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { auth, rtdb } from '../firebase';
+import { signInWithEmailAndPassword } from 'firebase/auth';
+import { auth, rtdb, storage } from '../firebase';
 import { IconRenderer } from '../components/Icons';
 import { Product, UserProfile, Order, OrderAddress } from '../types';
 import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { storage } from '../firebase';
-import { update, ref as dbRef } from 'firebase/database';
-import { generateOrderId } from '../utils/orderIdGenerator';
-import { getRazorpayKeyId, loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
-import { generateRandomPassword, findUserByEmail, findUserByPhone, createGuestAccount as createGuestAccountInDB } from '../services/guestCheckoutService';
-import { sendWelcomeEmail, sendOrderConfirmationEmail, sendAdminOrderNotification } from '../services/emailService';
-import { sanitizeAddress, sanitizeOrderItems, sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
+import { get, update, ref as dbRef } from 'firebase/database';
+import { getRazorpayKeyId, loadRazorpayScript } from '../services/razorpayService';
+import {
+  findUserByEmail,
+  findUserByPhone,
+  createGuestAccount as createGuestAccountInDB,
+  saveGuestOrderRef,
+  linkGuestOrdersToAuthenticatedUser
+} from '../services/guestCheckoutService';
+import { sendWelcomeEmail } from '../services/emailService';
+import { sanitizeAddress, trimWhitespace } from '../utils/sanitizer';
 import { CheckoutSkeleton } from '../components/Skeleton';
 import { useLoadingState } from '../hooks/useLoadingState';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
+const PENDING_VERIFICATION_STORAGE_KEY = 'icc_pending_store_payment';
+
 interface StoreCheckoutProps {
   products: Product[];
   user: UserProfile | null;
-  onAddOrder: (order: Omit<Order, 'id'>) => Promise<void>;
   isLoading?: boolean;
   error?: Error | null;
   onRetry?: () => void;
+  onOrderSuccess?: () => void;
 }
 
-export function StoreCheckout({ products, user, onAddOrder, isLoading = false, error = null, onRetry }: StoreCheckoutProps) {
+interface PendingPaymentVerification {
+  orderId: string;
+  productName: string;
+  email: string;
+  phone: string;
+  razorpay_payment_id: string;
+  razorpay_order_id: string;
+  razorpay_signature: string;
+  guestTrackingToken?: string;
+}
+
+function generateIdempotencyKey(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID();
+  }
+  return `idem_${Date.now()}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+export function StoreCheckout({
+  products,
+  user,
+  isLoading = false,
+  error = null,
+  onRetry,
+  onOrderSuccess
+}: StoreCheckoutProps) {
   const { productId, categoryId } = useParams<{ productId: string; categoryId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const quantity = location.state?.quantity || 1;
+  const quantity = Math.max(1, Number(location.state?.quantity) || 1);
 
   const product = products.find(p => p.id === productId);
-  const displayLoading = useLoadingState(isLoading, 1000);
+  const displayLoading = useLoadingState(isLoading, 600);
 
   const [customImageFile, setCustomImageFile] = useState<File | null>(null);
   const [customImageUrl, setCustomImageUrl] = useState<string>('');
@@ -43,53 +74,89 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
 
-  // Address Form - Initialize with user address if available, otherwise empty
   const [address, setAddress] = useState<OrderAddress>(
-    user?.address ? { ...user.address } : {
-      name: user?.name || '',
-      email: user?.email || '',
-      phone: user?.phone || '',
-      addressLine1: '',
-      addressLine2: '',
-      city: '',
-      state: '',
-      pincode: '',
-      country: 'India'
-    }
+    user?.address
+      ? { ...user.address }
+      : {
+          name: user?.name || '',
+          email: user?.email || '',
+          phone: user?.phone || '',
+          addressLine1: '',
+          addressLine2: '',
+          city: '',
+          state: '',
+          pincode: '',
+          country: 'India'
+        }
   );
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const paymentProcessingRef = useRef(false);
+  const idempotencyKeyRef = useRef<string>(generateIdempotencyKey());
+  const [pendingVerification, setPendingVerification] = useState<PendingPaymentVerification | null>(() => {
+    if (typeof window === 'undefined') return null;
+    try {
+      const saved = window.localStorage.getItem(PENDING_VERIFICATION_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+  const [verificationError, setVerificationError] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (!paymentProcessing) return;
-
-    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-      event.preventDefault();
-      event.returnValue = '';
-    };
-
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
-  }, [paymentProcessing]);
-  
-  // Guest checkout states
-  const [emailChecked, setEmailChecked] = useState(false); // Track if email has been checked
+  // Guest checkout / existing account verification states
+  const [emailChecked, setEmailChecked] = useState(false);
   const [createGuestAccount, setCreateGuestAccount] = useState(false);
   const [existingUserFound, setExistingUserFound] = useState(false);
-  const [existingUserData, setExistingUserData] = useState<any>(null);
+  const [existingUserEmail, setExistingUserEmail] = useState('');
   const [requiresPassword, setRequiresPassword] = useState(false);
   const [passwordInput, setPasswordInput] = useState('');
   const [verifyingPassword, setVerifyingPassword] = useState(false);
   const [passwordVerified, setPasswordVerified] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  // Update address when user changes (auto-fill from profile)
+  // Sync allowed payment method whenever product loads
   useEffect(() => {
-    if (user && user.address) {
+    if (!product?.paymentMethods || product.paymentMethods.length === 0) return;
+    const methods = product.paymentMethods;
+    const allowsBoth = methods.includes('both') || (methods.includes('online') && methods.includes('cod'));
+    if (allowsBoth) return;
+    if (methods.includes('cod') && !methods.includes('online')) {
+      setPaymentMethod('cod');
+    } else if (methods.includes('online')) {
+      setPaymentMethod('online');
+    }
+  }, [product?.id]);
+
+  // Reset idempotency key when checkout payload changes meaningfully
+  useEffect(() => {
+    idempotencyKeyRef.current = generateIdempotencyKey();
+  }, [productId, quantity, paymentMethod]);
+
+  // Warn before accidental navigation during payment verification
+  useEffect(() => {
+    if (!paymentProcessing) return;
+    const handleBeforeUnload = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [paymentProcessing]);
+
+  // Auto-fill from user profile when authenticated user loads
+  useEffect(() => {
+    if (user?.address) {
       setAddress({ ...user.address });
+    } else if (user) {
+      setAddress(prev => ({
+        ...prev,
+        name: prev.name || user.name || '',
+        email: prev.email || user.email || '',
+        phone: prev.phone || user.phone || ''
+      }));
     }
   }, [user?.uid]);
 
@@ -121,21 +188,18 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      // Validate file size (max 5MB)
       if (file.size > 5 * 1024 * 1024) {
         showToast('File size must be less than 5MB', 'error');
         return;
       }
-
-      // Validate file type
       if (!file.type.startsWith('image/')) {
-        showToast('Please select an image file', 'error');
+        showToast('Please select an image file (JPG, PNG, or WEBP)', 'error');
         return;
       }
 
       setCustomImageFile(file);
+      setCustomImageUrl('');
 
-      // Show preview
       const reader = new FileReader();
       reader.onloadend = () => {
         setImagePreview(reader.result as string);
@@ -144,10 +208,9 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
     }
   };
 
-  // Check if user exists by email and request password verification
   const handleEmailBlur = async () => {
-    if (!address.email || !(/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.email))) {
-      // Don't reset if password verification is already in progress
+    if (user?.uid) return;
+    if (!address.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.email)) {
       if (!requiresPassword || !passwordInput) {
         setExistingUserFound(false);
         setRequiresPassword(false);
@@ -158,77 +221,100 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
     }
 
     try {
-      console.log('🔍 Checking for existing user with email:', address.email);
       const existingUser = await findUserByEmail(address.email);
-      console.log('📊 Found user:', existingUser);
-      
-      setEmailChecked(true); // Mark email as checked
-      
+      setEmailChecked(true);
       if (existingUser) {
-        // Account exists in database
-        console.log('✅ Account found with email:', address.email);
         setExistingUserFound(true);
-        setExistingUserData(existingUser);
-        setRequiresPassword(true);
+        setExistingUserEmail(existingUser.email);
+        setRequiresPassword(!existingUser.isGoogleOnly);
         setPasswordVerified(false);
         setPasswordInput('');
-        setCreateGuestAccount(false); // Don't create account if exists
-        showToast('✅ Account found! Please verify with your password.', 'info');
+        setCreateGuestAccount(false);
       } else {
-        // No account found
-        console.log('❌ No account found with email:', address.email);
         setExistingUserFound(false);
         setRequiresPassword(false);
         setPasswordVerified(false);
       }
-    } catch (error) {
-      console.error('❌ Error checking user by email:', error);
-      setEmailChecked(true); // Still mark as checked even on error
+    } catch {
+      setEmailChecked(true);
     }
   };
 
-  // Verify password and auto-fill data
+  const handlePhoneBlur = async () => {
+    if (user?.uid) return;
+    const digits = address.phone.replace(/\D/g, '');
+    if (!digits || !/^[0-9]{10}$/.test(digits)) {
+      if (!existingUserFound) setRequiresPassword(false);
+      return;
+    }
+
+    try {
+      const existingUser = await findUserByPhone(digits);
+      setEmailChecked(true);
+      if (existingUser) {
+        if (!address.email && existingUser.email) {
+          setAddress(prev => ({ ...prev, email: existingUser.email }));
+        }
+        setExistingUserFound(true);
+        setExistingUserEmail(existingUser.email);
+        setRequiresPassword(!existingUser.isGoogleOnly);
+        setPasswordVerified(false);
+        setPasswordInput('');
+        setCreateGuestAccount(false);
+      } else if (!requiresPassword) {
+        setExistingUserFound(false);
+        setRequiresPassword(false);
+        setPasswordVerified(false);
+      }
+    } catch {
+      setEmailChecked(true);
+    }
+  };
+
   const handlePasswordVerify = async () => {
     if (!passwordInput.trim()) {
       showToast('Please enter password', 'error');
       return;
     }
 
+    const emailToLogin = existingUserEmail || address.email.trim();
     setVerifyingPassword(true);
     try {
-      // Try to authenticate with the provided credentials
-      await signInWithEmailAndPassword(auth, address.email, passwordInput);
+      const cred = await signInWithEmailAndPassword(auth, emailToLogin, passwordInput);
       setPasswordVerified(true);
       setPasswordInput('');
-
-      // Auto-fill address from existing user data
-      if (existingUserData?.address) {
-        setAddress(prev => ({
-          ...prev,
-          name: existingUserData.address.name || prev.name,
-          phone: existingUserData.address.phone || prev.phone,
-          addressLine1: existingUserData.address.addressLine1 || prev.addressLine1,
-          addressLine2: existingUserData.address.addressLine2 || prev.addressLine2,
-          city: existingUserData.address.city || prev.city,
-          state: existingUserData.address.state || prev.state,
-          pincode: existingUserData.address.pincode || prev.pincode
-        }));
-        showToast('✅ Password verified! Your saved address has been auto-filled.', 'success');
-      } else {
-        // If no address in profile, fill basic info (name, phone)
-        setAddress(prev => ({
-          ...prev,
-          name: existingUserData.name || prev.name,
-          phone: existingUserData.phone || prev.phone
-        }));
-        showToast('✅ Password verified! Your basic info has been auto-filled.', 'success');
-      }
-
-      // Keep user logged in for checkout - don't sign out
-      setExistingUserFound(false);
       setRequiresPassword(false);
+
+      // Now authenticated: safely read user's own profile address
+      try {
+        const snap = await get(dbRef(rtdb, `users/${cred.user.uid}`));
+        if (snap.exists()) {
+          const profile = snap.val();
+          if (profile?.address) {
+            setAddress(prev => ({
+              ...prev,
+              name: profile.address.name || profile.name || prev.name,
+              email: profile.address.email || profile.email || prev.email,
+              phone: profile.address.phone || profile.phone || prev.phone,
+              addressLine1: profile.address.addressLine1 || prev.addressLine1,
+              addressLine2: profile.address.addressLine2 || prev.addressLine2,
+              city: profile.address.city || prev.city,
+              state: profile.address.state || prev.state,
+              pincode: profile.address.pincode || prev.pincode
+            }));
+          } else {
+            setAddress(prev => ({
+              ...prev,
+              name: profile?.name || prev.name,
+              email: profile?.email || prev.email,
+              phone: profile?.phone || prev.phone
+            }));
+          }
+        }
+      } catch {}
+
+      showToast('Account verified! Your saved details have been auto-filled.', 'success');
     } catch (error: any) {
-      console.error('Password verification error:', error);
       showToast(error, 'error', 'Incorrect password. Please try again.');
       setPasswordInput('');
     } finally {
@@ -236,69 +322,33 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
     }
   };
 
-  // Check if user exists by phone and request password verification
-  const handlePhoneBlur = async () => {
-    if (!address.phone || !/^[0-9]{10}$/.test(address.phone.replace(/\D/g, ''))) {
-      // If phone is invalid and no user found, reset states
-      if (!existingUserFound) {
-        setRequiresPassword(false);
-      }
-      return;
-    }
-
-    try {
-      console.log('🔍 Checking for existing user with phone:', address.phone);
-      const existingUser = await findUserByPhone(address.phone);
-      console.log('📊 Found user:', existingUser);
-      
-      setEmailChecked(true); // Mark as checked
-      
-      if (existingUser) {
-        // User account exists by phone
-        console.log('✅ Account found with phone:', address.phone);
-        // Update email if found and email is empty
-        if (!address.email && existingUser.email) {
-          console.log('📧 Auto-filling email:', existingUser.email);
-          setAddress(prev => ({
-            ...prev,
-            email: existingUser.email
-          }));
-        }
-        setExistingUserFound(true);
-        setExistingUserData(existingUser);
-        setRequiresPassword(true);
-        setPasswordVerified(false);
-        setPasswordInput('');
-        setCreateGuestAccount(false); // Don't create account if exists
-        showToast('✅ Account found! Please verify your password to auto-fill your saved details.', 'info');
-      } else {
-        // No user found by phone
-        console.log('❌ No account found with phone:', address.phone);
-        if (!requiresPassword) {
-          setExistingUserFound(false);
-          setRequiresPassword(false);
-          setPasswordVerified(false);
-        }
-      }
-    } catch (error) {
-      console.error('❌ Error checking user by phone:', error);
-      setEmailChecked(true); // Still mark as checked even on error
-    }
-  };
-
-  const uploadCustomImage = async () => {
+  const uploadCustomImage = async (): Promise<string | null> => {
     if (!customImageFile) return null;
 
     try {
       setUploading(true);
-      const fileName = `custom-images/${Date.now()}-${customImageFile.name}`;
-      const fileRef = ref(storage, fileName);
-      await uploadBytes(fileRef, customImageFile);
-      const downloadUrl = await getDownloadURL(fileRef);
-      return downloadUrl;
+      try {
+        const fileName = `custom-images/${Date.now()}-${customImageFile.name}`;
+        const fileRef = ref(storage, fileName);
+        await uploadBytes(fileRef, customImageFile);
+        return await getDownloadURL(fileRef);
+      } catch (storageErr) {
+        // Fallback to backend upload for unauthenticated guest checkout if Firebase Storage rules require auth
+        const formData = new FormData();
+        formData.append('customImage', customImageFile);
+        const resp = await fetch('/api/store/upload-custom-image', {
+          method: 'POST',
+          body: formData
+        });
+        if (!resp.ok) {
+          throw storageErr;
+        }
+        const data = await resp.json();
+        return data.url || null;
+      }
     } catch (error) {
       console.error('Image upload error:', error);
-      showToast('Failed to upload image', 'error');
+      showToast('Failed to upload image. Please check file format & size.', 'error');
       return null;
     } finally {
       setUploading(false);
@@ -310,14 +360,17 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
 
     if (!address.name.trim()) errors.name = 'Name is required';
     if (!address.email.trim()) errors.email = 'Email is required';
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.email)) errors.email = 'Valid email is required';
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.email.trim())) errors.email = 'Valid email is required';
     if (!address.phone.trim()) errors.phone = 'Phone is required';
-    if (!/^[0-9]{10}$/.test(address.phone.replace(/\D/g, ''))) errors.phone = 'Valid 10-digit phone is required';
+    const cleanPhone = address.phone.replace(/\D/g, '');
+    if (!/^[0-9]{10}$/.test(cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone)) {
+      errors.phone = 'Valid 10-digit phone is required';
+    }
     if (!address.addressLine1.trim()) errors.addressLine1 = 'Address is required';
     if (!address.city.trim()) errors.city = 'City is required';
     if (!address.state.trim()) errors.state = 'State is required';
     if (!address.pincode.trim()) errors.pincode = 'Pincode is required';
-    if (!/^[0-9]{6}$/.test(address.pincode)) errors.pincode = 'Valid 6-digit pincode is required';
+    if (!/^[0-9]{6}$/.test(address.pincode.trim())) errors.pincode = 'Valid 6-digit pincode is required';
 
     if (product.requiresCustomImage && !customImageFile && !customImageUrl) {
       errors.customImage = 'Custom image is required for this product';
@@ -327,413 +380,338 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
     return Object.keys(errors).length === 0;
   };
 
+  const getAuthHeaders = async (): Promise<Record<string, string>> => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (auth.currentUser) {
+      try {
+        const token = await auth.currentUser.getIdToken();
+        if (token) headers.Authorization = `Bearer ${token}`;
+      } catch {}
+    }
+    return headers;
+  };
+
+  const handlePostOrderSuccess = async (
+    confirmedOrder: Order,
+    sanitizedAddress: OrderAddress,
+    guestTrackingToken?: string
+  ) => {
+    // Store guest tracking info locally so guest can easily view status or link on login
+    if (confirmedOrder.isGuest || !auth.currentUser) {
+      saveGuestOrderRef({
+        orderId: confirmedOrder.id,
+        email: sanitizedAddress.email,
+        phone: sanitizedAddress.phone,
+        token: guestTrackingToken,
+        createdAt: confirmedOrder.createdAt || new Date().toISOString()
+      });
+    }
+
+    // Save address to profile if logged in and profile has no address yet
+    if (auth.currentUser && user && !user.address) {
+      try {
+        await update(dbRef(rtdb, `users/${auth.currentUser.uid}`), { address: sanitizedAddress });
+      } catch {}
+    }
+
+    // Optional guest account creation AFTER order is persisted
+    if (!auth.currentUser && createGuestAccount) {
+      try {
+        const accountRes = await createGuestAccountInDB(
+          sanitizedAddress.email,
+          sanitizedAddress.name,
+          sanitizedAddress.phone
+        );
+        if (accountRes.success && accountRes.password) {
+          sendWelcomeEmail(sanitizedAddress.email, sanitizedAddress.name, accountRes.password).catch(() => {});
+          await linkGuestOrdersToAuthenticatedUser().catch(() => {});
+          showToast('Order placed & account created! Welcome email sent.', 'success');
+        } else {
+          showToast('Order placed! (Could not create account automatically, use Track Order anytime.)', 'info');
+        }
+      } catch {
+        showToast('Order placed! Use your Order ID to track your order.', 'info');
+      }
+    }
+
+    idempotencyKeyRef.current = generateIdempotencyKey();
+    onOrderSuccess?.();
+
+    navigate('/store/order-confirmation', {
+      state: {
+        order: confirmedOrder,
+        productName: product.name,
+        guestTrackingToken
+      }
+    });
+  };
+
+  const executeVerifyPaymentWithRetry = async (payload: PendingPaymentVerification) => {
+    const maxAttempts = 3;
+    let lastError = 'Payment verification failed.';
+
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        const headers = await getAuthHeaders();
+        const verifyResp = await fetch('/api/store/orders/verify-payment', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            orderId: payload.orderId,
+            razorpay_payment_id: payload.razorpay_payment_id,
+            razorpay_order_id: payload.razorpay_order_id,
+            razorpay_signature: payload.razorpay_signature
+          })
+        });
+
+        const verifyData = await verifyResp.json().catch(() => ({}));
+        if (verifyResp.ok && verifyData.verified && verifyData.order) {
+          window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
+          setPendingVerification(null);
+          setVerificationError(null);
+          return verifyData.order as Order;
+        }
+
+        // Do not retry 4xx cryptographic mismatch / fraud rejections
+        if (verifyResp.status >= 400 && verifyResp.status < 500) {
+          throw new Error(verifyData.error || 'Invalid payment verification.');
+        }
+
+        lastError = verifyData.error || `Server error (${verifyResp.status})`;
+      } catch (err: any) {
+        if (err?.message && (err.message.includes('Invalid') || err.message.includes('mismatch'))) {
+          throw err;
+        }
+        lastError = err?.message || 'Network error during verification.';
+      }
+
+      if (attempt < maxAttempts) {
+        await new Promise(resolve => setTimeout(resolve, attempt * 1200));
+      }
+    }
+
+    throw new Error(lastError);
+  };
+
+  const handleRetryPendingVerification = async () => {
+    if (!pendingVerification || paymentProcessingRef.current) return;
+    paymentProcessingRef.current = true;
+    setPaymentProcessing(true);
+    setVerificationError(null);
+
+    try {
+      const confirmedOrder = await executeVerifyPaymentWithRetry(pendingVerification);
+      const sanitizedAddress = sanitizeAddress({
+        ...address,
+        email: pendingVerification.email || address.email,
+        phone: pendingVerification.phone || address.phone
+      });
+      await handlePostOrderSuccess(confirmedOrder, sanitizedAddress, pendingVerification.guestTrackingToken);
+    } catch (err: any) {
+      // Fallback: check Razorpay server reconciliation endpoint
+      try {
+        const recResp = await fetch('/api/store/orders/recover-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: pendingVerification.orderId })
+        });
+        const recData = await recResp.json().catch(() => ({}));
+        if (recResp.ok && recData.verified && recData.order) {
+          window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
+          setPendingVerification(null);
+          const sanitizedAddress = sanitizeAddress({
+            ...address,
+            email: pendingVerification.email || address.email,
+            phone: pendingVerification.phone || address.phone
+          });
+          await handlePostOrderSuccess(recData.order, sanitizedAddress, pendingVerification.guestTrackingToken);
+          return;
+        }
+      } catch {}
+
+      const msg = err?.message || 'Unable to verify payment right now. Do NOT pay again—please retry verification shortly.';
+      setVerificationError(msg);
+      showToast(msg, 'error');
+    } finally {
+      paymentProcessingRef.current = false;
+      setPaymentProcessing(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (submitting || paymentProcessingRef.current) return;
+    if (submitting || uploading || paymentProcessingRef.current) return;
 
     if (!validateForm()) {
-      showToast('Please fix the errors', 'error');
+      showToast('Please fix the highlighted address fields', 'error');
       return;
-    }
-
-    // For guest checkout (non-authenticated users), show warning if not creating account
-    // AND if an existing account was NOT found
-    if (!user || !user.uid) {
-      if (!createGuestAccount && !existingUserFound) {
-        showToast('⚠️ Without an account, you won\'t be able to track your order. We recommend creating one.', 'info');
-      }
     }
 
     try {
       setSubmitting(true);
 
-      // Upload custom image if provided
       let uploadedImageUrl = customImageUrl;
       if (customImageFile && !customImageUrl) {
-        uploadedImageUrl = await uploadCustomImage();
-        if (!uploadedImageUrl && product.requiresCustomImage) {
-          showToast('Failed to upload image', 'error');
+        uploadedImageUrl = (await uploadCustomImage()) || '';
+        if (uploadedImageUrl) {
+          setCustomImageUrl(uploadedImageUrl);
+        } else if (product.requiresCustomImage) {
           setSubmitting(false);
           return;
         }
       }
 
-      // Calculate totals
-      const itemPrice = product.discountedPrice || product.price;
-      const subtotal = itemPrice * quantity;
-      const deliveryCharges = product.deliveryCharges || 0;
-      const total = subtotal + deliveryCharges;
-
-      // Create order with generated ID
-      const orderId = generateOrderId();
-      
-      // Sanitize address before using it
       const sanitizedAddress = sanitizeAddress(address);
+      const orderItems = [
+        {
+          productId: product.id,
+          quantity,
+          customImageUrl: uploadedImageUrl || undefined,
+          specialInstructions: trimWhitespace(specialInstructions) || undefined
+        }
+      ];
 
-      // Use either authenticated user or guest user
-      const userId = user?.uid || `guest-${sanitizedAddress.email}-${Date.now()}`;
-      
-      const newOrder: Order = {
-        id: orderId,
-        uid: userId,
-        email: sanitizedAddress.email,
-        items: [
-          {
-            productId: product.id,
-            productName: trimWhitespace(product.name),
-            price: product.price,
-            discountedPrice: product.discountedPrice,
-            quantity,
-            customImageUrl: uploadedImageUrl,
-            specialInstructions: trimWhitespace(specialInstructions)
-          }
-        ],
-        deliveryAddress: sanitizedAddress,
-        subtotal,
-        deliveryCharges,
-        total,
-        paymentMethod: paymentMethod === 'cod' ? 'cash' : 'razorpay',
-        paymentStatus: paymentMethod === 'cod' ? 'pending' : 'pending',
-        orderStatus: paymentMethod === 'cod' ? 'pending' : 'pending',
-        notes: [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
+      const headers = await getAuthHeaders();
 
-      // Handle different payment methods
       if (paymentMethod === 'cod') {
-        // For COD, save order directly
-        await onAddOrder(newOrder);
-        
-        // Auto-save address to user profile if user is logged in and doesn't have address yet
-        if (user && user.uid && !user.address) {
-          try {
-            await update(dbRef(rtdb, `users/${user.uid}`), { address: sanitizedAddress });
-          } catch (error) {
-            console.error('Error saving address to profile:', error);
-          }
-        }
-        
-        // Send order confirmation email to customer
-        await sendOrderConfirmationEmail(
-          sanitizedAddress.email,
-          sanitizedAddress.name,
-          orderId,
-          newOrder.items.map(item => ({
-            name: item.productName,
-            quantity: item.quantity,
-            price: item.discountedPrice || item.price
-          })),
-          total,
-          'cod'
-        ).catch(err => console.error('Email send error:', err));
+        const resp = await fetch('/api/store/orders/cod', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            items: orderItems,
+            deliveryAddress: sanitizedAddress,
+            idempotencyKey: idempotencyKeyRef.current
+          })
+        });
 
-        // Send admin notification about new order
-        await sendAdminOrderNotification(
-          orderId,
-          sanitizedAddress.name,
-          sanitizedAddress.email,
-          sanitizedAddress.phone,
-          newOrder.items.map(item => ({
-            name: item.productName,
-            quantity: item.quantity,
-            price: item.discountedPrice || item.price
-          })),
-          total,
-          'cod',
-          {
-            addressLine1: sanitizedAddress.addressLine1,
-            city: sanitizedAddress.city,
-            state: sanitizedAddress.state,
-            pincode: sanitizedAddress.pincode
-          }
-        ).catch(err => console.error('Admin email send error:', err));
-
-        // If guest checkout with account creation, create account after order
-        if (!user || !user.uid) {
-          if (createGuestAccount) {
-            try {
-              const result = await createGuestAccountInDB(sanitizedAddress.email, sanitizedAddress.name, sanitizedAddress.phone);
-              
-              if (result.success && result.password) {
-                // Send welcome email with the generated password
-                await sendWelcomeEmail(sanitizedAddress.email, sanitizedAddress.name, result.password)
-                  .catch(err => console.error('Welcome email error:', err));
-                
-                // Auto-login with the generated password
-                try {
-                  await signInWithEmailAndPassword(auth, sanitizedAddress.email, result.password);
-                  showToast('✅ Order placed! Account created and logged in.', 'success');
-                } catch (loginError) {
-                  console.error('Auto-login error:', loginError);
-                  showToast('✅ Order placed! Account created. Please log in.', 'info');
-                }
-              } else {
-                throw new Error(result.error || 'Failed to create account');
-              }
-            } catch (error) {
-              // If account creation fails, still allow order to proceed
-              console.error('Account creation error:', error);
-              showToast('✅ Order placed! (Account creation failed, but order was saved)', 'info');
-            }
-          } else {
-            showToast('✅ Order placed! (Log in to track your order)', 'info');
-          }
-        } else {
-          showToast('Order placed with Cash on Delivery!', 'success');
+        const data = await resp.json().catch(() => ({}));
+        if (!resp.ok || !data.success || !data.order) {
+          throw new Error(data.error || 'Failed to place COD order.');
         }
 
-        // Reset form state after successful submission
-        setExistingUserFound(false);
-        setRequiresPassword(false);
-        setPasswordVerified(false);
-        setPasswordInput('');
-        setExistingUserData(null);
-        setShowPassword(false);
-        setAddress({
-          name: user?.name || '',
-          email: user?.email || '',
-          phone: user?.phone || '',
-          addressLine1: '',
-          addressLine2: '',
-          city: '',
-          state: '',
-          pincode: '',
-          country: 'India'
-        });
-        setCreateGuestAccount(false);
-        setCustomImageFile(null);
-        setCustomImageUrl('');
-        setImagePreview('');
-        setSpecialInstructions('');
-        
-        navigate('/store/order-confirmation', {
-          state: { order: newOrder, productName: product.name }
-        });
+        showToast('Order placed with Cash on Delivery!', 'success');
+        await handlePostOrderSuccess(data.order, sanitizedAddress, data.guestTrackingToken);
       } else {
-        // For Online, initiate Razorpay payment
-        try {
-          const totalInPaisa = Math.round(total * 100);
-          
-          // First, create order on backend to get valid order ID
-          console.log('📋 Creating order on backend... Amount:', totalInPaisa, 'Paisa');
-          const orderResponse = await fetch('/api/create-razorpay-order', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              amount: totalInPaisa,
-              currency: 'INR',
-              receipt: orderId,
-              notes: {
-                productId: product.id,
-                productName: product.name
-              }
-            })
-          });
+        // Server-authoritative Razorpay pending order creation
+        const createResp = await fetch('/api/store/orders/create-payment', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            items: orderItems,
+            deliveryAddress: sanitizedAddress,
+            idempotencyKey: idempotencyKeyRef.current
+          })
+        });
 
-          console.log('📡 Order response status:', orderResponse.status, orderResponse.statusText);
-
-          if (!orderResponse.ok) {
-            const errorData = await orderResponse.json().catch(() => ({ error: 'Unknown error' }));
-            console.error('❌ Order creation failed:', errorData);
-            throw new Error(errorData.error || `Server error: ${orderResponse.status}`);
-          }
-
-          const orderData = await orderResponse.json();
-          console.log('✅ Order created on backend:', orderData);
-
-          if (!orderData.order_id && !orderData.orderId) {
-            throw new Error('No order ID returned from server');
-          }
-
-          const razorpayOrderId = orderData.order_id || orderData.orderId;
-
-          const scriptLoaded = await loadRazorpayScript();
-          if (!scriptLoaded || !window.Razorpay) {
-            console.error('❌ Razorpay window object not found');
-            showToast('❌ Payment system not available. Please refresh the page.', 'error');
-            setSubmitting(false);
-            return;
-          }
-          
-          const options = {
-            key: orderData.keyId || getRazorpayKeyId(),
-            amount: orderData.amount || totalInPaisa,
-            currency: orderData.currency || 'INR',
-            order_id: razorpayOrderId,
-            name: 'India Cyber Cafe',
-            description: `Order ${orderId} - ${product.name}`,
-            prefill: {
-              name: sanitizedAddress.name,
-              email: sanitizedAddress.email,
-              contact: sanitizedAddress.phone
-            },
-            handler: async (response: any) => {
-              if (paymentProcessingRef.current) return;
-              paymentProcessingRef.current = true;
-              setPaymentProcessing(true);
-
-              try {
-                console.log('💳 Payment handler - received response:', response);
-                
-                // Verify payment with backend using Razorpay signature
-                const verificationResult = await verifyRazorpayPayment(
-                  response.razorpay_payment_id,
-                  response.razorpay_order_id,
-                  response.razorpay_signature
-                );
-
-                if (!verificationResult.verified) {
-                  throw new Error(verificationResult.error || 'Payment verification failed');
-                }
-
-                console.log('✅ Payment verified - saving order');
-
-                // Payment verified, save order
-                const updatedOrder: Order = {
-                  ...newOrder,
-                  paymentStatus: 'completed',
-                  razorpayPaymentId: response.razorpay_payment_id,
-                  razorpayOrderId: response.razorpay_order_id
-                };
-                
-                await onAddOrder(updatedOrder);
-
-                // Auto-save address to user profile if user is logged in and doesn't have address yet
-                if (user && user.uid && !user.address) {
-                  try {
-                    await update(dbRef(rtdb, `users/${user.uid}`), { address: sanitizedAddress });
-                  } catch (error) {
-                    console.error('Error saving address to profile:', error);
-                  }
-                }
-
-                // Send order confirmation email to customer
-                await sendOrderConfirmationEmail(
-                  sanitizedAddress.email,
-                  sanitizedAddress.name,
-                  orderId,
-                  updatedOrder.items.map(item => ({
-                    name: item.productName,
-                    quantity: item.quantity,
-                    price: item.discountedPrice || item.price
-                  })),
-                  total,
-                  'online'
-                ).catch(err => console.error('Email send error:', err));
-
-                // Send admin notification about new order
-                await sendAdminOrderNotification(
-                  orderId,
-                  sanitizedAddress.name,
-                  sanitizedAddress.email,
-                  sanitizedAddress.phone,
-                  updatedOrder.items.map(item => ({
-                    name: item.productName,
-                    quantity: item.quantity,
-                    price: item.discountedPrice || item.price
-                  })),
-                  total,
-                  'online',
-                  {
-                    addressLine1: sanitizedAddress.addressLine1,
-                    city: sanitizedAddress.city,
-                    state: sanitizedAddress.state,
-                    pincode: sanitizedAddress.pincode
-                  }
-                ).catch(err => console.error('Admin email send error:', err));
-
-                // If guest checkout with account creation, create account after successful payment
-                if (!user || !user.uid) {
-                  if (createGuestAccount) {
-                    try {
-                      const result = await createGuestAccountInDB(sanitizedAddress.email, sanitizedAddress.name, sanitizedAddress.phone);
-                      
-                      if (result.success && result.password) {
-                        // Send welcome email with the generated password
-                        await sendWelcomeEmail(sanitizedAddress.email, sanitizedAddress.name, result.password)
-                          .catch(err => console.error('Welcome email error:', err));
-                        
-                        // Auto-login with the generated password
-                        try {
-                          await signInWithEmailAndPassword(auth, sanitizedAddress.email, result.password);
-                          showToast('✅ Payment successful! Account created and logged in.', 'success');
-                        } catch (loginError) {
-                          console.error('Auto-login error:', loginError);
-                          showToast('✅ Payment successful! Account created. Please log in.', 'info');
-                        }
-                      } else {
-                        throw new Error(result.error || 'Failed to create account');
-                      }
-                    } catch (error) {
-                      // If account creation fails, still allow order to proceed
-                      console.error('Account creation error:', error);
-                      showToast('✅ Payment successful! (Account creation failed, but order was saved)', 'info');
-                    }
-                  } else {
-                    showToast('✅ Payment successful! (Log in to track your order)', 'info');
-                  }
-                } else {
-                  showToast('Payment successful! Order placed.', 'success');
-                }
-
-                navigate('/store/order-confirmation', {
-                  state: { order: updatedOrder, productName: product.name }
-                });
-              } catch (error: any) {
-                console.error('❌ Payment verification error:', error);
-                showToast(error, 'error', 'Payment could not be verified.');
-                paymentProcessingRef.current = false;
-                setPaymentProcessing(false);
-                setSubmitting(false);
-              }
-            },
-            modal: {
-              ondismiss: () => {
-                console.log('⚠️ Payment modal closed by user');
-                paymentProcessingRef.current = false;
-                setPaymentProcessing(false);
-                setSubmitting(false);
-                showToast('Payment was cancelled. You can try again whenever you\'re ready.', 'info');
-              }
-            },
-            theme: { color: '#001A57' }
-          };
-
-          console.log('🚀 Opening Razorpay checkout...');
-          const rzp = new (window as any).Razorpay(options);
-          rzp.open();
-        } catch (error: any) {
-          console.error('❌ Razorpay payment error:', error);
-          paymentProcessingRef.current = false;
-          setPaymentProcessing(false);
-          showToast(error, 'error', 'Unable to start payment. Please try again.');
-          setSubmitting(false);
+        const createData = await createResp.json().catch(() => ({}));
+        if (!createResp.ok || !createData.success || !createData.razorpayOrderId) {
+          throw new Error(createData.error || 'Unable to initiate online payment.');
         }
+
+        const scriptLoaded = await loadRazorpayScript();
+        if (!scriptLoaded || !window.Razorpay) {
+          throw new Error('Payment gateway script could not load. Please check your connection and try again.');
+        }
+
+        const pendingPayloadBase = {
+          orderId: createData.orderId as string,
+          productName: product.name,
+          email: sanitizedAddress.email,
+          phone: sanitizedAddress.phone,
+          guestTrackingToken: createData.guestTrackingToken as string | undefined
+        };
+
+        const options = {
+          key: createData.keyId || getRazorpayKeyId(),
+          amount: createData.amount,
+          currency: createData.currency || 'INR',
+          order_id: createData.razorpayOrderId,
+          name: 'India Cyber Cafe',
+          description: `Order ${createData.orderId} - ${product.name}`,
+          prefill: {
+            name: sanitizedAddress.name,
+            email: sanitizedAddress.email,
+            contact: sanitizedAddress.phone
+          },
+          handler: async (response: any) => {
+            if (paymentProcessingRef.current) return;
+            paymentProcessingRef.current = true;
+            setPaymentProcessing(true);
+            setVerificationError(null);
+
+            const verifyPayload: PendingPaymentVerification = {
+              ...pendingPayloadBase,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_signature: response.razorpay_signature
+            };
+
+            try {
+              window.localStorage.setItem(PENDING_VERIFICATION_STORAGE_KEY, JSON.stringify(verifyPayload));
+              setPendingVerification(verifyPayload);
+
+              const confirmedOrder = await executeVerifyPaymentWithRetry(verifyPayload);
+              showToast('Payment successful! Order confirmed.', 'success');
+              await handlePostOrderSuccess(confirmedOrder, sanitizedAddress, pendingPayloadBase.guestTrackingToken);
+            } catch (err: any) {
+              const msg = err?.message || 'Payment verification failed. Please click Retry Verification — do NOT pay again.';
+              setVerificationError(msg);
+              showToast(msg, 'error');
+            } finally {
+              paymentProcessingRef.current = false;
+              setPaymentProcessing(false);
+              setSubmitting(false);
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              paymentProcessingRef.current = false;
+              setPaymentProcessing(false);
+              setSubmitting(false);
+              showToast('Payment was cancelled. You can retry whenever ready.', 'info');
+            }
+          },
+          theme: { color: '#001A57' }
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+        rzp.open();
+        return; // Keep submitting state managed by handler / ondismiss
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Order submission error:', error);
       showToast(error, 'error', 'Failed to place order. Please try again.');
     } finally {
-      setSubmitting(false);
+      if (!paymentProcessingRef.current) {
+        setSubmitting(false);
+      }
     }
   };
 
-  const subtotal = (product.discountedPrice || product.price) * quantity;
+  const unitPrice = product.discountedPrice && product.discountedPrice > 0 ? product.discountedPrice : product.price;
+  const subtotal = unitPrice * quantity;
   const deliveryCharges = product.deliveryCharges || 0;
   const total = subtotal + deliveryCharges;
 
+  const methods = product.paymentMethods || ['online', 'cod'];
+  const supportsBoth = methods.includes('both') || (methods.includes('online') && methods.includes('cod'));
+  const supportsOnlineOnly = !supportsBoth && methods.includes('online');
+  const supportsCodOnly = !supportsBoth && methods.includes('cod');
+
   return (
-    <div className="space-y-6 sm:space-y-10">
+    <div className="space-y-6 sm:space-y-10 pb-12">
       {paymentProcessing && (
         <div className="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-950/70 p-6 backdrop-blur-sm" role="alert" aria-live="assertive">
           <div className="w-full max-w-md rounded-2xl bg-white p-6 text-center shadow-2xl sm:p-8">
             <div className="mx-auto mb-5 h-12 w-12 animate-spin rounded-full border-4 border-slate-200 border-t-primary" />
-            <p className="text-base font-semibold leading-relaxed text-navy">Payment successful. Please wait while we confirm your payment and place your order. Do not refresh or go back.</p>
+            <p className="text-base font-semibold leading-relaxed text-navy">
+              Payment received. Please wait while we confirm your payment and place your order. Do not refresh or go back.
+            </p>
           </div>
         </div>
       )}
+
       <SEO
         title={`Checkout - ${product.name} | Secure Payment - India Cyber Cafe`}
         description={`Secure checkout for ${product.name}. Total: ₹${total}. Fast delivery, custom printing, multiple payment options.`}
@@ -745,6 +723,7 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
       {/* Header */}
       <div>
         <button
+          type="button"
           onClick={() => navigate(`/store/${categoryId}/${productId}`)}
           className="flex items-center gap-2 text-primary font-semibold hover:gap-3 transition-all mb-4"
         >
@@ -754,8 +733,47 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
         <h1 className="text-3xl sm:text-4xl font-bold text-navy">Checkout</h1>
       </div>
 
+      {/* Payment Verification Recovery Banner (prevents charging twice) */}
+      {pendingVerification && (
+        <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 sm:p-6 space-y-3" role="alert">
+          <div className="flex items-start gap-3">
+            <IconRenderer name="alert-circle" className="w-6 h-6 text-amber-700 shrink-0 mt-0.5" />
+            <div className="space-y-1 flex-1">
+              <h2 className="text-base sm:text-lg font-bold text-amber-950">
+                Payment Received — Confirming Order ({pendingVerification.orderId})
+              </h2>
+              <p className="text-xs sm:text-sm text-amber-900">
+                {verificationError ||
+                  'Your Razorpay payment was completed, but the confirmation step was interrupted. Please click below to verify and finalize your order — do NOT pay again.'}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={handleRetryPendingVerification}
+              disabled={paymentProcessing}
+              className="btn-primary py-2.5 px-5 text-sm"
+            >
+              {paymentProcessing ? 'Verifying Payment...' : 'Retry Payment Verification'}
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
+                setPendingVerification(null);
+                setVerificationError(null);
+              }}
+              className="px-4 py-2 rounded-xl border border-amber-300 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+            >
+              Dismiss
+            </button>
+          </div>
+        </div>
+      )}
+
       <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-3 gap-6 lg:gap-8">
-        {/* Main Form - 2 columns wide */}
+        {/* Main Form */}
         <div className="lg:col-span-2 space-y-6">
           {/* Custom Image Upload */}
           {product.requiresCustomImage && (
@@ -773,13 +791,14 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
 
               {imagePreview ? (
                 <div className="space-y-3">
-                  <div className="aspect-square rounded-lg overflow-hidden bg-slate-100 border-2 border-primary">
+                  <div className="aspect-square max-w-xs rounded-lg overflow-hidden bg-slate-100 border-2 border-primary">
                     <img src={imagePreview} alt="Preview" className="w-full h-full object-cover" />
                   </div>
                   <button
                     type="button"
                     onClick={() => {
                       setCustomImageFile(null);
+                      setCustomImageUrl('');
                       setImagePreview('');
                     }}
                     className="text-red-600 font-semibold text-sm hover:text-red-700"
@@ -792,11 +811,11 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                   <div className="border-2 border-dashed border-slate-300 rounded-lg p-6 sm:p-8 text-center cursor-pointer hover:border-primary hover:bg-slate-50 transition-all">
                     <IconRenderer name="upload" className="w-8 h-8 sm:w-10 sm:h-10 text-slate-400 mx-auto mb-2" />
                     <p className="text-sm font-semibold text-slate-700 mb-1">Click to upload your image</p>
-                    <p className="text-xs sm:text-sm text-slate-500">Max 5MB • JPG, PNG</p>
+                    <p className="text-xs sm:text-sm text-slate-500">Max 5MB • JPG, PNG, WEBP</p>
                   </div>
                   <input
                     type="file"
-                    accept="image/*"
+                    accept="image/jpeg,image/png,image/webp"
                     onChange={handleImageSelect}
                     className="hidden"
                   />
@@ -807,7 +826,6 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                 <p className="text-red-600 text-xs sm:text-sm font-semibold">{formErrors.customImage}</p>
               )}
 
-              {/* Special Instructions */}
               <div>
                 <label className="block text-sm font-semibold text-slate-700 mb-2">
                   Special Instructions (Optional)
@@ -829,25 +847,25 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
               Delivery Address
             </h2>
 
-            {/* Display if account found/verified */}
             {existingUserFound && passwordVerified && (
               <div className="bg-green-50 border-2 border-green-400 rounded-lg p-3 flex items-center gap-2 mb-4">
                 <span className="text-lg">✅</span>
                 <div>
                   <p className="font-semibold text-green-900 text-sm">Account Verified!</p>
-                  <p className="text-xs text-green-800">Your details have been auto-filled from your saved profile.</p>
+                  <p className="text-xs text-green-800">Your saved profile details have been loaded.</p>
                 </div>
               </div>
             )}
 
-            {/* Password Verification - Show when existing account found, placed ABOVE the grid */}
-            {requiresPassword && !passwordVerified && (
+            {requiresPassword && !passwordVerified && !user?.uid && (
               <div className="bg-gradient-to-r from-yellow-50 to-orange-50 border-2 border-yellow-300 rounded-lg p-4 space-y-3 mb-4">
                 <div className="flex items-start gap-2">
                   <span className="text-xl">🔐</span>
                   <div>
-                    <p className="font-bold text-slate-900 text-base">Welcome Back! 👋</p>
-                    <p className="text-xs text-slate-700 mt-1.5 leading-relaxed">We found your existing account registered with this email. Enter your password to verify and auto-fill your saved address details.</p>
+                    <p className="font-bold text-slate-900 text-base">Existing Account Found</p>
+                    <p className="text-xs text-slate-700 mt-1 leading-relaxed">
+                      Enter your password to sign in and auto-fill your saved address, or skip to continue as guest.
+                    </p>
                   </div>
                 </div>
 
@@ -856,11 +874,15 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                     type={showPassword ? 'text' : 'password'}
                     value={passwordInput}
                     onChange={e => setPasswordInput(e.target.value)}
-                    onKeyPress={e => e.key === 'Enter' && handlePasswordVerify()}
+                    onKeyDown={e => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault();
+                        handlePasswordVerify();
+                      }
+                    }}
                     disabled={verifyingPassword}
                     className="input-field w-full text-xs sm:text-sm pr-10"
                     placeholder="Enter your password"
-                    autoFocus
                   />
                   <button
                     type="button"
@@ -876,42 +898,25 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                     type="button"
                     onClick={handlePasswordVerify}
                     disabled={verifyingPassword || !passwordInput.trim()}
-                    className="flex-1 bg-primary hover:bg-primary-dark text-white font-semibold py-2 px-3 rounded-lg text-xs sm:text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                    className="flex-1 bg-primary hover:bg-primary-dark text-white font-semibold py-2 px-3 rounded-lg text-xs sm:text-sm disabled:opacity-50"
                   >
-                    {verifyingPassword ? '⏳ Verifying...' : '✓ Verify Password'}
+                    {verifyingPassword ? 'Verifying...' : '✓ Sign In & Auto-Fill'}
                   </button>
                   <button
                     type="button"
                     onClick={() => {
                       setRequiresPassword(false);
                       setPasswordInput('');
-                      setPasswordVerified(false);
-                      setExistingUserData(null);
                     }}
-                    className="flex-1 bg-slate-300 hover:bg-slate-400 text-slate-700 font-semibold py-2 px-3 rounded-lg text-xs sm:text-sm transition-colors"
+                    className="flex-1 bg-slate-200 hover:bg-slate-300 text-slate-700 font-semibold py-2 px-3 rounded-lg text-xs sm:text-sm"
                   >
-                    ✗ Skip
+                    Skip (Guest Checkout)
                   </button>
-                </div>
-
-                <div className="flex gap-2 justify-between items-center pt-1">
-                  <a 
-                    href="/forgot-password"
-                    className="text-primary hover:text-primary-dark text-xs font-semibold underline transition-colors"
-                    onClick={(e) => {
-                      e.preventDefault();
-                      navigate('/forgot-password');
-                    }}
-                  >
-                    🔑 Forgot Password?
-                  </a>
-                  <span className="text-xs text-slate-500">Or skip to checkout as guest</span>
                 </div>
               </div>
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {/* Name */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Full Name *</label>
                 <input
@@ -924,7 +929,6 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                 {formErrors.name && <p className="text-red-600 text-xs mt-1">{formErrors.name}</p>}
               </div>
 
-              {/* Email */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Email *</label>
                 <input
@@ -932,7 +936,7 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                   value={address.email}
                   onChange={e => {
                     setAddress({ ...address, email: e.target.value });
-                    setEmailChecked(false); // Reset email check when user modifies email
+                    setEmailChecked(false);
                   }}
                   onBlur={handleEmailBlur}
                   className={`input-field w-full text-xs sm:text-sm ${formErrors.email ? 'border-red-500' : ''}`}
@@ -941,7 +945,6 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                 {formErrors.email && <p className="text-red-600 text-xs mt-1">{formErrors.email}</p>}
               </div>
 
-              {/* Phone */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Phone *</label>
                 <input
@@ -949,7 +952,7 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                   value={address.phone}
                   onChange={e => {
                     setAddress({ ...address, phone: e.target.value });
-                    setEmailChecked(false); // Reset email check when user modifies phone
+                    setEmailChecked(false);
                   }}
                   onBlur={handlePhoneBlur}
                   className={`input-field w-full text-xs sm:text-sm ${formErrors.phone ? 'border-red-500' : ''}`}
@@ -958,7 +961,6 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                 {formErrors.phone && <p className="text-red-600 text-xs mt-1">{formErrors.phone}</p>}
               </div>
 
-              {/* State */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">State *</label>
                 <input
@@ -966,12 +968,11 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                   value={address.state}
                   onChange={e => setAddress({ ...address, state: e.target.value })}
                   className={`input-field w-full text-xs sm:text-sm ${formErrors.state ? 'border-red-500' : ''}`}
-                  placeholder="Maharashtra"
+                  placeholder="Madhya Pradesh"
                 />
                 {formErrors.state && <p className="text-red-600 text-xs mt-1">{formErrors.state}</p>}
               </div>
 
-              {/* City */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">City *</label>
                 <input
@@ -979,12 +980,11 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                   value={address.city}
                   onChange={e => setAddress({ ...address, city: e.target.value })}
                   className={`input-field w-full text-xs sm:text-sm ${formErrors.city ? 'border-red-500' : ''}`}
-                  placeholder="Mumbai"
+                  placeholder="Singrauli"
                 />
                 {formErrors.city && <p className="text-red-600 text-xs mt-1">{formErrors.city}</p>}
               </div>
 
-              {/* Pincode */}
               <div>
                 <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Pincode *</label>
                 <input
@@ -992,13 +992,12 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                   value={address.pincode}
                   onChange={e => setAddress({ ...address, pincode: e.target.value })}
                   className={`input-field w-full text-xs sm:text-sm ${formErrors.pincode ? 'border-red-500' : ''}`}
-                  placeholder="400001"
+                  placeholder="486886"
                 />
                 {formErrors.pincode && <p className="text-red-600 text-xs mt-1">{formErrors.pincode}</p>}
               </div>
             </div>
 
-            {/* Address Line 1 */}
             <div>
               <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Address *</label>
               <input
@@ -1006,12 +1005,11 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                 value={address.addressLine1}
                 onChange={e => setAddress({ ...address, addressLine1: e.target.value })}
                 className={`input-field w-full text-xs sm:text-sm ${formErrors.addressLine1 ? 'border-red-500' : ''}`}
-                placeholder="123 Main Street"
+                placeholder="House No, Street, Locality"
               />
               {formErrors.addressLine1 && <p className="text-red-600 text-xs mt-1">{formErrors.addressLine1}</p>}
             </div>
 
-            {/* Address Line 2 */}
             <div>
               <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Address Line 2 (Optional)</label>
               <input
@@ -1019,71 +1017,33 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                 value={address.addressLine2 || ''}
                 onChange={e => setAddress({ ...address, addressLine2: e.target.value })}
                 className="input-field w-full text-xs sm:text-sm"
-                placeholder="Apartment, suite, etc."
+                placeholder="Landmark, Apartment, Suite"
               />
             </div>
           </div>
 
-          {/* Guest Checkout - Account Creation Option (Only show if email checked and no account found) */}
-          {(!user || !user.uid) && emailChecked && !existingUserFound && (
-            <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 space-y-4">
+          {/* Guest Checkout Account Option */}
+          {!user?.uid && emailChecked && !existingUserFound && (
+            <div className="bg-gradient-to-br from-blue-50 to-cyan-50 border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 space-y-3">
               <h2 className="text-lg sm:text-xl font-bold text-navy flex items-center gap-2">
                 <IconRenderer name="user-plus" className="w-5 h-5 text-primary" />
-                Create Account for Faster Checkout
+                Save Your Order History (Optional)
               </h2>
 
-              <div className="space-y-3">
-                <label className="flex items-start gap-3 cursor-pointer p-3 bg-white rounded-lg border-2 border-slate-200 hover:border-navy transition-all">
-                  <input
-                    type="checkbox"
-                    checked={createGuestAccount}
-                    onChange={e => setCreateGuestAccount(e.target.checked)}
-                    className="w-5 h-5 accent-navy cursor-pointer mt-0.5 flex-shrink-0"
-                  />
-                  <div className="flex-1">
-                    <p className="text-sm font-bold text-navy">Create an account with us</p>
-                    <p className="text-xs text-slate-600 mt-1">
-                      We'll send you a temporary password. You can log in and change it anytime.
-                    </p>
-                  </div>
-                </label>
-
-                {!createGuestAccount && (
-                  <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 sm:p-4">
-                    <p className="text-xs sm:text-sm font-semibold text-yellow-900 mb-2">⚠️ Without an Account:</p>
-                    <ul className="text-xs sm:text-sm text-yellow-800 space-y-1 list-disc list-inside">
-                      <li>You won't be able to track your order</li>
-                      <li>You won't have access to order history</li>
-                      <li>You'll need to register if you order again</li>
-                    </ul>
-                  </div>
-                )}
-
-                {createGuestAccount && (
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-3 sm:p-4">
-                    <p className="text-xs sm:text-sm font-semibold text-green-900">✅ Benefits of Creating Account:</p>
-                    <ul className="text-xs sm:text-sm text-green-800 space-y-1 list-disc list-inside mt-2">
-                      <li>Track all your orders in real-time</li>
-                      <li>Faster checkout next time</li>
-                      <li>Access to order history and receipts</li>
-                      <li>Get exclusive offers and updates</li>
-                    </ul>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* If user was found, show message */}
-          {(!user || !user.uid) && existingUserFound && (
-            <div className="bg-green-50 border border-green-200 rounded-xl sm:rounded-2xl p-4 sm:p-6">
-              <p className="text-sm sm:text-base font-bold text-green-900 flex items-center gap-2">
-                <IconRenderer name="check-circle" className="w-5 h-5" />
-                Account Found! Your details are already in our system.
-              </p>
-              <p className="text-xs sm:text-sm text-green-800 mt-2">
-                Proceed with checkout. You'll receive an order confirmation email.
-              </p>
+              <label className="flex items-start gap-3 cursor-pointer p-3 bg-white rounded-lg border-2 border-slate-200 hover:border-navy transition-all">
+                <input
+                  type="checkbox"
+                  checked={createGuestAccount}
+                  onChange={e => setCreateGuestAccount(e.target.checked)}
+                  className="w-5 h-5 accent-navy cursor-pointer mt-0.5 flex-shrink-0"
+                />
+                <div className="flex-1">
+                  <p className="text-sm font-bold text-navy">Create an account after this order</p>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Automatically link this order to a new account. Guests can also track orders anytime using Order ID + Email/Phone.
+                  </p>
+                </div>
+              </label>
             </div>
           )}
         </div>
@@ -1093,13 +1053,12 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
           <div className="sticky top-24 bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 space-y-4">
             <h3 className="text-lg font-bold text-navy">Order Summary</h3>
 
-            {/* Product Info */}
             <div className="border-b border-slate-200 pb-4">
               <div className="flex gap-3 mb-3">
                 <img
-                  src={product.images[0]}
+                  src={product.images?.[0] || ''}
                   alt={product.name}
-                  className="w-16 h-16 object-cover rounded-lg"
+                  className="w-16 h-16 object-cover rounded-lg bg-slate-100"
                 />
                 <div className="flex-1">
                   <p className="text-xs sm:text-sm font-semibold text-navy line-clamp-2">{product.name}</p>
@@ -1108,7 +1067,6 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
               </div>
             </div>
 
-            {/* Price Breakdown */}
             <div className="space-y-2 text-xs sm:text-sm">
               <div className="flex justify-between text-slate-600">
                 <span>Subtotal</span>
@@ -1126,13 +1084,12 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
               </div>
             </div>
 
-            {/* Payment Methods Selection */}
+            {/* Payment Method Selection */}
             <div className="space-y-3 pt-4 border-t border-slate-200">
               <h4 className="font-bold text-navy text-sm">Payment Method</h4>
-              
-              {(!product.paymentMethods || product.paymentMethods.includes('both') || (product.paymentMethods.includes('online') && product.paymentMethods.includes('cod'))) ? (
+
+              {supportsBoth ? (
                 <>
-                  {/* Both methods available */}
                   <label className="flex items-center gap-3 p-3 bg-gradient-to-r from-slate-50 to-slate-100 rounded-xl border-2 border-slate-200 cursor-pointer hover:border-navy transition-all">
                     <input
                       type="radio"
@@ -1163,12 +1120,12 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
                     </div>
                   </label>
                 </>
-              ) : product.paymentMethods?.includes('online') ? (
+              ) : supportsOnlineOnly ? (
                 <div className="p-3 bg-blue-50 rounded-xl border border-blue-200">
                   <p className="text-sm font-bold text-navy">💳 Online Payment (Razorpay)</p>
                   <p className="text-xs text-slate-600 mt-1">Only online payment available for this product</p>
                 </div>
-              ) : product.paymentMethods?.includes('cod') ? (
+              ) : supportsCodOnly ? (
                 <div className="p-3 bg-green-50 rounded-xl border border-green-200">
                   <p className="text-sm font-bold text-navy">🚚 Cash on Delivery</p>
                   <p className="text-xs text-slate-600 mt-1">Only cash on delivery available for this product</p>
@@ -1176,16 +1133,20 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
               ) : null}
             </div>
 
-            {/* Submit Button */}
             <button
               type="submit"
               disabled={submitting || uploading || paymentProcessing}
               className="w-full btn-primary py-2.5 sm:py-3 text-sm sm:text-base font-bold disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {uploading ? 'Uploading...' : submitting ? 'Processing...' : paymentMethod === 'cod' ? '🚚 Place COD Order' : '💳 Pay Now'}
+              {uploading
+                ? 'Uploading Image...'
+                : submitting
+                  ? 'Processing Order...'
+                  : paymentMethod === 'cod'
+                    ? '🚚 Place COD Order'
+                    : '💳 Pay Now'}
             </button>
 
-            {/* Statutory Pre-Purchase Notice */}
             <p className="text-[11px] text-slate-500 text-center leading-normal">
               By placing this order, you agree to our{' '}
               <Link to="/legal/terms" target="_blank" className="text-primary underline">Terms</Link>,{' '}
@@ -1193,19 +1154,10 @@ export function StoreCheckout({ products, user, onAddOrder, isLoading = false, e
               <Link to="/legal/refund" target="_blank" className="text-primary underline">Refund & Cancellation Policy</Link>.
             </p>
 
-            {/* E-Commerce Disclosures & Trust Badges */}
             <div className="space-y-2 pt-3 border-t border-slate-200">
               <div className="flex items-center gap-2 text-xs text-slate-600">
                 <IconRenderer name="shield-check" className="w-4 h-4 text-primary shrink-0" />
                 <span>PCI-DSS Compliant 256-bit Secure Payment</span>
-              </div>
-              <div className="flex items-center gap-2 text-xs text-slate-600">
-                <span
-                  aria-hidden="true"
-                  className="w-4 h-4 bg-primary shrink-0"
-                  style={{ WebkitMaskImage: 'url(/icons/bi--rocket-takeoff.svg)', maskImage: 'url(/icons/bi--rocket-takeoff.svg)', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskPosition: 'center', maskPosition: 'center', WebkitMaskSize: 'contain', maskSize: 'contain' }}
-                />
-                <span>Pan-India Delivery (3–7 Business Days)</span>
               </div>
               <div className="pt-2 text-[10px] text-slate-400 border-t border-slate-100">
                 <p className="font-semibold text-slate-500">Seller / Service Provider:</p>

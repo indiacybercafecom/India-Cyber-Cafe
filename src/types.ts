@@ -188,7 +188,10 @@ export interface OrderAddress {
 
 export interface Order {
   id: string;
-  uid?: string; // optional if guest checkout
+  uid?: string; // canonical user ID
+  userId?: string; // legacy compatibility
+  isGuest?: boolean;
+  guestTokenHash?: string;
   email: string;
   items: OrderItem[];
   deliveryAddress: OrderAddress;
@@ -200,6 +203,7 @@ export interface Order {
   paymentStatus: 'pending' | 'completed' | 'failed';
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
+  razorpaySignature?: string;
   orderStatus: 'pending' | 'processing' | 'shipped' | 'delivered' | 'cancelled';
   notes: ApplicationNote[];
   createdAt: string;

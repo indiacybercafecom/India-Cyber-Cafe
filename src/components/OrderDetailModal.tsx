@@ -26,6 +26,20 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
 
   const isAdmin = currentUser?.role === 'admin';
 
+  const resolveOrderPath = async (orderId: string) => {
+    const flatKey = String(orderId || '').trim().replace(/[/.#$[\]]/g, '-');
+    const { get } = await import('firebase/database');
+    try {
+      const flatSnap = await get(dbRef(rtdb, `orders/${flatKey}`));
+      if (flatSnap.exists()) return `orders/${flatKey}`;
+      if (flatKey !== orderId) {
+        const legacySnap = await get(dbRef(rtdb, `orders/${orderId}`));
+        if (legacySnap.exists()) return `orders/${orderId}`;
+      }
+    } catch {}
+    return `orders/${flatKey}`;
+  };
+
   const handleAddNote = async () => {
     if (!noteText.trim()) {
       showToast('Please enter a note', 'error');
@@ -48,7 +62,8 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
       };
 
       const updatedNotes = [...(order.notes || []), newNote];
-      await update(dbRef(rtdb, `orders/${order.id}`), {
+      const orderPath = await resolveOrderPath(order.id);
+      await update(dbRef(rtdb, orderPath), {
         notes: updatedNotes,
         updatedAt: new Date().toISOString()
       });
@@ -70,7 +85,8 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
 
     setLoading(true);
     try {
-      await update(dbRef(rtdb, `orders/${order.id}`), {
+      const orderPath = await resolveOrderPath(order.id);
+      await update(dbRef(rtdb, orderPath), {
         orderStatus: newStatus,
         updatedAt: new Date().toISOString()
       });
@@ -92,7 +108,8 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
 
     setLoading(true);
     try {
-      await update(dbRef(rtdb, `orders/${order.id}`), {
+      const orderPath = await resolveOrderPath(order.id);
+      await update(dbRef(rtdb, orderPath), {
         paymentStatus: newPaymentStatus,
         updatedAt: new Date().toISOString()
       });
@@ -152,7 +169,7 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
             <div className="grid grid-cols-2 gap-4">
               <div className="bg-slate-50 p-4 rounded-xl">
                 <p className="text-xs text-slate-500 font-bold mb-1">Customer</p>
-                <p className="font-bold text-slate-900">{order.deliveryAddress.name}</p>
+                <p className="font-bold text-slate-900">{order.deliveryAddress?.name || 'Customer'}</p>
                 <p className="text-sm text-slate-600">{order.email}</p>
               </div>
               <div className="bg-slate-50 p-4 rounded-xl">
@@ -181,7 +198,7 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
             <div className="bg-slate-50 rounded-xl p-4">
               <p className="font-bold text-slate-900 mb-4">Items</p>
               <div className="space-y-3">
-                {order.items.map((item, idx) => (
+                {(Array.isArray(order.items) ? order.items : Object.values(order.items || {})).map((item: any, idx: number) => (
                   <div key={idx} className="bg-white p-3 rounded-lg border border-slate-200">
                     <div className="flex justify-between items-start gap-4">
                       <div className="flex-1 min-w-0">
@@ -206,16 +223,18 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
             </div>
 
             {/* Delivery Address */}
-            <div className="bg-slate-50 rounded-xl p-4">
-              <p className="font-bold text-slate-900 mb-3">Delivery Address</p>
-              <div className="text-sm text-slate-700 space-y-1">
-                <p>{order.deliveryAddress.addressLine1}</p>
-                {order.deliveryAddress.addressLine2 && <p>{order.deliveryAddress.addressLine2}</p>}
-                <p>{order.deliveryAddress.city}, {order.deliveryAddress.state} {order.deliveryAddress.pincode}</p>
-                <p>{order.deliveryAddress.country}</p>
-                <p className="mt-2 text-xs">Phone: {order.deliveryAddress.phone}</p>
+            {order.deliveryAddress && (
+              <div className="bg-slate-50 rounded-xl p-4">
+                <p className="font-bold text-slate-900 mb-3">Delivery Address</p>
+                <div className="text-sm text-slate-700 space-y-1">
+                  <p>{order.deliveryAddress.addressLine1}</p>
+                  {order.deliveryAddress.addressLine2 && <p>{order.deliveryAddress.addressLine2}</p>}
+                  <p>{order.deliveryAddress.city}, {order.deliveryAddress.state} {order.deliveryAddress.pincode}</p>
+                  <p>{order.deliveryAddress.country}</p>
+                  <p className="mt-2 text-xs">Phone: {order.deliveryAddress.phone}</p>
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Admin Controls */}
             {isAdmin && (
@@ -292,11 +311,11 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
             )}
 
             {/* Notes Timeline */}
-            {order.notes && order.notes.length > 0 && (
+            {order.notes && (Array.isArray(order.notes) ? order.notes : Object.values(order.notes || {})).length > 0 && (
               <div className="border-t pt-4">
                 <p className="font-bold text-slate-900 mb-4">Notes & Updates</p>
                 <div className="space-y-3">
-                  {order.notes.map((note, idx) => (
+                  {(Array.isArray(order.notes) ? order.notes : Object.values(order.notes || {})).map((note: any, idx: number) => (
                     <div key={idx} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                       <div className="flex justify-between items-start gap-2 mb-2">
                         <p className="font-bold text-sm text-slate-900">{note.by}</p>

@@ -130,6 +130,8 @@ function AppContent() {
   const users = user?.role === 'admin' ? adminUsers.users : [];
   const applicationsLoading = user?.role === 'admin' ? adminApplications.loading : userApplications.loading;
   const ordersLoading = user?.role === 'admin' ? adminOrders.loading : userOrders.loading;
+  const applicationsError = user?.role === 'admin' ? adminApplications.error : userApplications.error;
+  const ordersError = user?.role === 'admin' ? adminOrders.error : userOrders.error;
   const usersLoading = adminUsers.loading;
 
   // Back button handling for modals and sidebar
@@ -345,21 +347,15 @@ function AppContent() {
               element={
                 authLoading || (authUser && profileLoading) ? (
                   <CheckoutSkeleton />
-                ) : profileUnavailable ? (
-                  <Navigate to="/" />
-                ) : authUser && user ? (
+                ) : (
                   <StoreCheckout
                     products={products}
-                    user={user}
-                    onAddOrder={userOrders.addOrder}
+                    user={user || null}
                     isLoading={productsLoading}
                     error={productsError}
                     onRetry={retryProducts}
+                    onOrderSuccess={userOrders.refresh}
                   />
-                ) : authUser ? (
-                  <Navigate to="/" />
-                ) : (
-                  <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} />
                 )
               }
             />
@@ -376,14 +372,27 @@ function AppContent() {
                 />
               }
             />
-            {/* Track - user applications + orders */}
+            {/* Guest Order Tracker */}
+            <Route
+              path="/track-order"
+              element={
+                <Track
+                  applications={[]}
+                  orders={[]}
+                  user={user || null}
+                  gateways={[]}
+                  onViewDetails={setSelectedApp}
+                  onUpdateApp={async () => {}}
+                  guestOnly
+                />
+              }
+            />
+            {/* Track - user applications + orders (with guest tracking fallback when logged out) */}
             <Route
               path="/track"
               element={
                 authLoading || (authUser && profileLoading) ? (
                   <TrackSkeleton />
-                ) : profileUnavailable ? (
-                  <Navigate to="/" />
                 ) : authUser && user ? (
                   <Track
                     applications={applications}
@@ -392,12 +401,20 @@ function AppContent() {
                     gateways={gateways.gateways}
                     onViewDetails={setSelectedApp}
                     onUpdateApp={userApplications.updateApplication}
+                    ordersLoading={ordersLoading}
+                    ordersError={ordersError}
+                    onRetryOrders={user?.role === 'admin' ? adminOrders.retry : userOrders.retry}
+                    applicationsLoading={applicationsLoading}
+                    applicationsError={applicationsError}
                   />
-                ) : authUser ? (
-                  <Navigate to="/" />
                 ) : (
-                  <Navigate
-                    to={`/login?redirect=${encodeURIComponent('/track')}`}
+                  <Track
+                    applications={[]}
+                    orders={[]}
+                    user={null}
+                    gateways={[]}
+                    onViewDetails={setSelectedApp}
+                    onUpdateApp={async () => {}}
                   />
                 )
               }
@@ -407,8 +424,6 @@ function AppContent() {
               element={
                 authLoading || (authUser && profileLoading) ? (
                   <TrackSkeleton />
-                ) : profileUnavailable ? (
-                  <Navigate to="/" />
                 ) : authUser && user ? (
                   <Track
                     applications={applications}
@@ -417,9 +432,12 @@ function AppContent() {
                     gateways={gateways.gateways}
                     onViewDetails={setSelectedApp}
                     onUpdateApp={userApplications.updateApplication}
+                    ordersLoading={ordersLoading}
+                    ordersError={ordersError}
+                    onRetryOrders={user?.role === 'admin' ? adminOrders.retry : userOrders.retry}
+                    applicationsLoading={applicationsLoading}
+                    applicationsError={applicationsError}
                   />
-                ) : authUser ? (
-                  <Navigate to="/" />
                 ) : (
                   <Navigate
                     to={`/login?redirect=${encodeURIComponent(location.pathname)}`}

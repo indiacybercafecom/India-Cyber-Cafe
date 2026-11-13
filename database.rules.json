@@ -67,12 +67,13 @@
     },
 
     "orders": {
-      ".indexOn": ["userId", "uid", "email", "phone", "orderStatus", "paymentStatus"],
-      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'uid' && query.equalTo === auth.uid) || (query.orderByChild === 'userId' && query.equalTo === auth.uid))",
+      ".indexOn": ["userId", "uid", "email", "phone", "orderStatus", "paymentStatus", "razorpayOrderId", "razorpayPaymentId", "assignedTo"],
+      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'uid' && query.equalTo === auth.uid) || (query.orderByChild === 'userId' && query.equalTo === auth.uid) || (root.child('users').child(auth.uid).child('role').val() === 'operator' && query.orderByChild === 'assignedTo' && query.equalTo === auth.token.email))",
 
       "$orderId": {
-        ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid)",
-        ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && (newData.child('uid').val() === auth.uid || newData.child('userId').val() === auth.uid)) || (data.exists() && (data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid) && (!newData.exists() || (newData.child('uid').val() === data.child('uid').val() && (!data.hasChild('userId') || newData.child('userId').val() === data.child('userId').val())))))"
+        ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid || (root.child('users').child(auth.uid).child('role').val() === 'operator' && data.child('assignedTo').val() === auth.token.email))",
+        ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".validate": "!newData.exists() || (newData.hasChildren(['id', 'total', 'paymentMethod', 'paymentStatus', 'orderStatus']) && newData.child('total').isNumber() && newData.child('total').val() >= 0)"
       }
     },
 

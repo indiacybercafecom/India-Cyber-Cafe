@@ -5,6 +5,7 @@ import { ref, onValue } from 'firebase/database';
 import { UserProfile } from '../types';
 import { checkRedirectAuth, ensureUserProfile, syncGoogleProfilePhoto } from '../services/authService';
 import { shouldSyncGooglePhoto, resolveAvatarUrl, extractAuthPhotoUrl, getEmailAvatarUrl, DEFAULT_AVATAR } from '../utils/avatar';
+import { linkGuestOrdersToAuthenticatedUser } from '../services/guestCheckoutService';
 
 /**
  * Hook that separates auth identity from profile data
@@ -43,6 +44,7 @@ export function useAuth() {
 
       // STEP 2: Load the profile in the background
       if (firebaseUser) {
+        linkGuestOrdersToAuthenticatedUser().catch(() => {});
         setProfileError(null);
         setProfileLoading(true);
         const userRef = ref(rtdb, `users/${firebaseUser.uid}`);

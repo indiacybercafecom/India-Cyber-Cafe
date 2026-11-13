@@ -5,12 +5,25 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import multer from "multer";
 import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSyncRuntime.js";
 import { getMetadataForUrl, injectOpenGraphMetadata, isSocialCrawler } from "./src/server/shareMetadata.js";
 import { driveRouter } from "./src/server/driveRoutes.js";
 import { renderUniversalPage, injectSsrIntoTemplate } from "./src/server/universalHtmlRenderer.js";
 import { generateSitemapXml, generateRobotsTxt } from "./src/server/sitemapService.js";
 import { invalidatePublicDataCache } from "./src/server/publicDataService.js";
+import {
+  handleCodOrder,
+  handleCreatePaymentOrder,
+  handleVerifyPayment,
+  handleRecoverPayment,
+  handleRazorpayWebhook,
+  handleGetMyOrders,
+  handleGuestTrackOrder,
+  handleLinkGuestOrders,
+  handleLookupEmail,
+  handleUploadCustomImage
+} from "./src/server/storeOrderService.js";
 
 dotenv.config();
 
@@ -32,7 +45,18 @@ async function startServer() {
   // Trust proxy for correct protocol and host detection behind proxies
   app.set('trust proxy', true);
 
-  app.use(express.json());
+  app.use(express.json({
+    limit: '2mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    }
+  }));
+
+  const customImageUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: 5 * 1024 * 1024 }
+  });
+  app.use('/uploads/custom-images', express.static(path.join(APP_ROOT, 'data/uploads/custom-images')));
 
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
@@ -260,6 +284,18 @@ async function startServer() {
 
     return res.json({ success: true });
   });
+
+  // --- Trusted Store Order Endpoints (Server-Authoritative, COD & Razorpay) ---
+  app.post("/api/auth/lookup-email", handleLookupEmail);
+  app.post("/api/store/upload-custom-image", customImageUpload.single("customImage"), handleUploadCustomImage);
+  app.post("/api/store/orders/cod", handleCodOrder);
+  app.post("/api/store/orders/create-payment", handleCreatePaymentOrder);
+  app.post("/api/store/orders/verify-payment", handleVerifyPayment);
+  app.post("/api/store/orders/recover-payment", handleRecoverPayment);
+  app.post("/api/store/orders/razorpay-webhook", handleRazorpayWebhook);
+  app.get("/api/store/orders/my", handleGetMyOrders);
+  app.post("/api/store/orders/guest-track", handleGuestTrackOrder);
+  app.post("/api/store/orders/link-guest-orders", handleLinkGuestOrders);
 
 
   app.options("/api/pdf-proxy", (req, res) => {

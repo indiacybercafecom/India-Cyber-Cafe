@@ -1,17 +1,97 @@
-import { rtdb } from '../firebase';
-import { ref as dbRef, query, equalTo, orderByChild, get } from 'firebase/database';
-import { auth } from '../firebase';
+import { rtdb, auth } from '../firebase';
+import { ref as dbRef, set } from 'firebase/database';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { sanitizeEmail, sanitizePhone, trimWhitespace } from '../utils/sanitizer';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
+import { normalizeIndianMobile } from './authService';
+
+const GUEST_ORDERS_STORAGE_KEY = 'icc_guest_orders';
+
+export interface StoredGuestOrderRef {
+  orderId: string;
+  email: string;
+  phone?: string;
+  token?: string;
+  createdAt: string;
+}
+
+export function saveGuestOrderRef(entry: StoredGuestOrderRef): void {
+  if (typeof window === 'undefined' || !entry?.orderId) return;
+  try {
+    const existing = getStoredGuestOrders().filter(item => item.orderId !== entry.orderId);
+    const updated = [entry, ...existing].slice(0, 15);
+    window.localStorage.setItem(GUEST_ORDERS_STORAGE_KEY, JSON.stringify(updated));
+  } catch (err) {
+    console.warn('Could not store guest order ref:', err);
+  }
+}
+
+export function getStoredGuestOrders(): StoredGuestOrderRef[] {
+  if (typeof window === 'undefined') return [];
+  try {
+    const raw = window.localStorage.getItem(GUEST_ORDERS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+export function removeStoredGuestOrder(orderId: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const filtered = getStoredGuestOrders().filter(item => item.orderId !== orderId);
+    window.localStorage.setItem(GUEST_ORDERS_STORAGE_KEY, JSON.stringify(filtered));
+  } catch {}
+}
+
+/**
+ * Links any guest orders in session storage or matching account email to the authenticated user.
+ */
+export async function linkGuestOrdersToAuthenticatedUser(): Promise<number> {
+  try {
+    const currentUser = auth.currentUser;
+    if (!currentUser) return 0;
+
+    const idToken = await currentUser.getIdToken();
+    const stored = getStoredGuestOrders();
+    const guestOrderTokens = stored
+      .filter(o => o.orderId && o.token)
+      .map(o => ({ orderId: o.orderId, token: o.token }));
+
+    const resp = await fetch('/api/store/orders/link-guest-orders', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`
+      },
+      body: JSON.stringify({ guestOrderTokens })
+    });
+
+    if (!resp.ok) return 0;
+    const data = await resp.json();
+    if (data.linkedCount > 0 && currentUser.email) {
+      const normalizedUserEmail = currentUser.email.toLowerCase().trim();
+      for (const item of stored) {
+        if (item.email?.toLowerCase().trim() === normalizedUserEmail) {
+          removeStoredGuestOrder(item.orderId);
+        }
+      }
+    }
+    return Number(data.linkedCount) || 0;
+  } catch (err) {
+    console.warn('Link guest orders notice:', err);
+    return 0;
+  }
+}
 
 /**
  * Generate a random password
- * @param length - Length of password (default 6)
- * @returns Random password with mix of letters and numbers
+ * @param length - Length of password (default 8)
  */
-export function generateRandomPassword(length: number = 6): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+export function generateRandomPassword(length: number = 8): string {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789';
   let password = '';
   for (let i = 0; i < length; i++) {
     password += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -20,35 +100,28 @@ export function generateRandomPassword(length: number = 6): string {
 }
 
 /**
- * Find user by email in database
+ * Safe non-PII existence lookup by email via backend endpoint (prevents reading restricted /users collection)
  */
 export async function findUserByEmail(email: string) {
   try {
     const normalizedEmail = sanitizeEmail(email);
-    console.log('🔎 Searching for email in database:', normalizedEmail);
-    
-    const usersRef = dbRef(rtdb, 'users');
-    const snapshot = await get(usersRef);
-    
-    if (!snapshot.exists()) {
-      console.log('❌ No users found in database');
-      return null;
-    }
-    
-    const users = snapshot.val() as Record<string, any>;
-    console.log('📋 Total users in database:', Object.keys(users).length);
-    
-    for (const [uid, userData] of Object.entries(users)) {
-      const userEmail = sanitizeEmail(userData.email || '');
-      console.log('🔍 Comparing:', userEmail, '===', normalizedEmail, '→', userEmail === normalizedEmail);
-      
-      if (userEmail === normalizedEmail) {
-        console.log('✅ Found matching user:', uid);
-        return { uid, ...userData };
+    if (!normalizedEmail) return null;
+
+    const response = await fetch('/api/auth/lookup-email', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: normalizedEmail })
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      if (data.found) {
+        return {
+          email: normalizedEmail,
+          isGoogleOnly: Boolean(data.isGoogleOnly)
+        };
       }
     }
-    
-    console.log('❌ No matching user found');
     return null;
   } catch (error) {
     console.error('❌ Error finding user by email:', error);
@@ -57,13 +130,11 @@ export async function findUserByEmail(email: string) {
 }
 
 /**
- * Find user by phone in database
+ * Safe non-PII existence lookup by phone via backend endpoint
  */
 export async function findUserByPhone(phone: string) {
   try {
-    const normalizedPhone = sanitizePhone(phone, true); // Remove non-digits
-    console.log('🔎 Searching for phone via backend API:', normalizedPhone);
-
+    const normalizedPhone = sanitizePhone(phone, true);
     const response = await fetch('/api/auth/lookup-phone', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -97,22 +168,18 @@ export async function createGuestAccount(
   phone: string
 ): Promise<{ success: boolean; user?: any; password?: string; error?: string }> {
   try {
-    // Sanitize all input before creating account
     const sanitizedEmail = sanitizeEmail(email);
     const sanitizedName = trimWhitespace(name);
-    const sanitizedPhone = sanitizePhone(phone);
-    
-    // Generate random password
-    const randomPassword = generateRandomPassword(6);
-    
-    // Create Firebase auth user
+    const { valid, normalized } = normalizeIndianMobile(phone);
+    const sanitizedPhone = valid ? normalized : sanitizePhone(phone);
+
+    const randomPassword = generateRandomPassword(8);
+
     const userCredential = await createUserWithEmailAndPassword(auth, sanitizedEmail, randomPassword);
     const user = userCredential.user;
-    
-    // Update profile with name
+
     await updateProfile(user, { displayName: sanitizedName });
-    
-    // Create user document in database
+
     const userRef = dbRef(rtdb, `users/${user.uid}`);
     const newUser = {
       uid: user.uid,
@@ -121,18 +188,31 @@ export async function createGuestAccount(
       phone: sanitizedPhone,
       role: 'user',
       avatar: `https://api.dicebear.com/7.x/avataaars/svg?seed=${sanitizedEmail}`,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      isGuestCheckout: true // Mark as created from guest checkout
+      authProvider: 'password',
+      profileCompleted: Boolean(sanitizedPhone),
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      isGuestCheckout: true
     };
-    
-    // Save to database
-    const { set } = await import('firebase/database');
+
     await set(userRef, newUser);
-    
+
+    if (sanitizedPhone) {
+      fetch('/api/auth/sync-phone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: user.uid,
+          phone: sanitizedPhone,
+          email: sanitizedEmail,
+          isGoogleOnly: false
+        })
+      }).catch(() => {});
+    }
+
     return {
       success: true,
-      user: { ...newUser, password: randomPassword },
+      user: newUser,
       password: randomPassword
     };
   } catch (error: any) {

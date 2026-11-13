@@ -328,8 +328,9 @@ const mockDb: DatabaseState = {
     'app_custB': { id: 'app_custB', uid: 'cust_uid_B', userId: 'cust_uid_B', serviceId: 'srv_1', status: 'pending', assignedTo: 'operator1@indiacybercafe.com' }
   },
   orders: {
-    'ord_custA': { id: 'ord_custA', uid: 'cust_uid_A', userId: 'cust_uid_A', total: 198, paymentStatus: 'pending' },
-    'ord_custB': { id: 'ord_custB', uid: 'cust_uid_B', userId: 'cust_uid_B', total: 99, paymentStatus: 'paid' }
+    'ord_custA': { id: 'ord_custA', uid: 'cust_uid_A', userId: 'cust_uid_A', total: 198, paymentMethod: 'razorpay', paymentStatus: 'pending', orderStatus: 'pending' },
+    'ord_custB': { id: 'ord_custB', uid: 'cust_uid_B', userId: 'cust_uid_B', total: 99, paymentMethod: 'cash', paymentStatus: 'completed', orderStatus: 'processing', assignedTo: 'operator1@indiacybercafe.com' },
+    'ord_legacyA': { id: 'ord_legacyA', userId: 'cust_uid_A', total: 49, paymentMethod: 'cash', paymentStatus: 'pending', orderStatus: 'pending' }
   },
   payments: {},
   productReviews: {
@@ -535,6 +536,66 @@ const tests: TestCase[] = [
     description: 'Unauthenticated visitor reading or writing directly to /privacy_requests/PRV-10001',
     run: () => engine.canRead('privacy_requests/PRV-10001', null, mockDb) || engine.canWrite('privacy_requests/PRV-10001', null, mockDb, {}),
     expected: false
+  },
+  {
+    id: 25,
+    description: 'Unauthenticated guest reading individual order /orders/ord_custA directly',
+    run: () => engine.canRead('orders/ord_custA', null, mockDb),
+    expected: false
+  },
+  {
+    id: 26,
+    description: 'Customer A reading Customer B order /orders/ord_custB directly',
+    run: () => engine.canRead('orders/ord_custB', CUSTOMER_A, mockDb),
+    expected: false
+  },
+  {
+    id: 27,
+    description: 'Customer A reading own legacy userId order /orders/ord_legacyA',
+    run: () => engine.canRead('orders/ord_legacyA', CUSTOMER_A, mockDb),
+    expected: true
+  },
+  {
+    id: 28,
+    description: 'Customer A writing or tampering with own order /orders/ord_custA directly (server-only writes)',
+    run: () => engine.canWrite('orders/ord_custA', CUSTOMER_A, mockDb, {
+      ...mockDb.orders!['ord_custA'],
+      paymentStatus: 'completed',
+      total: 1
+    }),
+    expected: false
+  },
+  {
+    id: 29,
+    description: 'Unauthenticated visitor creating direct order /orders/ord_fake directly',
+    run: () => engine.canWrite('orders/ord_fake', null, mockDb, {
+      id: 'ord_fake',
+      uid: 'guest',
+      total: 0,
+      paymentMethod: 'cash',
+      paymentStatus: 'completed',
+      orderStatus: 'processing'
+    }),
+    expected: false
+  },
+  {
+    id: 30,
+    description: 'Admin reading all /orders and updating /orders/ord_custA status',
+    run: () => engine.canRead('orders', ADMIN_USER, mockDb) && engine.canWrite('orders/ord_custA', ADMIN_USER, mockDb, {
+      ...mockDb.orders!['ord_custA'],
+      orderStatus: 'shipped'
+    }),
+    expected: true
+  },
+  {
+    id: 31,
+    description: 'Operator reading assigned order /orders/ord_custB, denied unassigned /orders/ord_custA and denied full /orders dump',
+    run: () =>
+      engine.canRead('orders/ord_custB', OPERATOR_USER, mockDb) &&
+      engine.canRead('orders', OPERATOR_USER, mockDb, { orderByChild: 'assignedTo', equalTo: 'operator1@indiacybercafe.com' }) &&
+      !engine.canRead('orders/ord_custA', OPERATOR_USER, mockDb) &&
+      !engine.canRead('orders', OPERATOR_USER, mockDb),
+    expected: true
   }
 ];
 

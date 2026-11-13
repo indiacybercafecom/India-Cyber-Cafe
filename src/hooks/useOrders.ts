@@ -1,19 +1,78 @@
-import { useState, useEffect } from 'react';
-import { ref, onValue, update, remove, push, set, query, orderByChild, equalTo } from 'firebase/database';
-import { rtdb } from '../firebase';
+import { useState, useEffect, useCallback } from 'react';
+import { ref, onValue, update, remove, get, query, orderByChild, equalTo } from 'firebase/database';
+import { auth, rtdb } from '../firebase';
 import { Order } from '../types';
 
-const PAGINATION_LIMIT = 100;
+const PAGINATION_LIMIT = 150;
 
-/**
- * Hook for loading orders data
- * - disabled: does not subscribe
- * - user: loads only orders belonging to that user
- * - admin: loads all orders
- * Real-time updates are maintained for the current filter
- * 
- * If uid is null, does not subscribe (useful for conditional loading)
- */
+export function toRtdbOrderKey(orderId: string): string {
+  return String(orderId || '').trim().replace(/[/.#$[\]]/g, '-');
+}
+
+async function resolveOrderRtdbPath(orderId: string): Promise<string> {
+  const flatKey = toRtdbOrderKey(orderId);
+  try {
+    const flatSnap = await get(ref(rtdb, `orders/${flatKey}`));
+    if (flatSnap.exists()) {
+      return `orders/${flatKey}`;
+    }
+    if (flatKey !== orderId) {
+      const legacySnap = await get(ref(rtdb, `orders/${orderId}`));
+      if (legacySnap.exists()) {
+        return `orders/${orderId}`;
+      }
+    }
+  } catch (err) {
+    console.warn('resolveOrderRtdbPath notice:', err);
+  }
+  return `orders/${flatKey}`;
+}
+
+function extractOrders(obj: any, prefix: string = ''): Order[] {
+  const result: Order[] = [];
+  if (!obj || typeof obj !== 'object') return result;
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (
+      value &&
+      typeof value === 'object' &&
+      ('email' in value || 'items' in value || 'total' in value)
+    ) {
+      const orderId = (value as any).id || (prefix ? `${prefix}/${key}` : key);
+      result.push({
+        id: orderId,
+        ...(value as any),
+      } as Order);
+    } else if (value && typeof value === 'object') {
+      const nestedPrefix = prefix ? `${prefix}/${key}` : key;
+      result.push(...extractOrders(value, nestedPrefix));
+    }
+  }
+  return result;
+}
+
+function mergeAndSortOrders(lists: Order[][]): Order[] {
+  const map = new Map<string, Order>();
+  for (const list of lists) {
+    for (const ord of list) {
+      if (!ord || !ord.id) continue;
+      const existing = map.get(ord.id);
+      if (!existing) {
+        map.set(ord.id, ord);
+      } else {
+        const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
+        const incomingTime = new Date(ord.updatedAt || ord.createdAt || 0).getTime();
+        if (incomingTime >= existingTime) {
+          map.set(ord.id, ord);
+        }
+      }
+    }
+  }
+  return Array.from(map.values())
+    .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+    .slice(0, PAGINATION_LIMIT);
+}
+
 export type OrderLoadOptions =
   | { mode: 'disabled' }
   | { mode: 'user'; uid: string }
@@ -25,134 +84,165 @@ export function useOrders(options?: OrderLoadOptions | null) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(mode !== 'disabled');
   const [error, setError] = useState<Error | null>(null);
+  const [reloadNonce, setReloadNonce] = useState(0);
+
+  const refresh = useCallback(() => {
+    setReloadNonce(n => n + 1);
+  }, []);
 
   useEffect(() => {
     if (mode === 'disabled') {
       setOrders([]);
       setLoading(false);
+      setError(null);
       return;
     }
 
-    let unsubscribe: (() => void) | null = null;
+    let isActive = true;
+    let unsubUid: (() => void) | null = null;
+    let unsubLegacy: (() => void) | null = null;
+    let unsubAdmin: (() => void) | null = null;
 
-    const loadOrders = () => {
-      try {
-        setLoading(true);
-
-        const ordersRef = userUid
-          ? query(ref(rtdb, 'orders'), orderByChild('uid'), equalTo(userUid))
-          : ref(rtdb, 'orders');
-        unsubscribe = onValue(
-          ordersRef,
-          (snapshot) => {
-            try {
-              const data = snapshot.val();
-              let orders: Order[] = [];
-
-              if (data) {
-                const extractOrders = (
-                  obj: any,
-                  prefix: string = ''
-                ): Order[] => {
-                  const result: Order[] = [];
-                  if (!obj || typeof obj !== 'object') return result;
-
-                  for (const [key, value] of Object.entries(obj)) {
-                    if (
-                      value &&
-                      typeof value === 'object' &&
-                      ('email' in value || 'items' in value || 'total' in value)
-                    ) {
-                      const orderId =
-                        (value as any).id ||
-                        (prefix ? `${prefix}/${key}` : key);
-                      result.push({
-                        id: orderId,
-                        ...(value as any),
-                      } as Order);
-                    } else if (value && typeof value === 'object') {
-                      const nestedPrefix = prefix
-                        ? `${prefix}/${key}`
-                        : key;
-                      result.push(...extractOrders(value, nestedPrefix));
-                    }
-                  }
-                  return result;
-                };
-
-                orders = extractOrders(data)
-                  .slice(0, PAGINATION_LIMIT);
-              }
-
-              setOrders(orders);
-              setError(null);
-              setLoading(false);
-            } catch (err) {
-              const error =
-                err instanceof Error ? err : new Error(String(err));
-              setError(error);
-              setLoading(false);
-            }
-          },
-          (err) => {
-            console.error('Error fetching orders:', err);
-            const error = err instanceof Error ? err : new Error(String(err));
-            setError(error);
+    if (mode === 'admin') {
+      setLoading(true);
+      unsubAdmin = onValue(
+        ref(rtdb, 'orders'),
+        (snapshot) => {
+          if (!isActive) return;
+          try {
+            const data = snapshot.val();
+            const parsed = data ? mergeAndSortOrders([extractOrders(data)]) : [];
+            setOrders(parsed);
+            setError(null);
+          } catch (err) {
+            setError(err instanceof Error ? err : new Error(String(err)));
+          } finally {
             setLoading(false);
           }
-        );
-      } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
-        setError(error);
-        setLoading(false);
-      }
-    };
+        },
+        (err) => {
+          if (!isActive) return;
+          console.error('Error fetching admin orders:', err);
+          setError(err instanceof Error ? err : new Error(String(err)));
+          setLoading(false);
+        }
+      );
 
-    loadOrders();
-
-    return () => {
-      if (unsubscribe) unsubscribe();
-    };
-  }, [mode, userUid]);
-
-  const addOrder = async (order: Omit<Order, 'id'> | Order) => {
-    // Validate that uid is not undefined (Firebase doesn't allow undefined values)
-    if (!order.uid) {
-      throw new Error('User ID is required to place an order');
+      return () => {
+        isActive = false;
+        if (unsubAdmin) unsubAdmin();
+      };
     }
 
-    // Remove any undefined values from the order object
-    const cleanOrder = Object.fromEntries(
-      Object.entries(order).filter(([_, value]) => value !== undefined)
-    );
+    // Customer mode: fetch authoritative orders from `/api/store/orders/my`
+    // AND maintain live RTDB listeners for both `uid` and legacy `userId`
+    if (mode === 'user' && userUid) {
+      setLoading(true);
+      setError(null);
 
-    // If order has custom id (e.g., from generateOrderId), use it
-    const orderId = 'id' in order && order.id ? order.id : undefined;
+      let apiOrders: Order[] = [];
+      let rtdbUidOrders: Order[] = [];
+      let rtdbLegacyOrders: Order[] = [];
+      let apiSettled = false;
 
-    if (orderId) {
-      return await set(ref(rtdb, `orders/${orderId}`), {
-        ...cleanOrder,
-        id: orderId,
-      });
-    } else {
-      const newRef = push(ref(rtdb, 'orders'));
-      return await set(newRef, { ...cleanOrder, id: newRef.key });
+      const publishMerged = () => {
+        if (!isActive) return;
+        const merged = mergeAndSortOrders([apiOrders, rtdbUidOrders, rtdbLegacyOrders]);
+        setOrders(merged);
+        if (apiSettled) {
+          setLoading(false);
+        }
+      };
+
+      const fetchMyOrdersFromApi = async () => {
+        try {
+          const currentUser = auth.currentUser;
+          if (!currentUser) {
+            apiSettled = true;
+            publishMerged();
+            return;
+          }
+          const token = await currentUser.getIdToken();
+          const resp = await fetch('/api/store/orders/my', {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+
+          if (!resp.ok) {
+            const data = await resp.json().catch(() => ({}));
+            throw new Error(data.error || 'Failed to load orders.');
+          }
+
+          const data = await resp.json();
+          if (Array.isArray(data.orders)) {
+            apiOrders = data.orders;
+          }
+          if (isActive) setError(null);
+        } catch (err) {
+          console.error('Error loading user orders from backend:', err);
+          if (isActive && rtdbUidOrders.length === 0 && rtdbLegacyOrders.length === 0) {
+            setError(err instanceof Error ? err : new Error('Failed to load orders.'));
+          }
+        } finally {
+          apiSettled = true;
+          publishMerged();
+        }
+      };
+
+      fetchMyOrdersFromApi();
+
+      const uidQuery = query(ref(rtdb, 'orders'), orderByChild('uid'), equalTo(userUid));
+      unsubUid = onValue(
+        uidQuery,
+        (snapshot) => {
+          const data = snapshot.val();
+          rtdbUidOrders = data ? extractOrders(data) : [];
+          publishMerged();
+        },
+        (err) => {
+          console.warn('RTDB uid orders listener notice:', err);
+        }
+      );
+
+      const legacyQuery = query(ref(rtdb, 'orders'), orderByChild('userId'), equalTo(userUid));
+      unsubLegacy = onValue(
+        legacyQuery,
+        (snapshot) => {
+          const data = snapshot.val();
+          rtdbLegacyOrders = data ? extractOrders(data) : [];
+          publishMerged();
+        },
+        (err) => {
+          console.warn('RTDB userId orders listener notice:', err);
+        }
+      );
+
+      return () => {
+        isActive = false;
+        if (unsubUid) unsubUid();
+        if (unsubLegacy) unsubLegacy();
+      };
     }
-  };
+
+    setLoading(false);
+    return undefined;
+  }, [mode, userUid, reloadNonce]);
 
   const updateOrder = async (id: string, data: Partial<Order>) => {
-    return await update(ref(rtdb, `orders/${id}`), data);
+    const targetPath = await resolveOrderRtdbPath(id);
+    return await update(ref(rtdb, targetPath), data);
   };
 
   const deleteOrder = async (id: string) => {
-    return await remove(ref(rtdb, `orders/${id}`));
+    const targetPath = await resolveOrderRtdbPath(id);
+    return await remove(ref(rtdb, targetPath));
   };
 
   return {
     orders,
     loading,
     error,
-    addOrder,
+    refresh,
+    retry: refresh,
     updateOrder,
     deleteOrder,
   };
