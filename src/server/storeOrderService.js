@@ -1,7 +1,7 @@
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import { initializeApp, getApps } from 'firebase-admin/app';
+import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { getAuth } from 'firebase-admin/auth';
 import nodemailer from 'nodemailer';
@@ -15,31 +15,153 @@ const ORDERS_STORE_PATH = path.join(APP_ROOT, 'data/orders_store.json');
 const PRODUCTS_DATA_PATH = path.join(APP_ROOT, 'public/data/products.json');
 const DIST_PRODUCTS_PATH = path.join(APP_ROOT, 'dist/data/products.json');
 const CUSTOM_UPLOADS_DIR = path.join(APP_ROOT, 'data/uploads/custom-images');
+const RTDB_PUBLIC_URL = (process.env.FIREBASE_DATABASE_URL || 'https://india-cyber-cafe-default-rtdb.firebaseio.com').replace(/\/+$/, '');
 
 const isTestMode = () => process.env.STORE_ORDER_TEST_MODE === '1';
 
-// Initialize Firebase Admin SDK safely (singleton)
+class DatabaseConfigError extends Error {
+  constructor(message, statusCode = 503) {
+    super(message);
+    this.name = 'DatabaseConfigError';
+    this.statusCode = statusCode;
+  }
+}
+
+function withTimeout(promise, ms, label) {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`${label} timed out after ${ms}ms`));
+    }, ms);
+    if (typeof timer.unref === 'function') timer.unref();
+    promise.then(
+      val => {
+        clearTimeout(timer);
+        resolve(val);
+      },
+      err => {
+        clearTimeout(timer);
+        reject(err);
+      }
+    );
+  });
+}
+
+function parseServiceAccountRaw(raw) {
+  try {
+    const trimmed = String(raw || '').trim();
+    if (!trimmed) return null;
+    if (trimmed.startsWith('{')) {
+      return JSON.parse(trimmed);
+    }
+    const decoded = Buffer.from(trimmed, 'base64').toString('utf-8');
+    if (decoded.trim().startsWith('{')) {
+      return JSON.parse(decoded);
+    }
+  } catch (err) {
+    console.warn('⚠️ Invalid service account JSON/base64:', err?.message || err);
+  }
+  return null;
+}
+
+function resolveFirebaseCredential() {
+  const inlineEnv = process.env.FIREBASE_SERVICE_ACCOUNT_JSON || process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (inlineEnv) {
+    const parsed = parseServiceAccountRaw(inlineEnv);
+    if (parsed) return { credential: cert(parsed), source: 'FIREBASE_SERVICE_ACCOUNT_JSON' };
+  }
+
+  if (process.env.FIREBASE_SERVICE_ACCOUNT_BASE64) {
+    const parsed = parseServiceAccountRaw(process.env.FIREBASE_SERVICE_ACCOUNT_BASE64);
+    if (parsed) return { credential: cert(parsed), source: 'FIREBASE_SERVICE_ACCOUNT_BASE64' };
+  }
+
+  if (process.env.FIREBASE_CLIENT_EMAIL && process.env.FIREBASE_PRIVATE_KEY) {
+    return {
+      credential: cert({
+        projectId: process.env.FIREBASE_PROJECT_ID || 'india-cyber-cafe',
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL.trim(),
+        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      }),
+      source: 'FIREBASE_CLIENT_EMAIL/FIREBASE_PRIVATE_KEY'
+    };
+  }
+
+  const candidatePaths = [
+    process.env.GOOGLE_APPLICATION_CREDENTIALS,
+    path.join(APP_ROOT, 'firebase-service-account.json'),
+    path.join(APP_ROOT, 'service-account.json'),
+    path.join(APP_ROOT, 'data/firebase-service-account.json'),
+  ].filter(Boolean);
+
+  for (const filePath of candidatePaths) {
+    try {
+      if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+        const parsed = parseServiceAccountRaw(fs.readFileSync(filePath, 'utf-8'));
+        if (parsed) return { credential: cert(parsed), source: path.basename(filePath) };
+      }
+    } catch {}
+  }
+
+  // Only allow default GCP ADC inside genuine GCP runtimes to avoid hanging 169.254.169.254 metadata probes elsewhere
+  const isGcpRuntime = Boolean(
+    process.env.K_SERVICE ||
+    process.env.FUNCTION_TARGET ||
+    process.env.GAE_APPLICATION ||
+    process.env.GCE_METADATA_HOST
+  );
+  if (isGcpRuntime) {
+    return { credential: undefined, source: 'GCP_ADC' };
+  }
+
+  return { credential: null, source: 'none' };
+}
+
+// Initialize Firebase Admin SDK safely (singleton) ONLY when valid credentials are present
 let rtdbAdmin = null;
 let authAdmin = null;
+let hasAdminCredential = false;
+let credentialSource = 'none';
 
 try {
-  const app = getApps().length
-    ? getApps()[0]
-    : initializeApp({
-        projectId: process.env.FIREBASE_PROJECT_ID || 'india-cyber-cafe',
-        databaseURL: process.env.FIREBASE_DATABASE_URL || 'https://india-cyber-cafe-default-rtdb.firebaseio.com'
-      });
-  rtdbAdmin = getDatabase(app);
-  authAdmin = getAuth(app);
+  const { credential, source } = resolveFirebaseCredential();
+  credentialSource = source;
+  if (source !== 'none') {
+    const appConfig = {
+      projectId: process.env.FIREBASE_PROJECT_ID || 'india-cyber-cafe',
+      databaseURL: RTDB_PUBLIC_URL
+    };
+    if (credential) {
+      appConfig.credential = credential;
+    }
+    const app = getApps().length ? getApps()[0] : initializeApp(appConfig);
+    rtdbAdmin = getDatabase(app);
+    authAdmin = getAuth(app);
+    hasAdminCredential = true;
+    console.log(`✅ Firebase Admin SDK initialized (${source})`);
+  } else if (!isTestMode()) {
+    console.warn('⚠️ Firebase Admin credentials not configured (set FIREBASE_SERVICE_ACCOUNT_JSON or firebase-service-account.json). Protected /orders writes will fail fast instead of hanging.');
+  }
 } catch (err) {
   console.warn('⚠️ Firebase Admin SDK init warning:', err?.message || err);
 }
 
-// Mail transporter configuration for order receipts
+export function getStoreServiceStatus() {
+  return {
+    firebaseAdminConfigured: hasAdminCredential,
+    credentialSource,
+    razorpayConfigured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+    testMode: isTestMode()
+  };
+}
+
+// Mail transporter configuration for order receipts (strict short timeouts, async fire-and-forget)
 const mailTransporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST || 'smtp.hostinger.com',
   port: parseInt(process.env.SMTP_PORT || '587', 10),
   secure: false,
+  connectionTimeout: 5000,
+  greetingTimeout: 5000,
+  socketTimeout: 8000,
   auth: {
     user: process.env.SMTP_USER || 'icc@indiacybercafe.com',
     pass: process.env.SMTP_PASS || '',
@@ -172,16 +294,16 @@ function saveLocalOrder(order) {
   }
 }
 
-// Trusted product catalog loader
+// Trusted product catalog loader (Admin RTDB if credentialed -> public RTDB REST -> local JSON fallback)
 async function loadProductCatalog() {
   const now = Date.now();
   if (catalogCache.expiresAt > now && catalogCache.products.length > 0) {
     return catalogCache.products;
   }
 
-  if (rtdbAdmin && !isTestMode()) {
+  if (hasAdminCredential && rtdbAdmin && !isTestMode()) {
     try {
-      const snap = await rtdbAdmin.ref('products').once('value');
+      const snap = await withTimeout(rtdbAdmin.ref('products').once('value'), 5000, 'RTDB Admin catalog read');
       if (snap.exists()) {
         const val = snap.val();
         const products = Array.isArray(val)
@@ -193,7 +315,28 @@ async function loadProductCatalog() {
         }
       }
     } catch (err) {
-      console.warn('RTDB product catalog read notice:', err?.message || err);
+      console.warn('RTDB Admin product catalog read notice:', err?.message || err);
+    }
+  }
+
+  if (!isTestMode()) {
+    try {
+      const resp = await fetch(`${RTDB_PUBLIC_URL}/products.json`, {
+        signal: AbortSignal.timeout(4500),
+        headers: { Accept: 'application/json' }
+      });
+      if (resp.ok) {
+        const val = await resp.json();
+        const products = Array.isArray(val)
+          ? val.filter(Boolean)
+          : Object.entries(val || {}).map(([id, item]) => ({ id, ...(item || {}) }));
+        if (products.length > 0) {
+          catalogCache = { expiresAt: now + 15000, products };
+          return products;
+        }
+      }
+    } catch (err) {
+      console.warn('Public RTDB REST catalog read notice:', err?.message || err);
     }
   }
 
@@ -248,9 +391,9 @@ async function getVerifiedAuthUser(req) {
     return null;
   }
 
-  if (authAdmin) {
+  if (hasAdminCredential && authAdmin) {
     try {
-      const decoded = await authAdmin.verifyIdToken(token);
+      const decoded = await withTimeout(authAdmin.verifyIdToken(token), 5000, 'Auth ID token verification');
       if (decoded && decoded.uid) {
         return {
           uid: decoded.uid,
@@ -267,6 +410,7 @@ async function getVerifiedAuthUser(req) {
     const apiKey = process.env.FIREBASE_API_KEY || process.env.VITE_FIREBASE_API_KEY || 'AIzaSyAMTND9rIAw-76Oey3c7c43-TW2t6mxEfw';
     const resp = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`, {
       method: 'POST',
+      signal: AbortSignal.timeout(6000),
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken: token })
     });
@@ -288,6 +432,13 @@ async function getVerifiedAuthUser(req) {
   return null;
 }
 
+function requireAdminDatabase() {
+  if (!hasAdminCredential || !rtdbAdmin) {
+    throw new DatabaseConfigError('Order database service is unavailable: Firebase Admin credentials are not configured on the server.');
+  }
+  return rtdbAdmin;
+}
+
 // Persist order strictly to Firebase RTDB via Admin SDK
 async function saveOrderToDatabase(order) {
   const cleanOrder = stripUndefinedDeep(order);
@@ -298,11 +449,8 @@ async function saveOrderToDatabase(order) {
     return;
   }
 
-  if (!rtdbAdmin) {
-    throw new Error('Order database service is temporarily unavailable.');
-  }
-
-  await rtdbAdmin.ref(`orders/${flatKey}`).set(cleanOrder);
+  const db = requireAdminDatabase();
+  await withTimeout(db.ref(`orders/${flatKey}`).set(cleanOrder), 10000, 'Saving order to Firebase RTDB');
   saveLocalOrder(cleanOrder);
 }
 
@@ -316,19 +464,18 @@ async function findOrderRecord(orderId) {
     return matched ? { order: matched, rtdbPath: `orders/${flatKey}` } : null;
   }
 
-  if (rtdbAdmin) {
-    const flatSnap = await rtdbAdmin.ref(`orders/${flatKey}`).once('value');
-    if (flatSnap.exists()) {
-      const val = flatSnap.val();
-      return { order: { id: orderId, ...val }, rtdbPath: `orders/${flatKey}` };
-    }
+  const db = requireAdminDatabase();
+  const flatSnap = await withTimeout(db.ref(`orders/${flatKey}`).once('value'), 9000, 'Reading order from Firebase RTDB');
+  if (flatSnap.exists()) {
+    const val = flatSnap.val();
+    return { order: { id: orderId, ...val }, rtdbPath: `orders/${flatKey}` };
+  }
 
-    if (orderId !== flatKey) {
-      const legacySnap = await rtdbAdmin.ref(`orders/${orderId}`).once('value');
-      if (legacySnap.exists()) {
-        const val = legacySnap.val();
-        return { order: { id: orderId, ...val }, rtdbPath: `orders/${orderId}` };
-      }
+  if (orderId !== flatKey) {
+    const legacySnap = await withTimeout(db.ref(`orders/${orderId}`).once('value'), 9000, 'Reading legacy order path');
+    if (legacySnap.exists()) {
+      const val = legacySnap.val();
+      return { order: { id: orderId, ...val }, rtdbPath: `orders/${orderId}` };
     }
   }
 
@@ -348,14 +495,17 @@ async function findOrderByRazorpayOrderId(rzpOrderId) {
     return null;
   }
 
-  if (rtdbAdmin) {
-    const snap = await rtdbAdmin.ref('orders').orderByChild('razorpayOrderId').equalTo(rzpOrderId).once('value');
-    if (snap.exists()) {
-      const entries = Object.entries(snap.val() || {});
-      if (entries.length > 0) {
-        const [key, val] = entries[0];
-        return { order: { id: val.id || key, ...val }, rtdbPath: `orders/${key}` };
-      }
+  const db = requireAdminDatabase();
+  const snap = await withTimeout(
+    db.ref('orders').orderByChild('razorpayOrderId').equalTo(rzpOrderId).once('value'),
+    9000,
+    'Querying order by Razorpay ID'
+  );
+  if (snap.exists()) {
+    const entries = Object.entries(snap.val() || {});
+    if (entries.length > 0) {
+      const [key, val] = entries[0];
+      return { order: { id: val.id || key, ...val }, rtdbPath: `orders/${key}` };
     }
   }
 
@@ -372,11 +522,14 @@ async function isRazorpayPaymentUsedElsewhere(paymentId, expectedOrderId) {
     );
   }
 
-  if (rtdbAdmin) {
-    const snap = await rtdbAdmin.ref('orders').orderByChild('razorpayPaymentId').equalTo(paymentId).once('value');
-    if (snap.exists()) {
-      return Object.values(snap.val() || {}).some(ord => ord && ord.id !== expectedOrderId);
-    }
+  const db = requireAdminDatabase();
+  const snap = await withTimeout(
+    db.ref('orders').orderByChild('razorpayPaymentId').equalTo(paymentId).once('value'),
+    9000,
+    'Checking payment uniqueness'
+  );
+  if (snap.exists()) {
+    return Object.values(snap.val() || {}).some(ord => ord && ord.id !== expectedOrderId);
   }
 
   return false;
@@ -396,19 +549,16 @@ async function updateOrderInDatabase(orderId, updates, knownPath) {
     return;
   }
 
-  if (!rtdbAdmin) {
-    throw new Error('Order database service is temporarily unavailable.');
-  }
-
+  const db = requireAdminDatabase();
   const targetPath = knownPath || (await findOrderRecord(orderId))?.rtdbPath || `orders/${flatKey}`;
-  await rtdbAdmin.ref(targetPath).update(cleanUpdates);
+  await withTimeout(db.ref(targetPath).update(cleanUpdates), 10000, 'Updating order in Firebase RTDB');
 
   if (targetPath !== `orders/${flatKey}`) {
     try {
-      const updatedSnap = await rtdbAdmin.ref(targetPath).once('value');
+      const updatedSnap = await withTimeout(db.ref(targetPath).once('value'), 6000, 'Reading legacy order for migration');
       if (updatedSnap.exists()) {
-        await rtdbAdmin.ref(`orders/${flatKey}`).set({ ...updatedSnap.val(), id: orderId });
-        await rtdbAdmin.ref(targetPath).remove();
+        await withTimeout(db.ref(`orders/${flatKey}`).set({ ...updatedSnap.val(), id: orderId }), 6000, 'Migrating legacy order');
+        await withTimeout(db.ref(targetPath).remove(), 6000, 'Cleaning legacy order path');
       }
     } catch (migErr) {
       console.warn('Legacy order migration warning:', migErr);
@@ -571,19 +721,23 @@ function sendOrderEmails(order, type) {
 }
 
 async function recordVerifiedPaymentTransaction(order, paymentId, razorpayOrderId, now) {
-  if (isTestMode() || !rtdbAdmin) return;
+  if (isTestMode() || !hasAdminCredential || !rtdbAdmin) return;
   try {
     const paymentKey = `pay_${toRtdbOrderKey(paymentId)}`;
-    await rtdbAdmin.ref(`payments/${paymentKey}`).set({
-      id: order.id.slice(0, 40),
-      amount: order.total,
-      currency: 'INR',
-      paymentId,
-      orderId: razorpayOrderId,
-      status: 'completed',
-      type: 'store_order',
-      createdAt: now
-    });
+    await withTimeout(
+      rtdbAdmin.ref(`payments/${paymentKey}`).set({
+        id: order.id.slice(0, 40),
+        amount: order.total,
+        currency: 'INR',
+        paymentId,
+        orderId: razorpayOrderId,
+        status: 'completed',
+        type: 'store_order',
+        createdAt: now
+      }),
+      8000,
+      'Recording verified payment transaction'
+    );
   } catch (err) {
     console.warn('Payment record save notice:', err);
   }
@@ -673,6 +827,10 @@ export async function handleCodOrder(req, res) {
       updatedAt: now
     });
 
+    if (!isTestMode()) {
+      requireAdminDatabase();
+    }
+
     await saveOrderToDatabase(newOrder);
     sendOrderEmails(newOrder, 'cod');
 
@@ -687,7 +845,15 @@ export async function handleCodOrder(req, res) {
     return res.status(201).json(result);
   } catch (error) {
     console.error('COD order creation error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to place COD order. Please try again.' });
+    const status = error instanceof DatabaseConfigError ? error.statusCode : error?.message?.includes('timed out') ? 504 : 500;
+    return res.status(status).json({
+      success: false,
+      error: error instanceof DatabaseConfigError
+        ? error.message
+        : error?.message?.includes('timed out')
+          ? 'Order server timed out while saving your order. Please retry.'
+          : 'Failed to place COD order. Please try again.'
+    });
   }
 }
 
@@ -703,6 +869,10 @@ export async function handleCreatePaymentOrder(req, res) {
     const cached = checkIdempotency(idempotencyKey ? `pay:${idempotencyKey}` : undefined);
     if (cached) {
       return res.status(200).json(cached);
+    }
+
+    if (!isTestMode()) {
+      requireAdminDatabase();
     }
 
     const validation = await validateAndComputeOrder(items, deliveryAddress, 'online');
@@ -733,6 +903,7 @@ export async function handleCreatePaymentOrder(req, res) {
       const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
       const rzpResp = await fetch('https://api.razorpay.com/v1/orders', {
         method: 'POST',
+        signal: AbortSignal.timeout(12000),
         headers: {
           Authorization: authHeader,
           'Content-Type': 'application/json'
@@ -817,7 +988,15 @@ export async function handleCreatePaymentOrder(req, res) {
     return res.status(201).json(result);
   } catch (error) {
     console.error('Payment order creation error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to initiate payment.' });
+    const status = error instanceof DatabaseConfigError ? error.statusCode : error?.name === 'TimeoutError' || error?.message?.includes('timed out') ? 504 : 500;
+    return res.status(status).json({
+      success: false,
+      error: error instanceof DatabaseConfigError
+        ? error.message
+        : status === 504
+          ? 'Payment gateway timed out. No charge was made — please try again.'
+          : 'Failed to initiate payment.'
+    });
   }
 }
 
@@ -1157,8 +1336,8 @@ export async function handleGetMyOrders(req, res) {
           collectOrder(ord);
         }
       }
-    } else if (rtdbAdmin) {
-      const uidSnap = await rtdbAdmin.ref('orders').orderByChild('uid').equalTo(uid).once('value');
+    } else if (hasAdminCredential && rtdbAdmin) {
+      const uidSnap = await withTimeout(rtdbAdmin.ref('orders').orderByChild('uid').equalTo(uid).once('value'), 9000, 'Querying user orders');
       if (uidSnap.exists()) {
         for (const [key, val] of Object.entries(uidSnap.val() || {})) {
           if (val && typeof val === 'object') {
@@ -1167,7 +1346,7 @@ export async function handleGetMyOrders(req, res) {
         }
       }
 
-      const legacySnap = await rtdbAdmin.ref('orders').orderByChild('userId').equalTo(uid).once('value');
+      const legacySnap = await withTimeout(rtdbAdmin.ref('orders').orderByChild('userId').equalTo(uid).once('value'), 9000, 'Querying legacy orders');
       if (legacySnap.exists()) {
         for (const [key, val] of Object.entries(legacySnap.val() || {})) {
           if (val && typeof val === 'object') {
@@ -1182,7 +1361,7 @@ export async function handleGetMyOrders(req, res) {
       }
 
       if (email) {
-        const emailSnap = await rtdbAdmin.ref('orders').orderByChild('email').equalTo(email).once('value');
+        const emailSnap = await withTimeout(rtdbAdmin.ref('orders').orderByChild('email').equalTo(email).once('value'), 9000, 'Querying email orders');
         if (emailSnap.exists()) {
           for (const [key, val] of Object.entries(emailSnap.val() || {})) {
             if (val && typeof val === 'object' && (val.isGuest || val.uid === 'guest' || !val.uid)) {
@@ -1194,7 +1373,7 @@ export async function handleGetMyOrders(req, res) {
         }
       }
 
-      const nestedIccSnap = await rtdbAdmin.ref('orders/ICC').once('value');
+      const nestedIccSnap = await withTimeout(rtdbAdmin.ref('orders/ICC').once('value'), 8000, 'Checking legacy nested orders');
       if (nestedIccSnap.exists()) {
         for (const [subKey, val] of Object.entries(nestedIccSnap.val() || {})) {
           if (!val || typeof val !== 'object') continue;
@@ -1214,12 +1393,17 @@ export async function handleGetMyOrders(req, res) {
               userId: uid,
               isGuest: false
             });
-            await rtdbAdmin.ref(`orders/${flatKey}`).set(migrated);
-            await rtdbAdmin.ref(`orders/ICC/${subKey}`).remove().catch(() => {});
+            await withTimeout(rtdbAdmin.ref(`orders/${flatKey}`).set(migrated), 8000, 'Migrating nested order');
+            await withTimeout(rtdbAdmin.ref(`orders/ICC/${subKey}`).remove(), 6000, 'Removing nested order').catch(() => {});
             collectOrder(migrated);
           }
         }
       }
+    } else {
+      return res.status(503).json({
+        success: false,
+        error: 'Order database service is unavailable: Firebase Admin credentials are not configured.'
+      });
     }
 
     const userOrders = Array.from(orderMap.values()).sort(
@@ -1232,7 +1416,8 @@ export async function handleGetMyOrders(req, res) {
     });
   } catch (error) {
     console.error('Get my orders error:', error);
-    return res.status(500).json({ success: false, error: 'Failed to retrieve orders.' });
+    const status = error instanceof DatabaseConfigError ? error.statusCode : error?.message?.includes('timed out') ? 504 : 500;
+    return res.status(status).json({ success: false, error: 'Failed to retrieve orders.' });
   }
 }
 
@@ -1348,8 +1533,8 @@ export async function handleLinkGuestOrders(req, res) {
             linkedCount++;
           }
         }
-      } else if (rtdbAdmin) {
-        const snap = await rtdbAdmin.ref('orders').orderByChild('email').equalTo(email).once('value');
+      } else if (hasAdminCredential && rtdbAdmin) {
+        const snap = await withTimeout(rtdbAdmin.ref('orders').orderByChild('email').equalTo(email).once('value'), 9000, 'Linking orders by email');
         if (snap.exists()) {
           for (const [key, ord] of Object.entries(snap.val() || {})) {
             if (ord && (ord.isGuest || ord.uid === 'guest' || !ord.uid)) {
@@ -1384,9 +1569,9 @@ export async function handleLookupEmail(req, res) {
       return res.json({ success: true, found: false });
     }
 
-    if (authAdmin && !isTestMode()) {
+    if (hasAdminCredential && authAdmin && !isTestMode()) {
       try {
-        const userRecord = await authAdmin.getUserByEmail(email);
+        const userRecord = await withTimeout(authAdmin.getUserByEmail(email), 4000, 'Email lookup');
         const providers = (userRecord.providerData || []).map(p => p.providerId);
         const isGoogleOnly = providers.includes('google.com') && !providers.includes('password');
         return res.json({ success: true, found: true, isGoogleOnly });

@@ -12,11 +12,14 @@
   AddOutputFilterByType DEFLATE application/x-javascript
 </IfModule>
 
-# Enable browser caching
+# Enable browser caching cleanly (never cache HTML documents or live JSON data)
 <IfModule mod_expires.c>
   ExpiresActive On
-  ExpiresDefault "access plus 2 days"
-  ExpiresByType text/html "access plus 2 hours"
+  ExpiresDefault "access plus 0 seconds"
+  ExpiresByType text/html "access plus 0 seconds"
+  ExpiresByType application/json "access plus 0 seconds"
+  ExpiresByType application/xml "access plus 0 seconds"
+  ExpiresByType text/xml "access plus 0 seconds"
   ExpiresByType text/css "access plus 1 year"
   ExpiresByType text/javascript "access plus 1 year"
   ExpiresByType application/javascript "access plus 1 year"
@@ -34,14 +37,24 @@
   AddType "text/html; charset=UTF-8" .html
 </IfModule>
 
-# Security headers
+# Security & caching headers
 <IfModule mod_headers.c>
-  # HTTPS redirect
   Header always set Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
   Header always set X-Content-Type-Options "nosniff"
   Header always set X-XSS-Protection "1; mode=block"
   Header always set Referrer-Policy "strict-origin-when-cross-origin"
-  Header always set Cache-Control "no-cache, no-store, must-revalidate"
+  Header always append Vary "User-Agent"
+
+  <FilesMatch "\.(?:html|htm|json|xml)$">
+    Header always set Cache-Control "no-store, no-cache, must-revalidate, proxy-revalidate, max-age=0"
+    Header always set Pragma "no-cache"
+    Header always set Expires "0"
+  </FilesMatch>
+
+  <FilesMatch "\.(?:js|css|woff2?|png|jpe?g|webp|svg|ico|wasm)$">
+    Header set Cache-Control "public, max-age=31536000, immutable"
+  </FilesMatch>
+
   Header always set Content-Security-Policy "default-src 'self'; frame-ancestors *; script-src 'self' 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' https://apis.google.com https://www.googletagmanager.com https://*.razorpay.com https://india-cyber-cafe-default-rtdb.firebaseio.com https://*.firebaseio.com; script-src-elem 'self' 'unsafe-inline' https://apis.google.com https://*.razorpay.com https://india-cyber-cafe-default-rtdb.firebaseio.com https://*.firebaseio.com; worker-src 'self' blob:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob: https://indiacybercafe.com https://cdn-icons-png.flaticon.com https://firebasestorage.googleapis.com https://api.dicebear.com https://www.google-analytics.com https://region1.google-analytics.com https://*.razorpay.com https://*.googleusercontent.com https://*.ggpht.com https://*.gravatar.com; media-src 'self'; connect-src 'self' https://firebase.googleapis.com https://firebaseinstallations.googleapis.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://apis.google.com https://www.googleapis.com https://india-cyber-cafe-default-rtdb.firebaseio.com https://*.firebaseio.com wss://*.firebaseio.com https://firebasestorage.googleapis.com https://www.google-analytics.com https://region1.google-analytics.com https://*.razorpay.com wss://*.razorpay.com; frame-src 'self' https://*.razorpay.com https://*.firebaseapp.com https://accounts.google.com https://*.firebaseio.com;"
 </IfModule>
 

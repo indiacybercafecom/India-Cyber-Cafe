@@ -22,7 +22,8 @@ import {
   handleGuestTrackOrder,
   handleLinkGuestOrders,
   handleLookupEmail,
-  handleUploadCustomImage
+  handleUploadCustomImage,
+  getStoreServiceStatus
 } from "./src/server/storeOrderService.js";
 
 dotenv.config();
@@ -154,9 +155,32 @@ async function startServer() {
     }
   });
 
+  function isCrawlerRequest(req: express.Request): boolean {
+    const ua = (req.get('user-agent') || '').trim();
+    if (req.query?._ssr === '1') return true;
+    if (!ua) return true;
+    if (isSocialCrawler(ua)) return true;
+    return /\b(bot|crawler|spider|slurp|mediapartners|adsbot|google-inspectiontool|googleother|storebot-google|apis-google|duplexweb-google|petalbot|semrushbot|ahrefsbot|mj12bot|dotbot|bytespider|gptbot|claudebot|perplexitybot|ccbot|lighthouse|chrome-lighthouse|pagespeed|gtmetrix|pingdom|screaming\s*frog|seobility|sitebulb|curl|wget|httpie|postmanruntime|insomnia|python-requests|python-urllib|node-fetch|undici|axios|got|go-http-client)\b/i.test(ua);
+  }
+
   // Health check
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok" });
+    const dataDir = path.join(APP_ROOT, 'public/data');
+    const hasPublicData =
+      fs.existsSync(path.join(dataDir, 'services.json')) &&
+      fs.existsSync(path.join(dataDir, 'products.json')) &&
+      fs.existsSync(path.join(dataDir, 'product-categories.json')) &&
+      fs.existsSync(path.join(dataDir, 'documents.json')) &&
+      fs.existsSync(path.join(dataDir, 'document-categories.json'));
+
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0");
+    res.json({
+      status: "ok",
+      success: true,
+      publicDataAvailable: hasPublicData,
+      ...getStoreServiceStatus(),
+      timestamp: new Date().toISOString(),
+    });
   });
 
   // --- Phone Lookup & Authentication Protection Endpoints ---
@@ -559,6 +583,7 @@ async function startServer() {
           'Authorization': authHeader,
           'Content-Type': 'application/json'
         },
+        signal: AbortSignal.timeout(12000),
         body: JSON.stringify({
           amount: amountInPaise,
           currency: 'INR',
@@ -1082,6 +1107,7 @@ async function startServer() {
     if (fs.existsSync(DIST_PATH)) {
       writeJsonAtomically(path.join(DIST_PATH, 'data/documents.json'), output);
     }
+    invalidatePublicDataCache();
   };
 
   const readServerDocCategories = (): any[] => {
@@ -1130,6 +1156,7 @@ async function startServer() {
     if (fs.existsSync(DIST_PATH)) {
       writeJsonAtomically(path.join(DIST_PATH, 'data/document-categories.json'), output);
     }
+    invalidatePublicDataCache();
   };
 
   // 12-Hour Automatic Document Refresh & Background Sync Scheduler
@@ -1186,6 +1213,7 @@ async function startServer() {
         await syncDataType('documentCategories');
       }
 
+      invalidatePublicDataCache();
       const finalDocs = readServerDocuments();
       console.log(`[12-HOUR SYNC] ✅ Scheduled sync completed. Saved ${finalDocs.length} clean documents.`);
     } catch (err: any) {
@@ -1787,23 +1815,6 @@ async function startServer() {
     next(error);
   });
 
-  // Health check endpoint includes sync status
-  app.get("/api/health", (req, res) => {
-    const dataDir = path.join(APP_ROOT, 'public/data');
-    const hasPublicData = 
-      fs.existsSync(path.join(dataDir, 'services.json')) &&
-      fs.existsSync(path.join(dataDir, 'products.json')) &&
-      fs.existsSync(path.join(dataDir, 'product-categories.json')) &&
-      fs.existsSync(path.join(dataDir, 'documents.json')) &&
-      fs.existsSync(path.join(dataDir, 'document-categories.json'));
-
-    res.json({ 
-      status: "ok",
-      publicDataAvailable: hasPublicData,
-      timestamp: new Date().toISOString(),
-    });
-  });
-
   // Vite middleware for development; use the built app whenever dist exists.
   const distIndex = path.join(DIST_PATH, 'index.html');
   const isProduction = process.env.NODE_ENV === "production" || fs.existsSync(distIndex);
@@ -1824,10 +1835,12 @@ async function startServer() {
         const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
         const baseUrl = process.env.APP_URL || (host.includes('localhost') ? `${proto}://${host}` : `https://${host}`);
         const pageResult = renderUniversalPage(req.path, baseUrl, APP_ROOT);
-        const injectedHtml = injectSsrIntoTemplate(rawHtml, pageResult);
+        const includeBodyHtml = isCrawlerRequest(req);
+        const injectedHtml = injectSsrIntoTemplate(rawHtml, pageResult, { includeBodyHtml });
+        setNoCacheHeaders(res);
         return res.status(pageResult.status).set({
           'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Vary': 'User-Agent, Accept-Encoding',
         }).send(injectedHtml);
       } catch (err) {
         next(err);
@@ -1844,9 +1857,8 @@ async function startServer() {
       if (req.path.startsWith('/api/') || req.path.startsWith('/data/') || req.path.startsWith('/assets/')) {
         return next();
       }
-      const ua = req.get('user-agent') || '';
-      const isCrawler = isSocialCrawler(ua);
-      const isPageRequest = isCrawler || req.accepts('html') || !req.path.includes('.');
+      const crawler = isCrawlerRequest(req);
+      const isPageRequest = crawler || req.accepts('html') || !req.path.includes('.');
       if (!isPageRequest) {
         return next();
       }
@@ -1855,22 +1867,39 @@ async function startServer() {
 
     app.use(vite.middlewares);
   } else {
-    app.use(express.static(DIST_PATH, {
-      index: false,
-      extensions: ['html'],
-      maxAge: '1h',
-      setHeaders: (res, filePath) => {
-        if (path.basename(filePath) === 'index.html') {
-          res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-        }
-      },
+    // Serve synchronized live public data BEFORE dist fallback with strict no-store headers
+    app.use('/data', express.static(path.join(APP_ROOT, 'public/data'), {
+      etag: false,
+      lastModified: false,
+      maxAge: 0,
+      setHeaders: (res) => {
+        setNoCacheHeaders(res);
+      }
+    }));
+    app.use('/data', express.static(path.join(DIST_PATH, 'data'), {
+      etag: false,
+      lastModified: false,
+      maxAge: 0,
+      setHeaders: (res) => {
+        setNoCacheHeaders(res);
+      }
     }));
 
     app.use('/assets', express.static(path.join(DIST_PATH, 'assets'), {
       maxAge: '1y',
       immutable: true,
     }));
-    app.use('/data', express.static(path.join(DIST_PATH, 'data')));
+
+    app.use(express.static(DIST_PATH, {
+      index: false,
+      extensions: ['html'],
+      maxAge: '1h',
+      setHeaders: (res, filePath) => {
+        if (path.basename(filePath) === 'index.html') {
+          setNoCacheHeaders(res);
+        }
+      },
+    }));
 
     const executeProdSsr = (req: express.Request, res: express.Response) => {
       if (!fs.existsSync(distIndex)) {
@@ -1882,10 +1911,12 @@ async function startServer() {
         const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
         const baseUrl = process.env.APP_URL || (host.includes('localhost') ? `${proto}://${host}` : `https://${host}`);
         const pageResult = renderUniversalPage(req.path, baseUrl, APP_ROOT);
-        const injectedHtml = injectSsrIntoTemplate(rawHtml, pageResult);
+        const includeBodyHtml = isCrawlerRequest(req);
+        const injectedHtml = injectSsrIntoTemplate(rawHtml, pageResult, { includeBodyHtml });
+        setNoCacheHeaders(res);
         return res.status(pageResult.status).set({
           'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': pageResult.status === 200 ? 'public, max-age=300, stale-while-revalidate=86400' : 'no-cache, no-store, must-revalidate'
+          'Vary': 'User-Agent, Accept-Encoding',
         }).send(injectedHtml);
       } catch (err: any) {
         const requestId = `ssr_prod_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
@@ -1924,9 +1955,10 @@ async function startServer() {
     </div>
   </body>
 </html>`;
+        setNoCacheHeaders(res);
         return res.status(500).set({
           'Content-Type': 'text/html; charset=utf-8',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Vary': 'User-Agent, Accept-Encoding',
           'X-Request-Id': requestId,
         }).send(errorHtml);
       }
@@ -1942,9 +1974,8 @@ async function startServer() {
         return next();
       }
 
-      const ua = req.get('user-agent') || '';
-      const isCrawler = isSocialCrawler(ua);
-      const isPageRequest = isCrawler || req.accepts('html') || !req.path.includes('.');
+      const crawler = isCrawlerRequest(req);
+      const isPageRequest = crawler || req.accepts('html') || !req.path.includes('.');
 
       if (isPageRequest) {
         return executeProdSsr(req, res);

@@ -54,6 +54,15 @@ export function cleanText(text: any, maxLength = 160): string {
   return cleaned.slice(0, maxLength - 3).trim() + '...';
 }
 
+export function safeJsonForHtml(value: any): string {
+  return JSON.stringify(value)
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
 function renderHeader(activePath: string): string {
   const navItems = [
     { href: '/', label: 'Home' },
@@ -140,7 +149,7 @@ function renderFooter(): string {
               Your trusted digital partner for government forms, CSC applications, PAN card, Aadhaar UCL, smart PVC cards, and official document assistance.
             </p>
             <div class="text-xs text-slate-400 space-y-1">
-              <p>📍 Main Road, Singrauli, MP 486889, India</p>
+              <p>📍 Jobgarh, Singrauli Madhya Pradesh 486886, India</p>
               <p>📞 +91 9203251821</p>
               <p>✉️ icc@indiacybercafe.com</p>
               <p>🕒 Mon–Sat: 09:00 AM – 08:00 PM</p>
@@ -212,6 +221,7 @@ export function renderUniversalPage(
       robots?: string;
       structuredData?: any;
       is404?: boolean;
+      omitInitialData?: boolean;
     } = {}
   ): PageRenderResult => {
     const safeTitle = escapeHtml(title.includes('India Cyber Cafe') ? title : `${title} | India Cyber Cafe`);
@@ -221,9 +231,11 @@ export function renderUniversalPage(
     const robots = options.robots || (status === 200 ? 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' : 'noindex, nofollow');
     const ogType = options.ogType || 'website';
 
-    const initialDataScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(data)};</script>`;
+    const initialDataScript = options.omitInitialData
+      ? ''
+      : `<script>window.__INITIAL_DATA__ = ${safeJsonForHtml(data)};</script>`;
     const ldJsonScript = options.structuredData
-      ? `<script type="application/ld+json">${JSON.stringify(options.structuredData)}</script>`
+      ? `<script type="application/ld+json">${safeJsonForHtml(options.structuredData)}</script>`
       : '';
 
     const rootInnerHtml = `
@@ -1919,7 +1931,10 @@ export function renderUniversalPage(
       'India Cyber Cafe portal dashboard.',
       cleanPath,
       bodyHtml,
-      { robots: 'noindex, nofollow' }
+      {
+        robots: 'noindex, nofollow',
+        omitInitialData: cleanPath.startsWith('/admin') || cleanPath === '/operator'
+      }
     );
   }
 
@@ -1966,17 +1981,21 @@ export function renderUniversalPage(
  */
 export function injectSsrIntoTemplate(
   indexHtml: string,
-  renderResult: PageRenderResult
+  renderResult: PageRenderResult,
+  options: { includeBodyHtml?: boolean } = {}
 ): string {
   if (!indexHtml) return '';
 
+  const includeBodyHtml = options?.includeBodyHtml !== false;
   const { metadata, html } = renderResult;
 
-  // Extract the inner HTML intended for #root
+  // Extract the inner HTML intended for #root (only injected for crawlers / unit checks)
   let rootContent = '';
-  const match = html.match(/<div id="ssr-root-replacement">([\s\S]*?)<\/div>\s*$/);
-  if (match) {
-    rootContent = match[1];
+  if (includeBodyHtml) {
+    const match = html.match(/<div id="ssr-root-replacement">([\s\S]*?)<\/div>\s*$/);
+    if (match) {
+      rootContent = match[1];
+    }
   }
 
   // Extract JSON-LD script and initial data script
@@ -2052,7 +2071,7 @@ export function injectSsrIntoTemplate(
     modified = modified.replace('</head>', `    ${headScripts}\n  </head>`);
   }
 
-  // 8. Inject rendered semantic HTML into <div id="root">
+  // 8. Inject rendered semantic HTML into <div id="root"> when includeBodyHtml=true, else clean empty mount
   if (/<div id=["']root["']>[\s\S]*?<\/div>/i.test(modified)) {
     modified = modified.replace(
       /<div id=["']root["']>[\s\S]*?<\/div>/i,

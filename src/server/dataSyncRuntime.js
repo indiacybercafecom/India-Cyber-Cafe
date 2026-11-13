@@ -1,14 +1,23 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { invalidatePublicDataCache } from './publicDataService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const DATA_DIR = path.join(__dirname, '../../public/data');
+const DIST_DATA_DIR = path.join(__dirname, '../../dist/data');
 const DATABASE_URL = 'https://india-cyber-cafe-default-rtdb.firebaseio.com';
 
 function ensureDataDirectory() {
   fs.mkdirSync(DATA_DIR, { recursive: true });
+}
+
+function mirrorToDistData(filename, data, validate) {
+  if (fs.existsSync(path.join(__dirname, '../../dist'))) {
+    fs.mkdirSync(DIST_DATA_DIR, { recursive: true });
+    writeJsonAtomically(path.join(DIST_DATA_DIR, filename), data, validate);
+  }
 }
 
 function writeJsonAtomically(filePath, data, validate) {
@@ -33,7 +42,10 @@ function firebaseObjectToArray(value) {
 
 async function fetchFirebaseCollection(collection, firebaseToken) {
   const authQuery = firebaseToken ? `auth=${encodeURIComponent(firebaseToken)}` : 'auth=null';
-  const response = await fetch(`${DATABASE_URL}/${collection}.json?${authQuery}`);
+  const response = await fetch(`${DATABASE_URL}/${collection}.json?${authQuery}`, {
+    signal: AbortSignal.timeout(8000),
+    headers: { Accept: 'application/json' },
+  });
   if (!response.ok) throw new Error(`Firebase request failed: ${response.status} ${response.statusText}`);
   return firebaseObjectToArray(await response.json());
 }
@@ -51,7 +63,10 @@ async function syncServices() {
     css: service.css,
   }));
   const output = { version: 1, generatedAt: new Date().toISOString(), services: validated };
-  writeJsonAtomically(path.join(DATA_DIR, 'services.json'), output, data => data?.version === 1 && Array.isArray(data.services));
+  const isValid = data => data?.version === 1 && Array.isArray(data.services);
+  writeJsonAtomically(path.join(DATA_DIR, 'services.json'), output, isValid);
+  mirrorToDistData('services.json', output, isValid);
+  invalidatePublicDataCache();
   return { success: true, file: 'services.json', message: `Generated ${validated.length} services` };
 }
 
@@ -79,7 +94,10 @@ async function syncProducts() {
     paymentMethods: product.paymentMethods || ['online', 'cod'],
   }));
   const output = { version: 1, generatedAt: new Date().toISOString(), products: validated };
-  writeJsonAtomically(path.join(DATA_DIR, 'products.json'), output, data => data?.version === 1 && Array.isArray(data.products));
+  const isValid = data => data?.version === 1 && Array.isArray(data.products);
+  writeJsonAtomically(path.join(DATA_DIR, 'products.json'), output, isValid);
+  mirrorToDistData('products.json', output, isValid);
+  invalidatePublicDataCache();
   return { success: true, file: 'products.json', message: `Generated ${validated.length} products` };
 }
 
@@ -93,7 +111,10 @@ async function syncCategories() {
     order: category.order,
   }));
   const output = { version: 1, generatedAt: new Date().toISOString(), categories: validated };
-  writeJsonAtomically(path.join(DATA_DIR, 'product-categories.json'), output, data => data?.version === 1 && Array.isArray(data.categories));
+  const isValid = data => data?.version === 1 && Array.isArray(data.categories);
+  writeJsonAtomically(path.join(DATA_DIR, 'product-categories.json'), output, isValid);
+  mirrorToDistData('product-categories.json', output, isValid);
+  invalidatePublicDataCache();
   return { success: true, file: 'product-categories.json', message: `Generated ${validated.length} categories` };
 }
 
@@ -356,14 +377,18 @@ export async function syncAllPublicJson() {
 
 export async function initializePublicDataOnStartup() {
   ensureDataDirectory();
-  const requiredFiles = ['services.json', 'products.json', 'product-categories.json'];
-  if (!requiredFiles.every(file => fs.existsSync(path.join(DATA_DIR, file)))) {
+  const requiredFiles = ['services.json', 'products.json', 'product-categories.json', 'documents.json', 'document-categories.json'];
+  const allExist = requiredFiles.every(file => fs.existsSync(path.join(DATA_DIR, file)));
+  try {
     const result = await syncAllPublicJson();
-    if (!result.success) throw new Error('Initial public data synchronization failed');
-    return;
+    invalidatePublicDataCache();
+    if (!result.success && !allExist) {
+      throw new Error('Initial public data synchronization failed');
+    }
+  } catch (err) {
+    if (!allExist) {
+      throw err;
+    }
+    console.warn('[DATA SYNC] Startup refresh notice (using verified local snapshots):', err?.message || err);
   }
-
-  // Keep document snapshots aligned with Firebase even when older snapshots exist.
-  await syncDataType('documents');
-  await syncDataType('documentCategories');
 }

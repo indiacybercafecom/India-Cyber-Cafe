@@ -60,18 +60,16 @@ export function isSocialCrawler(ua = '') {
   return /whatsapp|facebookexternalhit|facebot|twitterbot|telegrambot|linkedinbot|pinterest|slackbot|discordbot|skypeuripreview|googlebot|bingbot|applebot|yandex|duckduckbot|baiduspider|vkshare|w3c_validator|redditbot|embedly|quora link preview|outbrain/i.test(ua);
 }
 
-// In-memory cache for fast metadata lookup
+// In-memory cache with mtime check for fast metadata lookup
 let cachedServices = null;
 let cachedServicesTime = 0;
+let cachedServicesMtime = 0;
 let cachedProducts = null;
 let cachedProductsTime = 0;
+let cachedProductsMtime = 0;
 
 export function getServicesData(appRoot) {
   const now = Date.now();
-  if (cachedServices && now - cachedServicesTime < 30000) {
-    return cachedServices;
-  }
-
   const pathsToTry = [
     path.join(appRoot, 'public/data/services.json'),
     path.join(appRoot, 'dist/data/services.json'),
@@ -82,10 +80,15 @@ export function getServicesData(appRoot) {
   for (const p of pathsToTry) {
     if (fs.existsSync(p)) {
       try {
+        const mtime = fs.statSync(p).mtimeMs;
+        if (cachedServices && mtime === cachedServicesMtime && now - cachedServicesTime < 10000) {
+          return cachedServices;
+        }
         const raw = fs.readFileSync(p, 'utf-8');
         const parsed = JSON.parse(raw);
         cachedServices = parsed.services || [];
         cachedServicesTime = now;
+        cachedServicesMtime = mtime;
         return cachedServices;
       } catch (err) {
         console.warn(`[SHARE METADATA] Error reading services from ${p}:`, err.message);
@@ -97,10 +100,6 @@ export function getServicesData(appRoot) {
 
 export function getProductsData(appRoot) {
   const now = Date.now();
-  if (cachedProducts && now - cachedProductsTime < 30000) {
-    return cachedProducts;
-  }
-
   const pathsToTry = [
     path.join(appRoot, 'public/data/products.json'),
     path.join(appRoot, 'dist/data/products.json'),
@@ -111,10 +110,15 @@ export function getProductsData(appRoot) {
   for (const p of pathsToTry) {
     if (fs.existsSync(p)) {
       try {
+        const mtime = fs.statSync(p).mtimeMs;
+        if (cachedProducts && mtime === cachedProductsMtime && now - cachedProductsTime < 10000) {
+          return cachedProducts;
+        }
         const raw = fs.readFileSync(p, 'utf-8');
         const parsed = JSON.parse(raw);
         cachedProducts = parsed.products || [];
         cachedProductsTime = now;
+        cachedProductsMtime = mtime;
         return cachedProducts;
       } catch (err) {
         console.warn(`[SHARE METADATA] Error reading products from ${p}:`, err.message);

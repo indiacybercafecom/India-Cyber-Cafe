@@ -1,5 +1,5 @@
 import { StrictMode } from 'react';
-import { createRoot, hydrateRoot } from 'react-dom/client';
+import { createRoot } from 'react-dom/client';
 import { HelmetProvider } from 'react-helmet-async';
 import App from './App.tsx';
 import './index.css';
@@ -19,15 +19,10 @@ if (rootElement) {
     </StrictMode>
   );
 
-  // If the server delivered server-rendered HTML inside #root, hydrate it smoothly
-  if (rootElement.hasChildNodes() && rootElement.firstElementChild) {
-    try {
-      hydrateRoot(rootElement, appElement);
-    } catch (hydrateErr) {
-      console.warn('[Hydration] Falling back to client-side createRoot render:', hydrateErr);
-      createRoot(rootElement).render(appElement);
-    }
-  } else {
-    createRoot(rootElement).render(appElement);
+  // Clear any leftover non-React markup cleanly before mounting SPA root
+  if (rootElement.hasChildNodes()) {
+    rootElement.innerHTML = '';
   }
+
+  createRoot(rootElement).render(appElement);
 }

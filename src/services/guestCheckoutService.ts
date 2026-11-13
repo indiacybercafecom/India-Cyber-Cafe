@@ -3,6 +3,7 @@ import { ref as dbRef, set } from 'firebase/database';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { sanitizeEmail, sanitizePhone, trimWhitespace } from '../utils/sanitizer';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
+import { fetchWithTimeout, withClientTimeout } from '../utils/fetchWithTimeout';
 import { normalizeIndianMobile } from './authService';
 
 const GUEST_ORDERS_STORAGE_KEY = 'icc_guest_orders';
@@ -54,23 +55,28 @@ export async function linkGuestOrdersToAuthenticatedUser(): Promise<number> {
     const currentUser = auth.currentUser;
     if (!currentUser) return 0;
 
-    const idToken = await currentUser.getIdToken();
+    const idToken = await withClientTimeout(
+      currentUser.getIdToken(),
+      5000,
+      'Authentication check timed out.'
+    );
     const stored = getStoredGuestOrders();
     const guestOrderTokens = stored
       .filter(o => o.orderId && o.token)
       .map(o => ({ orderId: o.orderId, token: o.token }));
 
-    const resp = await fetch('/api/store/orders/link-guest-orders', {
+    const resp = await fetchWithTimeout('/api/store/orders/link-guest-orders', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${idToken}`
       },
-      body: JSON.stringify({ guestOrderTokens })
+      body: JSON.stringify({ guestOrderTokens }),
+      timeoutMs: 10000
     });
 
     if (!resp.ok) return 0;
-    const data = await resp.json();
+    const data = await resp.json().catch(() => ({}));
     if (data.linkedCount > 0 && currentUser.email) {
       const normalizedUserEmail = currentUser.email.toLowerCase().trim();
       for (const item of stored) {
@@ -107,14 +113,15 @@ export async function findUserByEmail(email: string) {
     const normalizedEmail = sanitizeEmail(email);
     if (!normalizedEmail) return null;
 
-    const response = await fetch('/api/auth/lookup-email', {
+    const response = await fetchWithTimeout('/api/auth/lookup-email', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: normalizedEmail })
+      body: JSON.stringify({ email: normalizedEmail }),
+      timeoutMs: 8000
     });
 
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (data.found) {
         return {
           email: normalizedEmail,
@@ -124,7 +131,7 @@ export async function findUserByEmail(email: string) {
     }
     return null;
   } catch (error) {
-    console.error('❌ Error finding user by email:', error);
+    console.warn('Email lookup notice:', error);
     return null;
   }
 }
@@ -135,14 +142,15 @@ export async function findUserByEmail(email: string) {
 export async function findUserByPhone(phone: string) {
   try {
     const normalizedPhone = sanitizePhone(phone, true);
-    const response = await fetch('/api/auth/lookup-phone', {
+    const response = await fetchWithTimeout('/api/auth/lookup-phone', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone: normalizedPhone }),
+      timeoutMs: 8000
     });
 
     if (response.ok) {
-      const data = await response.json();
+      const data = await response.json().catch(() => ({}));
       if (data.found && data.email) {
         return {
           email: data.email,
@@ -154,7 +162,7 @@ export async function findUserByPhone(phone: string) {
 
     return null;
   } catch (error) {
-    console.error('❌ Error finding user by phone:', error);
+    console.warn('Phone lookup notice:', error);
     return null;
   }
 }

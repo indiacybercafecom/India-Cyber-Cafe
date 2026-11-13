@@ -5,6 +5,18 @@ import { ProductCategory } from '../types';
 import { cacheManager } from '../utils/cacheManager';
 import { syncManager } from '../utils/syncManager';
 import { generateSlug } from '../utils/slugGenerator';
+import { checkAndInvalidateFormsCache } from '../utils/cacheVersionManager';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout';
+
+function isSameJsonList<T>(a: T[], b: T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
 
 interface JSONData {
   version: number;
@@ -26,31 +38,86 @@ export function useProductCategories() {
   const [loading, setLoading] = useState(initialCategories.length === 0);
   const [error, setError] = useState<Error | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  const [hasJsonData, setHasJsonData] = useState(initialCategories.length > 0);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
     let isComponentMounted = true;
     let loadedFromJson = false;
+    let firebaseReceived = false;
 
     const loadCategories = async () => {
       try {
-        // STEP 1: Try to load from generated JSON first (fast, static)
-        console.log('[useProductCategories] Attempting to load from JSON...');
-        
         try {
-          const jsonResponse = await fetch('/data/product-categories.json', {
+          checkAndInvalidateFormsCache();
+        } catch {}
+
+        if (initialCategories.length === 0) {
+          const cachedCategories = cacheManager.get('productCategories');
+          if (Array.isArray(cachedCategories) && cachedCategories.length > 0 && isComponentMounted) {
+            setProductCategories(prev => (isSameJsonList(prev, cachedCategories) ? prev : cachedCategories));
+            setLoading(false);
+          }
+        }
+
+        // STEP 1: Subscribe to live Firebase RTDB immediately
+        const categoriesRef = ref(rtdb, 'productCategories');
+        unsubscribe = onValue(
+          categoriesRef,
+          (snapshot) => {
+            try {
+              firebaseReceived = true;
+              const data = snapshot.val();
+              const categoriesToSet = data
+                ? Object.entries(data).map(([id, val]: [string, any]) => ({
+                    id,
+                    ...val,
+                  }))
+                : [];
+
+              if (isComponentMounted) {
+                setProductCategories(prev => (isSameJsonList(prev, categoriesToSet) ? prev : categoriesToSet));
+                cacheManager.set('productCategories', categoriesToSet);
+                syncManager.updateSync('productCategories');
+                setLoading(false);
+                setError(null);
+              }
+            } catch (err) {
+              const nextError = err instanceof Error ? err : new Error(String(err));
+              if (isComponentMounted) {
+                setProductCategories(prev => {
+                  if (prev.length === 0) setError(nextError);
+                  return prev;
+                });
+                setLoading(false);
+              }
+            }
+          },
+          (err) => {
+            console.warn('[useProductCategories] Firebase subscription notice:', err);
+            const nextError = err instanceof Error ? err : new Error(String(err));
+            if (isComponentMounted) {
+              setProductCategories(prev => {
+                if (prev.length === 0 && !loadedFromJson) setError(nextError);
+                return prev;
+              });
+              setLoading(false);
+            }
+          }
+        );
+
+        // STEP 2: Fetch fresh no-store JSON snapshot in parallel
+        try {
+          const jsonResponse = await fetchWithTimeout(`/data/product-categories.json?_t=${Date.now()}`, {
             cache: 'no-store',
+            timeoutMs: 8000,
           });
-          
+
           if (jsonResponse.ok) {
             const jsonData: JSONData = await jsonResponse.json();
             if (jsonData && jsonData.categories && Array.isArray(jsonData.categories)) {
-              if (isComponentMounted) {
-                console.log(`[useProductCategories] Loaded ${jsonData.categories.length} categories from JSON`);
-                setProductCategories(jsonData.categories);
+              if (isComponentMounted && !firebaseReceived) {
+                setProductCategories(prev => (isSameJsonList(prev, jsonData.categories) ? prev : jsonData.categories));
                 cacheManager.set('productCategories', jsonData.categories);
-                setHasJsonData(true);
                 setLoading(false);
                 setError(null);
                 loadedFromJson = true;
@@ -58,69 +125,12 @@ export function useProductCategories() {
             }
           }
         } catch (jsonError) {
-          console.warn('[useProductCategories] JSON fetch failed, falling back to Firebase:', jsonError);
-        }
-
-        // STEP 2: JSON unavailable or invalid, use Firebase as fallback
-        // Also: reload from Firebase if explicit retry or sync threshold exceeded
-        const lastSync = syncManager.getLastSync('productCategories');
-        const now = Date.now();
-        const SYNC_THRESHOLD = 5 * 60 * 1000; // 5 minutes
-
-        if (loadedFromJson || retryCount > 0 || now - lastSync > SYNC_THRESHOLD) {
-          console.log('[useProductCategories] Loading from Firebase...');
-          const categoriesRef = ref(rtdb, 'productCategories');
-          unsubscribe = onValue(
-            categoriesRef,
-            (snapshot) => {
-              try {
-                const data = snapshot.val();
-                const categoriesToSet = data
-                  ? Object.entries(data).map(([id, val]: [string, any]) => ({
-                      id,
-                      ...val,
-                    }))
-                  : [];
-
-                if (isComponentMounted) {
-                  setProductCategories(categoriesToSet);
-                  cacheManager.set('productCategories', categoriesToSet);
-                  syncManager.updateSync('productCategories');
-                  setLoading(false);
-                  setError(null);
-                }
-              } catch (err) {
-                const error = err instanceof Error ? err : new Error(String(err));
-                if (isComponentMounted) {
-                  setError(error);
-                  setLoading(false);
-                }
-              }
-            },
-            (err) => {
-              console.error('[useProductCategories] Firebase error:', err);
-              const error = err instanceof Error ? err : new Error(String(err));
-              if (isComponentMounted) {
-                setError(error);
-                setLoading(false);
-              }
-            }
-          );
-        } else {
-          // No sync needed, but also no JSON loaded - use cache if available
-          const cachedCategories = cacheManager.get('productCategories');
-          if (cachedCategories && cachedCategories.length > 0 && isComponentMounted) {
-            console.log('[useProductCategories] Using cached categories');
-            setProductCategories(cachedCategories);
-            setLoading(false);
-          } else if (isComponentMounted) {
-            setLoading(false);
-          }
+          console.warn('[useProductCategories] JSON fetch notice:', jsonError);
         }
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
+        const nextError = err instanceof Error ? err : new Error(String(err));
         if (isComponentMounted) {
-          setError(error);
+          setError(nextError);
           setLoading(false);
         }
       }

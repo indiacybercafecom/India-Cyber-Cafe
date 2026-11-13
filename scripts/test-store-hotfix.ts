@@ -441,6 +441,78 @@ async function runTests() {
         assert(newUserOrders.orders.some((o: any) => o.id === guestCodOrderId));
       });
 
+      // 13. Uncredentialed live-mode (STORE_ORDER_TEST_MODE=0) must fail fast (<2000ms) with 503 instead of hanging
+      await check('Uncredentialed live-mode fails fast (<2000ms) with 503 DatabaseConfigError instead of hanging', async () => {
+        const { spawnSync } = await import('child_process');
+        const script = `
+          import express from 'express';
+          import { handleCodOrder, handleCreatePaymentOrder, getStoreServiceStatus } from './src/server/storeOrderService.js';
+          const status = getStoreServiceStatus();
+          if (status.firebaseAdminConfigured !== false) {
+            throw new Error('Expected firebaseAdminConfigured === false without credentials');
+          }
+          const app = express();
+          app.use(express.json());
+          app.post('/cod', handleCodOrder);
+          app.post('/create', handleCreatePaymentOrder);
+          const s = app.listen(0, '127.0.0.1', async () => {
+            const port = s.address().port;
+            const started = Date.now();
+            const r1 = await fetch('http://127.0.0.1:' + port + '/cod', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ items: [{ productId: '${BOTH_PRODUCT_ID}', quantity: 1 }], deliveryAddress: ${JSON.stringify(validAddress)} })
+            });
+            const r2 = await fetch('http://127.0.0.1:' + port + '/create', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ items: [{ productId: '${BOTH_PRODUCT_ID}', quantity: 1 }], deliveryAddress: ${JSON.stringify(validAddress)} })
+            });
+            const elapsed = Date.now() - started;
+            s.close();
+            if (r1.status !== 503 || r2.status !== 503) {
+              console.error('Unexpected statuses:', r1.status, r2.status);
+              process.exit(2);
+            }
+            if (elapsed > 2000) {
+              console.error('Too slow:', elapsed);
+              process.exit(3);
+            }
+            console.log(JSON.stringify({ elapsed, codStatus: r1.status, payStatus: r2.status, status }));
+          });
+        `;
+        const cleanEnv: Record<string, string> = {
+          PATH: process.env.PATH || '',
+          NODE_ENV: 'production',
+          STORE_ORDER_TEST_MODE: '0',
+          FIREBASE_SERVICE_ACCOUNT_JSON: '',
+          FIREBASE_SERVICE_ACCOUNT: '',
+          GOOGLE_APPLICATION_CREDENTIALS: ''
+        };
+        const res = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
+          cwd: process.cwd(),
+          env: cleanEnv,
+          encoding: 'utf-8',
+          timeout: 8000
+        });
+        assert.strictEqual(res.status, 0, `Fast-fail child check failed: ${res.stderr || res.stdout}`);
+      });
+
+      // 14. Static UI & client reliability invariants
+      await check('StoreCheckout, razorpayService, and main.tsx maintain timeout, recovery, and non-hydration invariants', () => {
+        const checkoutSrc = fs.readFileSync(path.resolve('src/pages/StoreCheckout.tsx'), 'utf-8');
+        const razorpaySrc = fs.readFileSync(path.resolve('src/services/razorpayService.ts'), 'utf-8');
+        const mainSrc = fs.readFileSync(path.resolve('src/main.tsx'), 'utf-8');
+
+        assert(checkoutSrc.includes('fetchWithTimeout'), 'StoreCheckout.tsx must use fetchWithTimeout');
+        assert(checkoutSrc.includes('PENDING_ATTEMPT_STORAGE_KEY'), 'StoreCheckout.tsx must persist pre-modal pending attempt');
+        assert(checkoutSrc.includes("rzp.on('payment.failed'"), 'StoreCheckout.tsx must handle Razorpay payment.failed event');
+        assert(checkoutSrc.includes('recover-payment'), 'StoreCheckout.tsx must call /recover-payment on dismiss/reload');
+        assert(razorpaySrc.includes('fetchWithTimeout'), 'razorpayService.ts must use fetchWithTimeout');
+        assert(razorpaySrc.includes('razorpayScriptPromise = null'), 'razorpayService.ts must reset script promise on failure/timeout');
+        assert(!mainSrc.includes('hydrateRoot'), 'main.tsx must use clean createRoot mounting instead of hydrateRoot mismatch');
+      });
+
       console.log(`\n🎉 All ${passed} store hotfix integration checks passed!`);
     } finally {
       server.close();

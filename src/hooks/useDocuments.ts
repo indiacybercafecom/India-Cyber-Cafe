@@ -7,6 +7,17 @@ import { generateSlug } from '../utils/slugGenerator';
 import { normalizePdfUrl } from '../utils/driveUrl';
 import { deduplicateDocuments, deduplicateCategories } from '../utils/documentDeduplication';
 import { checkAndInvalidateFormsCache, FORMS_CACHE_VERSION } from '../utils/cacheVersionManager';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout';
+
+function isSameJsonList<T>(a: T[], b: T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
 
 export function sanitizeFirebasePayload<T>(payload: T): T {
   if (payload === undefined || payload === null) return undefined as T;
@@ -57,7 +68,7 @@ export function useDocuments(includeInactive = false) {
       checkAndInvalidateFormsCache();
     } catch {}
 
-    // Step 2: Immediate local cache inspection for fast rendering while live sync connects
+    // Step 2: Only use local cache as a fallback if window.__INITIAL_DATA__ was empty
     const cacheKey = includeInactive ? 'documents_all' : 'documents';
     let cachedDocs: any = null;
     let cachedCats: any = null;
@@ -66,12 +77,14 @@ export function useDocuments(includeInactive = false) {
       cachedCats = cacheManager.get('documentCategories');
     } catch {}
 
-    if (Array.isArray(cachedDocs) && cachedDocs.length > 0) {
-      setDocuments(deduplicateDocuments(cachedDocs));
+    if (initialDocs.length === 0 && Array.isArray(cachedDocs) && cachedDocs.length > 0) {
+      const nextDocs = deduplicateDocuments(cachedDocs);
+      setDocuments(prev => (isSameJsonList(prev, nextDocs) ? prev : nextDocs));
       setLoading(false);
     }
-    if (Array.isArray(cachedCats) && cachedCats.length > 0) {
-      setCategories(deduplicateCategories(cachedCats));
+    if (initialCats.length === 0 && Array.isArray(cachedCats) && cachedCats.length > 0) {
+      const nextCats = deduplicateCategories(cachedCats);
+      setCategories(prev => (isSameJsonList(prev, nextCats) ? prev : nextCats));
     }
 
     // Step 3: Fetch fresh snapshot from server API with automatic fallback to static JSON
@@ -82,7 +95,10 @@ export function useDocuments(includeInactive = false) {
         // 1. Fetch documents: try API first; if unavailable or non-200, fallback to static JSON snapshot
         let rawDocs: FormDocument[] = [];
         try {
-          const docsResp = await fetch(`/api/documents?${queryParams}`, { cache: 'no-store' });
+          const docsResp = await fetchWithTimeout(`/api/documents?${queryParams}`, {
+            cache: 'no-store',
+            timeoutMs: 8000,
+          });
           if (docsResp.ok) {
             const data = await docsResp.json();
             const list = Array.isArray(data.documents) ? data.documents : Array.isArray(data) ? data : [];
@@ -94,7 +110,10 @@ export function useDocuments(includeInactive = false) {
 
         if (rawDocs.length === 0) {
           try {
-            const jsonResp = await fetch(`/data/documents.json?_t=${Date.now()}`, { cache: 'no-store' });
+            const jsonResp = await fetchWithTimeout(`/data/documents.json?_t=${Date.now()}`, {
+              cache: 'no-store',
+              timeoutMs: 8000,
+            });
             if (jsonResp.ok) {
               const data = await jsonResp.json();
               const list = Array.isArray(data.documents) ? data.documents : Array.isArray(data) ? data : [];
@@ -108,7 +127,7 @@ export function useDocuments(includeInactive = false) {
         if (rawDocs.length > 0 && isMounted && !firebaseDocsReceivedRef.current) {
           const deduplicated = deduplicateDocuments(rawDocs);
           const filtered = includeInactive ? deduplicated : deduplicated.filter(d => d.active !== false);
-          setDocuments(filtered);
+          setDocuments(prev => (isSameJsonList(prev, filtered) ? prev : filtered));
           try { cacheManager.set(cacheKey, filtered); } catch {}
           setLoading(false);
         }
@@ -116,7 +135,10 @@ export function useDocuments(includeInactive = false) {
         // 2. Fetch categories: try API first; fallback to static JSON
         let rawCats: DocumentCategory[] = [];
         try {
-          const catsResp = await fetch(`/api/document-categories?v=${FORMS_CACHE_VERSION}&_t=${Date.now()}`, { cache: 'no-store' });
+          const catsResp = await fetchWithTimeout(`/api/document-categories?v=${FORMS_CACHE_VERSION}&_t=${Date.now()}`, {
+            cache: 'no-store',
+            timeoutMs: 8000,
+          });
           if (catsResp.ok) {
             const data = await catsResp.json();
             const list = Array.isArray(data.categories) ? data.categories : Array.isArray(data) ? data : [];
@@ -128,7 +150,10 @@ export function useDocuments(includeInactive = false) {
 
         if (rawCats.length === 0) {
           try {
-            const jsonCatsResp = await fetch(`/data/document-categories.json?_t=${Date.now()}`, { cache: 'no-store' });
+            const jsonCatsResp = await fetchWithTimeout(`/data/document-categories.json?_t=${Date.now()}`, {
+              cache: 'no-store',
+              timeoutMs: 8000,
+            });
             if (jsonCatsResp.ok) {
               const data = await jsonCatsResp.json();
               const list = Array.isArray(data.categories) ? data.categories : Array.isArray(data) ? data : [];
@@ -141,13 +166,13 @@ export function useDocuments(includeInactive = false) {
 
         if (rawCats.length > 0 && isMounted && !firebaseCatsReceivedRef.current) {
           const deduplicatedCats = deduplicateCategories(rawCats);
-          setCategories(deduplicatedCats);
+          setCategories(prev => (isSameJsonList(prev, deduplicatedCats) ? prev : deduplicatedCats));
           try { cacheManager.set('documentCategories', deduplicatedCats); } catch {}
         }
       } catch (err) {
         console.warn('[useDocuments] API load error:', err);
       } finally {
-        if (isMounted && !firebaseDocsReceivedRef.current && !cachedDocs) {
+        if (isMounted && !firebaseDocsReceivedRef.current) {
           setLoading(false);
         }
       }
@@ -181,7 +206,7 @@ export function useDocuments(includeInactive = false) {
             ? deduplicated
             : deduplicated.filter(d => d.active !== false);
 
-          setDocuments(filtered);
+          setDocuments(prev => (isSameJsonList(prev, filtered) ? prev : filtered));
           setLoading(false);
           setError(null);
           cacheManager.set(cacheKey, filtered);
@@ -197,10 +222,12 @@ export function useDocuments(includeInactive = false) {
       err => {
         console.warn('[useDocuments] Firebase documents subscription notice:', err);
         if (isMounted) {
-          // If Firebase is unavailable, report error but do not wipe existing valid UI state
-          if (!documents.length && !cachedDocs) {
-            setError(err instanceof Error ? err : new Error(String(err)));
-          }
+          setDocuments(prev => {
+            if (prev.length === 0 && !cachedDocs) {
+              setError(err instanceof Error ? err : new Error(String(err)));
+            }
+            return prev;
+          });
           setLoading(false);
         }
       }

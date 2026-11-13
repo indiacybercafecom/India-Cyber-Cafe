@@ -4,6 +4,18 @@ import { rtdb } from '../firebase';
 import { Service } from '../types';
 import { cacheManager } from '../utils/cacheManager';
 import { syncManager } from '../utils/syncManager';
+import { checkAndInvalidateFormsCache } from '../utils/cacheVersionManager';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout';
+
+function isSameJsonList<T>(a: T[], b: T[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
 
 interface JSONData {
   version: number;
@@ -25,31 +37,87 @@ export function useServices() {
   const [loading, setLoading] = useState(initialServices.length === 0);
   const [error, setError] = useState<Error | null>(null);
   const [retryCount, setRetryCount] = useState(0);
-  const [hasJsonData, setHasJsonData] = useState(initialServices.length > 0);
 
   useEffect(() => {
     let unsubscribe: (() => void) | null = null;
     let isComponentMounted = true;
     let loadedFromJson = false;
+    let firebaseReceived = false;
 
     const loadServices = async () => {
       try {
-        // STEP 1: Try to load from generated JSON first (fast, static)
-        console.log('[useServices] Attempting to load from JSON...');
-        
         try {
-          const jsonResponse = await fetch('/data/services.json', {
+          checkAndInvalidateFormsCache();
+        } catch {}
+
+        // If no server-injected initial data, seed immediately from valid cache while fetching fresh JSON/RTDB
+        if (initialServices.length === 0) {
+          const cachedServices = cacheManager.get('services');
+          if (Array.isArray(cachedServices) && cachedServices.length > 0 && isComponentMounted) {
+            setServices(prev => (isSameJsonList(prev, cachedServices) ? prev : cachedServices));
+            setLoading(false);
+          }
+        }
+
+        // STEP 1: Subscribe to live Firebase RTDB immediately so live data takes precedence when available
+        const servicesRef = ref(rtdb, 'services');
+        unsubscribe = onValue(
+          servicesRef,
+          (snapshot) => {
+            try {
+              firebaseReceived = true;
+              const data = snapshot.val();
+              const servicesToSet = data
+                ? Object.entries(data).map(([id, val]: [string, any]) => ({
+                    id,
+                    ...val,
+                  }))
+                : [];
+
+              if (isComponentMounted) {
+                setServices(prev => (isSameJsonList(prev, servicesToSet) ? prev : servicesToSet));
+                cacheManager.set('services', servicesToSet);
+                syncManager.updateSync('services');
+                setLoading(false);
+                setError(null);
+              }
+            } catch (err) {
+              const nextError = err instanceof Error ? err : new Error(String(err));
+              if (isComponentMounted) {
+                setServices(prev => {
+                  if (prev.length === 0) setError(nextError);
+                  return prev;
+                });
+                setLoading(false);
+              }
+            }
+          },
+          (err) => {
+            console.warn('[useServices] Firebase subscription notice:', err);
+            const nextError = err instanceof Error ? err : new Error(String(err));
+            if (isComponentMounted) {
+              setServices(prev => {
+                if (prev.length === 0 && !loadedFromJson) setError(nextError);
+                return prev;
+              });
+              setLoading(false);
+            }
+          }
+        );
+
+        // STEP 2: Fetch fresh no-store JSON snapshot in parallel (faster initial update if RTDB socket is still connecting)
+        try {
+          const jsonResponse = await fetchWithTimeout(`/data/services.json?_t=${Date.now()}`, {
             cache: 'no-store',
+            timeoutMs: 8000,
           });
-          
+
           if (jsonResponse.ok) {
             const jsonData: JSONData = await jsonResponse.json();
             if (jsonData && jsonData.services && Array.isArray(jsonData.services)) {
-              if (isComponentMounted) {
-                console.log(`[useServices] Loaded ${jsonData.services.length} services from JSON`);
-                setServices(jsonData.services);
+              if (isComponentMounted && !firebaseReceived) {
+                setServices(prev => (isSameJsonList(prev, jsonData.services) ? prev : jsonData.services));
                 cacheManager.set('services', jsonData.services);
-                setHasJsonData(true);
                 setLoading(false);
                 setError(null);
                 loadedFromJson = true;
@@ -57,69 +125,12 @@ export function useServices() {
             }
           }
         } catch (jsonError) {
-          console.warn('[useServices] JSON fetch failed, falling back to Firebase:', jsonError);
-        }
-
-        // STEP 2: JSON unavailable or invalid, use Firebase as fallback
-        // Also: reload from Firebase if explicit retry or sync threshold exceeded
-        const lastSync = syncManager.getLastSync('services');
-        const now = Date.now();
-        const SYNC_THRESHOLD = 5 * 60 * 1000; // 5 minutes
-
-        if (loadedFromJson || retryCount > 0 || now - lastSync > SYNC_THRESHOLD) {
-          console.log('[useServices] Loading from Firebase...');
-          const servicesRef = ref(rtdb, 'services');
-          unsubscribe = onValue(
-            servicesRef,
-            (snapshot) => {
-              try {
-                const data = snapshot.val();
-                const servicesToSet = data
-                  ? Object.entries(data).map(([id, val]: [string, any]) => ({
-                      id,
-                      ...val,
-                    }))
-                  : [];
-
-                if (isComponentMounted) {
-                  setServices(servicesToSet);
-                  cacheManager.set('services', servicesToSet);
-                  syncManager.updateSync('services');
-                  setLoading(false);
-                  setError(null);
-                }
-              } catch (err) {
-                const error = err instanceof Error ? err : new Error(String(err));
-                if (isComponentMounted) {
-                  setError(error);
-                  setLoading(false);
-                }
-              }
-            },
-            (err) => {
-              console.error('[useServices] Firebase error:', err);
-              const error = err instanceof Error ? err : new Error(String(err));
-              if (isComponentMounted) {
-                setError(error);
-                setLoading(false);
-              }
-            }
-          );
-        } else {
-          // No sync needed, but also no JSON loaded - use cache if available
-          const cachedServices = cacheManager.get('services');
-          if (cachedServices && cachedServices.length > 0 && isComponentMounted) {
-            console.log('[useServices] Using cached services');
-            setServices(cachedServices);
-            setLoading(false);
-          } else if (isComponentMounted) {
-            setLoading(false);
-          }
+          console.warn('[useServices] JSON fetch notice:', jsonError);
         }
       } catch (err) {
-        const error = err instanceof Error ? err : new Error(String(err));
+        const nextError = err instanceof Error ? err : new Error(String(err));
         if (isComponentMounted) {
-          setError(error);
+          setError(nextError);
           setLoading(false);
         }
       }

@@ -21,8 +21,10 @@ import { sanitizeAddress, trimWhitespace } from '../utils/sanitizer';
 import { CheckoutSkeleton } from '../components/Skeleton';
 import { useLoadingState } from '../hooks/useLoadingState';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
+import { fetchWithTimeout, withClientTimeout } from '../utils/fetchWithTimeout';
 
 const PENDING_VERIFICATION_STORAGE_KEY = 'icc_pending_store_payment';
+const PENDING_ATTEMPT_STORAGE_KEY = 'icc_pending_store_attempt';
 
 interface StoreCheckoutProps {
   products: Product[];
@@ -94,6 +96,7 @@ export function StoreCheckout({
   const [submitting, setSubmitting] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const paymentProcessingRef = useRef(false);
+  const isMountedRef = useRef(true);
   const idempotencyKeyRef = useRef<string>(generateIdempotencyKey());
   const [pendingVerification, setPendingVerification] = useState<PendingPaymentVerification | null>(() => {
     if (typeof window === 'undefined') return null;
@@ -105,6 +108,56 @@ export function StoreCheckout({
     }
   });
   const [verificationError, setVerificationError] = useState<string | null>(null);
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      paymentProcessingRef.current = false;
+    };
+  }, []);
+
+  // Passive recovery check if browser closed after Razorpay modal opened without running callback
+  useEffect(() => {
+    if (typeof window === 'undefined' || pendingVerification) return;
+    let cancelled = false;
+    try {
+      const rawAttempt = window.localStorage.getItem(PENDING_ATTEMPT_STORAGE_KEY);
+      if (!rawAttempt) return;
+      const parsed = JSON.parse(rawAttempt);
+      if (!parsed?.orderId || Date.now() - Number(parsed.createdAt || 0) > 60 * 60 * 1000) {
+        window.localStorage.removeItem(PENDING_ATTEMPT_STORAGE_KEY);
+        return;
+      }
+
+      fetchWithTimeout('/api/store/orders/recover-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId: parsed.orderId }),
+        timeoutMs: 10000
+      })
+        .then(async (resp) => {
+          const data = await resp.json().catch(() => ({}));
+          if (!cancelled && isMountedRef.current && resp.ok && data.verified && data.order) {
+            window.localStorage.removeItem(PENDING_ATTEMPT_STORAGE_KEY);
+            window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
+            onOrderSuccess?.();
+            navigate('/store/order-confirmation', {
+              state: {
+                order: data.order,
+                productName: parsed.productName || product?.name || 'Order',
+                guestTrackingToken: parsed.guestTrackingToken
+              }
+            });
+          }
+        })
+        .catch(() => {});
+    } catch {}
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pendingVerification]);
 
   // Guest checkout / existing account verification states
   const [emailChecked, setEmailChecked] = useState(false);
@@ -280,14 +333,22 @@ export function StoreCheckout({
     const emailToLogin = existingUserEmail || address.email.trim();
     setVerifyingPassword(true);
     try {
-      const cred = await signInWithEmailAndPassword(auth, emailToLogin, passwordInput);
+      const cred = await withClientTimeout(
+        signInWithEmailAndPassword(auth, emailToLogin, passwordInput),
+        10000,
+        'Sign in timed out. Please try again.'
+      );
       setPasswordVerified(true);
       setPasswordInput('');
       setRequiresPassword(false);
 
       // Now authenticated: safely read user's own profile address
       try {
-        const snap = await get(dbRef(rtdb, `users/${cred.user.uid}`));
+        const snap = await withClientTimeout(
+          get(dbRef(rtdb, `users/${cred.user.uid}`)),
+          6000,
+          'Profile fetch timed out.'
+        );
         if (snap.exists()) {
           const profile = snap.val();
           if (profile?.address) {
@@ -318,40 +379,58 @@ export function StoreCheckout({
       showToast(error, 'error', 'Incorrect password. Please try again.');
       setPasswordInput('');
     } finally {
-      setVerifyingPassword(false);
+      if (isMountedRef.current) setVerifyingPassword(false);
     }
   };
 
   const uploadCustomImage = async (): Promise<string | null> => {
     if (!customImageFile) return null;
 
+    const uploadViaBackend = async (): Promise<string | null> => {
+      const formData = new FormData();
+      formData.append('customImage', customImageFile);
+      const resp = await fetchWithTimeout('/api/store/upload-custom-image', {
+        method: 'POST',
+        body: formData,
+        timeoutMs: 20000,
+        timeoutMessage: 'Image upload timed out. Please try a smaller image or check your connection.'
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.url) {
+        throw new Error(data.error || 'Image upload failed on server.');
+      }
+      return data.url;
+    };
+
     try {
       setUploading(true);
+      // Guests go directly to backend upload endpoint so Firebase Storage rules never delay checkout
+      if (!auth.currentUser) {
+        return await uploadViaBackend();
+      }
+
       try {
         const fileName = `custom-images/${Date.now()}-${customImageFile.name}`;
         const fileRef = ref(storage, fileName);
-        await uploadBytes(fileRef, customImageFile);
-        return await getDownloadURL(fileRef);
-      } catch (storageErr) {
-        // Fallback to backend upload for unauthenticated guest checkout if Firebase Storage rules require auth
-        const formData = new FormData();
-        formData.append('customImage', customImageFile);
-        const resp = await fetch('/api/store/upload-custom-image', {
-          method: 'POST',
-          body: formData
-        });
-        if (!resp.ok) {
-          throw storageErr;
-        }
-        const data = await resp.json();
-        return data.url || null;
+        await withClientTimeout(
+          uploadBytes(fileRef, customImageFile),
+          10000,
+          'Image upload timed out.'
+        );
+        return await withClientTimeout(
+          getDownloadURL(fileRef),
+          6000,
+          'Image URL lookup timed out.'
+        );
+      } catch {
+        return await uploadViaBackend();
       }
     } catch (error) {
       console.error('Image upload error:', error);
-      showToast('Failed to upload image. Please check file format & size.', 'error');
+      showToast(error, 'error', 'Failed to upload image. Please check file format & size.');
       return null;
     } finally {
-      setUploading(false);
+      if (isMountedRef.current) setUploading(false);
     }
   };
 
@@ -384,7 +463,11 @@ export function StoreCheckout({
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (auth.currentUser) {
       try {
-        const token = await auth.currentUser.getIdToken();
+        const token = await withClientTimeout(
+          auth.currentUser.getIdToken(),
+          5000,
+          'Auth token lookup timed out.'
+        );
         if (token) headers.Authorization = `Bearer ${token}`;
       } catch {}
     }
@@ -396,6 +479,11 @@ export function StoreCheckout({
     sanitizedAddress: OrderAddress,
     guestTrackingToken?: string
   ) => {
+    try {
+      window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
+      window.localStorage.removeItem(PENDING_ATTEMPT_STORAGE_KEY);
+    } catch {}
+
     // Store guest tracking info locally so guest can easily view status or link on login
     if (confirmedOrder.isGuest || !auth.currentUser) {
       saveGuestOrderRef({
@@ -410,17 +498,25 @@ export function StoreCheckout({
     // Save address to profile if logged in and profile has no address yet
     if (auth.currentUser && user && !user.address) {
       try {
-        await update(dbRef(rtdb, `users/${auth.currentUser.uid}`), { address: sanitizedAddress });
+        await withClientTimeout(
+          update(dbRef(rtdb, `users/${auth.currentUser.uid}`), { address: sanitizedAddress }),
+          5000,
+          'Address save timed out.'
+        );
       } catch {}
     }
 
     // Optional guest account creation AFTER order is persisted
     if (!auth.currentUser && createGuestAccount) {
       try {
-        const accountRes = await createGuestAccountInDB(
-          sanitizedAddress.email,
-          sanitizedAddress.name,
-          sanitizedAddress.phone
+        const accountRes = await withClientTimeout(
+          createGuestAccountInDB(
+            sanitizedAddress.email,
+            sanitizedAddress.name,
+            sanitizedAddress.phone
+          ),
+          10000,
+          'Account setup timed out.'
         );
         if (accountRes.success && accountRes.password) {
           sendWelcomeEmail(sanitizedAddress.email, sanitizedAddress.name, accountRes.password).catch(() => {});
@@ -446,14 +542,39 @@ export function StoreCheckout({
     });
   };
 
+  const recoverOrderFromServer = async (orderId: string): Promise<Order | null> => {
+    try {
+      const recResp = await fetchWithTimeout('/api/store/orders/recover-payment', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderId }),
+        timeoutMs: 12000,
+        timeoutMessage: 'Order status recovery timed out.'
+      });
+      const recData = await recResp.json().catch(() => ({}));
+      if (recResp.ok && recData.verified && recData.order) {
+        try {
+          window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
+          window.localStorage.removeItem(PENDING_ATTEMPT_STORAGE_KEY);
+        } catch {}
+        if (isMountedRef.current) {
+          setPendingVerification(null);
+          setVerificationError(null);
+        }
+        return recData.order as Order;
+      }
+    } catch {}
+    return null;
+  };
+
   const executeVerifyPaymentWithRetry = async (payload: PendingPaymentVerification) => {
-    const maxAttempts = 3;
-    let lastError = 'Payment verification failed.';
+    const maxAttempts = 2;
+    let lastError = 'Payment confirmation is pending. Please click Retry Payment Verification — do NOT pay again.';
 
     for (let attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         const headers = await getAuthHeaders();
-        const verifyResp = await fetch('/api/store/orders/verify-payment', {
+        const verifyResp = await fetchWithTimeout('/api/store/orders/verify-payment', {
           method: 'POST',
           headers,
           body: JSON.stringify({
@@ -461,14 +582,21 @@ export function StoreCheckout({
             razorpay_payment_id: payload.razorpay_payment_id,
             razorpay_order_id: payload.razorpay_order_id,
             razorpay_signature: payload.razorpay_signature
-          })
+          }),
+          timeoutMs: 15000,
+          timeoutMessage: 'Order confirmation timed out. Checking payment recovery — please do NOT pay again.'
         });
 
         const verifyData = await verifyResp.json().catch(() => ({}));
         if (verifyResp.ok && verifyData.verified && verifyData.order) {
-          window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
-          setPendingVerification(null);
-          setVerificationError(null);
+          try {
+            window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
+            window.localStorage.removeItem(PENDING_ATTEMPT_STORAGE_KEY);
+          } catch {}
+          if (isMountedRef.current) {
+            setPendingVerification(null);
+            setVerificationError(null);
+          }
           return verifyData.order as Order;
         }
 
@@ -477,17 +605,23 @@ export function StoreCheckout({
           throw new Error(verifyData.error || 'Invalid payment verification.');
         }
 
-        lastError = verifyData.error || `Server error (${verifyResp.status})`;
+        lastError = verifyData.error || `Server status ${verifyResp.status} while confirming order. Do NOT pay again.`;
       } catch (err: any) {
         if (err?.message && (err.message.includes('Invalid') || err.message.includes('mismatch'))) {
           throw err;
         }
-        lastError = err?.message || 'Network error during verification.';
+        lastError = err?.message || 'Confirmation request did not finish in time. Do NOT pay again.';
       }
 
       if (attempt < maxAttempts) {
-        await new Promise(resolve => setTimeout(resolve, attempt * 1200));
+        await new Promise(resolve => setTimeout(resolve, attempt * 1000));
       }
+    }
+
+    // Immediate automatic server-side recovery check before alerting user
+    const recoveredOrder = await recoverOrderFromServer(payload.orderId);
+    if (recoveredOrder) {
+      return recoveredOrder;
     }
 
     throw new Error(lastError);
@@ -508,33 +642,17 @@ export function StoreCheckout({
       });
       await handlePostOrderSuccess(confirmedOrder, sanitizedAddress, pendingVerification.guestTrackingToken);
     } catch (err: any) {
-      // Fallback: check Razorpay server reconciliation endpoint
-      try {
-        const recResp = await fetch('/api/store/orders/recover-payment', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId: pendingVerification.orderId })
-        });
-        const recData = await recResp.json().catch(() => ({}));
-        if (recResp.ok && recData.verified && recData.order) {
-          window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
-          setPendingVerification(null);
-          const sanitizedAddress = sanitizeAddress({
-            ...address,
-            email: pendingVerification.email || address.email,
-            phone: pendingVerification.phone || address.phone
-          });
-          await handlePostOrderSuccess(recData.order, sanitizedAddress, pendingVerification.guestTrackingToken);
-          return;
-        }
-      } catch {}
-
-      const msg = err?.message || 'Unable to verify payment right now. Do NOT pay again—please retry verification shortly.';
-      setVerificationError(msg);
+      const msg = err?.message || 'Payment confirmation is still pending. Please do NOT pay again — retry verification in a moment.';
+      if (isMountedRef.current) {
+        setVerificationError(msg);
+      }
       showToast(msg, 'error');
     } finally {
       paymentProcessingRef.current = false;
-      setPaymentProcessing(false);
+      if (isMountedRef.current) {
+        setPaymentProcessing(false);
+        setSubmitting(false);
+      }
     }
   };
 
@@ -575,14 +693,16 @@ export function StoreCheckout({
       const headers = await getAuthHeaders();
 
       if (paymentMethod === 'cod') {
-        const resp = await fetch('/api/store/orders/cod', {
+        const resp = await fetchWithTimeout('/api/store/orders/cod', {
           method: 'POST',
           headers,
           body: JSON.stringify({
             items: orderItems,
             deliveryAddress: sanitizedAddress,
             idempotencyKey: idempotencyKeyRef.current
-          })
+          }),
+          timeoutMs: 20000,
+          timeoutMessage: 'Order submission timed out. Please wait a moment and check My Orders before retrying.'
         });
 
         const data = await resp.json().catch(() => ({}));
@@ -594,14 +714,16 @@ export function StoreCheckout({
         await handlePostOrderSuccess(data.order, sanitizedAddress, data.guestTrackingToken);
       } else {
         // Server-authoritative Razorpay pending order creation
-        const createResp = await fetch('/api/store/orders/create-payment', {
+        const createResp = await fetchWithTimeout('/api/store/orders/create-payment', {
           method: 'POST',
           headers,
           body: JSON.stringify({
             items: orderItems,
             deliveryAddress: sanitizedAddress,
             idempotencyKey: idempotencyKeyRef.current
-          })
+          }),
+          timeoutMs: 20000,
+          timeoutMessage: 'Could not reach payment gateway in time. Please try again.'
         });
 
         const createData = await createResp.json().catch(() => ({}));
@@ -609,7 +731,7 @@ export function StoreCheckout({
           throw new Error(createData.error || 'Unable to initiate online payment.');
         }
 
-        const scriptLoaded = await loadRazorpayScript();
+        const scriptLoaded = await loadRazorpayScript(12000);
         if (!scriptLoaded || !window.Razorpay) {
           throw new Error('Payment gateway script could not load. Please check your connection and try again.');
         }
@@ -621,6 +743,16 @@ export function StoreCheckout({
           phone: sanitizedAddress.phone,
           guestTrackingToken: createData.guestTrackingToken as string | undefined
         };
+
+        try {
+          window.localStorage.setItem(
+            PENDING_ATTEMPT_STORAGE_KEY,
+            JSON.stringify({
+              ...pendingPayloadBase,
+              createdAt: Date.now()
+            })
+          );
+        } catch {}
 
         const options = {
           key: createData.keyId || getRazorpayKeyId(),
@@ -637,8 +769,10 @@ export function StoreCheckout({
           handler: async (response: any) => {
             if (paymentProcessingRef.current) return;
             paymentProcessingRef.current = true;
-            setPaymentProcessing(true);
-            setVerificationError(null);
+            if (isMountedRef.current) {
+              setPaymentProcessing(true);
+              setVerificationError(null);
+            }
 
             const verifyPayload: PendingPaymentVerification = {
               ...pendingPayloadBase,
@@ -648,27 +782,44 @@ export function StoreCheckout({
             };
 
             try {
-              window.localStorage.setItem(PENDING_VERIFICATION_STORAGE_KEY, JSON.stringify(verifyPayload));
-              setPendingVerification(verifyPayload);
+              try {
+                window.localStorage.setItem(PENDING_VERIFICATION_STORAGE_KEY, JSON.stringify(verifyPayload));
+              } catch {}
+              if (isMountedRef.current) {
+                setPendingVerification(verifyPayload);
+              }
 
               const confirmedOrder = await executeVerifyPaymentWithRetry(verifyPayload);
               showToast('Payment successful! Order confirmed.', 'success');
               await handlePostOrderSuccess(confirmedOrder, sanitizedAddress, pendingPayloadBase.guestTrackingToken);
             } catch (err: any) {
-              const msg = err?.message || 'Payment verification failed. Please click Retry Verification — do NOT pay again.';
-              setVerificationError(msg);
+              const msg = err?.message || 'Payment confirmation timed out. Please click Retry Payment Verification — do NOT pay again.';
+              if (isMountedRef.current) {
+                setVerificationError(msg);
+              }
               showToast(msg, 'error');
             } finally {
               paymentProcessingRef.current = false;
-              setPaymentProcessing(false);
-              setSubmitting(false);
+              if (isMountedRef.current) {
+                setPaymentProcessing(false);
+                setSubmitting(false);
+              }
             }
           },
           modal: {
-            ondismiss: () => {
+            ondismiss: async () => {
               paymentProcessingRef.current = false;
-              setPaymentProcessing(false);
-              setSubmitting(false);
+              if (isMountedRef.current) {
+                setPaymentProcessing(false);
+                setSubmitting(false);
+              }
+              // Check quietly if Razorpay completed right as modal closed
+              const recovered = await recoverOrderFromServer(pendingPayloadBase.orderId);
+              if (recovered && isMountedRef.current) {
+                showToast('Payment detected! Confirming your order.', 'success');
+                await handlePostOrderSuccess(recovered, sanitizedAddress, pendingPayloadBase.guestTrackingToken);
+                return;
+              }
               showToast('Payment was cancelled. You can retry whenever ready.', 'info');
             }
           },
@@ -676,14 +827,33 @@ export function StoreCheckout({
         };
 
         const rzp = new (window as any).Razorpay(options);
+        if (typeof rzp?.on === 'function') {
+          rzp.on('payment.failed', (failureResp: any) => {
+            paymentProcessingRef.current = false;
+            if (isMountedRef.current) {
+              setPaymentProcessing(false);
+              setSubmitting(false);
+            }
+            const reason =
+              failureResp?.error?.description ||
+              failureResp?.error?.reason ||
+              'Payment could not be completed. Please try again.';
+            showToast(reason, 'error');
+          });
+        }
+
         rzp.open();
-        return; // Keep submitting state managed by handler / ondismiss
+        // Modal is now open and manages handler/ondismiss/payment.failed; never leave button stuck
+        if (isMountedRef.current) {
+          setSubmitting(false);
+        }
+        return;
       }
     } catch (error: any) {
       console.error('Order submission error:', error);
       showToast(error, 'error', 'Failed to place order. Please try again.');
     } finally {
-      if (!paymentProcessingRef.current) {
+      if (!paymentProcessingRef.current && isMountedRef.current) {
         setSubmitting(false);
       }
     }

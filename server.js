@@ -22,7 +22,8 @@ import {
   handleGuestTrackOrder,
   handleLinkGuestOrders,
   handleLookupEmail,
-  handleUploadCustomImage
+  handleUploadCustomImage,
+  getStoreServiceStatus
 } from './src/server/storeOrderService.js';
 
 // Load environment variables
@@ -110,9 +111,16 @@ app.use((req, res, next) => {
   );
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
   next();
 });
+
+function isCrawlerRequest(req) {
+  const ua = (req.get('user-agent') || '').trim();
+  if (req.query?._ssr === '1') return true;
+  if (!ua) return true;
+  if (isSocialCrawler(ua)) return true;
+  return /\b(bot|crawler|spider|slurp|mediapartners|adsbot|google-inspectiontool|googleother|storebot-google|apis-google|duplexweb-google|petalbot|semrushbot|ahrefsbot|mj12bot|dotbot|bytespider|gptbot|claudebot|perplexitybot|ccbot|lighthouse|chrome-lighthouse|pagespeed|gtmetrix|pingdom|screaming\s*frog|seobility|sitebulb|curl|wget|httpie|postmanruntime|insomnia|python-requests|python-urllib|node-fetch|undici|axios|got|go-http-client)\b/i.test(ua);
+}
 
 // Email Configuration
 const transporter = nodemailer.createTransport({
@@ -137,14 +145,17 @@ app.get('/api/health', (req, res) => {
   const hasPublicData =
     fs.existsSync(path.join(dataDir, 'services.json')) &&
     fs.existsSync(path.join(dataDir, 'products.json')) &&
-    fs.existsSync(path.join(dataDir, 'product-categories.json'));
+    fs.existsSync(path.join(dataDir, 'product-categories.json')) &&
+    fs.existsSync(path.join(dataDir, 'documents.json')) &&
+    fs.existsSync(path.join(dataDir, 'document-categories.json'));
 
-  res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
   res.status(200).json({
     status: 'ok',
     success: true,
     message: 'Backend is running',
     publicDataAvailable: hasPublicData,
+    ...getStoreServiceStatus(),
     environment: process.env.NODE_ENV || 'production',
     uptime: Math.round(process.uptime()),
     timestamp: new Date().toISOString(),
@@ -573,6 +584,7 @@ app.post('/api/pay-link/create-order', async (req, res) => {
         'Authorization': authHeader,
         'Content-Type': 'application/json'
       },
+      signal: AbortSignal.timeout(12000),
       body: JSON.stringify({
         amount: amountInPaise,
         currency: 'INR',
@@ -1068,6 +1080,7 @@ const saveServerDocuments = (docs) => {
   if (fs.existsSync(DIST_PATH)) {
     writeJsonAtomically(path.join(DIST_PATH, 'data/documents.json'), output);
   }
+  invalidatePublicDataCache();
 };
 
 const readServerDocCategories = () => {
@@ -1116,6 +1129,7 @@ const saveServerDocCategories = (cats) => {
   if (fs.existsSync(DIST_PATH)) {
     writeJsonAtomically(path.join(DIST_PATH, 'data/document-categories.json'), output);
   }
+  invalidatePublicDataCache();
 };
 
 // 12-Hour Automatic Document Refresh & Background Sync Scheduler
@@ -1170,6 +1184,7 @@ const run12HourDocumentSync = async () => {
       await syncDataType('documentCategories');
     }
 
+    invalidatePublicDataCache();
     const finalDocs = readServerDocuments();
     console.log(`[12-HOUR SYNC] ✅ Scheduled sync completed. Saved ${finalDocs.length} clean documents.`);
   } catch (err) {
@@ -1728,16 +1743,39 @@ app.use('/api', (req, res) => {
 // STATIC FILE SERVING
 // ============================================================================
 
-// Serve synchronized public data before the dist fallback so runtime syncs are visible immediately.
-app.use('/data', express.static(path.join(APP_ROOT, 'public/data')));
+// Serve synchronized public data before the dist fallback with strict no-store headers
+app.use('/data', express.static(path.join(APP_ROOT, 'public/data'), {
+  etag: false,
+  lastModified: false,
+  maxAge: 0,
+  setHeaders: (res) => {
+    setNoCacheHeaders(res);
+  }
+}));
+app.use('/data', express.static(path.join(DIST_PATH, 'data'), {
+  etag: false,
+  lastModified: false,
+  maxAge: 0,
+  setHeaders: (res) => {
+    setNoCacheHeaders(res);
+  }
+}));
+
+app.use('/assets', express.static(path.join(DIST_PATH, 'assets'), {
+  maxAge: '1y',
+  immutable: true,
+}));
 
 // Serve static files from dist
 app.use(express.static(DIST_PATH, {
   index: false,
   maxAge: '1h',
+  setHeaders: (res, filePath) => {
+    if (path.basename(filePath) === 'index.html') {
+      setNoCacheHeaders(res);
+    }
+  }
 }));
-
-app.use('/assets', express.static(path.join(DIST_PATH, 'assets')));
 
 // ============================================================================
 // SPA FALLBACK - Serve index.html with dynamic Open Graph injection for frontend routes
@@ -1757,10 +1795,12 @@ function executeSsr(req, res, indexPath, appRoot) {
     const proto = req.get('x-forwarded-proto') || (req.secure ? 'https' : 'http');
     const baseUrl = process.env.APP_URL || (host.includes('localhost') ? `${proto}://${host}` : `https://${host}`);
     const pageResult = renderUniversalPage(req.path, baseUrl, appRoot);
-    const injectedHtml = injectSsrIntoTemplate(rawHtml, pageResult);
+    const includeBodyHtml = isCrawlerRequest(req);
+    const injectedHtml = injectSsrIntoTemplate(rawHtml, pageResult, { includeBodyHtml });
+    setNoCacheHeaders(res);
     return res.status(pageResult.status).set({
       'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': pageResult.status === 200 ? 'public, max-age=300, stale-while-revalidate=86400' : 'no-cache, no-store, must-revalidate'
+      'Vary': 'User-Agent, Accept-Encoding',
     }).send(injectedHtml);
   } catch (err) {
     const requestId = `ssr_prod_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
@@ -1799,9 +1839,10 @@ function executeSsr(req, res, indexPath, appRoot) {
     </div>
   </body>
 </html>`;
+    setNoCacheHeaders(res);
     return res.status(500).set({
       'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Vary': 'User-Agent, Accept-Encoding',
       'X-Request-Id': requestId,
     }).send(errorHtml);
   }
@@ -1818,9 +1859,8 @@ app.get(/^\/(?!api\/|data\/|assets\/|manifest\.json$|robots\.txt$|sitemap\.xml$|
     return next();
   }
 
-  const ua = req.get('user-agent') || '';
-  const isCrawler = isSocialCrawler(ua);
-  const isPageRequest = isCrawler || req.accepts('html') || !req.path.includes('.');
+  const crawler = isCrawlerRequest(req);
+  const isPageRequest = crawler || req.accepts('html') || !req.path.includes('.');
 
   if (isPageRequest) {
     return executeSsr(req, res, distIndex, APP_ROOT);

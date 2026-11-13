@@ -1,4 +1,5 @@
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout';
 
 // Razorpay Configuration - Frontend Only (Key ID)
 // The Key Secret is kept safe on the backend only
@@ -40,48 +41,69 @@ declare global {
 
 let razorpayScriptPromise: Promise<boolean> | null = null;
 
-export const loadRazorpayScript = (): Promise<boolean> => {
+export const loadRazorpayScript = (timeoutMs = 12000): Promise<boolean> => {
+  if (typeof window !== 'undefined' && typeof window.Razorpay === 'function') {
+    return Promise.resolve(true);
+  }
   if (razorpayScriptPromise) return razorpayScriptPromise;
 
   razorpayScriptPromise = new Promise((resolve) => {
-    if (document.getElementById('razorpay-script')) {
-      resolve(true);
-      return;
+    const existing = document.getElementById('razorpay-script') as HTMLScriptElement | null;
+    if (existing) {
+      if (typeof window.Razorpay === 'function') {
+        resolve(true);
+        return;
+      }
+      // Remove stale/failed script tag before retrying cleanly
+      existing.remove();
     }
+
+    let settled = false;
+    const finish = (ok: boolean) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (!ok) {
+        razorpayScriptPromise = null;
+      }
+      resolve(ok);
+    };
+
+    const timer = setTimeout(() => {
+      finish(false);
+    }, timeoutMs);
 
     const script = document.createElement('script');
     script.id = 'razorpay-script';
     script.src = 'https://checkout.razorpay.com/v1/checkout.js';
     script.async = true;
-    script.onload = () => resolve(true);
-    script.onerror = () => {
-      razorpayScriptPromise = null;
-      resolve(false);
-    };
+    script.onload = () => finish(typeof window.Razorpay === 'function');
+    script.onerror = () => finish(false);
     document.body.appendChild(script);
   });
 
   return razorpayScriptPromise;
 };
 
-export const initiateRazorpayPayment = async (options: RazorpayOptions) => {
+export const initiateRazorpayPayment = async (
+  options: RazorpayOptions & { onPaymentFailed?: (error: any) => void }
+) => {
   try {
     const scriptLoaded = await loadRazorpayScript();
-    
+
     if (!scriptLoaded) {
-      throw new Error('Please check your internet connection.');
+      throw new Error('Payment gateway script timed out or failed to load. Please check your internet connection.');
     }
 
     if (!window.Razorpay) {
       throw new Error('Payment checkout is temporarily unavailable. Please refresh the page and try again.');
     }
 
-    // Use the key from options, fallback to default if not provided
     const keyToUse = options.key || RAZORPAY_KEY_ID;
-    console.log('Payment initiated');
+    const { onPaymentFailed, ...restOptions } = options;
 
     const finalOptions: RazorpayOptions = {
-      ...options,
+      ...restOptions,
       key: keyToUse,
       theme: {
         color: '#001A57', // Navy color
@@ -89,7 +111,6 @@ export const initiateRazorpayPayment = async (options: RazorpayOptions) => {
       }
     };
 
-    // Validate required fields
     if (!finalOptions.amount || finalOptions.amount <= 0) {
       throw new Error('Invalid payment amount');
     }
@@ -98,7 +119,11 @@ export const initiateRazorpayPayment = async (options: RazorpayOptions) => {
     }
 
     const razorpay = new window.Razorpay(finalOptions);
+    if (typeof razorpay?.on === 'function' && onPaymentFailed) {
+      razorpay.on('payment.failed', onPaymentFailed);
+    }
     razorpay.open();
+    return razorpay;
   } catch (error: any) {
     console.error('Payment initialization error:', error);
     throw error;
@@ -113,7 +138,7 @@ export const verifyRazorpayPayment = async (
   signature: string
 ): Promise<{ verified: boolean; error?: string }> => {
   try {
-    const response = await fetch('/api/verify-razorpay-payment', {
+    const response = await fetchWithTimeout('/api/verify-razorpay-payment', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -123,10 +148,12 @@ export const verifyRazorpayPayment = async (
         razorpay_payment_id: paymentId,
         razorpay_signature: signature,
       }),
+      timeoutMs: 15000,
+      timeoutMessage: 'Payment verification timed out. Please retry verification without paying again.'
     });
 
-    const data = await response.json();
-    
+    const data = await response.json().catch(() => ({}));
+
     if (!response.ok) {
       return {
         verified: false,
@@ -165,12 +192,14 @@ export const createPayLinkOrder = async (
   amount: string | number,
   ref?: string
 ): Promise<PayLinkOrderResponse> => {
-  const response = await fetch('/api/pay-link/create-order', {
+  const response = await fetchWithTimeout('/api/pay-link/create-order', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ amount, ref })
+    body: JSON.stringify({ amount, ref }),
+    timeoutMs: 15000,
+    timeoutMessage: 'Payment initiation timed out. Please try again.'
   });
-  const data = await response.json();
+  const data = await response.json().catch(() => ({}));
   if (!response.ok || !data.success) {
     throw new Error(getFriendlyErrorMessage(data.error, 'Unable to start payment. Please try again.'));
   }
@@ -186,7 +215,7 @@ export const verifyPayLinkPayment = async (
   receiptId?: string
 ): Promise<{ verified: boolean; error?: string; record?: any }> => {
   try {
-    const response = await fetch('/api/pay-link/verify', {
+    const response = await fetchWithTimeout('/api/pay-link/verify', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -199,9 +228,11 @@ export const verifyPayLinkPayment = async (
         reference,
         receiptId
       }),
+      timeoutMs: 15000,
+      timeoutMessage: 'Payment verification timed out. Please retry verification.'
     });
 
-    const data = await response.json();
+    const data = await response.json().catch(() => ({}));
     if (!response.ok) {
       return {
         verified: false,

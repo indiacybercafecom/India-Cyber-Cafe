@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { ref, onValue, update, remove, get, query, orderByChild, equalTo } from 'firebase/database';
 import { auth, rtdb } from '../firebase';
 import { Order } from '../types';
+import { fetchWithTimeout, withClientTimeout } from '../utils/fetchWithTimeout';
 
 const PAGINATION_LIMIT = 150;
 
@@ -162,9 +163,15 @@ export function useOrders(options?: OrderLoadOptions | null) {
             publishMerged();
             return;
           }
-          const token = await currentUser.getIdToken();
-          const resp = await fetch('/api/store/orders/my', {
-            headers: { Authorization: `Bearer ${token}` }
+          const token = await withClientTimeout(
+            currentUser.getIdToken(),
+            5000,
+            'Authentication check timed out.'
+          );
+          const resp = await fetchWithTimeout('/api/store/orders/my', {
+            headers: { Authorization: `Bearer ${token}` },
+            timeoutMs: 15000,
+            timeoutMessage: 'Order lookup timed out. Please refresh to try again.'
           });
 
           if (!resp.ok) {
@@ -172,7 +179,7 @@ export function useOrders(options?: OrderLoadOptions | null) {
             throw new Error(data.error || 'Failed to load orders.');
           }
 
-          const data = await resp.json();
+          const data = await resp.json().catch(() => ({}));
           if (Array.isArray(data.orders)) {
             apiOrders = data.orders;
           }

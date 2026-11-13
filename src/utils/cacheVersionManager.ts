@@ -8,15 +8,21 @@
  * - Purges browser CacheStorage entries matching Forms & Documents endpoints.
  */
 
-export const FORMS_CACHE_VERSION = '2026.10.31-v1';
+export const FORMS_CACHE_VERSION = '2026.11.13-v1';
 const CACHE_VERSION_KEY = 'icc_forms_cache_version';
 
 const FORMS_CACHE_KEYS = [
   'icc_cache_documents',
   'icc_cache_documents_all',
   'icc_cache_documentCategories',
+  'icc_cache_services',
+  'icc_cache_products',
+  'icc_cache_productCategories',
   'icc_sync_timestamps_documents',
   'icc_sync_timestamps_documentCategories',
+  'icc_sync_timestamps_services',
+  'icc_sync_timestamps_products',
+  'icc_sync_timestamps_productCategories',
 ];
 
 export function checkAndInvalidateFormsCache(): boolean {
@@ -27,27 +33,30 @@ export function checkAndInvalidateFormsCache(): boolean {
 
     if (storedVersion !== FORMS_CACHE_VERSION) {
       console.log(
-        `[CacheVersionManager] App version change detected: "${storedVersion}" -> "${FORMS_CACHE_VERSION}". Invalidating stale Forms/PDF cache.`
+        `[CacheVersionManager] App version change detected: "${storedVersion}" -> "${FORMS_CACHE_VERSION}". Invalidating stale public catalog cache.`
       );
 
-      // 1. Purge only relevant localStorage entries
+      // 1. Purge only public catalog localStorage entries (preserve auth, profile, orders, consent)
       for (const key of FORMS_CACHE_KEYS) {
         localStorage.removeItem(key);
       }
 
-      // 2. Clear collection timestamps for documents from syncManager if present
+      // 2. Clear collection timestamps from syncManager if present
       try {
         const syncTimestampsKey = 'icc_sync_timestamps';
         const raw = localStorage.getItem(syncTimestampsKey);
         if (raw) {
           const parsed = JSON.parse(raw);
-          if (parsed.documents) delete parsed.documents;
-          if (parsed.documentCategories) delete parsed.documentCategories;
+          delete parsed.documents;
+          delete parsed.documentCategories;
+          delete parsed.services;
+          delete parsed.products;
+          delete parsed.productCategories;
           localStorage.setItem(syncTimestampsKey, JSON.stringify(parsed));
         }
       } catch {}
 
-      // 3. Clear Service Worker / CacheStorage matching documents JSON endpoints
+      // 3. Clear Service Worker / CacheStorage matching public catalog JSON endpoints
       if ('caches' in window) {
         caches
           .keys()
@@ -60,6 +69,9 @@ export function checkAndInvalidateFormsCache(): boolean {
                     if (
                       url.includes('/data/documents.json') ||
                       url.includes('/data/document-categories.json') ||
+                      url.includes('/data/services.json') ||
+                      url.includes('/data/products.json') ||
+                      url.includes('/data/product-categories.json') ||
                       url.includes('/api/documents') ||
                       url.includes('/api/document-categories')
                     ) {

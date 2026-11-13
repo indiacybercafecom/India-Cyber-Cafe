@@ -22,6 +22,9 @@ function cleanText(text, maxLength = 160) {
   if (cleaned.length <= maxLength) return cleaned;
   return cleaned.slice(0, maxLength - 3).trim() + "...";
 }
+function safeJsonForHtml(value) {
+  return JSON.stringify(value).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026").replace(/\u2028/g, "\\u2028").replace(/\u2029/g, "\\u2029");
+}
 function renderHeader(activePath) {
   const navItems = [
     { href: "/", label: "Home" },
@@ -94,7 +97,7 @@ function renderFooter() {
               Your trusted digital partner for government forms, CSC applications, PAN card, Aadhaar UCL, smart PVC cards, and official document assistance.
             </p>
             <div class="text-xs text-slate-400 space-y-1">
-              <p>\u{1F4CD} Main Road, Singrauli, MP 486889, India</p>
+              <p>\u{1F4CD} Jobgarh, Singrauli Madhya Pradesh 486886, India</p>
               <p>\u{1F4DE} +91 9203251821</p>
               <p>\u2709\uFE0F icc@indiacybercafe.com</p>
               <p>\u{1F552} Mon\u2013Sat: 09:00 AM \u2013 08:00 PM</p>
@@ -153,8 +156,8 @@ function renderUniversalPage(rawPath, baseUrl = PRODUCTION_DOMAIN, appRoot) {
     const safeImage = escapeHtml(options.image || DEFAULT_ICC_IMAGE);
     const robots = options.robots || (status === 200 ? "index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" : "noindex, nofollow");
     const ogType = options.ogType || "website";
-    const initialDataScript = `<script>window.__INITIAL_DATA__ = ${JSON.stringify(data)};</script>`;
-    const ldJsonScript = options.structuredData ? `<script type="application/ld+json">${JSON.stringify(options.structuredData)}</script>` : "";
+    const initialDataScript = options.omitInitialData ? "" : `<script>window.__INITIAL_DATA__ = ${safeJsonForHtml(data)};</script>`;
+    const ldJsonScript = options.structuredData ? `<script type="application/ld+json">${safeJsonForHtml(options.structuredData)}</script>` : "";
     const rootInnerHtml = `
       <div class="min-h-screen bg-slate-50 flex flex-col">
         ${headerHtml}
@@ -1670,7 +1673,10 @@ function renderUniversalPage(rawPath, baseUrl = PRODUCTION_DOMAIN, appRoot) {
       "India Cyber Cafe portal dashboard.",
       cleanPath,
       bodyHtml2,
-      { robots: "noindex, nofollow" }
+      {
+        robots: "noindex, nofollow",
+        omitInitialData: cleanPath.startsWith("/admin") || cleanPath === "/operator"
+      }
     );
   }
   const bodyHtml = `
@@ -1708,13 +1714,16 @@ function renderUniversalPage(rawPath, baseUrl = PRODUCTION_DOMAIN, appRoot) {
     }
   );
 }
-function injectSsrIntoTemplate(indexHtml, renderResult) {
+function injectSsrIntoTemplate(indexHtml, renderResult, options = {}) {
   if (!indexHtml) return "";
+  const includeBodyHtml = options?.includeBodyHtml !== false;
   const { metadata, html } = renderResult;
   let rootContent = "";
-  const match = html.match(/<div id="ssr-root-replacement">([\s\S]*?)<\/div>\s*$/);
-  if (match) {
-    rootContent = match[1];
+  if (includeBodyHtml) {
+    const match = html.match(/<div id="ssr-root-replacement">([\s\S]*?)<\/div>\s*$/);
+    if (match) {
+      rootContent = match[1];
+    }
   }
   let headScripts = "";
   const scriptsMatch = html.match(/<script[\s\S]*?<\/script>/g);
@@ -1725,8 +1734,7 @@ function injectSsrIntoTemplate(indexHtml, renderResult) {
   if (/<title>[^<]*<\/title>/i.test(modified)) {
     modified = modified.replace(/<title>[^<]*<\/title>/i, `<title>${metadata.title}</title>`);
   } else {
-    modified = modified.replace("<head>", `<head>
-    <title>${metadata.title}</title>`);
+    modified = modified.replace("<head>", `<head>\n    <title>${metadata.title}</title>`);
   }
   if (/<meta\s+name=["']description["'][^>]*>/i.test(modified)) {
     modified = modified.replace(
@@ -1734,8 +1742,7 @@ function injectSsrIntoTemplate(indexHtml, renderResult) {
       `<meta name="description" content="${metadata.description}" />`
     );
   } else {
-    modified = modified.replace("</head>", `    <meta name="description" content="${metadata.description}" />
-  </head>`);
+    modified = modified.replace("</head>", `    <meta name="description" content="${metadata.description}" />\n  </head>`);
   }
   if (/<meta\s+name=["']robots["'][^>]*>/i.test(modified)) {
     modified = modified.replace(
@@ -1743,8 +1750,7 @@ function injectSsrIntoTemplate(indexHtml, renderResult) {
       `<meta name="robots" content="${metadata.robots}" />`
     );
   } else {
-    modified = modified.replace("</head>", `    <meta name="robots" content="${metadata.robots}" />
-  </head>`);
+    modified = modified.replace("</head>", `    <meta name="robots" content="${metadata.robots}" />\n  </head>`);
   }
   if (/<link\s+rel=["']canonical["'][^>]*>/i.test(modified)) {
     modified = modified.replace(
@@ -1752,8 +1758,7 @@ function injectSsrIntoTemplate(indexHtml, renderResult) {
       `<link rel="canonical" href="${metadata.canonicalUrl}" />`
     );
   } else {
-    modified = modified.replace("</head>", `    <link rel="canonical" href="${metadata.canonicalUrl}" />
-  </head>`);
+    modified = modified.replace("</head>", `    <link rel="canonical" href="${metadata.canonicalUrl}" />\n  </head>`);
   }
   if (/<meta\s+property=["']og:title["'][^>]*>/i.test(modified)) {
     modified = modified.replace(/<meta\s+property=["']og:title["'][^>]*>/i, `<meta property="og:title" content="${metadata.title}" />`);
@@ -1774,8 +1779,7 @@ function injectSsrIntoTemplate(indexHtml, renderResult) {
     modified = modified.replace(/<meta\s+(?:property|name)=["']twitter:description["'][^>]*>/i, `<meta name="twitter:description" content="${metadata.description}" />`);
   }
   if (headScripts) {
-    modified = modified.replace("</head>", `    ${headScripts}
-  </head>`);
+    modified = modified.replace("</head>", `    ${headScripts}\n  </head>`);
   }
   if (/<div id=["']root["']>[\s\S]*?<\/div>/i.test(modified)) {
     modified = modified.replace(
@@ -1783,8 +1787,7 @@ function injectSsrIntoTemplate(indexHtml, renderResult) {
       `<div id="root">${rootContent}</div>`
     );
   } else {
-    modified = modified.replace("<body>", `<body>
-    <div id="root">${rootContent}</div>`);
+    modified = modified.replace("<body>", `<body>\n    <div id="root">${rootContent}</div>`);
   }
   return modified;
 }
@@ -1796,5 +1799,6 @@ export {
   cleanText,
   escapeHtml,
   injectSsrIntoTemplate,
-  renderUniversalPage
+  renderUniversalPage,
+  safeJsonForHtml
 };

@@ -86,14 +86,16 @@ export function slugify(text: string): string {
     .replace(/^-+|-+$/g, '');
 }
 
-// Server-side cache
+// Server-side cache with mtime tracking
 let cachedData: PublicDataPayload | null = null;
 let lastCacheTime = 0;
-const CACHE_TTL_MS = 60 * 1000; // 1 minute in memory
+let lastMtimeSignature = '';
+const CACHE_TTL_MS = 5 * 1000; // 5s max in-memory cache + instant mtime invalidation
 
 export function invalidatePublicDataCache(): void {
   cachedData = null;
   lastCacheTime = 0;
+  lastMtimeSignature = '';
   console.log('[PUBLIC DATA SERVICE] Cache invalidated');
 }
 
@@ -103,6 +105,31 @@ function resolveAppRoot(): string {
   const parent = path.resolve(cwd, '..');
   if (fs.existsSync(path.join(parent, 'package.json'))) return parent;
   return cwd;
+}
+
+function getFileMtime(filePath: string): number {
+  try {
+    return fs.existsSync(filePath) ? fs.statSync(filePath).mtimeMs : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function computeDataMtimeSignature(appRoot: string): string {
+  const dataDir = path.join(appRoot, 'public/data');
+  const distDataDir = path.join(appRoot, 'dist/data');
+  const files = [
+    path.join(dataDir, 'services.json'),
+    path.join(dataDir, 'products.json'),
+    path.join(dataDir, 'product-categories.json'),
+    path.join(dataDir, 'documents.json'),
+    path.join(dataDir, 'document-categories.json'),
+    path.join(appRoot, 'data/documents.json'),
+    path.join(appRoot, 'data/document-categories.json'),
+    path.join(distDataDir, 'services.json'),
+    path.join(distDataDir, 'products.json'),
+  ];
+  return files.map(getFileMtime).join(':');
 }
 
 function readJsonFile<T>(filePath: string): T | null {
@@ -119,7 +146,8 @@ function readJsonFile<T>(filePath: string): T | null {
 
 export function getPublicData(appRoot: string = resolveAppRoot()): PublicDataPayload {
   const now = Date.now();
-  if (cachedData && now - lastCacheTime < CACHE_TTL_MS) {
+  const currentSignature = computeDataMtimeSignature(appRoot);
+  if (cachedData && currentSignature === lastMtimeSignature && now - lastCacheTime < CACHE_TTL_MS) {
     return cachedData;
   }
 
@@ -168,6 +196,7 @@ export function getPublicData(appRoot: string = resolveAppRoot()): PublicDataPay
     documentCategories,
   };
   lastCacheTime = now;
+  lastMtimeSignature = currentSignature;
 
   return cachedData;
 }

@@ -6,10 +6,12 @@ function slugify(text) {
 }
 let cachedData = null;
 let lastCacheTime = 0;
-const CACHE_TTL_MS = 60 * 1e3;
+let lastMtimeSignature = "";
+const CACHE_TTL_MS = 5 * 1e3;
 function invalidatePublicDataCache() {
   cachedData = null;
   lastCacheTime = 0;
+  lastMtimeSignature = "";
   console.log("[PUBLIC DATA SERVICE] Cache invalidated");
 }
 function resolveAppRoot() {
@@ -18,6 +20,29 @@ function resolveAppRoot() {
   const parent = path.resolve(cwd, "..");
   if (fs.existsSync(path.join(parent, "package.json"))) return parent;
   return cwd;
+}
+function getFileMtime(filePath) {
+  try {
+    return fs.existsSync(filePath) ? fs.statSync(filePath).mtimeMs : 0;
+  } catch {
+    return 0;
+  }
+}
+function computeDataMtimeSignature(appRoot) {
+  const dataDir = path.join(appRoot, "public/data");
+  const distDataDir = path.join(appRoot, "dist/data");
+  const files = [
+    path.join(dataDir, "services.json"),
+    path.join(dataDir, "products.json"),
+    path.join(dataDir, "product-categories.json"),
+    path.join(dataDir, "documents.json"),
+    path.join(dataDir, "document-categories.json"),
+    path.join(appRoot, "data/documents.json"),
+    path.join(appRoot, "data/document-categories.json"),
+    path.join(distDataDir, "services.json"),
+    path.join(distDataDir, "products.json")
+  ];
+  return files.map(getFileMtime).join(":");
 }
 function readJsonFile(filePath) {
   try {
@@ -32,7 +57,8 @@ function readJsonFile(filePath) {
 }
 function getPublicData(appRoot = resolveAppRoot()) {
   const now = Date.now();
-  if (cachedData && now - lastCacheTime < CACHE_TTL_MS) {
+  const currentSignature = computeDataMtimeSignature(appRoot);
+  if (cachedData && currentSignature === lastMtimeSignature && now - lastCacheTime < CACHE_TTL_MS) {
     return cachedData;
   }
   const dataDir = path.join(appRoot, "public/data");
@@ -57,6 +83,7 @@ function getPublicData(appRoot = resolveAppRoot()) {
     documentCategories
   };
   lastCacheTime = now;
+  lastMtimeSignature = currentSignature;
   return cachedData;
 }
 function findService(identifier, appRoot) {
