@@ -1,12 +1,15 @@
 import { useState, useRef } from 'react';
-import { Application, UserProfile, ApplicationNote } from '../types';
+import { Application, UserProfile } from '../types';
 import { IconRenderer } from './Icons';
 import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
-import { auth, rtdb } from '../firebase';
-import { ref as dbRef, update } from 'firebase/database';
+import { auth } from '../firebase';
 import { motion } from 'motion/react';
-import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
+import {
+  assignApplicationOperatorApi,
+  updateApplicationPaymentStatusApi,
+  type EmailDeliverySummary,
+} from '../services/emailService';
 import { trimWhitespace } from '../utils/sanitizer';
 import {
   ALLOWED_OPERATOR_STATUSES,
@@ -129,24 +132,12 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
     }
     setLoading(true);
     try {
-      await update(dbRef(rtdb, `applications/${app.id}`), {
-        paymentStatus: status,
-        updatedAt: new Date().toISOString(),
-      });
-
-      if (status === 'completed') {
-        sendEmail(
-          app.email,
-          `Payment Confirmed: ${app.serviceName}`,
-          emailTemplates.paymentReceived(app.name, app.charge?.toString() || '0', app.serviceName, `APP-${app.id}`)
-        );
-        sendEmailToAllAdmins(
-          `[Admin Alert] Payment Received: ${app.serviceName}`,
-          emailTemplates.adminPaymentReceived(app.name, app.charge?.toString() || '0', app.serviceName, `APP-${app.id}`)
-        );
+      const result = await updateApplicationPaymentStatusApi(app.id, status);
+      if (result.emailDelivery?.hasFailures) {
+        showToast(`Payment status updated to ${status}, but email notification could not be sent.`, 'info');
+      } else {
+        showToast(`Payment status updated to ${status}`);
       }
-
-      showToast(`Payment status updated to ${status}`);
     } catch (error: any) {
       showToast(error.message || 'Failed to update payment status', 'error');
     } finally {
@@ -158,7 +149,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
     status?: string;
     note?: string;
     file?: File | null;
-  }) => {
+  }): Promise<EmailDeliverySummary | undefined> => {
     const sanitizedNote = trimWhitespace(opts.note || '');
     const sanitizedStatus = trimWhitespace(opts.status || '');
 
@@ -207,7 +198,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       }
     }
 
-    // Attempt server-authoritative update
+    // Server-authoritative update + role-separated Customer / Admin / Operator email dispatch
     const resp = await fetch(`/api/operator/applications/${encodeURIComponent(app.id)}/update`, {
       method: 'POST',
       headers: {
@@ -222,51 +213,10 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       }),
     });
     const data = await resp.json().catch(() => ({}));
-    if (resp.ok && data.success) {
-      return; // Server already persisted update and dispatched deduplicated emails
-    }
-    if (opts.file || !(resp.status === 503 && data.code === 'FIREBASE_ADMIN_UNCONFIGURED')) {
+    if (!resp.ok || !data.success) {
       throw new Error(data.error || 'Failed to update application.');
     }
-
-    // Granular RTDB fallback only when server Admin SDK is unconfigured (local dev without service account)
-    const nowIso = new Date().toISOString();
-    const noteId = `note_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-    const newNote: ApplicationNote = {
-      id: noteId,
-      type: sanitizedStatus ? 'status' : 'note',
-      by: (currentUser.name || 'Staff').trim(),
-      email: currentUser.email,
-      authorUid: currentUser.uid,
-      authorRole: perms.isAdmin ? 'admin' : 'operator',
-      text: sanitizedNote || (sanitizedStatus ? `Status updated to ${sanitizedStatus}` : `Uploaded attachment: ${attachmentName}`),
-      time: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-      createdAt: Date.now(),
-      ...(sanitizedStatus ? { status: sanitizedStatus } : {}),
-      ...(attachmentUrl ? { attachment: attachmentUrl } : {}),
-      ...(attachmentName ? { attachmentName } : {}),
-    };
-
-    const childUpdates: Record<string, any> = {
-      updatedAt: nowIso,
-      [`notes/${noteId}`]: newNote,
-    };
-    if (sanitizedStatus) {
-      childUpdates.status = sanitizedStatus;
-    }
-
-    await update(dbRef(rtdb, `applications/${app.id}`), childUpdates);
-
-    if (sanitizedStatus) {
-      sendEmail(app.email, `Status Update: ${app.serviceName}`, emailTemplates.statusUpdate(app.name, app.serviceName, sanitizedStatus));
-      sendEmailToAllAdmins(`[Admin Alert] Status Updated: ${app.serviceName}`, emailTemplates.statusUpdate(app.name, app.serviceName, sanitizedStatus));
-      if (app.assignedTo && app.assignedTo.toLowerCase() !== currentUser.email.toLowerCase()) {
-        sendEmail(app.assignedTo, `[Update] Status Changed: ${app.serviceName}`, emailTemplates.statusUpdate(app.name, app.serviceName, sanitizedStatus));
-      }
-    } else if (sanitizedNote) {
-      sendEmail(app.email, `New Update: ${app.serviceName}`, emailTemplates.noteAdded(app.name, app.serviceName, sanitizedNote));
-      sendEmailToAllAdmins(`[Admin Alert] New Note Added: ${app.serviceName}`, emailTemplates.noteAdded(app.name, app.serviceName, `Note from ${currentUser.name}: ${sanitizedNote}`));
-    }
+    return data.emailDelivery as EmailDeliverySummary | undefined;
   };
 
   const handleUpdateStatusDirect = async (status: string) => {
@@ -276,8 +226,12 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
     }
     setLoading(true);
     try {
-      await submitStatusOrNote({ status });
-      showToast(`Status updated to ${status}`);
+      const emailDelivery = await submitStatusOrNote({ status });
+      if (emailDelivery?.hasFailures) {
+        showToast(`Status updated to ${status}, but one or more email notifications failed.`, 'info');
+      } else {
+        showToast(`Status updated to ${status}`);
+      }
     } catch (error: any) {
       showToast(error.message || 'Failed to update status', 'error');
     } finally {
@@ -294,12 +248,16 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
 
     setLoading(true);
     try {
-      await submitStatusOrNote({
+      const emailDelivery = await submitStatusOrNote({
         status: newStatus,
         note: noteText,
         file: noteFile,
       });
-      showToast('Update added successfully!');
+      if (emailDelivery?.hasFailures) {
+        showToast('Update saved, but one or more email notifications could not be delivered.', 'info');
+      } else {
+        showToast('Update added successfully!');
+      }
       setNoteText('');
       setNewStatus('');
       setNoteFile(null);
@@ -318,6 +276,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       showToast('Only Admins can assign operators.', 'error');
       return;
     }
+    setLoading(true);
     try {
       const operator = operatorEmail
         ? operators.find(op => op.email.toLowerCase() === operatorEmail.toLowerCase())
@@ -328,32 +287,26 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
         return;
       }
 
-      await update(dbRef(rtdb, `applications/${app.id}`), {
-        assignedTo: operatorEmail || null,
-        assignedToUid: operator?.uid || null,
-        updatedAt: new Date().toISOString(),
-      });
+      const result = await assignApplicationOperatorApi(
+        app.id,
+        operator?.uid || '',
+        operatorEmail || ''
+      );
 
-      if (operatorEmail) {
-        sendEmail(
-          operatorEmail,
-          `New Assignment: ${app.serviceName}`,
-          emailTemplates.operatorNewAssignment(operator?.name || 'Operator', app.name, app.email, app.serviceName, app.id)
+      if (result.emailDelivery?.hasFailures) {
+        showToast(
+          operatorEmail
+            ? `Assigned to ${operatorEmail} (one or more email notifications could not be sent).`
+            : 'Application unassigned (email notification warning).',
+          'info'
         );
-        sendEmail(
-          app.email,
-          `Operator Assigned: ${app.serviceName}`,
-          emailTemplates.operatorAssigned(app.name, app.serviceName, operator?.name)
-        );
-        sendEmailToAllAdmins(
-          `[Admin Alert] Operator Assigned: ${app.serviceName}`,
-          emailTemplates.operatorNewAssignment(operator?.name || 'Operator', app.name, app.email, app.serviceName, app.id)
-        );
+      } else {
+        showToast(operatorEmail ? `Assigned to ${operatorEmail}` : 'Application unassigned');
       }
-
-      showToast(operatorEmail ? `Assigned to ${operatorEmail}` : 'Application unassigned');
     } catch (error: any) {
       showToast(error.message || 'Failed to update assignment', 'error');
+    } finally {
+      setLoading(false);
     }
   };
 

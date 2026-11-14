@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
-import { sendEmail, emailTemplates } from '../services/emailService';
+import { notifyCallbackApi } from '../services/emailService';
 import { sanitizePhone } from '../utils/sanitizer';
 
 interface CallbackModalProps {
@@ -43,12 +43,8 @@ export function CallbackModal({ isOpen, onClose }: CallbackModalProps) {
     setLoading(true);
 
     try {
-      // Send email to admin
-      await sendEmail(
-        'indiacybercafe.com@gmail.com',
-        `New Call Back Request - ${new Date().toLocaleString('en-IN')}`,
-        emailTemplates.callbackRequest(sanitizedMobile)
-      );
+      // Send callback notification via server-authoritative endpoint
+      await notifyCallbackApi({ mobileNumber: sanitizedMobile });
 
       showToast('आपकी रिक्वेस्ट भेज दी गई है। हम कुछ ही मिनटों में संपर्क करेंगे।', 'success');
       localStorage.setItem('icc_callback_submitted', 'yes');

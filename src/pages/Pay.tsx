@@ -4,7 +4,6 @@ import { Check, CheckCircle2, AlertTriangle, Loader2 } from 'lucide-react';
 import { push, ref as dbRef, set } from 'firebase/database';
 import { SEO } from '../components/SEO';
 import { rtdb } from '../firebase';
-import { sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
 import {
   getRazorpayKeyId,
   loadRazorpayScript,
@@ -159,20 +158,7 @@ export function Pay() {
               throw new Error(verification.error || 'Server payment verification failed.');
             }
 
-            // 4. Note: Transaction record is securely verified and persisted server-side via /api/pay-link/verify
-
-
-            // 5. Notify administrators via email
-            void sendEmailToAllAdmins(
-              `Payment Received - ₹${orderData.amountInRupees} (${orderData.receiptId})`,
-              emailTemplates.directPaymentReceived(
-                orderData.receiptId,
-                orderData.amountInRupees,
-                response.razorpay_payment_id,
-                response.razorpay_order_id,
-                new Date().toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'long' })
-              )
-            ).catch(emailError => console.error('Admin payment notification failed:', emailError));
+            // 4. Payment record and admin email alert are verified & dispatched server-side via /api/pay-link/verify
 
             setPaymentResult({
               paymentId: response.razorpay_payment_id,

@@ -16,7 +16,7 @@ import {
   saveGuestOrderRef,
   linkGuestOrdersToAuthenticatedUser
 } from '../services/guestCheckoutService';
-import { sendWelcomeEmail } from '../services/emailService';
+import { notifyRegistrationApi } from '../services/emailService';
 import { sanitizeAddress, trimWhitespace } from '../utils/sanitizer';
 import { CheckoutSkeleton } from '../components/Skeleton';
 import { useLoadingState } from '../hooks/useLoadingState';
@@ -518,8 +518,8 @@ export function StoreCheckout({
           10000,
           'Account setup timed out.'
         );
-        if (accountRes.success && accountRes.password) {
-          sendWelcomeEmail(sanitizedAddress.email, sanitizedAddress.name, accountRes.password).catch(() => {});
+        if (accountRes.success) {
+          notifyRegistrationApi({ isGuestCheckout: true }).catch(() => {});
           await linkGuestOrdersToAuthenticatedUser().catch(() => {});
           showToast('Order placed & account created! Welcome email sent.', 'success');
         } else {

@@ -6,7 +6,20 @@ import path from 'path';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { getAuth } from 'firebase-admin/auth';
-import nodemailer from 'nodemailer';
+import {
+  notifyApplicationUpdate,
+  notifyApplicationAssignment,
+  notifyApplicationSubmitted,
+  notifyApplicationPaymentConfirmed,
+  notifyUserRegistration,
+  notifyProfileUpdated,
+  notifyCallbackRequest,
+  notifyReviewSubmitted,
+  getNotificationEvents,
+  retryNotificationEvent,
+  normalizeEmailAddress,
+  isValidEmailAddress,
+} from './emailNotificationService.js';
 
 const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
   ? process.cwd()
@@ -14,7 +27,6 @@ const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
 
 const SUPER_ADMIN_UID = 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2';
 const SUPER_ADMIN_EMAIL = 'indiacybercafe.com@gmail.com';
-const ADMIN_EMAILS = ['icc@indiacybercafe.com', 'indiacybercafe.com@gmail.com'];
 const ALLOWED_STATUSES = new Set(['processing', 'clarification', 'completed', 'rejected']);
 const ALLOWED_UPDATE_BODY_FIELDS = new Set(['status', 'note', 'attachmentUrl', 'attachmentName']);
 const PROTECTED_UPDATE_FIELDS = new Set([
@@ -166,13 +178,18 @@ function sanitizeFilename(name) {
   return base.slice(0, 120) || 'attachment';
 }
 
-function escapeHtml(str) {
-  return String(str || '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+const callbackRateLimitMap = new Map();
+function checkPublicNotificationRateLimit(bucket, ip, maxRequests = 10, windowMs = 60000) {
+  const key = `${bucket}:${ip}`;
+  const now = Date.now();
+  const entry = callbackRateLimitMap.get(key);
+  if (!entry || now > entry.resetTime) {
+    callbackRateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
+    return true;
+  }
+  if (entry.count >= maxRequests) return false;
+  entry.count += 1;
+  return true;
 }
 
 function readTestStore() {
@@ -373,7 +390,7 @@ function isCallerOwnerOfApp(app, caller) {
 async function readApplication(appId) {
   if (isTestMode()) {
     const store = readTestStore();
-    return store.applications?.[appId] || null;
+    return store.applications?.[appId] ? { id: appId, ...store.applications[appId] } : null;
   }
   if (!ensureAdminInit() || !rtdbAdmin) {
     const err = new Error('Firebase Admin credentials not configured on server');
@@ -386,71 +403,92 @@ async function readApplication(appId) {
   return { id: appId, ...snap.val() };
 }
 
-async function sendNotificationEmails(emails) {
-  if (isTestMode()) return;
-  const smtpUser = process.env.SMTP_USER || '';
-  const smtpPass = process.env.SMTP_PASS || '';
-  if (!smtpUser || !smtpPass) return;
-
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.hostinger.com',
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: false,
-    auth: { user: smtpUser, pass: smtpPass },
-    tls: { rejectUnauthorized: false },
-  });
-
-  await Promise.allSettled(
-    emails
-      .filter(e => e.to && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e.to))
-      .map(e =>
-        transporter.sendMail({
-          from: `"India Cyber Cafe" <${smtpUser}>`,
-          to: e.to,
-          subject: e.subject,
-          html: e.html,
-        })
-      )
-  );
+async function readUserProfile(uid) {
+  if (!uid) return null;
+  if (isTestMode()) {
+    const store = readTestStore();
+    const u = store.users?.[uid];
+    if (!u) return null;
+    return {
+      uid,
+      email: normalizeEmailAddress(u.email),
+      name: String(u.name || u.email?.split('@')[0] || 'User').trim(),
+      role: String(u.role || 'user'),
+      disabled: Boolean(u.disabled === true),
+      phone: u.phone ? String(u.phone) : undefined,
+      authProvider: u.authProvider ? String(u.authProvider) : undefined,
+      registrationNotified: Boolean(u.registrationNotified === true),
+    };
+  }
+  if (!ensureAdminInit() || !rtdbAdmin) return null;
+  try {
+    const snap = await withTimeout(rtdbAdmin.ref(`users/${uid}`).once('value'), 5000, 'Read user profile');
+    if (!snap.exists()) return null;
+    const u = snap.val();
+    return {
+      uid,
+      email: normalizeEmailAddress(u.email),
+      name: String(u.name || u.email?.split('@')[0] || 'User').trim(),
+      role: String(u.role || 'user'),
+      disabled: Boolean(u.disabled === true),
+      phone: u.phone ? String(u.phone) : undefined,
+      authProvider: u.authProvider ? String(u.authProvider) : undefined,
+      registrationNotified: Boolean(u.registrationNotified === true),
+    };
+  } catch {
+    return null;
+  }
 }
 
-function buildStatusEmailHtml(userName, serviceName, status, noteText) {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
-      <div style="background: #FF9933; padding: 20px; text-align: center; color: #fff;">
-        <h2 style="margin: 0;">India Cyber Cafe</h2>
-        <p style="margin: 4px 0 0; font-size: 12px;">Application Status Updated</p>
-      </div>
-      <div style="padding: 20px; color: #333; line-height: 1.6;">
-        <p>Hello <strong>${escapeHtml(userName)}</strong>,</p>
-        <p>Your application for <strong>${escapeHtml(serviceName)}</strong> has been updated.</p>
-        <div style="background: #f0f8ff; padding: 12px 15px; border-left: 4px solid #FF9933; border-radius: 6px; margin: 12px 0;">
-          <p style="margin: 4px 0;"><strong>New Status:</strong> ${escapeHtml(status.toUpperCase())}</p>
-          ${noteText ? `<p style="margin: 4px 0;"><strong>Note:</strong> ${escapeHtml(noteText)}</p>` : ''}
-        </div>
-        <p><a href="https://b.indiacybercafe.com/track" style="background: #FF9933; color: #fff; padding: 10px 18px; border-radius: 6px; text-decoration: none; display: inline-block;">View Application</a></p>
-      </div>
-    </div>
-  `;
-}
+async function findOperatorProfile(params) {
+  const targetUid = cleanText(params?.operatorUid || '', 128);
+  const targetEmail = normalizeEmailAddress(params?.operatorEmail || '');
 
-function buildNoteEmailHtml(userName, serviceName, noteText) {
-  return `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden;">
-      <div style="background: #FF9933; padding: 20px; text-align: center; color: #fff;">
-        <h2 style="margin: 0;">India Cyber Cafe</h2>
-        <p style="margin: 4px 0 0; font-size: 12px;">New Update on Your Application</p>
-      </div>
-      <div style="padding: 20px; color: #333; line-height: 1.6;">
-        <p>Hello <strong>${escapeHtml(userName)}</strong>,</p>
-        <p>A new update has been posted on your application for <strong>${escapeHtml(serviceName)}</strong>:</p>
-        <div style="background: #fff9e6; padding: 12px 15px; border-left: 4px solid #FF9933; border-radius: 6px; margin: 12px 0;">
-          <p style="margin: 0;">${escapeHtml(noteText)}</p>
-        </div>
-        <p><a href="https://b.indiacybercafe.com/track" style="background: #FF9933; color: #fff; padding: 10px 18px; border-radius: 6px; text-decoration: none; display: inline-block;">Check Dashboard</a></p>
-      </div>
-    </div>
-  `;
+  if (targetUid) {
+    const byUid = await readUserProfile(targetUid);
+    if (byUid) return byUid;
+  }
+
+  if (targetEmail) {
+    if (isTestMode()) {
+      const store = readTestStore();
+      for (const [uid, raw] of Object.entries(store.users || {})) {
+        if (normalizeEmailAddress(raw?.email) === targetEmail) {
+          return {
+            uid,
+            email: targetEmail,
+            name: String(raw.name || targetEmail.split('@')[0] || 'Operator').trim(),
+            role: String(raw.role || 'user'),
+            disabled: Boolean(raw.disabled === true),
+          };
+        }
+      }
+      return null;
+    }
+
+    if (ensureAdminInit() && rtdbAdmin) {
+      const snap = await withTimeout(
+        rtdbAdmin.ref('users').orderByChild('email').equalTo(targetEmail).once('value'),
+        6000,
+        'Lookup operator by email'
+      );
+      if (snap.exists()) {
+        const entries = Object.entries(snap.val() || {});
+        if (entries.length > 0) {
+          const [uid, raw] = entries[0];
+          return {
+            uid,
+            email: normalizeEmailAddress(raw?.email || targetEmail),
+            name: String(raw?.name || targetEmail.split('@')[0] || 'Operator').trim(),
+            role: String(raw?.role || 'user'),
+            disabled: Boolean(raw?.disabled === true),
+          };
+        }
+      }
+    }
+  }
+
+  return null;
 }
 
 export async function handleGetOperatorApplication(req, res) {
@@ -554,6 +592,7 @@ export async function handleOperatorUpdateApplication(req, res) {
     }
 
     let appSnapshotAfter = null;
+    let previousStatus = 'pending';
 
     if (isTestMode()) {
       const store = readTestStore();
@@ -564,6 +603,7 @@ export async function handleOperatorUpdateApplication(req, res) {
       if (caller.role !== 'admin' && !isCallerAssignedToApp(target, caller)) {
         return res.status(403).json({ success: false, error: 'Access denied: application is not assigned to your account.' });
       }
+      previousStatus = String(target.status || 'pending');
       if (!target.notes || Array.isArray(target.notes)) {
         const mapped = {};
         if (Array.isArray(target.notes)) {
@@ -577,7 +617,7 @@ export async function handleOperatorUpdateApplication(req, res) {
       if (rawStatus) target.status = rawStatus;
       target.updatedAt = nowIso;
       writeTestStore(store);
-      appSnapshotAfter = target;
+      appSnapshotAfter = { id: appId, ...target };
     } else if (ensureAdminInit() && rtdbAdmin) {
       const initialApp = await readApplication(appId);
       if (!initialApp) {
@@ -588,6 +628,7 @@ export async function handleOperatorUpdateApplication(req, res) {
       }
 
       let txAbortReason = 'NONE';
+      let txPreviousStatus = String(initialApp.status || 'pending');
       const txResult = await withTimeout(
         rtdbAdmin.ref(`applications/${appId}`).transaction((currentApp) => {
           txAbortReason = 'NONE';
@@ -598,6 +639,7 @@ export async function handleOperatorUpdateApplication(req, res) {
             txAbortReason = 'FORBIDDEN';
             return undefined;
           }
+          txPreviousStatus = String(currentApp.status || 'pending');
           const nextNotes = {};
           if (Array.isArray(currentApp.notes)) {
             currentApp.notes.forEach((n, idx) => {
@@ -629,47 +671,34 @@ export async function handleOperatorUpdateApplication(req, res) {
       if (!txResult.committed) {
         return res.status(409).json({ success: false, error: 'Application update conflicted with another change. Please retry.' });
       }
+      previousStatus = txPreviousStatus;
       appSnapshotAfter = { id: appId, ...valAfter };
     } else {
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: 'Firebase Admin credentials not configured on server' });
     }
 
-    const emailQueue = [];
-    if (rawStatus) {
-      const html = buildStatusEmailHtml(appSnapshotAfter.name || 'Customer', appSnapshotAfter.serviceName || 'Service', rawStatus, noteText || undefined);
-      if (appSnapshotAfter.email) {
-        emailQueue.push({ to: appSnapshotAfter.email, subject: `Status Update: ${appSnapshotAfter.serviceName}`, html });
-      }
-      for (const adminEmail of ADMIN_EMAILS) {
-        emailQueue.push({ to: adminEmail, subject: `[Admin Alert] Status Updated: ${appSnapshotAfter.serviceName}`, html });
-      }
-      if (appSnapshotAfter.assignedTo && appSnapshotAfter.assignedTo.toLowerCase().trim() !== caller.email) {
-        emailQueue.push({ to: appSnapshotAfter.assignedTo, subject: `[Update] Status Changed: ${appSnapshotAfter.serviceName}`, html });
-      }
-    } else if (noteText) {
-      if (appSnapshotAfter.email) {
-        emailQueue.push({
-          to: appSnapshotAfter.email,
-          subject: `New Update: ${appSnapshotAfter.serviceName}`,
-          html: buildNoteEmailHtml(appSnapshotAfter.name || 'Customer', appSnapshotAfter.serviceName || 'Service', noteText),
-        });
-      }
-      for (const adminEmail of ADMIN_EMAILS) {
-        emailQueue.push({
-          to: adminEmail,
-          subject: `[Admin Alert] New Note Added: ${appSnapshotAfter.serviceName}`,
-          html: buildNoteEmailHtml(appSnapshotAfter.name || 'Customer', appSnapshotAfter.serviceName || 'Service', `Note from ${caller.name} (${caller.role}): ${noteText}`),
-        });
-      }
-    }
+    const assignedOperatorProfile = appSnapshotAfter.assignedToUid
+      ? await readUserProfile(String(appSnapshotAfter.assignedToUid))
+      : null;
 
-    sendNotificationEmails(emailQueue).catch(err => console.warn('[operatorService] Email notification notice:', err?.message || err));
+    const emailDelivery = await notifyApplicationUpdate({
+      appId,
+      app: appSnapshotAfter,
+      previousStatus,
+      newStatus: rawStatus || undefined,
+      noteText: noteText || undefined,
+      attachmentName: attachmentName || (attachmentUrl ? 'Attachment' : undefined),
+      performedBy: { uid: caller.uid, name: caller.name, email: caller.email, role: caller.role },
+      assignedOperator: assignedOperatorProfile,
+      idempotencyKey: `app_update:${appId}:${noteId}`,
+    });
 
     return res.json({
       success: true,
       note: newNote,
       status: rawStatus || appSnapshotAfter.status,
       updatedAt: nowIso,
+      emailDelivery,
     });
   } catch (err) {
     if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
@@ -893,7 +922,16 @@ export async function handleVerifyApplicationPayment(req, res) {
       );
     }
 
-    return res.json({ success: true, paymentStatus: 'completed' });
+    const emailDelivery = await notifyApplicationPaymentConfirmed({
+      appId,
+      app: { ...app, paymentStatus: 'completed' },
+      transactionId: String(razorpay_payment_id),
+      paymentMethod: 'razorpay',
+      razorpayOrderId: String(razorpay_order_id),
+      timestamp: nowIso,
+    });
+
+    return res.json({ success: true, paymentStatus: 'completed', emailDelivery });
   } catch (err) {
     if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
@@ -901,4 +939,349 @@ export async function handleVerifyApplicationPayment(req, res) {
     console.error('[operatorService] handleVerifyApplicationPayment error:', err);
     return res.status(500).json({ success: false, error: 'Failed to verify application payment' });
   }
+}
+
+export async function handleAssignApplicationOperator(req, res) {
+  try {
+    const caller = await requireAdminCaller(req, res);
+    if (!caller) return;
+
+    const appId = cleanText(req.params.appId, 120);
+    if (!appId || /[/.#$[\]]/.test(appId)) {
+      return res.status(400).json({ success: false, error: 'Invalid application ID' });
+    }
+
+    const body = req.body || {};
+    const requestedUid = typeof body.operatorUid === 'string' ? body.operatorUid.trim() : '';
+    const requestedEmail = typeof body.operatorEmail === 'string' ? normalizeEmailAddress(body.operatorEmail) : '';
+
+    const app = await readApplication(appId);
+    if (!app) {
+      return res.status(404).json({ success: false, error: 'Application not found' });
+    }
+
+    let newOperator = null;
+    if (requestedUid || requestedEmail) {
+      const profile = await findOperatorProfile({ operatorUid: requestedUid, operatorEmail: requestedEmail });
+      if (!profile) {
+        return res.status(404).json({ success: false, error: 'Target operator user account not found' });
+      }
+      if (profile.disabled) {
+        return res.status(400).json({ success: false, error: 'Cannot assign to a disabled user account' });
+      }
+      if (profile.role !== 'operator' && profile.role !== 'admin') {
+        return res.status(400).json({ success: false, error: 'Target user does not have operator or admin role' });
+      }
+      newOperator = { uid: profile.uid, email: profile.email, name: profile.name };
+    }
+
+    let previousOperator = null;
+    if (app.assignedToUid || app.assignedTo) {
+      const prevProfile = app.assignedToUid ? await readUserProfile(String(app.assignedToUid)) : null;
+      previousOperator = {
+        uid: prevProfile?.uid || (app.assignedToUid ? String(app.assignedToUid) : undefined),
+        email: prevProfile?.email || normalizeEmailAddress(app.assignedTo),
+        name: prevProfile?.name || (app.assignedTo ? String(app.assignedTo).split('@')[0] : undefined),
+      };
+    }
+
+    const nowIso = new Date().toISOString();
+    const updates = {
+      assignedTo: newOperator ? newOperator.email : '',
+      assignedToUid: newOperator ? newOperator.uid : '',
+      updatedAt: nowIso,
+    };
+
+    if (isTestMode()) {
+      const store = readTestStore();
+      store.applications[appId] = { ...store.applications[appId], ...updates };
+      writeTestStore(store);
+    } else if (ensureAdminInit() && rtdbAdmin) {
+      await withTimeout(rtdbAdmin.ref(`applications/${appId}`).update(updates), 8000, 'Assign operator');
+    } else {
+      return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: 'Firebase Admin credentials not configured on server' });
+    }
+
+    const emailDelivery = await notifyApplicationAssignment({
+      appId,
+      app: { ...app, ...updates },
+      newOperator,
+      previousOperator,
+      assignedBy: { uid: caller.uid, name: caller.name, email: caller.email, role: caller.role },
+      timestamp: nowIso,
+    });
+
+    return res.json({
+      success: true,
+      assignedTo: updates.assignedTo,
+      assignedToUid: updates.assignedToUid,
+      updatedAt: nowIso,
+      emailDelivery,
+    });
+  } catch (err) {
+    if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
+      return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
+    }
+    console.error('[operatorService] handleAssignApplicationOperator error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to assign application operator' });
+  }
+}
+
+export async function handleAdminUpdateApplicationPaymentStatus(req, res) {
+  try {
+    const caller = await requireAdminCaller(req, res);
+    if (!caller) return;
+
+    const appId = cleanText(req.params.appId, 120);
+    if (!appId || /[/.#$[\]]/.test(appId)) {
+      return res.status(400).json({ success: false, error: 'Invalid application ID' });
+    }
+
+    const paymentStatus = typeof req.body?.paymentStatus === 'string' ? req.body.paymentStatus.trim() : '';
+    if (paymentStatus !== 'pending' && paymentStatus !== 'completed') {
+      return res.status(400).json({ success: false, error: 'paymentStatus must be "pending" or "completed"' });
+    }
+
+    const app = await readApplication(appId);
+    if (!app) {
+      return res.status(404).json({ success: false, error: 'Application not found' });
+    }
+
+    const previousPaymentStatus = String(app.paymentStatus || 'pending');
+    const nowIso = new Date().toISOString();
+
+    if (isTestMode()) {
+      const store = readTestStore();
+      store.applications[appId] = { ...store.applications[appId], paymentStatus, updatedAt: nowIso };
+      writeTestStore(store);
+    } else if (ensureAdminInit() && rtdbAdmin) {
+      await withTimeout(rtdbAdmin.ref(`applications/${appId}`).update({ paymentStatus, updatedAt: nowIso }), 8000, 'Update paymentStatus');
+    } else {
+      return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: 'Firebase Admin credentials not configured on server' });
+    }
+
+    let emailDelivery = null;
+    if (paymentStatus === 'completed' && previousPaymentStatus !== 'completed') {
+      emailDelivery = await notifyApplicationPaymentConfirmed({
+        appId,
+        app: { ...app, paymentStatus },
+        transactionId: String(app.razorpayPaymentId || `ADMIN-${Date.now()}`),
+        paymentMethod: app.paymentMethod || 'manual_admin',
+        timestamp: nowIso,
+      });
+    }
+
+    return res.json({ success: true, paymentStatus, updatedAt: nowIso, emailDelivery });
+  } catch (err) {
+    if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
+      return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
+    }
+    console.error('[operatorService] handleAdminUpdateApplicationPaymentStatus error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to update application payment status' });
+  }
+}
+
+export async function handleNotifyApplicationSubmitted(req, res) {
+  try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
+    const appId = cleanText(req.body?.appId, 120);
+    if (!appId || /[/.#$[\]]/.test(appId)) {
+      return res.status(400).json({ success: false, error: 'Valid application ID is required' });
+    }
+
+    const app = await readApplication(appId);
+    if (!app) {
+      return res.status(404).json({ success: false, error: 'Application not found' });
+    }
+
+    if (caller.role !== 'admin' && !isCallerOwnerOfApp(app, caller)) {
+      return res.status(403).json({ success: false, error: 'Access denied' });
+    }
+
+    const emailDelivery = await notifyApplicationSubmitted({ appId, app });
+    return res.json({ success: true, emailDelivery });
+  } catch (err) {
+    if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
+      return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
+    }
+    console.error('[operatorService] handleNotifyApplicationSubmitted error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to send application notification' });
+  }
+}
+
+export async function handleNotifyRegistration(req, res) {
+  try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
+    const isGoogle = Boolean(req.body?.isGoogle);
+    const isGuestCheckout = Boolean(req.body?.isGuestCheckout);
+
+    const profile = await readUserProfile(caller.uid);
+    if (profile?.registrationNotified) {
+      return res.json({
+        success: true,
+        alreadyNotified: true,
+        emailDelivery: { success: true, hasFailures: false, totalCount: 0, sentCount: 0, failedCount: 0, skippedDuplicateCount: 1, events: [] },
+      });
+    }
+
+    if (isTestMode()) {
+      const store = readTestStore();
+      if (store.users?.[caller.uid]) {
+        store.users[caller.uid].registrationNotified = true;
+        writeTestStore(store);
+      }
+    } else if (ensureAdminInit() && rtdbAdmin && profile) {
+      await withTimeout(rtdbAdmin.ref(`users/${caller.uid}/registrationNotified`).set(true), 4000, 'Mark registration notified').catch(() => {});
+    }
+
+    const emailDelivery = await notifyUserRegistration({
+      uid: caller.uid,
+      userName: profile?.name || caller.name,
+      userEmail: profile?.email || caller.email,
+      phone: profile?.phone,
+      authProvider: isGoogle ? 'google' : (profile?.authProvider || 'password'),
+      isGuestCheckout,
+    });
+
+    return res.json({ success: true, emailDelivery });
+  } catch (err) {
+    console.error('[operatorService] handleNotifyRegistration error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to process registration notification' });
+  }
+}
+
+export async function handleNotifyProfileUpdated(req, res) {
+  try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
+    const updateType = cleanText(req.body?.updateType, 100) || 'Profile Details';
+    const profile = await readUserProfile(caller.uid);
+
+    const emailDelivery = await notifyProfileUpdated({
+      uid: caller.uid,
+      userName: profile?.name || caller.name,
+      userEmail: profile?.email || caller.email,
+      updateType,
+    });
+
+    return res.json({ success: true, emailDelivery });
+  } catch (err) {
+    console.error('[operatorService] handleNotifyProfileUpdated error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to send profile update notification' });
+  }
+}
+
+export async function handleNotifyReviewSubmitted(req, res) {
+  try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
+    const productId = cleanText(req.body?.productId, 120);
+    const reviewText = cleanText(req.body?.reviewText, 2000);
+    const rating = Number(req.body?.rating);
+
+    if (!productId || !reviewText || reviewText.length < 3 || !Number.isInteger(rating) || rating < 1 || rating > 5) {
+      return res.status(400).json({ success: false, error: 'Valid productId, integer rating (1-5), and reviewText are required' });
+    }
+
+    let productName = cleanText(req.body?.productName, 160) || productId;
+    if (!isTestMode() && ensureAdminInit() && rtdbAdmin) {
+      try {
+        const prodSnap = await withTimeout(rtdbAdmin.ref(`products/${productId}/name`).once('value'), 4000, 'Read product name');
+        if (prodSnap.exists() && typeof prodSnap.val() === 'string') {
+          productName = prodSnap.val();
+        }
+      } catch {}
+    }
+
+    const profile = await readUserProfile(caller.uid);
+    const emailDelivery = await notifyReviewSubmitted({
+      uid: caller.uid,
+      productId,
+      productName,
+      customerName: profile?.name || caller.name,
+      customerEmail: profile?.email || caller.email,
+      rating,
+      reviewText,
+    });
+
+    return res.json({ success: true, emailDelivery });
+  } catch (err) {
+    console.error('[operatorService] handleNotifyReviewSubmitted error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to send review notification' });
+  }
+}
+
+export async function handleNotifyCallback(req, res) {
+  try {
+    const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    if (!checkPublicNotificationRateLimit('callback', clientIp, 10, 60000)) {
+      return res.status(429).json({ success: false, error: 'Too many callback requests. Please wait a moment.' });
+    }
+
+    let mobile = cleanText(req.body?.mobileNumber, 20).replace(/\D/g, '');
+    if (mobile.startsWith('91') && mobile.length === 12) mobile = mobile.slice(2);
+    else if (mobile.startsWith('0') && mobile.length === 11) mobile = mobile.slice(1);
+
+    if (!/^[6-9]\d{9}$/.test(mobile)) {
+      return res.status(400).json({ success: false, error: 'Valid 10-digit Indian mobile number is required' });
+    }
+
+    const caller = await verifyCallerWithRole(req);
+    const customerName = cleanText(req.body?.name, 100) || (caller && !caller.disabled ? caller.name : undefined);
+    const rawEmail = typeof req.body?.email === 'string' ? normalizeEmailAddress(req.body.email) : '';
+    const customerEmail = isValidEmailAddress(rawEmail)
+      ? rawEmail
+      : caller && !caller.disabled && isValidEmailAddress(caller.email)
+        ? caller.email
+        : undefined;
+
+    const emailDelivery = await notifyCallbackRequest({
+      mobileNumber: mobile,
+      customerName,
+      customerEmail,
+    });
+
+    return res.json({ success: true, emailDelivery });
+  } catch (err) {
+    console.error('[operatorService] handleNotifyCallback error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to submit callback notification' });
+  }
+}
+
+export async function handleListNotificationEvents(req, res) {
+  const caller = await requireAdminCaller(req, res);
+  if (!caller) return;
+
+  const stateParam = typeof req.query.state === 'string' ? req.query.state.trim() : '';
+  const validStates = new Set(['queued', 'sent_to_smtp', 'failed', 'retried']);
+  const state = validStates.has(stateParam) ? stateParam : undefined;
+  const appId = cleanText(req.query.appId, 120) || undefined;
+  const orderId = cleanText(req.query.orderId, 120) || undefined;
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit || '100'), 10) || 100, 1), 500);
+
+  const events = getNotificationEvents({ state, appId, orderId, limit });
+  return res.json({ success: true, events });
+}
+
+export async function handleRetryNotificationEvent(req, res) {
+  const caller = await requireAdminCaller(req, res);
+  if (!caller) return;
+
+  const eventId = cleanText(req.params.eventId, 120);
+  if (!eventId) {
+    return res.status(400).json({ success: false, error: 'Valid eventId is required' });
+  }
+
+  const result = await retryNotificationEvent(eventId);
+  if (!result.found) {
+    return res.status(404).json({ success: false, error: 'Notification event not found' });
+  }
+
+  return res.json({ success: true, event: result.event });
 }

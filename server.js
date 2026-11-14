@@ -1,6 +1,5 @@
 import 'dotenv/config';
 import express from 'express';
-import nodemailer from 'nodemailer';
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
@@ -24,6 +23,8 @@ import {
   handleLinkGuestOrders,
   handleLookupEmail,
   handleUploadCustomImage,
+  handleAdminUpdateOrderStatus,
+  handleAdminOrderRefund,
   getStoreServiceHealth
 } from './src/server/storeOrderService.js';
 import {
@@ -33,8 +34,21 @@ import {
   handleOperatorUpdateApplication,
   handleOperatorUploadAttachment,
   handleGetOperatorAttachment,
-  handleVerifyApplicationPayment
+  handleVerifyApplicationPayment,
+  handleAssignApplicationOperator,
+  handleAdminUpdateApplicationPaymentStatus,
+  handleNotifyApplicationSubmitted,
+  handleNotifyRegistration,
+  handleNotifyProfileUpdated,
+  handleNotifyReviewSubmitted,
+  handleNotifyCallback,
+  handleListNotificationEvents,
+  handleRetryNotificationEvent
 } from './src/server/operatorService.js';
+import {
+  notifyDirectPayLinkPayment,
+  notifyPrivacyRequestSubmitted
+} from './src/server/emailNotificationService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -144,19 +158,7 @@ function isCrawlerRequest(req) {
   return /\b(bot|crawler|spider|slurp|mediapartners|adsbot|google-inspectiontool|googleother|storebot-google|apis-google|duplexweb-google|petalbot|semrushbot|ahrefsbot|mj12bot|dotbot|bytespider|gptbot|claudebot|perplexitybot|ccbot|lighthouse|chrome-lighthouse|pagespeed|gtmetrix|pingdom|screaming\s*frog|seobility|sitebulb|curl|wget|httpie|postmanruntime|insomnia|python-requests|python-urllib|node-fetch|undici|axios|got|go-http-client)\b/i.test(ua);
 }
 
-// Email Configuration
-const transporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.hostinger.com',
-  port: parseInt(process.env.SMTP_PORT || '587'),
-  secure: false, // Use false for STARTTLS (port 587)
-  auth: {
-    user: process.env.SMTP_USER || 'icc@indiacybercafe.com',
-    pass: process.env.SMTP_PASS || '',
-  },
-  tls: {
-    rejectUnauthorized: false // Helps with some mail server certificate issues
-  }
-});
+// Email notifications are delegated to ./src/server/emailNotificationService.js
 
 // ============================================================================
 // API ROUTES - Define these BEFORE the SPA fallback
@@ -331,6 +333,17 @@ app.post('/api/operator/applications/:appId/update', handleOperatorUpdateApplica
 app.post('/api/operator/applications/:appId/upload-attachment', operatorAttachmentUploadMiddleware, handleOperatorUploadAttachment);
 app.get('/api/operator/attachments/:attachmentId', handleGetOperatorAttachment);
 app.post('/api/applications/:appId/verify-payment', handleVerifyApplicationPayment);
+app.post('/api/applications/:appId/assign', handleAssignApplicationOperator);
+app.post('/api/applications/:appId/payment-status', handleAdminUpdateApplicationPaymentStatus);
+
+// --- Dedicated Notification & Admin Alert Endpoints ---
+app.post('/api/notifications/application-submitted', handleNotifyApplicationSubmitted);
+app.post('/api/notifications/registration', handleNotifyRegistration);
+app.post('/api/notifications/profile-updated', handleNotifyProfileUpdated);
+app.post('/api/notifications/review-submitted', handleNotifyReviewSubmitted);
+app.post('/api/notifications/callback', handleNotifyCallback);
+app.get('/api/admin/notifications', handleListNotificationEvents);
+app.post('/api/admin/notifications/:eventId/retry', handleRetryNotificationEvent);
 
 // --- Trusted Store Order Endpoints (Server-Authoritative, COD & Razorpay) ---
 app.post('/api/auth/lookup-email', handleLookupEmail);
@@ -343,73 +356,16 @@ app.post('/api/store/orders/razorpay-webhook', handleRazorpayWebhook);
 app.get('/api/store/orders/my', handleGetMyOrders);
 app.post('/api/store/orders/guest-track', handleGuestTrackOrder);
 app.post('/api/store/orders/link-guest-orders', handleLinkGuestOrders);
+app.post('/api/admin/orders/:orderId/status', handleAdminUpdateOrderStatus);
+app.post('/api/admin/orders/:orderId/refund', handleAdminOrderRefund);
 
-const OFFICIAL_ADMIN_EMAILS = new Set(['icc@indiacybercafe.com', 'indiacybercafe.com@gmail.com']);
-const emailRateLimits = new Map();
-function checkEmailRateLimit(ip, maxRequests = 30, windowMs = 60000) {
-  const now = Date.now();
-  const record = emailRateLimits.get(ip);
-  if (!record || now > record.resetTime) {
-    emailRateLimits.set(ip, { count: 1, resetTime: now + windowMs });
-    return true;
-  }
-  if (record.count >= maxRequests) return false;
-  record.count++;
-  return true;
-}
-
-// Email API Route (authorized recipient enforcement)
-app.post('/api/send-email', async (req, res) => {
-  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
-  if (!checkEmailRateLimit(clientIp, 30, 60000)) {
-    return res.status(429).json({ success: false, error: 'Too many email requests. Please wait a moment.' });
-  }
-
-  const { to, subject, text, html } = req.body || {};
-  const recipients = (Array.isArray(to) ? to : String(to || '').split(','))
-    .map(item => String(item || '').trim().toLowerCase())
-    .filter(item => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item));
-
-  if (recipients.length === 0 || typeof subject !== 'string' || !subject.trim()) {
-    return res.status(400).json({ success: false, error: 'Valid recipient email and subject are required' });
-  }
-
-  const caller = await verifyCallerWithRole(req);
-  const isAdminCaller = Boolean(caller && !caller.disabled && caller.role === 'admin');
-  if (!isAdminCaller) {
-    const callerEmail = caller && !caller.disabled ? caller.email.toLowerCase().trim() : '';
-    const allRecipientsAllowed = recipients.every(
-      addr => OFFICIAL_ADMIN_EMAILS.has(addr) || (callerEmail && addr === callerEmail)
-    );
-    if (!allRecipientsAllowed) {
-      return res.status(403).json({
-        success: false,
-        error: 'Only administrators may dispatch emails to third-party recipients'
-      });
-    }
-  }
-
-  const smtpUser = process.env.SMTP_USER || '';
-  const smtpPass = process.env.SMTP_PASS || '';
-
-  if (!smtpUser || !smtpPass) {
-    console.warn('SMTP credentials missing. Email not sent.');
-    return res.status(200).json({ success: true, message: 'Email simulation: Credentials missing' });
-  }
-
-  try {
-    await transporter.sendMail({
-      from: `"India Cyber Cafe" <${smtpUser}>`,
-      to: recipients.join(', '),
-      subject: subject.trim().slice(0, 200),
-      text,
-      html,
-    });
-    res.json({ success: true });
-  } catch (error) {
-    console.error('Email error:', error);
-    res.status(500).json({ success: false, error: error.message });
-  }
+// Arbitrary raw-HTML / third-party email endpoint disabled — use dedicated server notification endpoints
+app.post('/api/send-email', (_req, res) => {
+  return res.status(403).json({
+    success: false,
+    code: 'ARBITRARY_EMAIL_DISABLED',
+    error: 'Arbitrary HTML or third-party email dispatch is disabled. Use dedicated server notification endpoints.'
+  });
 });
 
 // PDF Proxy endpoint - Fetches PDFs from external URLs and streams them to prevent CORS issues
@@ -795,10 +751,22 @@ app.post('/api/pay-link/verify', async (req, res) => {
       console.error('Failed to record payment in RTDB from server:', dbError);
     }
 
+    const emailDelivery = await notifyDirectPayLinkPayment({
+      receiptId: paymentRecord.receiptId,
+      amount: paymentRecord.amount,
+      razorpayPaymentId: razorpay_payment_id,
+      razorpayOrderId: razorpay_order_id,
+      reference: finalRef !== 'none' ? finalRef : undefined,
+    }).catch((err) => {
+      console.warn('Pay-link admin notification error:', err?.message || err);
+      return null;
+    });
+
     return res.json({
       verified: true,
       message: 'Payment successfully verified',
-      record: paymentRecord
+      record: paymentRecord,
+      ...(emailDelivery ? { emailDelivery } : {})
     });
   } catch (error) {
     console.error('Pay link verification error:', error);
@@ -1671,31 +1639,25 @@ app.post('/api/privacy-requests', async (req, res) => {
       console.warn('RTDB write notice:', dbErr);
     }
 
-    try {
-      if (process.env.SMTP_USER && process.env.SMTP_PASS) {
-        await transporter.sendMail({
-          from: `"India Cyber Cafe Grievance Cell" <${process.env.SMTP_USER}>`,
-          to: privacyRecord.email,
-          subject: `[${ticketId}] Acknowledgment: Privacy & Grievance Request`,
-          text: `Dear ${privacyRecord.name},\n\nWe have received your privacy request (Ticket ID: ${ticketId}).\nCategory: ${selectedCategory}\n\nOur Grievance Redressal Officer will review your request and acknowledge within 48 hours, with resolution within 15 to 30 days as per Consumer Protection (E-Commerce) Rules and DPDP Act provisions.\n\nYou can track your request at: https://b.indiacybercafe.com/privacy-request/track\n\nRegards,\nGrievance Officer\nIndia Cyber Cafe\nSingrauli, MP, India\nContact: icc@indiacybercafe.com | +91 9203251821`,
-        }).catch(err => console.warn('Privacy ack email error:', err.message));
-
-        await transporter.sendMail({
-          from: `"India Cyber Cafe Portal" <${process.env.SMTP_USER}>`,
-          to: 'icc@indiacybercafe.com',
-          subject: `🔔 New Privacy Request [${ticketId}] - ${privacyRecord.name}`,
-          text: `A new privacy request has been submitted:\nTicket ID: ${ticketId}\nCategory: ${selectedCategory}\nName: ${privacyRecord.name}\nEmail: ${privacyRecord.email}\nPhone: ${privacyRecord.phone || 'N/A'}\nReference: ${privacyRecord.referenceId || 'N/A'}\n\nDescription:\n${privacyRecord.description}\n\nReview in Admin Portal: https://b.indiacybercafe.com/admin/privacy-requests`,
-        }).catch(err => console.warn('Admin privacy alert email error:', err.message));
-      }
-    } catch (mailErr) {
-      console.warn('Mail dispatch failed:', mailErr);
-    }
+    const emailDelivery = await notifyPrivacyRequestSubmitted({
+      ticketId,
+      category: selectedCategory,
+      name: privacyRecord.name,
+      email: privacyRecord.email,
+      phone: privacyRecord.phone || undefined,
+      referenceId: privacyRecord.referenceId || undefined,
+      description: privacyRecord.description,
+    }).catch((mailErr) => {
+      console.warn('Mail dispatch failed:', mailErr?.message || mailErr);
+      return null;
+    });
 
     return res.json({
       success: true,
       ticketId,
       message: 'Your request has been recorded. An acknowledgment has been generated.',
-      request: privacyRecord
+      request: privacyRecord,
+      ...(emailDelivery ? { emailDelivery } : {})
     });
   } catch (error) {
     console.error('Privacy request submission error:', error);

@@ -8,7 +8,6 @@ import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { motion } from 'motion/react';
-import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
 import { UserProfile } from '../types';
 import { sanitizeUserProfile, sanitizeEmail, sanitizePhone } from '../utils/sanitizer';
 import { signInWithGoogle, normalizeIndianMobile, checkPhoneRegistered, mapAuthError, sendRegistrationNotificationsOnce } from '../services/authService';

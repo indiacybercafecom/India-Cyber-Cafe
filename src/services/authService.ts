@@ -13,7 +13,7 @@ import { ref, get, set, update, runTransaction } from 'firebase/database';
 import { auth, rtdb } from '../firebase';
 import { UserProfile } from '../types';
 import { sanitizeUserProfile, sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
-import { sendEmail, sendEmailToAllAdmins, emailTemplates } from './emailService';
+import { notifyRegistrationApi } from './emailService';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
 import { shouldSyncGooglePhoto, extractAuthPhotoUrl, getEmailAvatarUrl, DEFAULT_AVATAR } from '../utils/avatar';
 
@@ -173,29 +173,9 @@ export function sendRegistrationNotificationsOnce(
         return false;
       }
 
-      const userName = profile.name?.trim() || userEmail.split('@')[0] || 'User';
-      const phone = profile.phone || 'Not provided';
-      const timestamp = new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-
-      // Send user welcome email
-      sendEmail(
-        userEmail,
-        'Welcome to India Cyber Cafe',
-        emailTemplates.registration(userName)
-      ).catch((err) => {
-        console.warn('[authService] Failed sending user welcome email:', err);
-      });
-
-      // Send admin notification
-      const adminSubject = options?.isGoogle
-        ? 'New Google User Registered - India Cyber Cafe'
-        : 'New User Registered - India Cyber Cafe';
-
-      sendEmailToAllAdmins(
-        adminSubject,
-        emailTemplates.adminUserRegistered(userName, userEmail, phone, timestamp)
-      ).catch((err) => {
-        console.warn('[authService] Failed sending admin registration notification:', err);
+      // Dispatch role-separated customer welcome + admin alert via server endpoint
+      await notifyRegistrationApi({ isGoogle: Boolean(options?.isGoogle) }).catch((err) => {
+        console.warn('[authService] Failed sending registration notification:', err);
       });
 
       // Mark status as 'sent' in database

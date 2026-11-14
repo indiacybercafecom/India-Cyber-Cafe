@@ -3,10 +3,8 @@ import { Order, UserProfile, OrderItem, OrderAddress } from '../types';
 import { IconRenderer } from './Icons';
 import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
-import { rtdb } from '../firebase';
-import { ref as dbRef, update, remove } from 'firebase/database';
 import { motion } from 'motion/react';
-import { sendOrderStatusUpdateEmail, sendOrderCancellationEmail, sendAdminOrderNotification } from '../services/emailService';
+import { updateAdminOrderStatusApi } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
 import { normalizeApplicationNotes } from '../utils/permissions';
 
@@ -58,80 +56,29 @@ export function OrderManageModal({
 
   const handleStatusUpdate = async () => {
     if (!order.id) return;
-    
+
+    const statusChanged = newOrderStatus !== order.orderStatus;
+    const paymentChanged = newPaymentStatus !== order.paymentStatus;
+    if (!statusChanged && !paymentChanged) return;
+
     setLoading(true);
     try {
-      const updateData: Partial<Order> = {};
-      let statusChanged = false;
-      
-      if (newOrderStatus !== order.orderStatus) {
-        updateData.orderStatus = newOrderStatus as any;
-        statusChanged = true;
-      }
-      if (newPaymentStatus !== order.paymentStatus) {
-        updateData.paymentStatus = newPaymentStatus as any;
+      let estimatedDelivery: string | undefined;
+      if (statusChanged && newOrderStatus === 'shipped') {
+        const deliveryDate = new Date();
+        deliveryDate.setDate(deliveryDate.getDate() + 3);
+        estimatedDelivery = deliveryDate.toLocaleDateString('en-IN');
       }
 
-      if (Object.keys(updateData).length > 0) {
-        if (onUpdateOrder) {
-          await onUpdateOrder(order.id, updateData);
-        }
+      const result = await updateAdminOrderStatusApi(order.id, {
+        ...(statusChanged ? { orderStatus: newOrderStatus } : {}),
+        ...(paymentChanged ? { paymentStatus: newPaymentStatus } : {}),
+        ...(estimatedDelivery ? { estimatedDelivery } : {}),
+      });
 
-        // Send email notifications for status changes
-        if (statusChanged && order.email) {
-          // Send customer notification
-          if (newOrderStatus === 'cancelled') {
-            // For cancellation, send cancellation email
-            const productName = (items[0] as any)?.productName || 'Your Product';
-            await sendOrderCancellationEmail(
-              order.email,
-              order.deliveryAddress?.name || 'Valued Customer',
-              order.id,
-              productName,
-              order.total || 0
-            ).catch(err => console.error('Cancellation email error:', err));
-
-            // Send admin notification about cancellation
-            await sendAdminOrderNotification(
-              order.id,
-              order.deliveryAddress?.name || 'Guest',
-              order.email,
-              order.deliveryAddress?.phone || 'N/A',
-              items.map((item: any) => ({
-                name: item.productName || 'Product',
-                quantity: item.quantity,
-                price: item.discountedPrice || item.price
-              })),
-              order.total || 0,
-              'cod',
-              {
-                addressLine1: order.deliveryAddress?.addressLine1 || 'N/A',
-                city: order.deliveryAddress?.city || 'N/A',
-                state: order.deliveryAddress?.state || 'N/A',
-                pincode: order.deliveryAddress?.pincode || 'N/A'
-              }
-            ).catch(err => console.error('Admin email error:', err));
-          } else {
-            // For other status changes, send status update email
-            const productName = (items[0] as any)?.productName || 'Your Product';
-            let estimatedDelivery = '';
-            if (newOrderStatus === 'shipped') {
-              const deliveryDate = new Date();
-              deliveryDate.setDate(deliveryDate.getDate() + 3);
-              estimatedDelivery = deliveryDate.toLocaleDateString();
-            }
-
-            await sendOrderStatusUpdateEmail(
-              order.email,
-              order.deliveryAddress?.name || 'Valued Customer',
-              order.id,
-              newOrderStatus,
-              productName,
-              estimatedDelivery
-            ).catch(err => console.error('Status email error:', err));
-          }
-        }
-
+      if (result.emailDelivery?.hasFailures) {
+        showToast('Order updated, but one or more notification emails failed to dispatch.', 'info');
+      } else {
         showToast('Order updated successfully!', 'success');
       }
     } catch (error: any) {

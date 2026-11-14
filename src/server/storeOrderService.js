@@ -6,7 +6,12 @@ import path from 'path';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { getAuth } from 'firebase-admin/auth';
-import nodemailer from 'nodemailer';
+import {
+  notifyOrderConfirmed,
+  notifyOrderStatusUpdated,
+  notifyOrderRefundInitiated,
+} from './emailNotificationService.js';
+import { requireAdminCaller } from './operatorService.js';
 
 // Resolve application root
 const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
@@ -328,20 +333,7 @@ export async function getStoreServiceHealth(options = {}) {
   };
 }
 
-// Mail transporter configuration for order receipts (strict short timeouts, async fire-and-forget)
-const mailTransporter = nodemailer.createTransport({
-  host: process.env.SMTP_HOST || 'smtp.hostinger.com',
-  port: parseInt(process.env.SMTP_PORT || '587', 10),
-  secure: false,
-  connectionTimeout: 5000,
-  greetingTimeout: 5000,
-  socketTimeout: 8000,
-  auth: {
-    user: process.env.SMTP_USER || 'icc@indiacybercafe.com',
-    pass: process.env.SMTP_PASS || '',
-  },
-  tls: { rejectUnauthorized: false }
-});
+// Email notifications are delegated to ./emailNotificationService.js
 
 // In-memory sliding window rate limiter
 const rateLimitMap = new Map();
@@ -870,32 +862,7 @@ async function validateAndComputeOrder(rawItems, rawAddress, intendedMethod) {
   };
 }
 
-// Send order emails asynchronously (fail-safe)
-function sendOrderEmails(order, type) {
-  if (!process.env.SMTP_USER || !process.env.SMTP_PASS || isTestMode()) return;
-
-  const itemsSummary = (order.items || [])
-    .map(i => `${i.productName} (Qty: ${i.quantity}) - ₹${i.discountedPrice || i.price}`)
-    .join('\n');
-
-  const trackUrl = order.isGuest
-    ? `https://b.indiacybercafe.com/track-order?orderId=${encodeURIComponent(order.id)}`
-    : `https://b.indiacybercafe.com/track`;
-
-  mailTransporter.sendMail({
-    from: `"India Cyber Cafe" <${process.env.SMTP_USER}>`,
-    to: order.deliveryAddress?.email || order.email,
-    subject: `Order Confirmed: ${order.id} - India Cyber Cafe`,
-    text: `Dear ${order.deliveryAddress?.name || 'Customer'},\n\nYour order ${order.id} has been placed successfully.\nPayment Method: ${type === 'cod' ? 'Cash on Delivery (COD)' : 'Online (Razorpay)'}\nPayment Status: ${order.paymentStatus}\nTotal Amount: ₹${order.total}\n\nItems Ordered:\n${itemsSummary}\n\nDelivery Address:\n${order.deliveryAddress?.addressLine1}, ${order.deliveryAddress?.city}, ${order.deliveryAddress?.state} - ${order.deliveryAddress?.pincode}\n\nTrack your order anytime at: ${trackUrl}\n\nThank you for choosing India Cyber Cafe!\nSingrauli, MP, India`
-  }).catch(err => console.warn('Customer order email error:', err.message));
-
-  mailTransporter.sendMail({
-    from: `"India Cyber Cafe Orders" <${process.env.SMTP_USER}>`,
-    to: 'indiacybercafe.com@gmail.com',
-    subject: `🛒 New ${type.toUpperCase()} Order [${order.id}] - ₹${order.total}`,
-    text: `New order received on India Cyber Cafe Store:\n\nOrder ID: ${order.id}\nCustomer: ${order.deliveryAddress?.name} (${order.deliveryAddress?.phone})\nEmail: ${order.deliveryAddress?.email}\nGuest Order: ${order.isGuest ? 'Yes' : 'No'}\nPayment Method: ${order.paymentMethod}\nPayment Status: ${order.paymentStatus}\nTotal: ₹${order.total}\n\nItems:\n${itemsSummary}\n\nAddress:\n${order.deliveryAddress?.addressLine1}, ${order.deliveryAddress?.city}, ${order.deliveryAddress?.state} - ${order.deliveryAddress?.pincode}\n\nManage in Admin Panel: https://b.indiacybercafe.com/admin/orders`
-  }).catch(err => console.warn('Admin order alert email error:', err.message));
-}
+// Order confirmation emails are dispatched cleanly via notifyOrderConfirmed in emailNotificationService.js
 
 async function recordVerifiedPaymentTransaction(order, paymentId, razorpayOrderId, now) {
   ensureFirebaseAdminInitialized();
@@ -1010,13 +977,17 @@ export async function handleCodOrder(req, res) {
     }
 
     await saveOrderToDatabase(newOrder);
-    sendOrderEmails(newOrder, 'cod');
+    const emailDelivery = await notifyOrderConfirmed({ order: newOrder, type: 'cod' }).catch((err) => {
+      console.warn('COD order email dispatch notice:', err?.message || err);
+      return null;
+    });
 
     const result = {
       success: true,
       orderId,
       order: sanitizeOrderForClient(newOrder, { includeOwnerUid: !isGuest }),
-      guestTrackingToken
+      guestTrackingToken,
+      ...(emailDelivery ? { emailDelivery } : {})
     };
 
     recordIdempotency(idempotencyKey ? `cod:${idempotencyKey}` : undefined, result);
@@ -1279,13 +1250,17 @@ export async function handleVerifyPayment(req, res) {
     };
 
     await recordVerifiedPaymentTransaction(completedOrder, razorpay_payment_id, razorpay_order_id, now);
-    sendOrderEmails(completedOrder, 'online');
+    const emailDelivery = await notifyOrderConfirmed({ order: completedOrder, type: 'online' }).catch((err) => {
+      console.warn('Online order email dispatch notice:', err?.message || err);
+      return null;
+    });
 
     return res.json({
       verified: true,
       orderId,
       order: sanitizeOrderForClient(completedOrder, { includeOwnerUid: !completedOrder.isGuest }),
-      message: 'Payment verified and order confirmed successfully.'
+      message: 'Payment verified and order confirmed successfully.',
+      ...(emailDelivery ? { emailDelivery } : {})
     });
   } catch (error) {
     console.error('Payment verification error:', error);
@@ -1382,12 +1357,16 @@ export async function handleRecoverPayment(req, res) {
     await updateOrderInDatabase(order.id, updates, rtdbPath);
     const updatedOrder = { ...order, ...updates };
     await recordVerifiedPaymentTransaction(updatedOrder, capturedPayment.id, order.razorpayOrderId, now);
-    sendOrderEmails(updatedOrder, 'online');
+    const emailDelivery = await notifyOrderConfirmed({ order: updatedOrder, type: 'online' }).catch((err) => {
+      console.warn('Recovered order email dispatch notice:', err?.message || err);
+      return null;
+    });
 
     return res.json({
       success: true,
       verified: true,
-      order: sanitizeOrderForClient(updatedOrder, { includeOwnerUid: !updatedOrder.isGuest })
+      order: sanitizeOrderForClient(updatedOrder, { includeOwnerUid: !updatedOrder.isGuest }),
+      ...(emailDelivery ? { emailDelivery } : {})
     });
   } catch (error) {
     console.error('Recover payment error:', error);
@@ -1461,7 +1440,9 @@ export async function handleRazorpayWebhook(req, res) {
           if (paymentId) {
             await recordVerifiedPaymentTransaction(updatedOrder, paymentId, rzpOrderId, now);
           }
-          sendOrderEmails(updatedOrder, 'online');
+          await notifyOrderConfirmed({ order: updatedOrder, type: 'online' }).catch((err) => {
+            console.warn('Webhook order email dispatch notice:', err?.message || err);
+          });
         }
       }
     }
@@ -1805,5 +1786,184 @@ export async function handleUploadCustomImage(req, res) {
   } catch (error) {
     console.error('Custom image upload error:', error);
     return res.status(500).json({ success: false, error: 'Failed to upload custom image.' });
+  }
+}
+
+const VALID_ADMIN_ORDER_STATUSES = new Set(['pending', 'processing', 'shipped', 'delivered', 'cancelled']);
+const VALID_ADMIN_PAYMENT_STATUSES = new Set(['pending', 'completed', 'failed', 'refunded']);
+
+export async function handleAdminUpdateOrderStatus(req, res) {
+  try {
+    const admin = await requireAdminCaller(req, res);
+    if (!admin) return;
+
+    const orderId = decodeURIComponent(String(req.params.orderId || '')).trim();
+    if (!orderId) {
+      return res.status(400).json({ success: false, error: 'Order ID is required.' });
+    }
+
+    const record = await findOrderRecord(orderId);
+    if (!record) {
+      return res.status(404).json({ success: false, error: 'Order not found.' });
+    }
+
+    const { order: existingOrder, rtdbPath } = record;
+    const { orderStatus, paymentStatus, reason, estimatedDelivery } = req.body || {};
+
+    const nextOrderStatus = typeof orderStatus === 'string' && orderStatus.trim() ? orderStatus.trim().toLowerCase() : undefined;
+    const nextPaymentStatus = typeof paymentStatus === 'string' && paymentStatus.trim() ? paymentStatus.trim().toLowerCase() : undefined;
+
+    if (nextOrderStatus && !VALID_ADMIN_ORDER_STATUSES.has(nextOrderStatus)) {
+      return res.status(400).json({ success: false, error: 'Invalid orderStatus value.' });
+    }
+    if (nextPaymentStatus && !VALID_ADMIN_PAYMENT_STATUSES.has(nextPaymentStatus)) {
+      return res.status(400).json({ success: false, error: 'Invalid paymentStatus value.' });
+    }
+
+    const statusChanged = Boolean(nextOrderStatus && nextOrderStatus !== existingOrder.orderStatus);
+    const paymentChanged = Boolean(nextPaymentStatus && nextPaymentStatus !== existingOrder.paymentStatus);
+
+    if (!statusChanged && !paymentChanged) {
+      return res.status(400).json({ success: false, error: 'No order or payment status changes supplied.' });
+    }
+
+    const now = new Date().toISOString();
+    const existingNotes = Array.isArray(existingOrder.notes) ? existingOrder.notes : [];
+    const cleanReason = cleanText(reason, 300);
+    const cleanEstimatedDelivery = cleanText(estimatedDelivery, 80);
+
+    const updates = {
+      updatedAt: now,
+    };
+
+    if (statusChanged && nextOrderStatus) {
+      updates.orderStatus = nextOrderStatus;
+      if (nextOrderStatus === 'cancelled' && cleanReason) {
+        updates.cancellationReason = cleanReason;
+      }
+      updates.notes = [
+        ...existingNotes,
+        {
+          type: 'status',
+          by: admin.name || admin.email,
+          email: admin.email,
+          text: cleanReason
+            ? `Order status changed to ${nextOrderStatus}: ${cleanReason}`
+            : `Order status changed to ${nextOrderStatus}`,
+          time: now,
+        },
+      ];
+    }
+
+    if (paymentChanged && nextPaymentStatus) {
+      updates.paymentStatus = nextPaymentStatus;
+    }
+
+    await updateOrderInDatabase(existingOrder.id, updates, rtdbPath);
+    const updatedOrder = { ...existingOrder, ...updates };
+
+    let emailDelivery = null;
+    if (statusChanged && nextOrderStatus) {
+      emailDelivery = await notifyOrderStatusUpdated({
+        order: updatedOrder,
+        newStatus: nextOrderStatus,
+        reason: cleanReason || undefined,
+        estimatedDelivery: cleanEstimatedDelivery || undefined,
+        performedBy: {
+          uid: admin.uid,
+          name: admin.name || admin.email,
+          email: admin.email,
+        },
+      }).catch((err) => {
+        console.warn('Order status email dispatch notice:', err?.message || err);
+        return null;
+      });
+    }
+
+    return res.json({
+      success: true,
+      orderId: existingOrder.id,
+      order: sanitizeOrderForClient(updatedOrder, { includeOwnerUid: !updatedOrder.isGuest }),
+      ...(emailDelivery ? { emailDelivery } : {}),
+    });
+  } catch (error) {
+    console.error('Admin update order status error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update order status.' });
+  }
+}
+
+export async function handleAdminOrderRefund(req, res) {
+  try {
+    const admin = await requireAdminCaller(req, res);
+    if (!admin) return;
+
+    const orderId = decodeURIComponent(String(req.params.orderId || '')).trim();
+    if (!orderId) {
+      return res.status(400).json({ success: false, error: 'Order ID is required.' });
+    }
+
+    const record = await findOrderRecord(orderId);
+    if (!record) {
+      return res.status(404).json({ success: false, error: 'Order not found.' });
+    }
+
+    const { order: existingOrder, rtdbPath } = record;
+    const orderTotal = Number(existingOrder.total) || 0;
+    const requestedAmount = req.body?.refundAmount !== undefined ? Number(req.body.refundAmount) : orderTotal;
+    if (!Number.isFinite(requestedAmount) || requestedAmount <= 0 || (orderTotal > 0 && requestedAmount > orderTotal)) {
+      return res.status(400).json({ success: false, error: 'Invalid refund amount.' });
+    }
+
+    const rawDays = Number(req.body?.expectedDays);
+    const expectedDays = Number.isInteger(rawDays) && rawDays >= 1 && rawDays <= 30 ? rawDays : 5;
+    const reason = cleanText(req.body?.reason, 300);
+    const now = new Date().toISOString();
+    const existingNotes = Array.isArray(existingOrder.notes) ? existingOrder.notes : [];
+
+    const updates = {
+      paymentStatus: 'refunded',
+      refundAmount: requestedAmount,
+      refundReason: reason || 'Refund initiated by administrator',
+      refundedAt: now,
+      updatedAt: now,
+      notes: [
+        ...existingNotes,
+        {
+          type: 'status',
+          by: admin.name || admin.email,
+          email: admin.email,
+          text: `Refund of ₹${requestedAmount.toFixed(2)} initiated${reason ? `: ${reason}` : ''}`,
+          time: now,
+        },
+      ],
+    };
+
+    await updateOrderInDatabase(existingOrder.id, updates, rtdbPath);
+    const updatedOrder = { ...existingOrder, ...updates };
+
+    const emailDelivery = await notifyOrderRefundInitiated({
+      order: updatedOrder,
+      refundAmount: requestedAmount,
+      expectedDays,
+      reason: reason || undefined,
+      performedBy: {
+        uid: admin.uid,
+        name: admin.name || admin.email,
+        email: admin.email,
+      },
+    }).catch((err) => {
+      console.warn('Refund email dispatch notice:', err?.message || err);
+      return null;
+    });
+
+    return res.json({
+      success: true,
+      orderId: existingOrder.id,
+      order: sanitizeOrderForClient(updatedOrder, { includeOwnerUid: !updatedOrder.isGuest }),
+      ...(emailDelivery ? { emailDelivery } : {}),
+    });
+  } catch (error) {
+    console.error('Admin order refund error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to initiate order refund.' });
   }
 }

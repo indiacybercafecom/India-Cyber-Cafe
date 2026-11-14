@@ -7,7 +7,7 @@ import { secureUrl } from '../utils/secureUrl';
 import { showToast } from '../components/Toast';
 import { rtdb } from '../firebase';
 import { ref as dbRef, set } from 'firebase/database';
-import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
+import { notifyApplicationSubmittedApi } from '../services/emailService';
 import { MAX_SERVICE_FILE_SIZE, uploadFile } from '../services/uploadService';
 import { SEO } from '../components/SEO';
 import { ShareButton } from '../components/ShareButton';
@@ -243,20 +243,14 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
       const submitApp = async (appData: any) => {
         const appWithId = { ...appData, id: appId };
         await set(dbRef(rtdb, `applications/${appId}`), appWithId);
-        
-        // Send Confirmation Email to User
-        sendEmail(user.email, 'Application Received - India Cyber Cafe', emailTemplates.applicationSubmitted(user.name, service.name, appId));
-        
-        // Notify All Admins
-        sendEmailToAllAdmins('New Application Received - India Cyber Cafe', emailTemplates.adminNewApplication(user.name, user.email, service.name, appId));
-        
-        // If payment completed, send payment confirmation
-        if (appData.paymentStatus === 'completed' && appData.charge) {
-          sendEmail(user.email, 'Payment Confirmed - India Cyber Cafe', emailTemplates.paymentReceived(user.name, appData.charge.toString(), service.name, appId));
-          sendEmailToAllAdmins('Payment Received - India Cyber Cafe', emailTemplates.adminPaymentReceived(user.name, appData.charge.toString(), service.name, appId));
-        }
 
-        showToast('Application Submitted Successfully!');
+        // Notify customer and admins via server-authoritative role-separated email templates
+        const notifyRes = await notifyApplicationSubmittedApi(appId).catch(() => null);
+        if (notifyRes?.emailDelivery?.hasFailures) {
+          showToast('Application submitted! Email confirmation delayed — our team will follow up.', 'info');
+        } else {
+          showToast('Application Submitted Successfully!');
+        }
         onSuccess();
       };
 

@@ -6,7 +6,7 @@ import { updatePassword } from 'firebase/auth';
 import { showToast } from '../components/Toast';
 import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
-import { sendEmail, emailTemplates } from '../services/emailService';
+import { notifyProfileUpdatedApi } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
 import { sanitizeAddress, trimWhitespace } from '../utils/sanitizer';
 import { normalizeIndianMobile, checkPhoneRegistered, mapAuthError } from '../services/authService';
@@ -69,11 +69,7 @@ export function Profile({ user }: ProfileProps) {
       setAvatar(url);
       showToast('Profile picture updated!');
 
-      sendEmail(
-        user.email,
-        'Profile Picture Updated - India Cyber Cafe',
-        emailTemplates.profileUpdated(user.name, 'Profile Picture')
-      ).catch(() => {});
+      notifyProfileUpdatedApi('Profile Picture').catch(() => {});
     } catch (error: any) {
       console.error('Upload error:', error);
       showToast(error, 'error', 'Unable to upload file. Please try again.');
@@ -127,11 +123,7 @@ export function Profile({ user }: ProfileProps) {
 
       showToast('Profile updated successfully!');
 
-      sendEmail(
-        user.email,
-        'Profile Details Updated - India Cyber Cafe',
-        emailTemplates.profileUpdated(sanitizedName, 'Name, Phone & Address')
-      ).catch(() => {});
+      notifyProfileUpdatedApi('Name, Phone & Address').catch(() => {});
     } catch (error: any) {
       showToast(mapAuthError(error), 'error');
     } finally {

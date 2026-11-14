@@ -4,7 +4,7 @@ import { storage } from '../firebase';
 import { IconRenderer } from './Icons';
 import { ProductReview, UserProfile } from '../types';
 import { showToast } from './Toast';
-import { sendReviewConfirmationEmail, sendAdminReviewNotification } from '../services/emailService';
+import { notifyReviewSubmittedApi } from '../services/emailService';
 import { trimWhitespace } from '../utils/sanitizer';
 
 interface ReviewSectionProps {
@@ -117,13 +117,13 @@ export function ReviewSection({ reviews, productId, productName = 'Product', use
 
       await onAddReview(review);
 
-      // Send confirmation email to customer
-      await sendReviewConfirmationEmail(user.email, trimWhitespace(user.name), productName)
-        .catch(err => console.error('Review confirmation email error:', err));
-
-      // Send admin notification about new review
-      await sendAdminReviewNotification(productName, trimWhitespace(user.name), rating, trimWhitespace(text))
-        .catch(err => console.error('Admin review notification error:', err));
+      // Dispatch role-separated customer confirmation + admin alert via server endpoint
+      await notifyReviewSubmittedApi({
+        productId,
+        productName,
+        rating,
+        reviewText: trimWhitespace(text)
+      }).catch(err => console.error('Review notification error:', err));
 
       showToast('Review submitted successfully!', 'success');
 

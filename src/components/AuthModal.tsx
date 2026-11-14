@@ -6,7 +6,6 @@ import { showToast } from './Toast';
 import { IconRenderer } from './Icons';
 import { GoogleSignInButton } from './GoogleSignInButton';
 import { motion } from 'motion/react';
-import { sendEmail, sendEmailToAllAdmins, emailTemplates } from '../services/emailService';
 import { sanitizeEmail, trimWhitespace, sanitizeUserProfile } from '../utils/sanitizer';
 import {
   signInWithGoogle,
