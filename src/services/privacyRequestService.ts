@@ -1,5 +1,6 @@
 import { PrivacyRequest, PrivacyRequestCategory, PrivacyRequestStatus } from '../types';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
+import { auth } from '../firebase';
 
 export const PRIVACY_REQUEST_CATEGORIES: { value: PrivacyRequestCategory; label: string; description: string }[] = [
   {
@@ -93,7 +94,10 @@ export async function trackPrivacyRequest(
 
 export async function fetchAdminPrivacyRequests(): Promise<PrivacyRequest[]> {
   try {
-    const response = await fetch('/api/admin/privacy-requests');
+    const idToken = await auth.currentUser?.getIdToken();
+    const response = await fetch('/api/admin/privacy-requests', {
+      headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+    });
     if (!response.ok) return [];
     const result = await response.json();
     return result.requests || [];
@@ -108,9 +112,12 @@ export async function updatePrivacyRequestStatus(
   adminNotes?: string
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    const idToken = await auth.currentUser?.getIdToken();
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    if (idToken) headers.Authorization = `Bearer ${idToken}`;
     const response = await fetch(`/api/admin/privacy-requests/${encodeURIComponent(id)}`, {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ status, adminNotes }),
     });
     const result = await response.json();

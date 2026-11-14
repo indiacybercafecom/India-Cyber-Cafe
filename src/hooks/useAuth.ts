@@ -6,6 +6,7 @@ import { UserProfile } from '../types';
 import { checkRedirectAuth, ensureUserProfile, syncGoogleProfilePhoto } from '../services/authService';
 import { shouldSyncGooglePhoto, resolveAvatarUrl, extractAuthPhotoUrl, getEmailAvatarUrl, DEFAULT_AVATAR } from '../utils/avatar';
 import { linkGuestOrdersToAuthenticatedUser } from '../services/guestCheckoutService';
+import { SUPER_ADMIN_EMAIL, SUPER_ADMIN_UID } from '../utils/permissions';
 
 /**
  * Hook that separates auth identity from profile data
@@ -69,14 +70,16 @@ export function useAuth() {
                  avatar: resolveAvatarUrl(userData, firebaseUser),
                  phone: userData.phone || '',
                  profileCompleted: Boolean(userData.phone),
+                 disabled: Boolean(userData.disabled === true),
                };
 
-               // Security: Hardcoded check for Super Admin email
+               // Security: Hardcoded check for Super Admin UID or email
                if (
-                 userWithUid.email?.toLowerCase() ===
-                 'indiacybercafe.com@gmail.com'
+                 userWithUid.uid === SUPER_ADMIN_UID ||
+                 userWithUid.email?.toLowerCase() === SUPER_ADMIN_EMAIL
                ) {
                  userWithUid.role = 'admin';
+                 userWithUid.disabled = false;
                }
 
                setUser(userWithUid);
@@ -89,14 +92,14 @@ export function useAuth() {
                  setUser(profile);
                } catch (createErr: any) {
                  console.error('[useAuth] Auto profile creation notice:', createErr);
-                 // Fallback for Admin email if auto creation encounters issue
+                 // Fallback for Admin email/UID if auto creation encounters issue
                  if (
-                   firebaseUser.email?.toLowerCase() ===
-                   'indiacybercafe.com@gmail.com'
+                   firebaseUser.uid === SUPER_ADMIN_UID ||
+                   firebaseUser.email?.toLowerCase() === SUPER_ADMIN_EMAIL
                  ) {
                    setUser({
                      uid: firebaseUser.uid,
-                     email: firebaseUser.email,
+                     email: firebaseUser.email || SUPER_ADMIN_EMAIL,
                      name: firebaseUser.displayName || 'Super Admin',
                      role: 'admin',
                      phone: '',

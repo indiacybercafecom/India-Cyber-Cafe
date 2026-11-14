@@ -9,7 +9,7 @@ import {
   User as FirebaseUser,
   ActionCodeSettings,
 } from 'firebase/auth';
-import { ref, get, set, update, query, orderByChild, equalTo, runTransaction } from 'firebase/database';
+import { ref, get, set, update, runTransaction } from 'firebase/database';
 import { auth, rtdb } from '../firebase';
 import { UserProfile } from '../types';
 import { sanitizeUserProfile, sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
@@ -389,14 +389,21 @@ export async function initiatePasswordReset(identifier: string): Promise<{
   try {
     if (isEmail) {
       targetEmail = sanitizeEmail(cleaned);
-      // Check RTDB to see if account is Google-only
-      const usersRef = ref(rtdb, 'users');
-      const snapshot = await get(query(usersRef, orderByChild('email'), equalTo(targetEmail)));
-      if (snapshot.exists()) {
-        const userData = Object.values(snapshot.val())[0] as any;
-        if (userData.authProvider === 'google' && !userData.password) {
-          isGoogleOnly = true;
+      // Check via safe non-PII server endpoint whether account is Google-only
+      try {
+        const response = await fetch('/api/auth/lookup-email', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: targetEmail }),
+        });
+        if (response.ok) {
+          const lookup = await response.json();
+          if (lookup.found && lookup.isGoogleOnly) {
+            isGoogleOnly = true;
+          }
         }
+      } catch {
+        // Proceed to standard password reset attempt if lookup endpoint is unavailable
       }
     } else {
       // Validate Indian mobile number

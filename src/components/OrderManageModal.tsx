@@ -8,6 +8,7 @@ import { ref as dbRef, update, remove } from 'firebase/database';
 import { motion } from 'motion/react';
 import { sendOrderStatusUpdateEmail, sendOrderCancellationEmail, sendAdminOrderNotification } from '../services/emailService';
 import { uploadFile } from '../services/uploadService';
+import { normalizeApplicationNotes } from '../utils/permissions';
 
 interface OrderManageModalProps {
   order: Order | null;
@@ -53,7 +54,7 @@ export function OrderManageModal({
   const subtotal = order.subtotal || 0;
   const deliveryCharges = order.deliveryCharges || 0;
   const discount = order.discount || 0;
-  const notes = Array.isArray(order.notes) ? order.notes : [];
+  const notes = normalizeApplicationNotes(order.notes);
 
   const handleStatusUpdate = async () => {
     if (!order.id) return;

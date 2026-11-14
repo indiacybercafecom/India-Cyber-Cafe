@@ -1,0 +1,818 @@
+COMPLETE OPERATOR ROLE SECURITY & FUNCTIONALITY FIX
+
+India Cyber Cafe – Full Project Audit, Repair & Production Hardening
+
+Act as a Senior Full-Stack Engineer, Firebase Realtime Database Security Specialist, React + TypeScript Developer, and Application Security Auditor.
+
+You are working on the existing India Cyber Cafe project. Your task is to completely audit, fix, secure, and test the existing Operator Role implementation across the entire project.
+
+This is NOT a request to redesign the application or create a new Operator system. Preserve the existing application architecture, UI, branding, workflows, database structure wherever possible, and all unrelated functionality.
+
+Your goal is to make the Operator Role secure at both frontend and backend levels.
+
+---
+
+1. FIRST: FULL PROJECT INSPECTION
+
+Before modifying anything:
+
+1. Inspect the complete project structure.
+2. Read all relevant source files.
+3. Search every occurrence of:
+   - operator
+   - role
+   - assignedTo
+   - applications
+   - notes
+   - paymentStatus
+   - orderStatus
+   - userId
+   - uid
+   - auth.token.email
+   - database rules
+4. Inspect all Firebase Realtime Database operations.
+5. Identify every place where an Operator can read, write, update, delete, upload, export, or access information.
+6. Inspect all frontend routes, hooks, components, services, and admin controls.
+7. Inspect existing Firebase Security Rules and test scripts.
+8. Identify any indirect access through shared components or hooks.
+
+Do not assume that hiding a frontend button provides security.
+
+Create a complete internal permission map before implementing fixes.
+
+Important existing files to inspect include:
+
+- database.rules.json
+- src/App.tsx
+- src/types.ts
+- src/pages/Operator.tsx
+- src/pages/Admin.tsx
+- src/hooks/useAuth.ts
+- src/hooks/useApplications.ts
+- src/hooks/useOrders.ts
+- src/hooks/useUsers.ts
+- src/components/ApplicationDetailsModal.tsx
+- src/components/UserManageModal.tsx
+- src/components/Sidebar.tsx
+- src/services/authService.ts
+- src/services/emailService.ts
+- scripts/test-rules.ts
+- SECURITY_AND_INCIDENT_RESPONSE.md
+
+Search for additional relevant files instead of limiting the audit to this list.
+
+2. FINAL OPERATOR PERMISSION POLICY
+
+Implement the following permission policy.
+
+A. Operator Allowed Permissions
+
+An authenticated Operator can:
+
+1. Access only the Operator Dashboard.
+2. View applications assigned to their account.
+3. View their own applications, if the existing application supports this workflow.
+4. View assigned customer information required for service processing.
+5. View assigned application details.
+6. View assigned application form information.
+7. View documents attached to assigned applications, subject to existing file-access controls.
+8. Add processing notes.
+9. Add internal notes.
+10. Upload attachments to application notes using the existing upload system.
+11. Update application processing status.
+12. View application status history.
+13. View customer contact information required for processing.
+14. Export only applications they are authorized to access.
+15. View their own profile.
+16. Update only permitted personal profile fields.
+17. Log out.
+18. View their own assigned work statistics.
+
+B. Operator Forbidden Permissions
+
+An Operator must NEVER be able to:
+
+1. Access Admin Dashboard.
+2. Access Admin-only routes.
+3. Access User Management.
+4. Create users.
+5. Delete users.
+6. Change another user's role.
+7. Promote themselves to Admin.
+8. Change another user's profile.
+9. View the entire Users database.
+10. View unassigned applications.
+11. View applications assigned to another Operator.
+12. Change application ownership.
+13. Change application UID.
+14. Change application userId.
+15. Change customer identity information.
+16. Change customer email or mobile number.
+17. Change application service or pricing information.
+18. Change application charges.
+19. Change payment status.
+20. Mark a payment as completed.
+21. Mark a payment as pending.
+22. Modify Razorpay payment information.
+23. Modify payment records.
+24. Change assignedTo.
+25. Reassign an application to another Operator.
+26. Delete an application.
+27. Delete application notes or history.
+28. Edit or delete previous notes.
+29. Access Gateway Management.
+30. Access Products Management.
+31. Access Product Categories Management.
+32. Access Services Management.
+33. Access Documents Management.
+34. Access Privacy Requests.
+35. Access another user's Google Drive connection.
+36. Modify Orders.
+37. Modify Order Payment Status.
+38. Access other administrative settings.
+39. Modify Firebase Security Rules.
+40. Access confidential information unrelated to assigned work.
+
+These restrictions must be enforced in Firebase Security Rules and all relevant backend operations, not just the React UI.
+
+3. APPLICATION ASSIGNMENT SECURITY
+
+The application assignment system must be secure.
+
+An application is assigned when:
+
+applications/{applicationId}/assignedTo === authenticatedOperatorEmail
+
+Requirements:
+
+1. Only Admin or authorized Super Admin can assign an application.
+2. Only Admin or authorized Super Admin can change an assignment.
+3. Only Admin or authorized Super Admin can remove an assignment.
+4. Operators cannot modify assignedTo.
+5. Operators cannot assign applications to themselves.
+6. Operators cannot assign applications to another Operator.
+7. Operators cannot access another Operator's assignments.
+8. When an Admin removes an assignment, the previous Operator must immediately lose access.
+9. When an Admin reassigns an application, the old Operator must immediately lose access and the new Operator must gain access.
+10. Assignment comparisons must use the authenticated account's verified identity, not an arbitrary email supplied by the client.
+
+Use Firebase Authentication identity and trusted role data.
+
+Do not trust a role, email, UID, or assignedTo value submitted by the frontend.
+
+Consider using immutable Firebase Auth UID as the primary assignment identifier, such as assignedToUid, with assignedToEmail retained only for display and backward compatibility.
+
+If introducing assignedToUid requires migration, implement a safe backward-compatible migration plan and ensure that email-based legacy assignments do not accidentally grant unauthorized access.
+
+4. APPLICATION STATUS UPDATE SECURITY
+
+Operators may update only the processing status of applications assigned to them.
+
+Allowed statuses:
+
+- processing
+- clarification
+- completed
+- rejected
+
+Requirements:
+
+1. Operator can update status only for currently assigned applications.
+2. Operator cannot update status on another Operator's application.
+3. Operator cannot change paymentStatus.
+4. Operator cannot change customer information.
+5. Operator cannot change assignedTo.
+6. Operator cannot modify application identity fields.
+7. Operator cannot delete the application.
+8. Validate the permitted status values in Firebase Rules.
+9. Preserve existing status-update email notifications.
+10. Preserve Admin notifications.
+11. Avoid duplicate notifications.
+12. Prevent unauthorized direct Firebase SDK or REST API writes.
+
+Validate whether status transitions need restrictions based on the existing business workflow. Do not introduce arbitrary restrictions that break existing legitimate processing.
+
+5. NOTES AND HISTORY SECURITY
+
+Inspect the existing notes implementation in ApplicationDetailsModal.tsx.
+
+Preserve the existing note display and history experience.
+
+Implement the following:
+
+1. Operator can add a new note to an assigned application.
+2. Operator cannot edit previous notes.
+3. Operator cannot delete previous notes.
+4. Operator cannot delete the entire notes array.
+5. Operator cannot change notes created by another person.
+6. Operator cannot modify application identity or ownership through a note update.
+7. Operator can attach files through the existing upload workflow.
+8. Note attachment validation must be enforced.
+9. Note text must be sanitized and length-limited.
+10. Note timestamps must use a consistent format.
+11. Store author UID, author email, author name, and creation timestamp where compatible with the current schema.
+12. Distinguish Admin notes, Operator notes, and customer notes if the existing data model supports these categories.
+
+IMPORTANT:
+
+Do not implement notes by allowing unrestricted replacement of the entire application record.
+
+Prefer a safer structure for new notes, such as:
+
+applications/{applicationId}/notes/{noteId}
+
+If migration is necessary, preserve existing notes and provide backward compatibility.
+
+If the current legacy notes array must remain temporarily, do not assume that Firebase Rules can reliably enforce append-only behavior on a mutable array. Design and implement a secure alternative.
+
+6. CRITICAL FIREBASE REALTIME DATABASE SECURITY FIX
+
+File: database.rules.json
+
+This is the highest-priority task.
+
+Current implementation contains dangerous permissions.
+
+In particular, inspect and remove the broad Operator write permission currently granted at:
+
+applications/$appId/.write
+
+The current permission allows an assigned Operator to potentially modify the entire application record, including paymentStatus, assignedTo, identity fields, and other protected information.
+
+Also inspect the global users/.read permission that currently includes Operator.
+
+Required changes
+
+A. USERS
+
+- Remove Operator's global users database read access.
+- Operator may read only their own user profile.
+- Admin may read authorized user profiles.
+- Only Admin or authorized Super Admin can modify roles.
+- Operator cannot modify role.
+- Operator cannot modify another user's profile.
+- Prevent users from changing privileged account fields.
+- Never store plaintext passwords in Realtime Database.
+- Preserve legitimate user profile workflows.
+
+B. APPLICATIONS
+
+- Remove unrestricted Operator write access at application record level.
+- Remove unrestricted collection-level Operator read access.
+- Ensure the query-level access model works with Firebase Realtime Database rules.
+- Protect each application individually.
+- Owners can read their own applications.
+- Admin can read and manage all applications.
+- Operators can read only applications assigned to them.
+- Operators can update only specifically approved fields.
+- Operators cannot delete applications.
+- Operators cannot change assignedTo.
+- Operators cannot change UID or userId.
+- Operators cannot change payment fields.
+- Operators cannot change customer details.
+
+C. FIELD-LEVEL PERMISSIONS
+
+Use carefully designed field-level rules for:
+
+- status
+- notes
+- processing metadata
+- attachment metadata
+- assignedTo
+- assignedToUid
+- paymentStatus
+- charge
+- uid
+- userId
+- email
+- phone
+- name
+- serviceName
+
+Operator should have write access only to approved processing fields.
+
+All protected fields must remain immutable for Operators.
+
+D. ORDERS
+
+- Operator can read only orders explicitly assigned to them.
+- Operator cannot modify orders.
+- Operator cannot modify orderStatus.
+- Operator cannot modify paymentStatus.
+- Operator cannot delete orders.
+- Admin retains existing order management capabilities.
+
+E. PAYMENTS
+
+- Operator cannot read confidential payment records unless explicitly required.
+- Operator cannot write payment records.
+- Operator cannot modify Razorpay IDs.
+- Operator cannot mark payments completed.
+- Preserve existing Admin and payment verification workflows.
+
+F. OTHER ADMINISTRATIVE PATHS
+
+Inspect all database paths and confirm Operator cannot write to:
+
+- services
+- products
+- productCategories
+- documentCategories
+- documents
+- gateways
+- payments
+- privacy_requests
+- driveConnections of other users
+- documentPreferences of other users
+- user-management data
+
+Do not accidentally remove public read access needed by customers.
+
+7. IMPORTANT FIREBASE RULES DESIGN REQUIREMENT
+
+Firebase Realtime Database Security Rules are not equivalent to Firestore rules.
+
+Remember:
+
+- Parent-level permissions cascade to descendants.
+- A child-level false rule cannot revoke an already granted parent-level write permission.
+- Query filtering is not a substitute for authorization.
+- A broad .read or .write permission can expose more data than the UI displays.
+- Validate the existing query patterns and indexes.
+- Test both direct child reads and collection queries.
+- Test multi-location updates.
+- Test deletion and null writes.
+
+Do not claim field-level security is implemented merely because frontend code updates one field.
+
+Where strict field-level authorization cannot safely be achieved with the current Realtime Database structure, redesign the data structure or route sensitive writes through a trusted server-side endpoint or Cloud Function.
+
+For strict append-only notes, use a structure where each note is an individual child record with independent write rules.
+
+For status changes, use a secure write mechanism that validates the currently assigned Operator and approved status.
+
+Never expose Firebase Admin SDK credentials or service-account secrets in frontend code.
+
+8. OPERATOR DASHBOARD FIXES
+
+File: src/pages/Operator.tsx
+
+Preserve the existing design and styling.
+
+Fix the following:
+
+1. Assigned to Me must display only assigned applications.
+2. Remove or correct the misleading All Applications tab.
+3. If retained, All Applications must mean all applications assigned to the current Operator, not every application in the system.
+4. Ensure all dashboard statistics are based only on authorized data.
+5. Export must contain only authorized records.
+6. Do not expose unassigned customer data.
+7. Display clear loading states.
+8. Display useful empty states.
+9. Display Firebase permission errors.
+10. Avoid duplicate application entries.
+11. Avoid stale application records after reassignment.
+12. Ensure real-time assignment changes are reflected immediately.
+13. Add safe error handling.
+14. Make the table responsive on mobile.
+15. Preserve existing branding and component styles.
+
+9. ASSIGNED APPLICATION VIEW FIX
+
+Inspect:
+
+- src/pages/Operator.tsx
+- src/App.tsx
+- src/pages/Track.tsx
+- src/hooks/useApplications.ts
+- src/components/ApplicationDetailsModal.tsx
+
+The existing Operator dashboard navigates to:
+
+/track/{applicationId}
+
+However, the Track page currently loads user-owned applications using UID-based queries.
+
+This can prevent an Operator from opening another customer's assigned application.
+
+Fix this issue without granting Operators access to the general Track page or unrelated customer records.
+
+Implement a secure Operator-specific application details route or an equivalent secure detail-loading workflow.
+
+Requirements:
+
+1. Operator can open an assigned application.
+2. Operator cannot open another Operator's application by changing the URL.
+3. Operator cannot open an unassigned application.
+4. Reassignment immediately invalidates the previous Operator's access.
+5. Direct URL access must be authorized.
+6. Firebase must enforce the same permission.
+7. Preserve the existing customer-facing tracking workflow.
+
+10. APPLICATION DETAILS MODAL FIX
+
+File: src/components/ApplicationDetailsModal.tsx
+
+Currently:
+
+isAdmin || isOperator
+
+is used for shared staff controls.
+
+Review this implementation carefully.
+
+Separate permissions explicitly:
+
+- isAdmin
+- isOperator
+- isApplicationOwner
+- canViewApplication
+- canUpdateStatus
+- canAddNote
+- canUploadNoteAttachment
+- canAssignOperator
+- canUpdatePayment
+- canDeleteApplication
+
+Do not use one broad isStaff condition for unrelated permissions.
+
+Operator UI:
+
+ALLOW:
+
+- View application
+- View authorized customer details
+- View application documents
+- View notes and history
+- Add new note
+- Upload note attachment
+- Update processing status
+
+HIDE AND BLOCK:
+
+- Assign Operator
+- Change assignment
+- Payment controls
+- Mark Paid
+- Mark Pending
+- Delete Application
+- Edit Customer Details
+- Edit pricing
+- Administrative actions
+
+Do not rely on hidden UI for security.
+
+The same restrictions must be enforced at the database/server level.
+
+11. OPERATOR USER MANAGEMENT
+
+Inspect:
+
+- src/components/UserManageModal.tsx
+- src/pages/Admin.tsx
+- src/hooks/useUsers.ts
+- src/services/authService.ts
+
+Requirements:
+
+1. Only Admin can create or promote Operators.
+2. Only Admin can demote Operators.
+3. Only Admin can deactivate or delete Operator accounts, subject to existing workflows.
+4. Operator cannot open User Management.
+5. Operator cannot modify their role.
+6. Operator cannot modify another Operator's account.
+7. Role must be validated against an explicit allowlist.
+8. Protect against role escalation through direct database writes.
+9. Do not store passwords in Firebase Realtime Database.
+10. Preserve existing authentication and profile functionality.
+
+12. ROUTE PROTECTION
+
+Inspect every route in src/App.tsx.
+
+Implement centralized role-aware route protection.
+
+Requirements:
+
+- Admin routes: Admin only.
+- Operator routes: Operator only.
+- Customer routes: authenticated customer where required.
+- Public routes: preserve existing public access.
+- Unknown routes: preserve existing NotFound behavior.
+
+Ensure:
+
+1. Operator cannot access /admin.
+2. Operator cannot access nested Admin routes.
+3. Normal User cannot access /operator.
+4. Unauthenticated users cannot access protected pages.
+5. Direct URL access is protected.
+6. Refreshing the page preserves correct authorization.
+7. Loading and profile-resolution states do not temporarily expose protected content.
+8. Profile errors fail closed instead of granting access.
+
+Never rely exclusively on client-side route protection.
+
+13. AUTHENTICATION AND IDENTITY SECURITY
+
+Inspect:
+
+- src/hooks/useAuth.ts
+- src/services/authService.ts
+- src/firebase.ts
+
+Requirements:
+
+1. Verify Firebase Auth identity.
+2. Verify the user's role from a trusted source.
+3. Do not trust role values supplied by localStorage or frontend state.
+4. Prevent self-promotion.
+5. Handle disabled/deleted accounts safely.
+6. Handle role changes during an active session.
+7. Revalidate permissions after role changes.
+8. Ensure logout clears authorized subscriptions.
+9. Ensure Operator email changes cannot leave stale assignment access.
+10. Use verified email or immutable UID according to the chosen assignment model.
+
+If MFA is not currently implemented, do not claim that it is enabled.
+
+If MFA is added, implement real Firebase Authentication MFA with appropriate enrollment, verification, recovery, and enforcement workflows.
+
+14. FILE AND ATTACHMENT SECURITY
+
+Inspect the existing uploadFile implementation and storage configuration.
+
+Requirements:
+
+1. Operators can upload attachments only for assigned applications.
+2. Operators cannot upload arbitrary files into another user's application.
+3. Restrict file size.
+4. Restrict allowed file types.
+5. Sanitize file names.
+6. Prevent executable uploads.
+7. Validate upload ownership and application assignment.
+8. Prevent unauthorized file deletion.
+9. Preserve existing document access for authorized customers and Admins.
+10. Ensure attachment URLs do not bypass access restrictions.
+
+If Firebase Storage is used, inspect its security rules separately.
+
+If another upload provider is used, inspect its authorization mechanism.
+
+Do not assume database rules protect uploaded files.
+
+15. NOTIFICATIONS AND EMAILS
+
+Preserve existing email notification functionality.
+
+When Operator updates status:
+
+- Customer receives the appropriate status notification.
+- Admin receives the appropriate notification.
+- Assigned Operator receives the appropriate notification where existing behavior requires it.
+
+When Admin assigns an application:
+
+- Newly assigned Operator receives notification.
+- Customer receives notification if the existing workflow requires it.
+- Admin receives appropriate confirmation.
+
+Requirements:
+
+1. Do not send emails from unauthorized writes.
+2. Avoid duplicate notifications.
+3. Avoid sending emails before a write succeeds.
+4. Prevent client-side spoofing of Admin notification identity.
+5. Do not expose SMTP credentials in frontend code.
+6. Use a trusted backend/Cloud Function for security-sensitive notification triggers where needed.
+
+16. DATABASE MIGRATION AND BACKWARD COMPATIBILITY
+
+Before changing the database structure:
+
+1. Inspect existing application records.
+2. Inspect current notes format.
+3. Inspect assignment format.
+4. Inspect user profile format.
+5. Inspect existing orders.
+6. Identify legacy records.
+7. Preserve all existing customer data.
+8. Preserve existing Admin workflows.
+9. Avoid destructive migrations.
+10. Create a safe migration script where necessary.
+
+If adding assignedToUid or changing notes from arrays to child records:
+
+- Preserve old data.
+- Provide backward-compatible reads.
+- Migrate existing records safely.
+- Avoid duplicate notes.
+- Avoid losing attachments.
+- Verify all existing records after migration.
+
+Never delete or overwrite production database data as part of an automatic migration.
+
+17. AUTOMATED SECURITY TESTING
+
+Inspect and expand:
+
+scripts/test-rules.ts
+
+Use Firebase Emulator Suite and authenticated test identities.
+
+Create at least these test identities:
+
+1. Super Admin
+2. Admin
+3. Operator A
+4. Operator B
+5. Normal Customer A
+6. Normal Customer B
+7. Unauthenticated user
+
+Create test applications:
+
+- Application A assigned to Operator A.
+- Application B assigned to Operator B.
+- Application C unassigned.
+- Application D owned by Customer A.
+- Application E owned by Customer B.
+
+Required Permission Tests
+
+Test| Expected Result
+Operator A reads assigned Application A| ALLOW
+Operator A reads Operator B's Application B| DENY
+Operator A reads unassigned Application C| DENY
+Operator A reads another customer's unrelated application| DENY
+Operator A updates assigned Application A status| ALLOW
+Operator A adds a new note to assigned Application A| ALLOW
+Operator A uploads authorized note attachment| ALLOW
+Operator A changes paymentStatus| DENY
+Operator A changes assignedTo| DENY
+Operator A changes assignedToUid| DENY
+Operator A changes uid| DENY
+Operator A changes userId| DENY
+Operator A changes customer email| DENY
+Operator A changes customer phone| DENY
+Operator A changes customer name| DENY
+Operator A changes charge| DENY
+Operator A deletes assigned Application A| DENY
+Operator A edits previous note| DENY
+Operator A deletes previous note| DENY
+Operator A reads entire users database| DENY
+Operator A reads another user's profile| DENY
+Operator A changes own role to Admin| DENY
+Operator A changes another user's role| DENY
+Operator A reads assigned Order| ALLOW, if the existing order workflow requires it
+Operator A modifies an Order| DENY
+Operator A reads payment records| DENY
+Operator A modifies payment records| DENY
+Operator A modifies services| DENY
+Operator A modifies products| DENY
+Operator A modifies gateways| DENY
+Operator A reads another user's Drive connection| DENY
+Operator A accesses Admin route| DENY
+Normal Customer accesses Operator route| DENY
+Unauthenticated user accesses protected application| DENY
+
+Also test:
+
+- Direct REST API writes.
+- Direct Firebase SDK writes.
+- Multi-location update attacks.
+- Null-value deletion attacks.
+- Parent-level permission inheritance.
+- Unauthorized collection queries.
+- Unauthorized child reads.
+- Role changes while the session is active.
+- Assignment removal while the Operator is viewing the application.
+- Assignment transfer between Operators.
+- Forged email and UID values.
+
+A test is successful only when the Firebase Emulator confirms the expected result.
+
+Do not replace real permission tests with frontend-only unit tests.
+
+18. UI AND DESIGN PRESERVATION
+
+IMPORTANT:
+
+Do not redesign the existing website.
+
+Preserve:
+
+- Existing India Cyber Cafe branding.
+- Existing color palette.
+- Existing typography.
+- Existing spacing.
+- Existing component design.
+- Existing dashboard layout.
+- Existing responsive behavior.
+- Existing sidebar design.
+- Existing toast notifications.
+- Existing modal appearance.
+- Existing loading skeletons.
+
+Only make UI changes necessary for correctness, authorization, and usability.
+
+Do not remove unrelated features.
+
+19. PERFORMANCE AND CODE QUALITY
+
+Requirements:
+
+1. Avoid unnecessary Firebase subscriptions.
+2. Unsubscribe when components unmount.
+3. Prevent stale listeners.
+4. Prevent duplicate data fetching.
+5. Avoid duplicate application records.
+6. Avoid unnecessary full-database downloads.
+7. Preserve pagination.
+8. Use indexed queries.
+9. Handle Firebase errors correctly.
+10. Avoid unhandled promises.
+11. Avoid TypeScript any where practical.
+12. Keep components maintainable.
+13. Avoid duplicated authorization logic.
+14. Centralize permission checks where appropriate.
+15. Do not create security-sensitive logic that exists only in frontend utilities.
+
+20. DOCUMENTATION
+
+Update SECURITY_AND_INCIDENT_RESPONSE.md with:
+
+- Operator permission matrix.
+- Admin permission matrix.
+- Customer permission matrix.
+- Application assignment model.
+- Database access model.
+- Note security model.
+- Attachment access model.
+- Payment restrictions.
+- Authentication requirements.
+- MFA status.
+- Migration instructions.
+- Firebase Rules deployment instructions.
+- Emulator testing instructions.
+- Known limitations.
+
+Document any functionality that is not fully secured or requires trusted backend infrastructure.
+
+21. FINAL VALIDATION
+
+After implementation:
+
+1. Run TypeScript checks.
+2. Run the production build.
+3. Run all available tests.
+4. Run Firebase Emulator security tests.
+5. Validate database.rules.json syntax.
+6. Inspect all changed files.
+7. Search the entire project again for unsafe Operator permissions.
+8. Verify that no broad Operator write rule remains.
+9. Verify that Operator cannot read the global Users database.
+10. Verify that Admin workflows still work.
+11. Verify that customer application tracking still works.
+12. Verify that assignment notifications still work.
+13. Verify that existing notes and attachments remain accessible.
+14. Verify that no unrelated feature has been broken.
+
+Do not claim a security fix is complete if its corresponding test has not passed.
+
+22. FINAL DELIVERABLES
+
+Complete the actual code modifications, not just recommendations.
+
+Provide:
+
+1. Summary of all security issues fixed.
+2. List of modified files.
+3. List of newly created files.
+4. Final Operator permission matrix.
+5. Updated Firebase Security Rules.
+6. Migration scripts, if needed.
+7. Automated security test results.
+8. Build and TypeScript check results.
+9. Any remaining known limitations.
+10. Exact instructions for deploying updated Firebase Rules.
+11. Exact instructions for running Emulator tests.
+12. Any manual action required before production deployment.
+
+IMPORTANT FINAL INSTRUCTIONS:
+
+- Work directly in the existing project.
+- Do not create a separate replacement application.
+- Do not remove existing business features.
+- Do not redesign the UI.
+- Do not hardcode new Admin credentials.
+- Do not expose secrets.
+- Do not use frontend-only security.
+- Do not silently change database schemas.
+- Do not overwrite production data.
+- Do not claim untested features are secure.
+- If a requirement cannot safely be implemented with Firebase Realtime Database Rules alone, explain the limitation and implement the appropriate trusted backend solution.
+- Make all necessary code changes and verify them.
+
+The final result must be a production-oriented India Cyber Cafe application where Operators can process only their assigned work, cannot access other users' confidential data, cannot manipulate payments or ownership, and cannot bypass restrictions through direct Firebase API calls.

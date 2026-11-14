@@ -206,15 +206,20 @@ export async function createGuestAccount(
     await set(userRef, newUser);
 
     if (sanitizedPhone) {
-      fetch('/api/auth/sync-phone', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uid: user.uid,
-          phone: sanitizedPhone,
-          email: sanitizedEmail,
-          isGoogleOnly: false
-        })
+      user.getIdToken().then(idToken => {
+        fetch('/api/auth/sync-phone', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`
+          },
+          body: JSON.stringify({
+            uid: user.uid,
+            phone: sanitizedPhone,
+            email: sanitizedEmail,
+            isGoogleOnly: false
+          })
+        }).catch(() => {});
       }).catch(() => {});
     }
 

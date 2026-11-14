@@ -12,6 +12,7 @@ import {
 } from 'firebase/database';
 import { rtdb } from '../firebase';
 import { Application } from '../types';
+import { isAssignedToOperator } from '../utils/permissions';
 
 const PAGINATION_LIMIT = 50;
 
@@ -20,16 +21,13 @@ const PAGINATION_LIMIT = 50;
  * - disabled: does not subscribe
  * - user: loads only applications belonging to that user
  * - admin: loads all applications
- * - operator: loads the user's applications and applications assigned to them
- * Real-time updates are maintained for the current filter
- * 
- * If uid is null, does not subscribe (useful for conditional loading)
+ * - operator: loads strictly applications assigned to that operator (canonically by assignedToUid)
  */
 export type ApplicationLoadOptions =
   | { mode: 'disabled' }
   | { mode: 'user'; uid: string }
   | { mode: 'admin' }
-  | { mode: 'operator'; uid: string; operatorEmail: string };
+  | { mode: 'operator'; uid: string; operatorEmail?: string };
 
 export function useApplications(options: ApplicationLoadOptions) {
   const [applications, setApplications] = useState<Application[]>([]);
@@ -40,15 +38,17 @@ export function useApplications(options: ApplicationLoadOptions) {
     if (options.mode === 'disabled') {
       setApplications([]);
       setLoading(false);
+      setError(null);
       return;
     }
 
     let unsubscribe: (() => void) | null = null;
-    let assignedUnsubscribe: (() => void) | null = null;
+    let assignedByUidUnsubscribe: (() => void) | null = null;
 
     const loadApplications = () => {
       try {
         setLoading(true);
+        setError(null);
 
         if (options.mode === 'admin') {
           // Admin: load all applications
@@ -86,9 +86,8 @@ export function useApplications(options: ApplicationLoadOptions) {
               setLoading(false);
             }
           );
-        } else if (options.mode === 'user' || options.mode === 'operator') {
+        } else if (options.mode === 'user') {
           const uid = options.uid;
-          // User: load only their applications
           const appsRef = query(
             ref(rtdb, 'applications'),
             orderByChild('uid'),
@@ -99,58 +98,16 @@ export function useApplications(options: ApplicationLoadOptions) {
             (snapshot) => {
               try {
                 const data = snapshot.val();
-                let apps: Application[] = [];
+                const apps: Application[] = data
+                  ? Object.entries(data)
+                      .map(([id, val]: [string, any]) => ({
+                        id,
+                        ...val,
+                      } as Application))
+                      .reverse()
+                  : [];
 
-                if (data) {
-                  apps = Object.entries(data)
-                    .map(([id, val]: [string, any]) => ({
-                      id,
-                      ...val,
-                    } as Application))
-                    .reverse();
-                }
-
-                // If user is operator, also include applications assigned to them
-                if (options.mode === 'operator') {
-                  const appsRef2 = query(
-                    ref(rtdb, 'applications'),
-                    orderByChild('assignedTo'),
-                    equalTo(options.operatorEmail)
-                  );
-                  assignedUnsubscribe = onValue(
-                    appsRef2,
-                    (snapshot2) => {
-                      const data2 = snapshot2.val();
-                      if (data2) {
-                        const assignedApps = Object.entries(data2).map(
-                          ([id, val]: [string, any]) => ({
-                            id,
-                            ...val,
-                          } as Application)
-                        );
-                        // Merge and deduplicate
-                        const merged = [...apps];
-                        for (const app of assignedApps) {
-                          if (!merged.find((a) => a.id === app.id)) {
-                            merged.push(app);
-                          }
-                        }
-                        setApplications(merged.sort((a, b) =>
-                          new Date(b.date).getTime() - new Date(a.date).getTime()
-                        ));
-                      } else {
-                        setApplications(apps);
-                      }
-                    },
-                    (err) => {
-                      console.error('Error fetching assigned applications:', err);
-                      setApplications(apps);
-                    }
-                  );
-                } else {
-                  setApplications(apps);
-                }
-
+                setApplications(apps);
                 setError(null);
                 setLoading(false);
               } catch (err) {
@@ -163,6 +120,38 @@ export function useApplications(options: ApplicationLoadOptions) {
               console.error('Error fetching user applications:', err);
               const error = err instanceof Error ? err : new Error(String(err));
               setError(error);
+              setLoading(false);
+            }
+          );
+        } else if (options.mode === 'operator') {
+          const operatorIdentity = {
+            uid: options.uid,
+            email: options.operatorEmail,
+            disabled: false,
+          };
+
+          const uidQuery = query(
+            ref(rtdb, 'applications'),
+            orderByChild('assignedToUid'),
+            equalTo(options.uid)
+          );
+          assignedByUidUnsubscribe = onValue(
+            uidQuery,
+            (snapshot) => {
+              const data = snapshot.val();
+              const validAssigned: Application[] = data
+                ? Object.entries(data)
+                    .map(([id, val]: [string, any]) => ({ id, ...val } as Application))
+                    .filter((app) => isAssignedToOperator(app, operatorIdentity))
+                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+                : [];
+              setApplications(validAssigned);
+              setError(null);
+              setLoading(false);
+            },
+            (err) => {
+              console.error('Error fetching operator UID-assigned applications:', err);
+              setError(err instanceof Error ? err : new Error(String(err)));
               setLoading(false);
             }
           );
@@ -180,12 +169,11 @@ export function useApplications(options: ApplicationLoadOptions) {
 
     return () => {
       if (unsubscribe) unsubscribe();
-      if (assignedUnsubscribe) assignedUnsubscribe();
+      if (assignedByUidUnsubscribe) assignedByUidUnsubscribe();
     };
   }, [
     options.mode,
     options.mode === 'user' || options.mode === 'operator' ? options.uid : null,
-    options.mode === 'operator' ? options.operatorEmail : null,
   ]);
 
   const addApplication = async (app: Omit<Application, 'id'>) => {

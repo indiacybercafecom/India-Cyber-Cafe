@@ -31,17 +31,38 @@ This document establishes the security architecture, technical and organizationa
 - **Embed Compatibility:** Allows controlled embedding for authorized preview and verification while isolating sensitive administrative routes.
 
 ### 2.2 Access Control & Principle of Least Privilege
-- Administrative console access (`/admin`) is guarded by role-based authentication (`admin: true` in user claim / RTDB).
-- Direct database and storage administration restricted to multi-factor authenticated (MFA) operator accounts.
+- **Role-Based Access Control (RBAC):** Strict separation between `admin`, `operator`, and `user` roles enforced across Firebase Realtime Database Security Rules (`database.rules.json`), Express backend middleware (`requireAdminMiddleware`, `verifyCallerWithRole`), and frontend route guards (`src/utils/permissions.ts`).
+- **Operator Least-Privilege Scope:**
+  - Operators have **zero** access to global `/users`, `/gateways`, `/services`, `/products`, `/documents`, `/privacy_requests`, `/payments`, `/driveConnections` (of other users), or Admin endpoints (`/api/sync-data*`, `/api/documents*`, `/api/admin/*`).
+  - Operators can read/update only their own `/users/$uid` profile (cannot modify `role`, `uid`, `email`, or `disabled`).
+  - Disabled users (`disabled === true`) are immediately blocked at both RTDB rules and Express API authorization layers.
+  - Operators see and access **only** service applications (and assigned orders where applicable) matched canonically by immutable Firebase Auth UID (`assignedToUid === auth.uid`). Broad email queries and legacy email fallbacks are disabled so email reuse or misconfigured records cannot expose another UID's data; unmatched legacy assignments are flagged for Admin review.
+  - Operators can write only `applications/$appId/status` (`processing | clarification | completed | rejected`), `applications/$appId/updatedAt`, and append-only `applications/$appId/notes/$noteId` entries (max 2,000 characters, server-sanitized). Payment fields (`paymentStatus`, `charge`), applicant PII, assignments, and deletions are blocked for Operators.
+- **Payment Integrity:** Direct client writes to `/applications/$appId/paymentStatus` are blocked for customers and operators; post-work application payments verify Razorpay HMAC-SHA256 signatures server-side via `POST /api/applications/:appId/verify-payment`.
+- **Plaintext Passwords Eliminated from User Management:** Password storage/impersonation ("Login as User") in `UserManageModal` and RTDB `password` writes are blocked by `.validate` rules (`!newData.hasChild('password')`).
+- **MFA Status (Honest Implementation Note):** Firebase Authentication multi-factor authentication (MFA) is recommended operationally in the Firebase Console for Super Admin and Operator accounts, and is not currently enforced programmatically in application code.
 
-### 2.3 Upload Validation & File Isolation
-- Uploaded files are strictly restricted to verified types: `application/pdf`, `image/jpeg`, `image/png`, `image/webp`.
-- Filename randomization (`category/timestamp_randomString.ext`) to eliminate directory traversal attacks and namespace collision.
-- Maximum individual file size capped at 5 MB.
+### 2.3 Upload Validation & Authenticated Attachment Isolation
+- Uploaded note attachments via `POST /api/operator/applications/:appId/upload-attachment` (multipart field `file`) are strictly validated by **binary magic-byte signatures** (PDF, JPEG, PNG, WEBP) and capped at 5 MB. There is no Firebase Storage fallback for Operator/Staff note attachments (`storage.rules` is not configured in this repository).
+- Files and `.meta.json` descriptors are stored in randomized server-side paths outside public static directories and served strictly via `GET /api/operator/attachments/:attachmentId?appId=:appId` with Firebase Bearer ID token verification for the currently assigned Operator, Application Owner, or Admin.
+- Public document and checkout image uploaders likewise enforce allowed MIME types and 5 MB caps.
 
 ### 2.4 Consent-Gated Telemetry
 - Firebase and Google Analytics (`G-HKXGED0EB0`) fire **only after explicit affirmative opt-in consent** from the visitor.
 - Consent preferences and audit history are recorded locally in `localStorage` with versioned timestamps.
+
+### 2.5 Deployment, Backup & Migration Procedure (Operator Security Hardening)
+1. Audit/dry-run legacy records to inspect UID backfills, conflicts, unmatched emails, and array `notes` conversion:
+   `npx tsx scripts/migrate-operator-security.ts --dry-run`
+2. Create an offline verified backup (optional standalone step; `--apply` also writes & verifies a backup automatically before modifying data):
+   `npx tsx scripts/migrate-operator-security.ts --backup-only`
+3. Apply idempotent migration with Firebase Admin credentials configured (creates & verifies `data/backups/operator-migration-backup-<timestamp>.json`, applies updates, verifies record/note/attachment counts):
+   `npx tsx scripts/migrate-operator-security.ts --apply`
+4. Roll back `applications` and `orders` from backup if ever needed:
+   `npx tsx scripts/migrate-operator-security.ts --rollback=data/backups/<backup-file>.json --apply`
+5. Deploy updated RTDB rules to Firebase:
+   `firebase deploy --only database`
+6. Run verification suite (`npx tsx scripts/test-rules.ts`). Note: Firebase Database Emulator requires Java (JRE), which is not installed in this sandbox environment; run `firebase emulators:exec --only database "npx tsx scripts/test-rules.ts"` in a Java-enabled CI/local environment for full official emulator validation.
 
 ---
 

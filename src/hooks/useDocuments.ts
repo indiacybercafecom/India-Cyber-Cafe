@@ -44,7 +44,7 @@ export function sanitizeFirebasePayload<T>(payload: T): T {
   return sanitized as T;
 }
 
-export function useDocuments(includeInactive = false) {
+export function useDocuments(includeInactive = false, canSyncToServer = false) {
   const initialDocs = typeof window !== 'undefined' && Array.isArray((window as any).__INITIAL_DATA__?.documents)
     ? (window as any).__INITIAL_DATA__.documents
     : [];
@@ -211,12 +211,20 @@ export function useDocuments(includeInactive = false) {
           setError(null);
           cacheManager.set(cacheKey, filtered);
 
-          // Mirror authoritative Firebase state to server store
-          fetch('/api/documents/sync-bulk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ documents: deduplicated }),
-          }).catch(() => {});
+          // Mirror authoritative Firebase state to server store (admin only)
+          if (canSyncToServer && auth.currentUser) {
+            auth.currentUser.getIdToken().then(idToken => {
+              if (!idToken) return;
+              fetch('/api/documents/sync-bulk', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({ documents: deduplicated }),
+              }).catch(() => {});
+            }).catch(() => {});
+          }
         }
       },
       err => {
@@ -253,12 +261,20 @@ export function useDocuments(includeInactive = false) {
           setCategories(deduplicatedCats);
           cacheManager.set('documentCategories', deduplicatedCats);
 
-          // Mirror authoritative categories to server store
-          fetch('/api/document-categories/sync-bulk', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ categories: deduplicatedCats }),
-          }).catch(() => {});
+          // Mirror authoritative categories to server store (admin only)
+          if (canSyncToServer && auth.currentUser) {
+            auth.currentUser.getIdToken().then(idToken => {
+              if (!idToken) return;
+              fetch('/api/document-categories/sync-bulk', {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${idToken}`,
+                },
+                body: JSON.stringify({ categories: deduplicatedCats }),
+              }).catch(() => {});
+            }).catch(() => {});
+          }
         }
       },
       err => {
@@ -271,7 +287,7 @@ export function useDocuments(includeInactive = false) {
       documentsUnsubscribe();
       categoriesUnsubscribe();
     };
-  }, [includeInactive]);
+  }, [includeInactive, canSyncToServer]);
 
   const saveDocument = async (document: Omit<FormDocument, 'id'>, id?: string) => {
     const urls = normalizePdfUrl(document.previewUrl || document.downloadUrl);
@@ -289,9 +305,12 @@ export function useDocuments(includeInactive = false) {
 
     // 1. Save directly to server-side persistent store first
     try {
+      const idToken = await auth.currentUser?.getIdToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (idToken) headers.Authorization = `Bearer ${idToken}`;
       const serverResp = await fetch('/api/documents', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
       });
       if (serverResp.ok) {
@@ -329,7 +348,11 @@ export function useDocuments(includeInactive = false) {
   const deleteDocument = async (id: string) => {
     // 1. Delete on server store
     try {
-      await fetch(`/api/documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const idToken = await auth.currentUser?.getIdToken();
+      await fetch(`/api/documents/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+      });
     } catch (err) {
       console.warn('Server delete document notice:', err);
     }
@@ -358,9 +381,12 @@ export function useDocuments(includeInactive = false) {
     const payload = sanitizeFirebasePayload({ ...category, id, name: normalizedName });
 
     try {
+      const idToken = await auth.currentUser?.getIdToken();
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (idToken) headers.Authorization = `Bearer ${idToken}`;
       await fetch('/api/document-categories', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify(payload),
       });
     } catch {}
@@ -375,7 +401,11 @@ export function useDocuments(includeInactive = false) {
 
   const deleteCategory = async (id: string) => {
     try {
-      await fetch(`/api/document-categories/${encodeURIComponent(id)}`, { method: 'DELETE' });
+      const idToken = await auth.currentUser?.getIdToken();
+      await fetch(`/api/document-categories/${encodeURIComponent(id)}`, {
+        method: 'DELETE',
+        headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+      });
     } catch {}
 
     try {

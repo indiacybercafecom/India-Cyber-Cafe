@@ -3,6 +3,7 @@ import { UserProfile } from '../types';
 import { IconRenderer } from './Icons';
 import { UserAvatar } from './UserAvatar';
 import { auth } from '../firebase';
+import { isAdminUser, isOperatorUser, isSuperAdmin, isUserDisabled } from '../utils/permissions';
 
 interface SidebarProps {
   isOpen: boolean;
@@ -24,10 +25,10 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
     { id: 'profile', label: 'Edit Profile', icon: 'user-pen' },
   ];
 
-  if (user?.role === 'admin') {
+  if (isAdminUser(user)) {
     menuItems.push({ id: 'admin', label: 'Admin Panel', icon: 'shield-halved' });
   }
-  if (user?.role === 'operator') {
+  if (isOperatorUser(user)) {
     menuItems.push({ id: 'operator', label: 'Operator Panel', icon: 'desktop' });
   }
 
@@ -62,7 +63,7 @@ export function Sidebar({ isOpen, onClose, user, onNavigate, onLogout }: Sidebar
               Hi, {user?.name ? user.name.split(' ')[0] : 'Guest'}
             </h4>
             <span className="inline-block px-2 py-0.5 bg-white/20 rounded text-[10px] font-bold uppercase tracking-wider mt-1">
-              {user?.email === 'indiacybercafe.com@gmail.com' ? 'Super Admin' : (user?.role || 'User')}
+              {isUserDisabled(user) ? 'Disabled' : isSuperAdmin(user) ? 'Super Admin' : (user?.role || 'User')}
             </span>
           </div>
           <button 

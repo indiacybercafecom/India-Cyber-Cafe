@@ -1,4 +1,5 @@
 // ============= EMAIL CONFIGURATION =============
+import { auth } from '../firebase';
 
 // Professional Email Footer with Support Information
 const emailFooter = `
@@ -54,9 +55,14 @@ const logoUrl = 'https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyb
 
 export async function sendEmail(to: string, subject: string, html: string) {
   try {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (idToken) headers.Authorization = `Bearer ${idToken}`;
+    } catch {}
     const response = await fetch('/api/send-email', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers,
       body: JSON.stringify({ to, subject, html }),
     });
     const result = await response.json();

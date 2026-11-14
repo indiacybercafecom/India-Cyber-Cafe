@@ -5,15 +5,19 @@
 
     "users": {
       ".indexOn": ["phone", "email"],
-      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'operator')",
+      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
 
       "$uid": {
-        ".read": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || root.child('users').child(auth.uid).child('role').val() === 'operator')",
-        ".write": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
-        ".validate": "(!data.exists() ? (newData.hasChildren(['uid', 'email']) && newData.child('uid').val() === $uid) : true) && (!newData.hasChild('password')) && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!newData.hasChild('role') || newData.child('role').val() === 'user' || (data.exists() && newData.child('role').val() === data.child('role').val())))",
+        ".read": "auth != null && ($uid === auth.uid || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+        ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || ($uid === auth.uid && (!data.exists() || data.child('disabled').val() !== true) && newData.exists()))",
+        ".validate": "(!data.exists() ? (newData.hasChildren(['uid', 'email']) && newData.child('uid').val() === $uid && newData.child('email').isString()) : (newData.child('uid').val() === data.child('uid').val())) && (!newData.hasChild('password')) && (!newData.hasChild('role') || newData.child('role').val() === 'user' || newData.child('role').val() === 'operator' || newData.child('role').val() === 'admin') && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || ((!newData.hasChild('role') || newData.child('role').val() === 'user' || (data.exists() && newData.child('role').val() === data.child('role').val())) && (!newData.hasChild('disabled') || (data.exists() && newData.child('disabled').val() === data.child('disabled').val())) && (!data.exists() || !data.hasChild('email') || newData.child('email').val() === data.child('email').val())))",
 
         "role": {
-          ".validate": "newData.val() === 'user' || (data.exists() && newData.val() === data.val()) || auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin'"
+          ".validate": "(newData.val() === 'user' || newData.val() === 'operator' || newData.val() === 'admin') && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && newData.val() === 'user') || (data.exists() && newData.val() === data.val()))"
+        },
+
+        "disabled": {
+          ".validate": "newData.isBoolean() && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (data.exists() && newData.val() === data.val()))"
         },
 
         "password": {
@@ -28,12 +32,29 @@
     },
 
     "applications": {
-      ".indexOn": ["userId", "uid", "email", "phone", "status", "assignedTo"],
-      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'uid' && query.equalTo === auth.uid) || (query.orderByChild === 'userId' && query.equalTo === auth.uid) || (query.orderByChild === 'assignedTo' && query.equalTo === auth.token.email))",
+      ".indexOn": ["userId", "uid", "email", "phone", "status", "assignedTo", "assignedToUid"],
+      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'uid' && query.equalTo === auth.uid) || (query.orderByChild === 'userId' && query.equalTo === auth.uid) || (root.child('users').child(auth.uid).child('role').val() === 'operator' && root.child('users').child(auth.uid).child('disabled').val() !== true && query.orderByChild === 'assignedToUid' && query.equalTo === auth.uid))",
 
       "$appId": {
-        ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid || (data.child('assignedTo').exists() && data.child('assignedTo').val() === auth.token.email))",
-        ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && (newData.child('uid').val() === auth.uid || newData.child('userId').val() === auth.uid)) || (data.exists() && (data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid) && (!newData.exists() || (newData.child('uid').val() === data.child('uid').val() && (!data.hasChild('userId') || newData.child('userId').val() === data.child('userId').val())))) || (root.child('users').child(auth.uid).child('role').val() === 'operator' && data.child('assignedTo').val() === auth.token.email))"
+        ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid || (root.child('users').child(auth.uid).child('role').val() === 'operator' && root.child('users').child(auth.uid).child('disabled').val() !== true && data.child('assignedToUid').val() === auth.uid))",
+        ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && newData.exists() && newData.child('uid').val() === auth.uid && (!newData.hasChild('userId') || newData.child('userId').val() === auth.uid) && !newData.hasChild('assignedTo') && !newData.hasChild('assignedToUid') && newData.child('status').val() === 'processing'))",
+
+        "status": {
+          ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (data.parent().exists() && newData.exists() && root.child('users').child(auth.uid).child('role').val() === 'operator' && root.child('users').child(auth.uid).child('disabled').val() !== true && data.parent().child('assignedToUid').val() === auth.uid))",
+          ".validate": "newData.isString() && (newData.val() === 'processing' || newData.val() === 'clarification' || newData.val() === 'completed' || newData.val() === 'rejected')"
+        },
+
+        "updatedAt": {
+          ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (data.parent().exists() && newData.exists() && root.child('users').child(auth.uid).child('role').val() === 'operator' && root.child('users').child(auth.uid).child('disabled').val() !== true && data.parent().child('assignedToUid').val() === auth.uid))",
+          ".validate": "newData.isString() || newData.isNumber()"
+        },
+
+        "notes": {
+          "$noteId": {
+            ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && newData.exists() && data.parent().parent().exists() && root.child('users').child(auth.uid).child('role').val() === 'operator' && root.child('users').child(auth.uid).child('disabled').val() !== true && data.parent().parent().child('assignedToUid').val() === auth.uid))",
+            ".validate": "newData.hasChildren(['type', 'by', 'email', 'text', 'time']) && (newData.child('type').val() === 'note' || newData.child('type').val() === 'status') && newData.child('by').isString() && newData.child('by').val().length >= 1 && newData.child('by').val().length <= 120 && newData.child('email').isString() && newData.child('text').isString() && newData.child('text').val().length <= 2000 && newData.child('time').isString() && (!newData.hasChild('attachment') || (newData.child('attachment').isString() && (newData.child('attachment').val().matches(/^https:\\/\\/.+/) || newData.child('attachment').val().matches(/^\\/api\\/operator\\/attachments\\/.+/)))) && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (newData.child('authorUid').val() === auth.uid && newData.child('authorRole').val() === 'operator'))"
+          }
+        }
       }
     },
 
@@ -67,11 +88,11 @@
     },
 
     "orders": {
-      ".indexOn": ["userId", "uid", "email", "phone", "orderStatus", "paymentStatus", "razorpayOrderId", "razorpayPaymentId", "assignedTo"],
-      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'uid' && query.equalTo === auth.uid) || (query.orderByChild === 'userId' && query.equalTo === auth.uid) || (root.child('users').child(auth.uid).child('role').val() === 'operator' && query.orderByChild === 'assignedTo' && query.equalTo === auth.token.email))",
+      ".indexOn": ["userId", "uid", "email", "phone", "orderStatus", "paymentStatus", "razorpayOrderId", "razorpayPaymentId", "assignedTo", "assignedToUid"],
+      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'uid' && query.equalTo === auth.uid) || (query.orderByChild === 'userId' && query.equalTo === auth.uid) || (root.child('users').child(auth.uid).child('role').val() === 'operator' && root.child('users').child(auth.uid).child('disabled').val() !== true && query.orderByChild === 'assignedToUid' && query.equalTo === auth.uid))",
 
       "$orderId": {
-        ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid || (root.child('users').child(auth.uid).child('role').val() === 'operator' && data.child('assignedTo').val() === auth.token.email))",
+        ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || data.child('uid').val() === auth.uid || data.child('userId').val() === auth.uid || (root.child('users').child(auth.uid).child('role').val() === 'operator' && root.child('users').child(auth.uid).child('disabled').val() !== true && data.child('assignedToUid').val() === auth.uid))",
         ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
         ".validate": "!newData.exists() || (newData.hasChildren(['id', 'total', 'paymentMethod', 'paymentStatus', 'orderStatus']) && newData.child('total').isNumber() && newData.child('total').val() >= 0)"
       }

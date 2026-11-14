@@ -9,6 +9,8 @@ import { utils, writeFile } from 'xlsx';
 import { OrderDetailModal } from '../components/OrderDetailModal';
 import { loadRazorpayScript } from '../services/razorpayService';
 import { getStoredGuestOrders, StoredGuestOrderRef } from '../services/guestCheckoutService';
+import { auth } from '../firebase';
+import { isAdminUser } from '../utils/permissions';
 
 interface TrackProps {
   applications: Application[];
@@ -133,7 +135,7 @@ export function Track({
   }, [applicationId, applications]);
 
   // Accept canonical uid, legacy userId, email-linked orders, and admin-scoped view
-  const userOrders = user?.role === 'admin'
+  const userOrders = isAdminUser(user)
     ? orders
     : orders.filter(o =>
         !user?.uid ||
@@ -205,25 +207,68 @@ export function Track({
       return;
     }
 
-    const razorpayGateway = gateways.find(g => g.type === 'razorpay' && g.active);
-    const key = razorpayGateway?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd';
+    const amountPaise = Math.round((app.charge || 0) * 100);
+    if (!Number.isInteger(amountPaise) || amountPaise <= 0) {
+      showToast('Invalid payable amount for this application.', 'error');
+      return;
+    }
 
     try {
+      const orderResp = await fetch('/api/create-razorpay-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amountPaise,
+          currency: 'INR',
+          receipt: app.id,
+          notes: {
+            applicationId: app.id,
+            serviceId: app.serviceId,
+            serviceName: app.serviceName,
+          },
+        }),
+      });
+      const orderData = await orderResp.json().catch(() => ({}));
+      const razorpayOrderId = orderData.order_id || orderData.orderId;
+      if (!orderResp.ok || !razorpayOrderId) {
+        throw new Error(orderData.error || 'Could not initialize payment order.');
+      }
+
+      const razorpayGateway = gateways.find(g => g.type === 'razorpay' && g.active);
+      const key = orderData.keyId || razorpayGateway?.credentials?.keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || 'rzp_live_Rploo35wP3GfXd';
+
       const options = {
         key,
-        amount: (app.charge || 0) * 100,
+        amount: amountPaise,
         currency: 'INR',
+        order_id: razorpayOrderId,
         name: 'India Cyber Cafe',
         description: `Payment for ${app.serviceName}`,
         handler: async (response: any) => {
           try {
-            await onUpdateApp(app.id, {
-              paymentStatus: 'completed',
-              razorpayPaymentId: response.razorpay_payment_id
+            const idToken = await auth.currentUser?.getIdToken();
+            if (!idToken) {
+              throw new Error('Authentication required to verify payment.');
+            }
+            const verifyResp = await fetch(`/api/applications/${encodeURIComponent(app.id)}/verify-payment`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+              },
+              body: JSON.stringify({
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_order_id: response.razorpay_order_id || razorpayOrderId,
+                razorpay_signature: response.razorpay_signature,
+              }),
             });
+            const verifyData = await verifyResp.json().catch(() => ({}));
+            if (!verifyResp.ok || !verifyData.success) {
+              throw new Error(verifyData.error || 'Payment verification failed.');
+            }
             showToast('Payment Successful!');
           } catch (handlerErr) {
-            console.error('Track payment update error:', handlerErr);
+            console.error('Track payment verify error:', handlerErr);
             showToast(handlerErr, 'error', 'Payment could not be verified.');
           }
         },

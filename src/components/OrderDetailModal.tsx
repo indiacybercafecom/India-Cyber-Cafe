@@ -6,6 +6,7 @@ import { showToast } from './Toast';
 import { rtdb } from '../firebase';
 import { ref as dbRef, update } from 'firebase/database';
 import { motion } from 'motion/react';
+import { isAdminUser, normalizeApplicationNotes } from '../utils/permissions';
 
 interface OrderDetailModalProps {
   order: Order | null;
@@ -24,7 +25,7 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
 
   if (!order) return null;
 
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = isAdminUser(currentUser);
 
   const resolveOrderPath = async (orderId: string) => {
     const flatKey = String(orderId || '').trim().replace(/[/.#$[\]]/g, '-');
@@ -61,7 +62,7 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
         time: new Date().toLocaleString()
       };
 
-      const updatedNotes = [...(order.notes || []), newNote];
+      const updatedNotes = [...normalizeApplicationNotes(order.notes), newNote];
       const orderPath = await resolveOrderPath(order.id);
       await update(dbRef(rtdb, orderPath), {
         notes: updatedNotes,
@@ -311,11 +312,11 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
             )}
 
             {/* Notes Timeline */}
-            {order.notes && (Array.isArray(order.notes) ? order.notes : Object.values(order.notes || {})).length > 0 && (
+            {normalizeApplicationNotes(order.notes).length > 0 && (
               <div className="border-t pt-4">
                 <p className="font-bold text-slate-900 mb-4">Notes & Updates</p>
                 <div className="space-y-3">
-                  {(Array.isArray(order.notes) ? order.notes : Object.values(order.notes || {})).map((note: any, idx: number) => (
+                  {normalizeApplicationNotes(order.notes).map((note: any, idx: number) => (
                     <div key={idx} className="bg-slate-50 p-4 rounded-xl border border-slate-200">
                       <div className="flex justify-between items-start gap-2 mb-2">
                         <p className="font-bold text-sm text-slate-900">{note.by}</p>

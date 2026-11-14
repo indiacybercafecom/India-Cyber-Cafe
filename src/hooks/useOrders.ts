@@ -77,11 +77,12 @@ function mergeAndSortOrders(lists: Order[][]): Order[] {
 export type OrderLoadOptions =
   | { mode: 'disabled' }
   | { mode: 'user'; uid: string }
+  | { mode: 'operator'; uid: string }
   | { mode: 'admin' };
 
 export function useOrders(options?: OrderLoadOptions | null) {
   const mode = options?.mode ?? 'disabled';
-  const userUid = options?.mode === 'user' ? options.uid : null;
+  const userUid = options?.mode === 'user' || options?.mode === 'operator' ? options.uid : null;
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(mode !== 'disabled');
   const [error, setError] = useState<Error | null>(null);
@@ -227,6 +228,34 @@ export function useOrders(options?: OrderLoadOptions | null) {
         isActive = false;
         if (unsubUid) unsubUid();
         if (unsubLegacy) unsubLegacy();
+      };
+    }
+
+    if (mode === 'operator' && userUid) {
+      setLoading(true);
+      setError(null);
+      const opQuery = query(ref(rtdb, 'orders'), orderByChild('assignedToUid'), equalTo(userUid));
+      const unsubOp = onValue(
+        opQuery,
+        (snapshot) => {
+          if (!isActive) return;
+          const data = snapshot.val();
+          const parsed = data ? mergeAndSortOrders([extractOrders(data)]) : [];
+          setOrders(parsed);
+          setError(null);
+          setLoading(false);
+        },
+        (err) => {
+          if (!isActive) return;
+          console.error('Error fetching operator orders:', err);
+          setError(err instanceof Error ? err : new Error(String(err)));
+          setLoading(false);
+        }
+      );
+
+      return () => {
+        isActive = false;
+        unsubOp();
       };
     }
 

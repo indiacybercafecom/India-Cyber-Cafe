@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ref, onValue, set, update, remove } from 'firebase/database';
-import { rtdb } from '../firebase';
+import { auth, rtdb } from '../firebase';
 import { Product } from '../types';
 import { cacheManager } from '../utils/cacheManager';
 import { syncManager } from '../utils/syncManager';
@@ -152,8 +152,10 @@ export function useProducts() {
 
   const triggerJsonSync = async () => {
     console.log('[useProducts] Triggering JSON sync...');
+    const idToken = await auth.currentUser?.getIdToken();
     const response = await fetch('/api/sync-data/products', {
       method: 'POST',
+      headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
     });
     const result = await response.json().catch(() => null);
 

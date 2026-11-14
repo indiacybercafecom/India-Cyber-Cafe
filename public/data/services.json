@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-13T10:36:33.361Z",
+  "generatedAt": "2026-11-14T12:53:51.201Z",
   "services": [
     {
       "id": "aadhaar-ucl-opretor",
@@ -1017,7 +1017,7 @@
           ]
         },
         {
-          "charge": 2999,
+          "charge": 5199,
           "fields": [
             {
               "help_text": "Enter your name as shown on your current passport.",
@@ -1113,7 +1113,7 @@
           "image": "https://indiacybercafe.com/wp-content/uploads/2026/09/apply-passport-reissue.png",
           "imageType": "url",
           "name": "Apply Passport Re-Issue",
-          "originalCharge": 3999,
+          "originalCharge": 6000,
           "paymentMethods": [
             "razorpay"
           ]

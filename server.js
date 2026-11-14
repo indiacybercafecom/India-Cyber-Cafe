@@ -26,6 +26,15 @@ import {
   handleUploadCustomImage,
   getStoreServiceHealth
 } from './src/server/storeOrderService.js';
+import {
+  verifyCallerWithRole,
+  requireAdminMiddleware,
+  handleGetOperatorApplication,
+  handleOperatorUpdateApplication,
+  handleOperatorUploadAttachment,
+  handleGetOperatorAttachment,
+  handleVerifyApplicationPayment
+} from './src/server/operatorService.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +72,18 @@ const customImageUpload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 5 * 1024 * 1024 }
 });
+const operatorAttachmentUploadMiddleware = (req, res, next) => {
+  customImageUpload.single('file')(req, res, (err) => {
+    if (!err) return next();
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(400).json({ success: false, error: 'File exceeds the 5 MB limit.' });
+      }
+      return res.status(400).json({ success: false, error: `Invalid attachment upload: ${err.message}` });
+    }
+    return res.status(400).json({ success: false, error: err?.message || 'Failed to parse attachment upload.' });
+  });
+};
 app.use('/uploads/custom-images', express.static(path.join(APP_ROOT, 'data/uploads/custom-images')));
 
 // Security Headers - Content Security Policy
@@ -276,21 +297,40 @@ app.post("/api/auth/check-phone", (req, res) => {
 });
 
 // Secure Phone Index Sync from Client on Profile Update or Registration
-app.post("/api/auth/sync-phone", (req, res) => {
-  const { phone, email, uid, isGoogleOnly } = req.body;
+app.post("/api/auth/sync-phone", async (req, res) => {
+  const caller = await verifyCallerWithRole(req);
+  if (!caller) {
+    return res.status(401).json({ success: false, error: "Authentication required" });
+  }
+  if (caller.disabled) {
+    return res.status(403).json({ success: false, error: "Account is disabled" });
+  }
+
+  const { phone, email, uid, isGoogleOnly } = req.body || {};
+  if (uid && uid !== caller.uid && caller.role !== 'admin') {
+    return res.status(403).json({ success: false, error: "Cannot sync phone for another account" });
+  }
+
   const { valid, normalized } = normalizeMobile(phone);
   if (!valid || !email || typeof email !== 'string') {
     return res.status(400).json({ success: false, error: "Invalid parameters" });
   }
 
   updatePhoneIndex(normalized, {
-    uid: typeof uid === 'string' ? uid : undefined,
+    uid: typeof uid === 'string' && caller.role === 'admin' ? uid : caller.uid,
     email: email.trim().toLowerCase(),
     isGoogleOnly: Boolean(isGoogleOnly)
   });
 
   return res.json({ success: true });
 });
+
+// --- Trusted Operator & Application Endpoints (Server-Authoritative) ---
+app.get('/api/operator/applications/:appId', handleGetOperatorApplication);
+app.post('/api/operator/applications/:appId/update', handleOperatorUpdateApplication);
+app.post('/api/operator/applications/:appId/upload-attachment', operatorAttachmentUploadMiddleware, handleOperatorUploadAttachment);
+app.get('/api/operator/attachments/:attachmentId', handleGetOperatorAttachment);
+app.post('/api/applications/:appId/verify-payment', handleVerifyApplicationPayment);
 
 // --- Trusted Store Order Endpoints (Server-Authoritative, COD & Razorpay) ---
 app.post('/api/auth/lookup-email', handleLookupEmail);
@@ -304,9 +344,50 @@ app.get('/api/store/orders/my', handleGetMyOrders);
 app.post('/api/store/orders/guest-track', handleGuestTrackOrder);
 app.post('/api/store/orders/link-guest-orders', handleLinkGuestOrders);
 
-// Email API Route
+const OFFICIAL_ADMIN_EMAILS = new Set(['icc@indiacybercafe.com', 'indiacybercafe.com@gmail.com']);
+const emailRateLimits = new Map();
+function checkEmailRateLimit(ip, maxRequests = 30, windowMs = 60000) {
+  const now = Date.now();
+  const record = emailRateLimits.get(ip);
+  if (!record || now > record.resetTime) {
+    emailRateLimits.set(ip, { count: 1, resetTime: now + windowMs });
+    return true;
+  }
+  if (record.count >= maxRequests) return false;
+  record.count++;
+  return true;
+}
+
+// Email API Route (authorized recipient enforcement)
 app.post('/api/send-email', async (req, res) => {
-  const { to, subject, text, html } = req.body;
+  const clientIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+  if (!checkEmailRateLimit(clientIp, 30, 60000)) {
+    return res.status(429).json({ success: false, error: 'Too many email requests. Please wait a moment.' });
+  }
+
+  const { to, subject, text, html } = req.body || {};
+  const recipients = (Array.isArray(to) ? to : String(to || '').split(','))
+    .map(item => String(item || '').trim().toLowerCase())
+    .filter(item => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item));
+
+  if (recipients.length === 0 || typeof subject !== 'string' || !subject.trim()) {
+    return res.status(400).json({ success: false, error: 'Valid recipient email and subject are required' });
+  }
+
+  const caller = await verifyCallerWithRole(req);
+  const isAdminCaller = Boolean(caller && !caller.disabled && caller.role === 'admin');
+  if (!isAdminCaller) {
+    const callerEmail = caller && !caller.disabled ? caller.email.toLowerCase().trim() : '';
+    const allRecipientsAllowed = recipients.every(
+      addr => OFFICIAL_ADMIN_EMAILS.has(addr) || (callerEmail && addr === callerEmail)
+    );
+    if (!allRecipientsAllowed) {
+      return res.status(403).json({
+        success: false,
+        error: 'Only administrators may dispatch emails to third-party recipients'
+      });
+    }
+  }
 
   const smtpUser = process.env.SMTP_USER || '';
   const smtpPass = process.env.SMTP_PASS || '';
@@ -319,8 +400,8 @@ app.post('/api/send-email', async (req, res) => {
   try {
     await transporter.sendMail({
       from: `"India Cyber Cafe" <${smtpUser}>`,
-      to,
-      subject,
+      to: recipients.join(', '),
+      subject: subject.trim().slice(0, 200),
       text,
       html,
     });
@@ -868,7 +949,7 @@ app.post('/api/verify-razorpay-payment', (req, res) => {
 // DATA SYNC ROUTES
 // ============================================================================
 
-app.post('/api/sync-data', async (req, res) => {
+app.post('/api/sync-data', requireAdminMiddleware, async (req, res) => {
   try {
     console.log('[DATA SYNC] Manual sync triggered from API');
     const result = await syncAllPublicJson();
@@ -883,7 +964,7 @@ app.post('/api/sync-data', async (req, res) => {
   }
 });
 
-app.post('/api/sync-data/:type', async (req, res) => {
+app.post('/api/sync-data/:type', requireAdminMiddleware, async (req, res) => {
   const { type } = req.params;
 
   if (!['services', 'products', 'categories', 'documents', 'documentCategories'].includes(type)) {
@@ -1376,7 +1457,7 @@ app.get('/api/documents/lookup', async (req, res) => {
   return res.status(404).json({ success: false, error: 'Document not found' });
 });
 
-app.post('/api/documents', async (req, res) => {
+app.post('/api/documents', requireAdminMiddleware, async (req, res) => {
   try {
     const doc = req.body;
     if (!doc || !doc.name) {
@@ -1415,7 +1496,7 @@ app.post('/api/documents', async (req, res) => {
   }
 });
 
-app.post('/api/documents/sync-bulk', async (req, res) => {
+app.post('/api/documents/sync-bulk', requireAdminMiddleware, async (req, res) => {
   try {
     const { documents } = req.body;
     if (!Array.isArray(documents)) {
@@ -1428,7 +1509,7 @@ app.post('/api/documents/sync-bulk', async (req, res) => {
   }
 });
 
-app.delete('/api/documents/:id', async (req, res) => {
+app.delete('/api/documents/:id', requireAdminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const docs = readServerDocuments();
@@ -1456,7 +1537,7 @@ app.get('/api/document-categories', (req, res) => {
   res.json({ success: true, categories: cats });
 });
 
-app.post('/api/document-categories', (req, res) => {
+app.post('/api/document-categories', requireAdminMiddleware, (req, res) => {
   try {
     const cat = req.body;
     if (!cat || !cat.name) return res.status(400).json({ success: false, error: 'Category name required' });
@@ -1472,7 +1553,7 @@ app.post('/api/document-categories', (req, res) => {
   }
 });
 
-app.post('/api/document-categories/sync-bulk', async (req, res) => {
+app.post('/api/document-categories/sync-bulk', requireAdminMiddleware, async (req, res) => {
   try {
     const { categories } = req.body;
     if (!Array.isArray(categories)) {
@@ -1485,7 +1566,7 @@ app.post('/api/document-categories/sync-bulk', async (req, res) => {
   }
 });
 
-app.delete('/api/document-categories/:id', async (req, res) => {
+app.delete('/api/document-categories/:id', requireAdminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const cats = readServerDocCategories();
@@ -1664,7 +1745,7 @@ app.post('/api/privacy-requests/track', async (req, res) => {
   }
 });
 
-app.get('/api/admin/privacy-requests', async (req, res) => {
+app.get('/api/admin/privacy-requests', requireAdminMiddleware, async (req, res) => {
   try {
     const localStore = readLocalPrivacyRequests();
     const combined = { ...localStore };
@@ -1691,7 +1772,7 @@ app.get('/api/admin/privacy-requests', async (req, res) => {
   }
 });
 
-app.patch('/api/admin/privacy-requests/:id', async (req, res) => {
+app.patch('/api/admin/privacy-requests/:id', requireAdminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { status, adminNotes } = req.body;

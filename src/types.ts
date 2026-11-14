@@ -7,6 +7,7 @@ export interface UserProfile {
   phone?: string;
   password?: string;
   role: UserRole;
+  disabled?: boolean;
   avatar?: string;
   customAvatar?: boolean;
   address?: OrderAddress;
@@ -53,11 +54,15 @@ export interface Service {
 }
 
 export interface ApplicationNote {
+  id?: string;
   type: 'note' | 'status';
   by: string;
   email: string;
+  authorUid?: string;
+  authorRole?: UserRole | 'system';
   text: string;
   time: string;
+  createdAt?: number | string;
   status?: string;
   attachment?: string;
   attachmentName?: string;
@@ -66,6 +71,7 @@ export interface ApplicationNote {
 export interface Application {
   id: string;
   uid: string;
+  userId?: string;
   email: string;
   name: string;
   serviceName: string;
@@ -75,13 +81,15 @@ export interface Application {
   details: Record<string, any>;
   fileUrl?: string;
   status: 'processing' | 'clarification' | 'completed' | 'rejected';
-  assignedTo?: string; // operator email
+  assignedTo?: string; // operator email (display & legacy fallback)
+  assignedToUid?: string; // canonical immutable Firebase Auth UID
   date: string;
+  updatedAt?: string;
   paymentMethod?: string;
   paymentStatus?: 'pending' | 'completed';
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
-  notes: ApplicationNote[];
+  notes: ApplicationNote[] | Record<string, ApplicationNote>;
 }
 
 export interface PaymentGateway {

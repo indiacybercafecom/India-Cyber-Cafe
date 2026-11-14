@@ -1,5 +1,6 @@
 import { utils, writeFile, WorkBook } from 'xlsx';
 import { Application, UserProfile, Service, PaymentGateway, Product, ProductCategory, Order, ProductReview, FormDocument, DocumentCategory } from '../types';
+import { normalizeApplicationNotes } from '../utils/permissions';
 
 /**
  * Comprehensive Export Service
@@ -84,8 +85,8 @@ export const exportApplications = (applications: Application[]): any[] => {
     'Date': app.date ? new Date(app.date).toLocaleString('en-IN') : 'N/A',
     'File URL': app.fileUrl || 'N/A',
     'Details JSON': JSON.stringify(app.details || {}),
-    'Notes Count': (app.notes || []).length,
-    'Notes JSON': JSON.stringify(app.notes || []),
+    'Notes Count': normalizeApplicationNotes(app.notes).length,
+    'Notes JSON': JSON.stringify(normalizeApplicationNotes(app.notes)),
   }));
 };
 

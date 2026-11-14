@@ -674,7 +674,14 @@ export function Admin({
                         <div className="text-xs text-slate-400">{app.email}</div>
                       </td>
                       <td className="p-6 font-bold text-navy">{app.serviceName}</td>
-                      <td className="p-6 text-slate-500 font-medium">{app.assignedTo || 'Unassigned'}</td>
+                      <td className="p-6 text-slate-500 font-medium">
+                        <div>{app.assignedTo || 'Unassigned'}</div>
+                        {app.assignedTo && !app.assignedToUid && (
+                          <div className="mt-1 inline-block px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-bold">
+                            Needs UID Migration / Reassign
+                          </div>
+                        )}
+                      </td>
                       <td className="p-6">
                         <span className={`badge ${
                           app.status === 'completed' ? 'bg-green-500' : 
@@ -723,7 +730,10 @@ export function Admin({
                   </div>
                   <div className="flex justify-between items-center pt-2">
                     <div className="text-xs text-slate-400 italic">
-                      By: {app.assignedTo || 'Unassigned'}
+                      <div>By: {app.assignedTo || 'Unassigned'}</div>
+                      {app.assignedTo && !app.assignedToUid && (
+                        <div className="mt-0.5 text-amber-700 font-bold not-italic">Needs UID Migration / Reassign</div>
+                      )}
                     </div>
                     <div className="flex gap-2">
                       <button onClick={() => onViewApp(app)} className="btn-primary py-2 px-4 text-xs">View</button>
@@ -828,12 +838,17 @@ export function Admin({
                       <td className="p-6 text-sm text-slate-600">{u.email}</td>
                       <td className="p-6 text-sm text-slate-600">{u.phone || 'N/A'}</td>
                       <td className="p-6">
-                        <span className={`badge ${
-                          u.role === 'admin' ? 'bg-red-500' : 
-                          u.role === 'operator' ? 'bg-blue-500' : 'bg-slate-500'
-                        }`}>
-                          {u.role}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className={`badge ${
+                            u.role === 'admin' ? 'bg-red-500' : 
+                            u.role === 'operator' ? 'bg-blue-500' : 'bg-slate-500'
+                          }`}>
+                            {u.role}
+                          </span>
+                          {u.disabled && (
+                            <span className="badge bg-amber-600">Disabled</span>
+                          )}
+                        </div>
                       </td>
                       <td className="p-6">
                         <button 
@@ -864,12 +879,17 @@ export function Admin({
                       <div className="font-bold text-navy">{u.name}</div>
                       <div className="text-xs text-slate-400 truncate">{u.email}</div>
                       <div className="text-xs text-slate-400">{u.phone || 'No phone'}</div>
-                      <span className={`badge mt-1 inline-block text-xs ${
-                        u.role === 'admin' ? 'bg-red-500' : 
-                        u.role === 'operator' ? 'bg-blue-500' : 'bg-slate-500'
-                      }`}>
-                        {u.role}
-                      </span>
+                      <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                        <span className={`badge inline-block text-xs ${
+                          u.role === 'admin' ? 'bg-red-500' : 
+                          u.role === 'operator' ? 'bg-blue-500' : 'bg-slate-500'
+                        }`}>
+                          {u.role}
+                        </span>
+                        {u.disabled && (
+                          <span className="badge inline-block text-xs bg-amber-600">Disabled</span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   <button 

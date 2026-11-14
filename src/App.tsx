@@ -29,6 +29,7 @@ import { signOut } from 'firebase/auth';
 import { showToast } from './components/Toast';
 import { ConsentBanner } from './components/ConsentBanner';
 import { Service, Application, UserProfile } from './types';
+import { isAdminUser, isOperatorUser, isUserDisabled } from './utils/permissions';
 
 // Lazy load other pages
 const Services = lazy(() => import('./pages/Services').then(m => ({ default: m.Services })));
@@ -71,48 +72,54 @@ function AppContent() {
   const navigate = useNavigate();
   const location = useLocation();
   const isAdminRoute = location.pathname === '/admin' || location.pathname.startsWith('/admin/');
-  const isOperatorRoute = location.pathname === '/operator';
+  const isOperatorRoute = location.pathname === '/operator' || location.pathname.startsWith('/operator/');
   const isTrackRoute = location.pathname.startsWith('/track');
   const isApplyRoute = location.pathname.startsWith('/services/') && location.pathname.split('/').length >= 4;
   const isCheckoutRoute = location.pathname.startsWith('/store/') && location.pathname.endsWith('/checkout');
   const { user, authUser, loading: authLoading, profileLoading, profileError } = useAuth();
   const profileUnavailable = !!authUser && !profileLoading && (!user || !!profileError);
+  const userIsAdmin = isAdminUser(user);
+  const userIsOperator = isOperatorUser(user);
+  const userIsDisabled = isUserDisabled(user);
 
   // Home/public data (loaded always, cache-first)
   const { services, loading: servicesLoading, error: servicesError, retry: retryServices, addService, updateService, deleteService } = useServices();
   const { products, loading: productsLoading, error: productsError, retry: retryProducts, addProduct, updateProduct, deleteProduct } = useProducts();
   const { productCategories, addProductCategory, updateProductCategory, deleteProductCategory } = useProductCategories();
   const isDocumentDetailRoute = location.pathname.startsWith('/forms-documents/') && location.pathname !== '/forms-documents';
-  const { documents, categories: documentCategories, saveDocument, deleteDocument, saveCategory: saveDocumentCategory, deleteCategory: deleteDocumentCategory } = useDocuments((isAdminRoute && user?.role === 'admin') || isDocumentDetailRoute);
+  const { documents, categories: documentCategories, saveDocument, deleteDocument, saveCategory: saveDocumentCategory, deleteCategory: deleteDocumentCategory } = useDocuments(
+    (isAdminRoute && userIsAdmin) || isDocumentDetailRoute,
+    isAdminRoute && userIsAdmin
+  );
 
   // User-specific data (loaded only when user is authenticated)
   const userApplications = useApplications(
-    isTrackRoute && user && user.role !== 'admin'
+    isTrackRoute && user && !userIsAdmin && !userIsDisabled
       ? { mode: 'user', uid: user.uid }
-      : isOperatorRoute && user?.role === 'operator' && user.email
+      : isOperatorRoute && userIsOperator && user?.email
         ? { mode: 'operator', uid: user.uid, operatorEmail: user.email }
         : { mode: 'disabled' }
   );
   const userOrders = useOrders(
-    isTrackRoute && user && user.role !== 'admin'
+    isTrackRoute && user && !userIsAdmin && !userIsDisabled
       ? { mode: 'user', uid: user.uid }
       : { mode: 'disabled' }
   );
 
   // Admin-only data (loaded only when user is admin)
   const adminApplications = useApplications(
-    isAdminRoute && user?.role === 'admin' ? { mode: 'admin' } : { mode: 'disabled' }
+    isAdminRoute && userIsAdmin ? { mode: 'admin' } : { mode: 'disabled' }
   );
-  const adminUsers = useUsers(isAdminRoute && user?.role === 'admin');
+  const adminUsers = useUsers(isAdminRoute && userIsAdmin);
   const gateways = useGateways(
-    (isAdminRoute && user?.role === 'admin') ||
-    (isApplyRoute && !!user) ||
-    (isTrackRoute && !!user)
+    (isAdminRoute && userIsAdmin) ||
+    (isApplyRoute && !!user && !userIsDisabled) ||
+    (isTrackRoute && !!user && !userIsDisabled)
   );
   const adminOrders = useOrders(
-    isAdminRoute && user?.role === 'admin' ? { mode: 'admin' } : { mode: 'disabled' }
+    isAdminRoute && userIsAdmin ? { mode: 'admin' } : { mode: 'disabled' }
   );
-  const adminReviews = useProductReviews(undefined, isAdminRoute && user?.role === 'admin');
+  const adminReviews = useProductReviews(undefined, isAdminRoute && userIsAdmin);
   
   // Local state
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -125,14 +132,59 @@ function AppContent() {
   const [isLogoutChoiceOpen, setIsLogoutChoiceOpen] = useState(false);
 
   // Determine which data to use based on user role
-  const applications = user?.role === 'admin' ? adminApplications.applications : userApplications.applications;
-  const orders = user?.role === 'admin' ? adminOrders.orders : userOrders.orders;
-  const users = user?.role === 'admin' ? adminUsers.users : [];
-  const applicationsLoading = user?.role === 'admin' ? adminApplications.loading : userApplications.loading;
-  const ordersLoading = user?.role === 'admin' ? adminOrders.loading : userOrders.loading;
-  const applicationsError = user?.role === 'admin' ? adminApplications.error : userApplications.error;
-  const ordersError = user?.role === 'admin' ? adminOrders.error : userOrders.error;
+  const applications = userIsAdmin ? adminApplications.applications : userApplications.applications;
+  const orders = userIsAdmin ? adminOrders.orders : userOrders.orders;
+  const users = userIsAdmin ? adminUsers.users : [];
+  const applicationsLoading = userIsAdmin ? adminApplications.loading : userApplications.loading;
+  const ordersLoading = userIsAdmin ? adminOrders.loading : userOrders.loading;
+  const applicationsError = userIsAdmin ? adminApplications.error : userApplications.error;
+  const ordersError = userIsAdmin ? adminOrders.error : userOrders.error;
   const usersLoading = adminUsers.loading;
+
+  // Keep selectedApp synced live and close/redirect if unassigned or disabled on operator routes
+  useEffect(() => {
+    const operatorMatch = location.pathname.match(/^\/operator\/applications\/([^/]+)$/);
+    const routeAppId = operatorMatch ? decodeURIComponent(operatorMatch[1]) : null;
+
+    if (routeAppId && isOperatorRoute) {
+      if (userIsDisabled || (!authLoading && !profileLoading && !userIsOperator)) {
+        setSelectedApp(null);
+        return;
+      }
+      if (!userApplications.loading) {
+        const found = userApplications.applications.find((a) => a.id === routeAppId);
+        if (found) {
+          setSelectedApp(found);
+        } else {
+          setSelectedApp(null);
+          showToast('Application not found or no longer assigned to you.', 'error');
+          navigate('/operator', { replace: true });
+        }
+      }
+      return;
+    }
+
+    if (selectedApp) {
+      const updated = applications.find((a) => a.id === selectedApp.id);
+      if (updated) {
+        setSelectedApp(updated);
+      } else if (isOperatorRoute && !userApplications.loading) {
+        setSelectedApp(null);
+        showToast('Application is no longer assigned to you.', 'info');
+      }
+    }
+  }, [
+    location.pathname,
+    isOperatorRoute,
+    userIsOperator,
+    userIsDisabled,
+    authLoading,
+    profileLoading,
+    userApplications.loading,
+    userApplications.applications,
+    applications,
+    selectedApp?.id,
+  ]);
 
   // Back button handling for modals and sidebar
   useEffect(() => {
@@ -403,7 +455,7 @@ function AppContent() {
                     onUpdateApp={userApplications.updateApplication}
                     ordersLoading={ordersLoading}
                     ordersError={ordersError}
-                    onRetryOrders={user?.role === 'admin' ? adminOrders.retry : userOrders.retry}
+                    onRetryOrders={userIsAdmin ? adminOrders.retry : userOrders.retry}
                     applicationsLoading={applicationsLoading}
                     applicationsError={applicationsError}
                   />
@@ -434,7 +486,7 @@ function AppContent() {
                     onUpdateApp={userApplications.updateApplication}
                     ordersLoading={ordersLoading}
                     ordersError={ordersError}
-                    onRetryOrders={user?.role === 'admin' ? adminOrders.retry : userOrders.retry}
+                    onRetryOrders={userIsAdmin ? adminOrders.retry : userOrders.retry}
                     applicationsLoading={applicationsLoading}
                     applicationsError={applicationsError}
                   />
@@ -463,26 +515,50 @@ function AppContent() {
                 )
               }
             />
-            {/* Operator - all applications */}
+            {/* Operator - strictly assigned applications */}
             <Route
               path="/operator"
               element={
-                authLoading ? (
+                authLoading || (authUser && profileLoading) ? (
                   <OperatorSkeleton />
-                ) : authUser && profileLoading ? (
-                  <OperatorSkeleton />
-                ) : profileUnavailable ? (
-                  <Navigate to="/" />
-                ) : user?.role === 'operator' ? (
+                ) : !authUser ? (
+                  <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />
+                ) : profileUnavailable || !userIsOperator || !user ? (
+                  <Navigate to="/" replace />
+                ) : (
                   <Operator
                     applications={userApplications.applications}
                     user={user}
-                    onViewApp={setSelectedApp}
+                    loading={userApplications.loading}
+                    error={userApplications.error}
+                    onViewApp={(app) => {
+                      setSelectedApp(app);
+                      navigate(`/operator/applications/${app.id}`);
+                    }}
                   />
-                ) : authUser ? (
-                  <Navigate to="/" />
+                )
+              }
+            />
+            <Route
+              path="/operator/applications/:applicationId"
+              element={
+                authLoading || (authUser && profileLoading) ? (
+                  <OperatorSkeleton />
+                ) : !authUser ? (
+                  <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />
+                ) : profileUnavailable || !userIsOperator || !user ? (
+                  <Navigate to="/" replace />
                 ) : (
-                  <Navigate to="/" />
+                  <Operator
+                    applications={userApplications.applications}
+                    user={user}
+                    loading={userApplications.loading}
+                    error={userApplications.error}
+                    onViewApp={(app) => {
+                      setSelectedApp(app);
+                      navigate(`/operator/applications/${app.id}`);
+                    }}
+                  />
                 )
               }
             />
@@ -494,13 +570,13 @@ function AppContent() {
             <Route
               path="/admin/:section"
               element={
-                authLoading ? (
+                authLoading || (authUser && profileLoading) ? (
                   <AdminSkeleton />
-                ) : authUser && profileLoading ? (
-                  <AdminSkeleton />
-                ) : profileUnavailable ? (
-                  <Navigate to="/" />
-                ) : user?.role === 'admin' ? (
+                ) : !authUser ? (
+                  <Navigate to={`/login?redirect=${encodeURIComponent(location.pathname)}`} replace />
+                ) : profileUnavailable || !userIsAdmin || !user ? (
+                  <Navigate to="/" replace />
+                ) : (
                   <Admin
                     applications={adminApplications.applications}
                     users={users}
@@ -553,10 +629,6 @@ function AppContent() {
                     onDeleteDocumentCategory={deleteDocumentCategory}
                     currentUser={user}
                   />
-                ) : authUser ? (
-                  <Navigate to="/" />
-                ) : (
-                  <Navigate to="/" />
                 )
               }
             />
@@ -573,12 +645,14 @@ function AppContent() {
             setSelectedApp(null);
             if (location.pathname.includes('/track/')) {
               navigate('/track');
+            } else if (location.pathname.startsWith('/operator/applications/')) {
+              navigate('/operator');
             } else if (window.history.state?.modal) {
               window.history.back();
             }
           }}
           currentUser={user}
-          operators={users.filter((u) => u.role === 'operator')}
+          operators={userIsAdmin ? users.filter((u) => u.role === 'operator' && !u.disabled) : []}
         />
       )}
 

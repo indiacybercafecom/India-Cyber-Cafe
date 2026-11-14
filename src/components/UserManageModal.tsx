@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { UserProfile, UserRole } from '../types';
 import { IconRenderer } from './Icons';
 import { SelectDropdown } from './SelectDropdown';
 import { motion } from 'motion/react';
-import { auth, rtdb } from '../firebase';
+import { rtdb } from '../firebase';
 import { ref, update, remove } from 'firebase/database';
-import { signInWithEmailAndPassword } from 'firebase/auth';
 import { showToast } from './Toast';
 import { ConfirmationModal } from './ConfirmationModal';
-import { trimWhitespace, sanitizePhone } from '../utils/sanitizer';
+import { trimWhitespace } from '../utils/sanitizer';
+import { isSuperAdmin } from '../utils/permissions';
 import { UserAvatar } from './UserAvatar';
 
 interface UserManageModalProps {
@@ -19,25 +19,33 @@ interface UserManageModalProps {
 export function UserManageModal({ user, onClose }: UserManageModalProps) {
   const [name, setName] = useState(user?.name || '');
   const [role, setRole] = useState<UserRole>(user?.role || 'user');
-  const [password, setPassword] = useState(user?.password || '');
+  const [disabled, setDisabled] = useState<boolean>(Boolean(user?.disabled === true));
   const [loading, setLoading] = useState(false);
-  const [showPass, setShowPass] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
 
+  useEffect(() => {
+    setName(user?.name || '');
+    setRole(user?.role || 'user');
+    setDisabled(Boolean(user?.disabled === true));
+  }, [user]);
+
   if (!user) return null;
+
+  const targetIsSuperAdmin = isSuperAdmin(user);
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      // Sanitize user data before updating
       const sanitizedName = trimWhitespace(name);
-      const sanitizedPassword = trimWhitespace(password);
+      const nextRole: UserRole = targetIsSuperAdmin ? 'admin' : role;
+      const nextDisabled = targetIsSuperAdmin ? false : Boolean(disabled);
 
-      await update(ref(rtdb, `users/${user.uid}`), { 
-        name: sanitizedName, 
-        role, 
-        password: sanitizedPassword 
+      await update(ref(rtdb, `users/${user.uid}`), {
+        name: sanitizedName,
+        role: nextRole,
+        disabled: nextDisabled,
+        updatedAt: Date.now(),
       });
       showToast('User updated successfully!');
       onClose();
@@ -48,24 +56,11 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
     }
   };
 
-  const handleLoginAsUser = async () => {
-    if (!user.password) {
-      showToast('No password stored for this user. Cannot login as user.', 'error');
+  const handleDelete = async () => {
+    if (targetIsSuperAdmin) {
+      showToast('Super Admin account cannot be deleted.', 'error');
       return;
     }
-    setLoading(true);
-    try {
-      await signInWithEmailAndPassword(auth, user.email, user.password);
-      showToast(`Logged in as ${user.name}`);
-      window.location.href = '/'; // Force reload to apply new auth state
-    } catch (error: any) {
-      showToast(error, 'error', 'Unable to sign in as user. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDelete = async () => {
     setLoading(true);
     try {
       await remove(ref(rtdb, `users/${user.uid}`));
@@ -80,7 +75,7 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[2000] flex items-center justify-center p-2 sm:p-4">
-      <motion.div 
+      <motion.div
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
         className="bg-white rounded-2xl sm:rounded-3xl w-full max-w-2xl relative overflow-hidden shadow-2xl flex flex-col max-h-[98vh] sm:max-h-[95vh]"
@@ -96,51 +91,61 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
           <div className="text-center">
             <UserAvatar user={user} className="w-20 h-20 sm:w-24 sm:h-24 rounded-full mx-auto border-4 border-primary shadow-lg object-cover" />
             <p className="text-slate-400 mt-2 text-xs sm:text-sm break-all">{user.email}</p>
+            {targetIsSuperAdmin && (
+              <span className="inline-block mt-2 px-3 py-1 rounded-full bg-amber-100 text-amber-800 text-xs font-bold">
+                Super Admin (Protected)
+              </span>
+            )}
           </div>
 
           <form onSubmit={handleUpdate} className="space-y-4">
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-400 uppercase">Name</label>
-              <input 
-                type="text" 
-                className="input-field py-2" 
-                value={name} 
-                onChange={e => setName(e.target.value)} 
+              <input
+                type="text"
+                className="input-field py-2"
+                value={name}
+                onChange={e => setName(e.target.value)}
               />
             </div>
+
             <div className="space-y-1">
               <label className="text-xs font-bold text-slate-400 uppercase">Role</label>
               <SelectDropdown
-                className="input-field py-2" 
-                value={role} 
-                onChange={value => setRole(value as UserRole)}
-                options={[
-                  { value: 'user', label: 'User' },
-                  { value: 'operator', label: 'Operator' },
-                  { value: 'admin', label: 'Admin' },
-                ]}
+                className="input-field py-2"
+                value={targetIsSuperAdmin ? 'admin' : role}
+                onChange={value => {
+                  if (!targetIsSuperAdmin) setRole(value as UserRole);
+                }}
+                options={
+                  targetIsSuperAdmin
+                    ? [{ value: 'admin', label: 'Admin (Super Admin)' }]
+                    : [
+                        { value: 'user', label: 'User' },
+                        { value: 'operator', label: 'Operator' },
+                        { value: 'admin', label: 'Admin' },
+                      ]
+                }
               />
             </div>
-            <div className="space-y-1 relative">
-              <label className="text-xs font-bold text-slate-400 uppercase">Password</label>
-              <div className="relative">
-                <input 
-                  type={showPass ? 'text' : 'password'} 
-                  className="input-field py-2 pr-10" 
-                  value={password} 
-                  onChange={e => setPassword(e.target.value)} 
+
+            {!targetIsSuperAdmin && (
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-400 uppercase">Account Status</label>
+                <SelectDropdown
+                  className="input-field py-2"
+                  value={disabled ? 'disabled' : 'active'}
+                  onChange={value => setDisabled(value === 'disabled')}
+                  options={[
+                    { value: 'active', label: 'Active (Enabled)' },
+                    { value: 'disabled', label: 'Disabled (Revoked Access)' },
+                  ]}
                 />
-                <button 
-                  type="button"
-                  onClick={() => setShowPass(!showPass)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-primary transition-colors"
-                >
-                  <IconRenderer name={showPass ? 'eye' : 'eye-slash'} className="w-4 h-4" />
-                </button>
               </div>
-            </div>
-            <button 
-              type="submit" 
+            )}
+
+            <button
+              type="submit"
               disabled={loading}
               className="btn-primary w-full py-2 sm:py-3 text-sm sm:text-base"
             >
@@ -148,26 +153,20 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
             </button>
           </form>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button 
-              onClick={handleLoginAsUser}
-              disabled={loading}
-              className="py-2 sm:py-3 bg-navy text-white font-bold rounded-xl transition-all hover:bg-navy-light flex items-center justify-center gap-2 text-xs sm:text-sm"
-            >
-              <IconRenderer name="right-to-bracket" className="w-4 h-4" />
-              <span>Login as User</span>
-            </button>
-            <button 
-              onClick={() => setIsDeleteConfirmOpen(true)}
-              disabled={loading}
-              className="py-2 sm:py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-all border border-red-100 text-xs sm:text-sm"
-            >
-              Delete User
-            </button>
-          </div>
+          {!targetIsSuperAdmin && (
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setIsDeleteConfirmOpen(true)}
+                disabled={loading}
+                className="w-full py-2 sm:py-3 text-red-500 font-bold hover:bg-red-50 rounded-xl transition-all border border-red-100 text-xs sm:text-sm"
+              >
+                Delete User
+              </button>
+            </div>
+          )}
         </div>
 
-        <ConfirmationModal 
+        <ConfirmationModal
           isOpen={isDeleteConfirmOpen}
           onClose={() => setIsDeleteConfirmOpen(false)}
           onConfirm={handleDelete}

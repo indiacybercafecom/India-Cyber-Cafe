@@ -137,16 +137,21 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       await set(ref(rtdb, `users/${firebaseUser.uid}`), sanitizedProfile);
 
       // Securely index phone number for mobile login
-      fetch('/api/auth/sync-phone', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uid: firebaseUser.uid,
-          phone: normalized,
-          email: sanitizedEmail,
-          isGoogleOnly: false
-        })
-      }).catch(err => console.warn('Phone index sync notice:', err));
+      firebaseUser.getIdToken().then(idToken => {
+        fetch('/api/auth/sync-phone', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${idToken}`
+          },
+          body: JSON.stringify({
+            uid: firebaseUser.uid,
+            phone: normalized,
+            email: sanitizedEmail,
+            isGoogleOnly: false
+          })
+        }).catch(err => console.warn('Phone index sync notice:', err));
+      }).catch(() => {});
 
       sendRegistrationNotificationsOnce(sanitizedProfile).catch(() => {});
 

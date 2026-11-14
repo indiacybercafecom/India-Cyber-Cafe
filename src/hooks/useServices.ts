@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { ref, onValue, set, update, remove, push } from 'firebase/database';
-import { rtdb } from '../firebase';
+import { auth, rtdb } from '../firebase';
 import { Service } from '../types';
 import { cacheManager } from '../utils/cacheManager';
 import { syncManager } from '../utils/syncManager';
@@ -153,8 +153,10 @@ export function useServices() {
   const triggerJsonSync = async () => {
     try {
       console.log('[useServices] Triggering JSON sync...');
+      const idToken = await auth.currentUser?.getIdToken();
       const response = await fetch('/api/sync-data/services', {
         method: 'POST',
+        headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
       });
       if (response.ok) {
         console.log('[useServices] JSON sync completed');
