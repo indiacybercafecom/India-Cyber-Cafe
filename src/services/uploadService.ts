@@ -1,4 +1,4 @@
-import { storage } from '../firebase';
+import { auth, storage } from '../firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
@@ -15,6 +15,9 @@ const ALLOWED_EXTENSIONS = new Set(['pdf', 'jpg', 'jpeg', 'png', 'webp']);
 
 export async function uploadFile(file: File, category: string = 'general', maxSizeBytes?: number): Promise<string> {
   try {
+    if (!auth.currentUser) {
+      throw new Error('Authentication required to upload files.');
+    }
     if (maxSizeBytes !== undefined && file.size > maxSizeBytes) {
       throw new Error(`File "${file.name}" exceeds the ${Math.round(maxSizeBytes / (1024 * 1024))} MB limit.`);
     }

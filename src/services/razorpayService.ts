@@ -1,3 +1,4 @@
+import { auth } from '../firebase';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
 import { fetchWithTimeout } from '../utils/fetchWithTimeout';
 
@@ -138,10 +139,19 @@ export const verifyRazorpayPayment = async (
   signature: string
 ): Promise<{ verified: boolean; error?: string }> => {
   try {
+    const idToken = await auth.currentUser?.getIdToken().catch(() => null);
+    if (!idToken) {
+      return {
+        verified: false,
+        error: 'Authentication required to verify payment.'
+      };
+    }
+
     const response = await fetchWithTimeout('/api/verify-razorpay-payment', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Authorization: `Bearer ${idToken}`,
       },
       body: JSON.stringify({
         razorpay_order_id: orderId,

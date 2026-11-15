@@ -59,12 +59,12 @@ export function Footer() {
         </div>
 
         {/* Contact Info */}
-        <div className="space-y-6">
+        <div className="space-y-6 min-w-0">
           <h4 className="text-lg font-bold border-l-4 border-primary pl-3">Contact Us</h4>
           <ul className="space-y-4 text-slate-400 text-sm">
-            <li className="flex items-start gap-3">
+            <li className="flex items-start gap-3 min-w-0">
               <IconRenderer name="envelope" className="w-5 h-5 text-primary shrink-0" />
-              <a href="mailto:icc@indiacybercafe.com" className="hover:text-primary transition-colors">icc@indiacybercafe.com</a>
+              <a href="mailto:icc@indiacybercafe.com" className="hover:text-primary transition-colors break-all min-w-0">icc@indiacybercafe.com</a>
             </li>
             <li className="flex items-start gap-3">
               <IconRenderer name="phone" className="w-5 h-5 text-primary shrink-0" />

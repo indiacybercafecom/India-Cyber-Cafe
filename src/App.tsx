@@ -16,7 +16,7 @@ import { AuthModal } from './components/AuthModal';
 import { ToastContainer } from './components/Toast';
 import { Home } from './pages/Home';
 import { NotFound } from './pages/NotFound';
-import { PageSkeleton, ApplySkeleton, CheckoutSkeleton, ServicesSkeleton, ProfileSkeleton, TrackSkeleton, OperatorSkeleton, AdminSkeleton, StoreSkeleton, PriceListSkeleton } from './components/Skeleton';
+import { PageSkeleton, CheckoutSkeleton, ServicesSkeleton, ProfileSkeleton, TrackSkeleton, OperatorSkeleton, AdminSkeleton, StoreSkeleton, PriceListSkeleton } from './components/Skeleton';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { Footer } from './components/Footer';
 import { ScrollToTop } from './components/ScrollToTop';
@@ -74,7 +74,7 @@ function AppContent() {
   const isAdminRoute = location.pathname === '/admin' || location.pathname.startsWith('/admin/');
   const isOperatorRoute = location.pathname === '/operator' || location.pathname.startsWith('/operator/');
   const isTrackRoute = location.pathname.startsWith('/track');
-  const isApplyRoute = location.pathname.startsWith('/services/') && location.pathname.split('/').length >= 4;
+  const isApplyRoute = location.pathname.startsWith('/services/') && location.pathname.split('/').filter(Boolean).length >= 3;
   const isCheckoutRoute = location.pathname.startsWith('/store/') && location.pathname.endsWith('/checkout');
   const { user, authUser, loading: authLoading, profileLoading, profileError } = useAuth();
   const profileUnavailable = !!authUser && !profileLoading && (!user || !!profileError);
@@ -292,7 +292,11 @@ function AppContent() {
         user={user}
         authUser={authUser}
         loading={authLoading}
-        onLoginClick={() => navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)}
+        onLoginClick={() =>
+          isApplyRoute
+            ? setIsAuthModalOpen(true)
+            : navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)
+        }
         onMenuClick={() => setIsSidebarOpen(true)}
         onLogoClick={() => navigate('/')}
       />
@@ -353,31 +357,24 @@ function AppContent() {
             <Route path="/forms-documents/:categorySlug/:pdfSlug" element={<FormsDocumentDetail />} />
             <Route path="/forms-documents/:categorySlug" element={<FormsDocuments />} />
             <Route path="/services/:serviceId" element={<ServiceDetail services={services} isLoading={servicesLoading} error={servicesError} onRetry={retryServices} />} />
-            {/* Apply - services + gateways loaded on demand */}
+            {/* Apply - guest-accessible form; services + gateways loaded on demand */}
             <Route
               path="/services/:serviceId/:subserviceName"
               element={
-                authLoading || (authUser && profileLoading) ? (
-                  <ApplySkeleton />
-                ) : profileUnavailable ? (
-                  <Navigate to="/" />
-                ) : authUser && user ? (
-                  <Apply
-                    services={services}
-                    isLoading={servicesLoading}
-                    error={servicesError}
-                    onRetry={retryServices}
-                    user={user}
-                    gateways={gateways.gateways}
-                    onSuccess={() => navigate('/track')}
-                  />
-                ) : authUser ? (
-                  <Navigate to="/" />
-                ) : (
-                  <Navigate
-                    to={`/login?redirect=${encodeURIComponent(location.pathname)}`}
-                  />
-                )
+                <Apply
+                  services={services}
+                  isLoading={servicesLoading}
+                  error={servicesError}
+                  onRetry={retryServices}
+                  user={user && !userIsDisabled ? user : null}
+                  authUser={authUser}
+                  authLoading={authLoading || (Boolean(authUser) && profileLoading)}
+                  profileUnavailable={profileUnavailable}
+                  userDisabled={userIsDisabled}
+                  gateways={gateways.gateways}
+                  onLoginClick={() => setIsAuthModalOpen(true)}
+                  onSuccess={() => navigate('/track')}
+                />
               }
             />
             {/* Store Routes - products + categories */}

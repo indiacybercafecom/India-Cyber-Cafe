@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { Service, UserProfile, SubService, Application, PaymentGateway } from '../types';
+import { User as FirebaseUser } from 'firebase/auth';
+import { Service, UserProfile, SubService, PaymentGateway } from '../types';
 import { IconRenderer } from '../components/Icons';
 import { SelectDropdown } from '../components/SelectDropdown';
 import { secureUrl } from '../utils/secureUrl';
 import { showToast } from '../components/Toast';
-import { rtdb } from '../firebase';
+import { auth, rtdb } from '../firebase';
 import { ref as dbRef, set } from 'firebase/database';
 import { notifyApplicationSubmittedApi } from '../services/emailService';
 import { MAX_SERVICE_FILE_SIZE, uploadFile } from '../services/uploadService';
@@ -13,23 +14,44 @@ import { SEO } from '../components/SEO';
 import { ShareButton } from '../components/ShareButton';
 import { getServiceShareData, getSubServiceShareData } from '../utils/shareUtils';
 import { getRazorpayKeyId, loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
-import { sanitizeFormData, sanitizeUserProfile, sanitizeEmail } from '../utils/sanitizer';
+import { sanitizeFormData, sanitizeEmail } from '../utils/sanitizer';
 import { ApplySkeleton } from '../components/Skeleton';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 interface ApplyProps {
   services: Service[];
-  user: UserProfile;
+  user: UserProfile | null;
+  authUser?: FirebaseUser | null;
+  authLoading?: boolean;
+  profileUnavailable?: boolean;
+  userDisabled?: boolean;
   gateways: PaymentGateway[];
+  onLoginClick?: () => void;
   onSuccess: () => void;
   isLoading?: boolean;
   error?: Error | null;
   onRetry?: () => void;
 }
 
-export function Apply({ services, user, gateways, onSuccess, isLoading = false, error = null, onRetry }: ApplyProps) {
+export function Apply({
+  services,
+  user,
+  authUser,
+  authLoading = false,
+  profileUnavailable = false,
+  userDisabled = false,
+  gateways,
+  onLoginClick,
+  onSuccess,
+  isLoading = false,
+  error = null,
+  onRetry,
+}: ApplyProps) {
   const { serviceId, subserviceName } = useParams<{ serviceId: string; subserviceName: string }>();
   const navigate = useNavigate();
+  const isAuthenticated = authUser !== undefined
+    ? Boolean(authUser && user && !userDisabled)
+    : Boolean(user && !userDisabled);
   
   const service = services.find(s => s.id === serviceId);
   const [selectedSubService, setSelectedSubService] = useState<SubService | null>(null);
@@ -153,6 +175,14 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (loading || paymentProcessingRef.current) return;
+
+    const currentAuthUser = auth.currentUser;
+    if (!isAuthenticated || !user || !currentAuthUser) {
+      showToast('Please login to submit your application and proceed to payment.', 'info');
+      onLoginClick?.();
+      return;
+    }
+
     if (service.subservices.length > 0 && !selectedSubService) {
       showToast('Please select a sub-service', 'error');
       return;
@@ -262,11 +292,14 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
           try {
             const charge = selectedSubService.charge || 0;
             const chargeInPaisa = charge * 100;
+            const idToken = await currentAuthUser.getIdToken();
 
-            console.log('📋 Creating order on backend for service... Amount:', chargeInPaisa, 'Paisa');
             const orderResponse = await fetch('/api/create-razorpay-order', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: {
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${idToken}`,
+              },
               body: JSON.stringify({
                 amount: chargeInPaisa,
                 currency: 'INR',
@@ -279,8 +312,6 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
               })
             });
 
-            console.log('📡 Order response status:', orderResponse.status, orderResponse.statusText);
-
             if (!orderResponse.ok) {
               const errorData = await orderResponse.json().catch(() => ({ error: 'Unknown error' }));
               console.error('❌ Order creation failed:', errorData);
@@ -288,7 +319,6 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
             }
 
             const orderData = await orderResponse.json();
-            console.log('✅ Order created on backend:', orderData);
 
             if (!orderData.order_id && !orderData.orderId) {
               throw new Error('No order ID returned from server');
@@ -351,7 +381,6 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
               },
               modal: {
                 ondismiss: () => {
-                  console.log('⚠️ Payment modal closed by user');
                   paymentProcessingRef.current = false;
                   setPaymentProcessing(false);
                   setLoading(false);
@@ -361,7 +390,6 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
               theme: { color: '#FF9933' }
             };
 
-            console.log('🚀 Opening Razorpay checkout for service...');
             const rzp = new (window as any).Razorpay(options);
             rzp.open();
           } catch (error: any) {
@@ -410,18 +438,46 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
       )}
       <div className="max-w-2xl mx-auto w-full bg-white rounded-2xl sm:rounded-3xl shadow-xl mb-8">
         <div className="p-3 sm:p-6 md:p-10 space-y-4 sm:space-y-6 md:space-y-8">
-          <SEO 
-            title={selectedSubService ? `${selectedSubService.name} - ${service.name} | India Cyber Cafe` : `${service.name} - Apply Online | India Cyber Cafe`}
-            description={`Apply online for ${selectedSubService?.name || service.name} under ${service.name} at India Cyber Cafe. ${selectedSubService?.charge ? `Service charge: ₹${selectedSubService.charge}. ` : ''}Fast, secure & reliable digital assistance.`}
-            keywords={`${selectedSubService?.name || ''}, ${service.name}, online application, India Cyber Cafe, apply online`}
-            image={
-              selectedSubService?.imageType === 'url' && selectedSubService.image && !selectedSubService.image.toLowerCase().endsWith('.mp4')
-                ? selectedSubService.image
-                : (service.iconType === 'url' && service.icon && !service.icon.toLowerCase().endsWith('.mp4') ? service.icon : undefined)
-            }
-            url={typeof window !== 'undefined' ? window.location.href : `https://b.indiacybercafe.com/services/${service.id}/${subserviceName || ''}`}
-            ogType="article"
-          />
+          {(() => {
+            const canonicalPath = selectedSubService
+              ? `/services/${service.id}/${slugify(selectedSubService.name)}`
+              : `/services/${service.id}/${subserviceName || ''}`;
+            const canonicalUrl = `https://b.indiacybercafe.com${canonicalPath}`;
+            return (
+              <SEO 
+                title={selectedSubService ? `${selectedSubService.name} - ${service.name} | India Cyber Cafe` : `${service.name} - Apply Online | India Cyber Cafe`}
+                description={`Apply online for ${selectedSubService?.name || service.name} under ${service.name} at India Cyber Cafe. ${selectedSubService?.charge ? `Service charge: ₹${selectedSubService.charge}. ` : ''}Fast, secure & reliable digital assistance.`}
+                keywords={`${selectedSubService?.name || ''}, ${service.name}, online application, India Cyber Cafe, apply online`}
+                image={
+                  selectedSubService?.imageType === 'url' && selectedSubService.image && !selectedSubService.image.toLowerCase().endsWith('.mp4')
+                    ? selectedSubService.image
+                    : (service.iconType === 'url' && service.icon && !service.icon.toLowerCase().endsWith('.mp4') ? service.icon : undefined)
+                }
+                url={canonicalUrl}
+                ogType="article"
+                structuredData={{
+                  '@context': 'https://schema.org',
+                  '@type': 'Service',
+                  name: selectedSubService ? `${selectedSubService.name} (${service.name})` : service.name,
+                  description: `Apply online for ${selectedSubService?.name || service.name} under ${service.name} at India Cyber Cafe.`,
+                  provider: {
+                    '@type': 'Organization',
+                    name: 'India Cyber Cafe',
+                    url: 'https://b.indiacybercafe.com',
+                  },
+                  areaServed: 'IN',
+                  ...(selectedSubService ? {
+                    offers: {
+                      '@type': 'Offer',
+                      price: selectedSubService.charge || 0,
+                      priceCurrency: 'INR',
+                      url: canonicalUrl,
+                    },
+                  } : {}),
+                }}
+              />
+            );
+          })()}
           <div className="flex items-center justify-between gap-3">
             <button 
               onClick={() => navigate(`/services/${service.id}`)}
@@ -441,9 +497,75 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
           </div>
 
           <div className="text-center space-y-0.5 sm:space-y-1 md:space-y-2 mx-auto">
-            <h2 className="text-lg sm:text-2xl md:text-3xl font-bold text-navy line-clamp-2 break-words">{service.name}</h2>
+            <h1 className="text-lg sm:text-2xl md:text-3xl font-bold text-navy line-clamp-2 break-words">{service.name}</h1>
             <p className="text-[11px] sm:text-xs md:text-sm text-slate-500">Fill in the required details</p>
           </div>
+
+          {!isAuthenticated && (
+            authLoading ? (
+              <div className="p-3 sm:p-4 bg-slate-50 border border-slate-200 rounded-xl sm:rounded-2xl flex items-center gap-3">
+                <div className="w-4 h-4 border-2 border-primary border-t-transparent rounded-full animate-spin shrink-0" />
+                <p className="text-xs sm:text-sm text-slate-600 font-medium">
+                  Verifying your login status... Your filled form details remain saved.
+                </p>
+              </div>
+            ) : authUser && userDisabled ? (
+              <div className="p-3 sm:p-4 bg-red-50 border border-red-200 rounded-xl sm:rounded-2xl flex items-start gap-3">
+                <IconRenderer name="lock" className="w-5 h-5 text-red-600 shrink-0 mt-0.5" />
+                <div className="text-xs sm:text-sm text-red-800 space-y-1">
+                  <p className="font-bold">Account Disabled</p>
+                  <p>This account cannot submit applications or process payments. Please contact support.</p>
+                </div>
+              </div>
+            ) : authUser && profileUnavailable ? (
+              <div className="p-3 sm:p-4 bg-amber-50 border border-amber-200 rounded-xl sm:rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-start gap-3">
+                  <IconRenderer name="circle-exclamation" className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                  <div className="text-xs sm:text-sm text-amber-900">
+                    <p className="font-bold">Account profile could not be loaded</p>
+                    <p className="text-amber-800">Please sign in again to submit your application. Your entered details remain preserved.</p>
+                  </div>
+                </div>
+                {onLoginClick && (
+                  <button
+                    type="button"
+                    onClick={onLoginClick}
+                    className="btn-primary px-4 py-2 text-xs sm:text-sm shrink-0"
+                  >
+                    Sign In
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div
+                data-testid="guest-login-banner"
+                className="p-4 sm:p-5 bg-linear-to-r from-navy/5 via-primary/5 to-navy/5 border border-primary/25 rounded-xl sm:rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+              >
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
+                    <IconRenderer name="lock" className="w-4 h-4 sm:w-5 sm:h-5" />
+                  </div>
+                  <div className="space-y-1 min-w-0">
+                    <h2 className="text-sm sm:text-base font-bold text-navy">Login Required to Submit &amp; Pay</h2>
+                    <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                      You can browse, fill out the entire form, and select documents now. Login is required to submit your application — your filled details and selected files will be kept safe.
+                    </p>
+                  </div>
+                </div>
+                {onLoginClick && (
+                  <button
+                    type="button"
+                    onClick={onLoginClick}
+                    data-testid="guest-banner-login-btn"
+                    className="btn-primary px-5 py-2.5 text-xs sm:text-sm whitespace-nowrap shrink-0 flex items-center justify-center gap-2"
+                  >
+                    <IconRenderer name="user" className="w-4 h-4 shrink-0" />
+                    <span>Login to Submit</span>
+                  </button>
+                )}
+              </div>
+            )
+          )}
 
           {subServiceNotFound && (
             <div className="p-2 sm:p-3 md:p-4 bg-amber-50 border border-amber-200 rounded-lg sm:rounded-xl flex items-start gap-2 sm:gap-3 overflow-hidden">
@@ -596,6 +718,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
               ) : field.type === 'textarea' ? (
                 <textarea 
                   required={field.required !== false}
+                  value={formData[field.label] ?? ''}
                   placeholder={Object.prototype.hasOwnProperty.call(field, 'placeholder') ? field.placeholder : `Enter ${field.label.toLowerCase()}`}
                   className="input-field min-h-[70px] sm:min-h-[80px] md:min-h-[100px] text-[11px] sm:text-xs md:text-sm resize-vertical w-full"
                   onChange={e => handleInputChange(field.label, e.target.value)}
@@ -635,7 +758,7 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                 </div>
               ) : field.type === 'select' ? (
                 <SelectDropdown
-                  aria-label={field.label}
+                  ariaLabel={field.label}
                   className="input-field text-xs sm:text-sm w-full"
                   value={formData[field.name || field.label] || ''}
                   onChange={value => handleInputChange(field.name || field.label, value)}
@@ -646,8 +769,9 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
                 />
               ) : (
                 <input 
-                  type={field.type} 
+                  type={field.type === 'phone' ? 'tel' : field.type} 
                   required={field.required !== false}
+                  value={formData[field.label] ?? ''}
                   placeholder={Object.prototype.hasOwnProperty.call(field, 'placeholder') ? field.placeholder : `Enter ${field.label.toLowerCase()}`}
                   className="input-field text-xs sm:text-sm w-full"
                   onChange={e => handleInputChange(field.label, e.target.value)}
@@ -693,25 +817,50 @@ export function Apply({ services, user, gateways, onSuccess, isLoading = false, 
           </label>
         </div>
 
-        <button 
-          type="submit" 
-          disabled={loading || paymentProcessing}
-          className="btn-primary w-full py-2.5 sm:py-3 md:py-4 text-xs sm:text-sm md:text-base mt-4 relative overflow-hidden"
-        >
-          {loading ? (
-            <div className="flex flex-col items-center justify-center">
-              <span className="flex items-center gap-2">
-                <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                <span className="text-xs sm:text-sm">
-                  {uploadProgress.total > 0 ? `Uploading (${uploadProgress.current}/${uploadProgress.total})...` : 'Submitting...'}
+        <div className="space-y-2 mt-4">
+          <button 
+            type="submit" 
+            disabled={!isAuthenticated || loading || paymentProcessing}
+            aria-disabled={!isAuthenticated || loading || paymentProcessing}
+            data-testid="apply-submit-btn"
+            className={`btn-primary w-full py-2.5 sm:py-3 md:py-4 text-xs sm:text-sm md:text-base relative overflow-hidden ${
+              !isAuthenticated ? 'opacity-60 cursor-not-allowed' : ''
+            }`}
+          >
+            {loading ? (
+              <div className="flex flex-col items-center justify-center">
+                <span className="flex items-center gap-2">
+                  <div className="w-3 h-3 sm:w-4 sm:h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs sm:text-sm">
+                    {uploadProgress.total > 0 ? `Uploading (${uploadProgress.current}/${uploadProgress.total})...` : 'Submitting...'}
+                  </span>
                 </span>
+                {uploadProgress.total > 0 && (
+                  <div className="absolute bottom-0 left-0 h-1 bg-white/30 transition-all duration-300" style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }} />
+                )}
+              </div>
+            ) : !isAuthenticated ? (
+              <span className="flex items-center justify-center gap-2">
+                <IconRenderer name="lock" className="w-4 h-4 shrink-0" />
+                <span>{selectedSubService ? 'Login Required to Pay & Submit' : 'Login Required to Submit'}</span>
               </span>
-              {uploadProgress.total > 0 && (
-                <div className="absolute bottom-0 left-0 h-1 bg-white/30 transition-all duration-300" style={{ width: `${(uploadProgress.current / uploadProgress.total) * 100}%` }} />
-              )}
-            </div>
-          ) : selectedSubService ? 'Proceed to Payment' : 'Submit Application'}
-        </button>
+            ) : selectedSubService ? 'Proceed to Payment' : 'Submit Application'}
+          </button>
+
+          {!isAuthenticated && !authLoading && !userDisabled && (
+            <p className="text-center text-[11px] sm:text-xs text-slate-500">
+              Please{' '}
+              <button
+                type="button"
+                onClick={() => onLoginClick?.()}
+                className="text-primary font-bold underline hover:text-primary-dark"
+              >
+                login to your account
+              </button>{' '}
+              to unlock submission and payment. Your filled details remain saved.
+            </p>
+          )}
+        </div>
         </form>
         </div>
       </div>

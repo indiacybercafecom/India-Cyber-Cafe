@@ -166,7 +166,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const handleGoogleAuth = async () => {
     setGoogleLoading(true);
     try {
-      const res = await signInWithGoogle();
+      const res = await signInWithGoogle({ avoidRedirect: true });
       if (res.success && res.user) {
         showToast(res.isNew ? 'Account created with Google! Welcome!' : 'Login Successful!');
         onClose();

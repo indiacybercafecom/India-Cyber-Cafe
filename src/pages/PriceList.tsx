@@ -11,6 +11,8 @@ interface PriceListProps {
 }
 
 const formatPrice = (value: number) => `₹${value.toLocaleString('en-IN')}`;
+const slugify = (text: string) =>
+  text.toLowerCase().trim().replace(/[^\w\s-]/g, '').replace(/[\s_-]+/g, '-').replace(/^-+|-+$/g, '');
 
 export function PriceList({ services, products, categories }: PriceListProps) {
   const navigate = useNavigate();
@@ -42,7 +44,7 @@ export function PriceList({ services, products, categories }: PriceListProps) {
       price: subservice.charge,
       priceCurrency: 'INR',
       availability: 'https://schema.org/InStock',
-      url: `https://b.indiacybercafe.com/services/${service.id}/${encodeURIComponent(subservice.name)}`,
+      url: `https://b.indiacybercafe.com/services/${service.id}/${slugify(subservice.name)}`,
     }))),
     ...products.map(product => ({
       '@type': 'Offer',

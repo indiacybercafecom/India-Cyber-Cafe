@@ -290,7 +290,7 @@ export async function ensureUserProfile(
 /**
  * Initiates Google Sign-In with popup, falling back to redirect on mobile / popup blocked.
  */
-export async function signInWithGoogle(): Promise<{ success: boolean; user?: FirebaseUser; isNew?: boolean; error?: string }> {
+export async function signInWithGoogle(options?: { avoidRedirect?: boolean }): Promise<{ success: boolean; user?: FirebaseUser; isNew?: boolean; error?: string }> {
   const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
     typeof navigator !== 'undefined' ? navigator.userAgent : ''
   );
@@ -301,19 +301,31 @@ export async function signInWithGoogle(): Promise<{ success: boolean; user?: Fir
       try {
         result = await signInWithPopup(auth, googleAuthProvider);
       } catch (popupErr: any) {
-        if (
-          popupErr.code === 'auth/popup-blocked' ||
-          popupErr.code === 'auth/cancelled-popup-request' ||
-          popupErr.code === 'auth/popup-closed-by-user'
-        ) {
-          // Fallback to redirect authentication
+        if (popupErr.code === 'auth/popup-blocked') {
+          if (options?.avoidRedirect) {
+            return {
+              success: false,
+              error: 'Google sign-in popup was blocked. Please allow popups or sign in with Email/Mobile & Password to keep your form details saved.',
+            };
+          }
+          // Fallback to redirect authentication when not preserving in-memory file selections
           await signInWithRedirect(auth, googleAuthProvider);
           return { success: true }; // Page will redirect
         }
         throw popupErr;
       }
     } else {
-      result = await signInWithPopup(auth, googleAuthProvider);
+      try {
+        result = await signInWithPopup(auth, googleAuthProvider);
+      } catch (popupErr: any) {
+        if (popupErr.code === 'auth/popup-blocked' && options?.avoidRedirect) {
+          return {
+            success: false,
+            error: 'Google sign-in popup was blocked. Please allow popups or sign in with Email/Mobile & Password to keep your form details saved.',
+          };
+        }
+        throw popupErr;
+      }
     }
 
     if (result && result.user) {

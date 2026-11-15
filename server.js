@@ -29,6 +29,7 @@ import {
 } from './src/server/storeOrderService.js';
 import {
   verifyCallerWithRole,
+  requireAuthenticatedCaller,
   requireAdminMiddleware,
   handleGetOperatorApplication,
   handleOperatorUpdateApplication,
@@ -777,9 +778,12 @@ app.post('/api/pay-link/verify', async (req, res) => {
   }
 });
 
-// Create Razorpay Order
+// Create Razorpay Order (requires authenticated caller)
 app.post('/api/create-razorpay-order', async (req, res) => {
   try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
     const { amount, currency = 'INR', receipt, notes = {} } = req.body;
 
     if (!Number.isInteger(amount) || amount <= 0 || amount > 10000000) {
@@ -858,9 +862,12 @@ app.post('/api/create-razorpay-order', async (req, res) => {
   }
 });
 
-// Verify Razorpay Payment
-app.post('/api/verify-razorpay-payment', (req, res) => {
+// Verify Razorpay Payment (requires authenticated caller)
+app.post('/api/verify-razorpay-payment', async (req, res) => {
   try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature } = req.body;
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {

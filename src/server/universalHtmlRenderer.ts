@@ -674,8 +674,8 @@ export function renderUniversalPage(
                 <a href="/services/${escapeHtml(service.id)}" class="text-xs sm:text-sm text-slate-600 hover:text-navy font-semibold">
                   ← Back to ${escapeHtml(service.name)}
                 </a>
-                <a href="/login?redirect=${encodeURIComponent(canonical)}" class="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-sm bg-primary text-white hover:bg-primary-dark transition-all text-center shadow-md">
-                  Apply Online Now (${chargeText})
+                <a href="${escapeHtml(canonical)}" class="w-full sm:w-auto px-6 py-3 rounded-xl font-bold text-sm bg-primary text-white hover:bg-primary-dark transition-all text-center shadow-md">
+                  Fill Application Form (${chargeText})
                 </a>
               </div>
             </article>

@@ -214,9 +214,17 @@ export function Track({
     }
 
     try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        throw new Error('Authentication required to start payment.');
+      }
+
       const orderResp = await fetch('/api/create-razorpay-order', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
         body: JSON.stringify({
           amount: amountPaise,
           currency: 'INR',
