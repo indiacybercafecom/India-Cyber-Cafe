@@ -78,16 +78,16 @@ export function Services({ services }: ServicesProps) {
                 title={`Share ${service.name}`} 
               />
             </div>
-            <div className={`flex items-center justify-center mx-auto mb-3 sm:mb-4 md:mb-6 transition-all w-full ${
+            <div className={`flex items-center justify-center mx-auto mb-3 sm:mb-4 md:mb-6 transition-all ${
               service.iconType === 'url' && service.icon
-                ? 'aspect-video rounded-xl sm:rounded-2xl border border-slate-200 overflow-hidden'
-                : 'w-12 h-12 sm:w-16 sm:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full group-hover:rotate-12 active:rotate-12 overflow-hidden mx-auto'
+                ? 'w-full aspect-[7/4] bg-slate-100 rounded-xl sm:rounded-2xl border border-slate-200 overflow-hidden'
+                : 'w-12 h-12 sm:w-16 sm:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full group-hover:rotate-12 active:rotate-12 overflow-hidden'
             }`}>
               {service.iconType === 'url' && service.icon ? (
                 (service.icon || '').toLowerCase().endsWith('.mp4') ? (
-                  <video src={secureUrl(service.icon)} className="w-full h-full object-contain bg-slate-100" muted autoPlay loop />
+                  <video src={secureUrl(service.icon)} className="w-full h-full object-contain" muted autoPlay loop playsInline />
                 ) : (
-                  <img src={secureUrl(service.icon)} alt={service.name || 'Service'} className="w-full h-full object-contain bg-slate-100" />
+                  <img src={secureUrl(service.icon)} alt={service.name || 'Service'} className="w-full h-full object-contain" />
                 )
               ) : (
                 <IconRenderer name={service.icon || 'layers'} className="w-5 h-5 sm:w-8 sm:h-8 text-navy group-hover:text-primary active:text-primary transition-all" />

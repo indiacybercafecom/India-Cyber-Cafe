@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-15T14:18:32.085Z",
+  "generatedAt": "2026-11-15T15:18:16.802Z",
   "services": [
     {
       "id": "aadhaar-ucl-opretor",
@@ -669,7 +669,7 @@
       ],
       "subservices": [
         {
-          "charge": 20,
+          "charge": 19,
           "fields": [
             {
               "label": "Mobile Number",

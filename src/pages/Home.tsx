@@ -175,14 +175,14 @@ export function Home({ onNavigate, services, products = [], onSelectService, loa
               >
                 <div className={`flex items-center justify-center mx-auto mb-3 sm:mb-4 transition-all ${
                   service.iconType === 'url' && service.icon
-                    ? 'w-full h-40 sm:h-48 rounded-xl border border-slate-200 overflow-hidden'
+                    ? 'w-full aspect-[7/4] bg-slate-100 rounded-xl border border-slate-200 overflow-hidden'
                     : 'w-12 h-12 sm:w-16 sm:h-16 bg-linear-to-br from-primary/10 to-navy/10 rounded-full group-hover:rotate-12 overflow-hidden'
                 }`}>
                   {service.iconType === 'url' && service.icon ? (
                     (service.icon || '').toLowerCase().endsWith('.mp4') ? (
-                      <video src={secureUrl(service.icon)} className="w-full h-full object-cover" muted autoPlay loop />
+                      <video src={secureUrl(service.icon)} className="w-full h-full object-contain" muted autoPlay loop playsInline />
                     ) : (
-                      <img src={secureUrl(service.icon)} alt={service.name || 'Service'} className="w-full h-full object-cover" />
+                      <img src={secureUrl(service.icon)} alt={service.name || 'Service'} className="w-full h-full object-contain" />
                     )
                   ) : (
                     <IconRenderer name={service.icon || 'layers'} className="w-6 h-6 sm:w-8 sm:h-8 text-navy group-hover:text-primary transition-all" />

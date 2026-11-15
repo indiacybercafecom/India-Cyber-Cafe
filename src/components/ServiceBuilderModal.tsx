@@ -201,15 +201,17 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                     onChange={e => setIcon(e.target.value)} 
                     placeholder="e.g., https://example.com/icon.png or https://example.com/animation.gif" 
                   />
+                  <p className="text-[11px] text-slate-500">Recommended poster size: 1050 × 600 px (7:4 ratio)</p>
                   {icon && !mediaErrors['service-icon'] && (
-                    <div className="bg-slate-100 rounded-xl p-3 sm:p-4 flex items-center justify-center min-h-24 sm:min-h-32 border-2 border-slate-200 overflow-hidden">
+                    <div className="w-full aspect-[7/4] bg-slate-100 rounded-xl flex items-center justify-center border border-slate-200 overflow-hidden">
                       {icon.toLowerCase().endsWith('.mp4') ? (
                         <video 
                           src={icon} 
-                          className="max-w-full max-h-24 sm:max-h-32 rounded-lg" 
+                          className="w-full h-full object-contain" 
                           muted 
                           autoPlay 
                           loop 
+                          playsInline
                           onError={() => handleMediaError('service-icon')}
                           onLoadStart={() => handleMediaLoad('service-icon')}
                         />
@@ -217,7 +219,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                         <img 
                           src={icon} 
                           alt="Preview" 
-                          className="max-w-full max-h-24 sm:max-h-32 rounded object-contain" 
+                          className="w-full h-full object-contain" 
                           onError={() => handleMediaError('service-icon')}
                           onLoad={() => handleMediaLoad('service-icon')}
                         />
@@ -330,15 +332,17 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                 }}
                                 placeholder="https://example.com/image.jpg" 
                               />
+                              <p className="text-[11px] text-slate-500">Recommended poster size: 1050 × 600 px (7:4 ratio)</p>
                               {ss.image && !mediaErrors[`sub-${i}`] && (
-                                <div className="bg-slate-100 rounded-lg p-2 sm:p-3 flex items-center justify-center min-h-20 sm:min-h-24 border-2 border-slate-200 overflow-hidden">
+                                <div className="w-full aspect-[7/4] bg-slate-100 rounded-xl flex items-center justify-center border border-slate-200 overflow-hidden">
                                   {ss.image.toLowerCase().endsWith('.mp4') ? (
                                     <video 
                                       src={ss.image} 
-                                      className="max-w-full max-h-20 sm:max-h-24 rounded" 
+                                      className="w-full h-full object-contain" 
                                       muted 
                                       autoPlay 
                                       loop 
+                                      playsInline
                                       onError={() => handleMediaError(`sub-${i}`)}
                                       onLoadStart={() => handleMediaLoad(`sub-${i}`)}
                                     />
@@ -346,7 +350,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
                                     <img 
                                       src={ss.image} 
                                       alt="Preview" 
-                                      className="max-w-full max-h-20 sm:max-h-24 rounded object-cover" 
+                                      className="w-full h-full object-contain" 
                                       onError={() => handleMediaError(`sub-${i}`)}
                                       onLoad={() => handleMediaLoad(`sub-${i}`)}
                                     />

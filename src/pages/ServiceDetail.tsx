@@ -84,23 +84,23 @@ export function ServiceDetail({ services, isLoading = false, error = null, onRet
         }}
       />
       <div className="flex flex-col md:flex-row items-center justify-between gap-6 bg-white p-6 sm:p-10 rounded-3xl shadow-xl border border-slate-100">
-        <div className="flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left">
+        <div className="flex flex-col sm:flex-row items-center gap-6 text-center sm:text-left w-full md:flex-1 min-w-0">
           <div className={`flex items-center justify-center shrink-0 overflow-hidden ${
             service.iconType === 'url' && service.icon
-              ? 'w-full sm:w-64 h-48 sm:h-56 rounded-2xl border border-slate-200'
+              ? 'w-full sm:w-64 md:w-72 lg:w-80 aspect-[7/4] bg-slate-100 rounded-2xl border border-slate-200'
               : 'w-20 h-20 sm:w-24 sm:h-24 bg-linear-to-br from-primary/10 to-navy/10 rounded-full'
           }`}>
             {service.iconType === 'url' && service.icon ? (
               (service.icon || '').toLowerCase().endsWith('.mp4') ? (
-                <video src={secureUrl(service.icon)} className="w-full h-full object-cover" muted autoPlay loop />
+                <video src={secureUrl(service.icon)} className="w-full h-full object-contain" muted autoPlay loop playsInline />
               ) : (
-                <img src={secureUrl(service.icon)} alt={service.name || 'Service'} className="w-full h-full object-cover" />
+                <img src={secureUrl(service.icon)} alt={service.name || 'Service'} className="w-full h-full object-contain" />
               )
             ) : (
               <IconRenderer name={service.icon || 'layers'} className="w-10 h-10 sm:w-12 sm:h-12 text-navy" />
             )}
           </div>
-          <div className="space-y-2">
+          <div className="space-y-2 min-w-0">
             <h2 className="text-3xl sm:text-4xl font-bold text-navy">{service.name}</h2>
             <p className="text-slate-500 max-w-2xl">{service.description}</p>
           </div>
@@ -128,14 +128,14 @@ export function ServiceDetail({ services, isLoading = false, error = null, onRet
               {ss.image && (
                 <div className={`w-full flex items-center justify-center overflow-hidden relative ${
                   ss.imageType === 'url' && ss.image
-                    ? 'h-48 sm:h-56 bg-slate-100'
+                    ? 'aspect-[7/4] bg-slate-100'
                     : 'h-20 sm:h-24 bg-primary/10'
                 }`}>
                   {ss.imageType === 'url' && ss.image ? (
                     ss.image.toLowerCase().endsWith('.mp4') ? (
-                      <video src={secureUrl(ss.image)} className="w-full h-full object-cover" muted autoPlay loop />
+                      <video src={secureUrl(ss.image)} className="w-full h-full object-contain" muted autoPlay loop playsInline />
                     ) : (
-                      <img src={secureUrl(ss.image)} alt={ss.name} className="w-full h-full object-cover" />
+                      <img src={secureUrl(ss.image)} alt={ss.name} className="w-full h-full object-contain" />
                     )
                   ) : (
                     <IconRenderer name={ss.image || 'file-circle-plus'} className="w-10 h-10 sm:w-12 sm:h-12 text-primary" />
