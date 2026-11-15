@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { IconRenderer } from './Icons';
 
@@ -102,66 +103,170 @@ interface LogoutChoiceModalProps {
 }
 
 export function LogoutChoiceModal({ isOpen, onClose, onChoice }: LogoutChoiceModalProps) {
+  const [closeBlocked, setCloseBlocked] = useState(false);
+
+  useEffect(() => {
+    if (!isOpen) {
+      setCloseBlocked(false);
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        onClose();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  const handleCloseWindow = () => {
+    try {
+      window.close();
+    } catch {
+      // Browsers block window.close() for non-script-opened tabs
+    }
+    if (!window.closed) {
+      setCloseBlocked(true);
+    }
+  };
+
   return (
     <AnimatePresence>
       {isOpen && (
-        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 sm:p-6">
+        <div
+          className="fixed inset-0 z-[2000] overflow-y-auto bg-white sm:bg-slate-900/45 sm:backdrop-blur-xs flex justify-center p-4 sm:p-6"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="logout-success-heading"
+        >
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="absolute inset-0 bg-navy/60 backdrop-blur-md"
-          />
-          
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9, y: 40 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.9, y: 40 }}
-            className="relative w-full max-w-lg bg-white rounded-[2.5rem] shadow-2xl overflow-hidden"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
+            className="relative my-auto w-full max-w-[480px] bg-white sm:rounded-2xl sm:border sm:border-slate-200 sm:shadow-xl px-2 py-4 sm:p-8"
           >
-            <div className="absolute top-0 left-0 w-full h-2 bg-linear-to-r from-primary via-navy to-primary animate-loading-bar" />
-            
-            <div className="p-8 sm:p-12 space-y-8">
-              <div className="text-center space-y-4">
-                <div className="w-20 h-20 bg-primary/10 rounded-3xl flex items-center justify-center mx-auto mb-6 rotate-3 hover:rotate-0 transition-transform duration-500">
-                  <IconRenderer name="door-open" className="w-10 h-10 text-primary" />
-                </div>
-                <h3 className="text-3xl font-black text-navy tracking-tight">You've Logged Out!</h3>
-                <p className="text-slate-500 text-lg">
-                  Where would you like to go next? We'd love to see you back soon.
-                </p>
+            <div className="text-center">
+              <div
+                className="w-12 h-12 rounded-xl bg-[#FF9933]/12 text-[#FF9933] flex items-center justify-center mx-auto mb-3.5 sm:mb-4"
+                aria-hidden="true"
+              >
+                <IconRenderer name="right-from-bracket" className="w-6 h-6" />
               </div>
+              <h2
+                id="logout-success-heading"
+                className="text-[28px] sm:text-[30px] font-bold text-[#000080] leading-tight tracking-tight"
+              >
+                You've been logged out
+              </h2>
+              <p className="mt-2 text-sm sm:text-[15px] text-slate-600 leading-relaxed max-w-[36ch] mx-auto">
+                Your session has ended successfully. What would you like to do next?
+              </p>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <button
-                  onClick={() => onChoice('relogin')}
-                  className="group relative p-6 rounded-3xl bg-slate-50 border-2 border-transparent hover:border-primary hover:bg-white transition-all text-left"
-                >
-                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mb-4 shadow-sm group-hover:bg-primary group-hover:text-white transition-all">
-                    <IconRenderer name="user" className="w-6 h-6" />
-                  </div>
-                  <h4 className="font-bold text-navy text-xl mb-1">Relogin</h4>
-                  <p className="text-slate-500 text-sm">Sign back into your account</p>
-                </button>
+            <div className="my-5 sm:my-6 border-t border-slate-200/80" aria-hidden="true" />
 
-                <button
-                  onClick={() => onChoice('home')}
-                  className="group relative p-6 rounded-3xl bg-slate-50 border-2 border-transparent hover:border-navy hover:bg-white transition-all text-left"
+            <div className="space-y-3">
+              <button
+                type="button"
+                data-testid="logout-relogin-btn"
+                onClick={() => onChoice('relogin')}
+                className="group w-full min-h-[44px] flex items-center gap-3.5 p-4 rounded-xl bg-white border border-slate-200 hover:border-[#FF9933] hover:bg-slate-50/80 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF9933] focus-visible:ring-offset-2 transition-colors text-left cursor-pointer"
+              >
+                <span
+                  className="w-11 h-11 rounded-xl bg-[#FF9933]/12 text-[#FF9933] flex items-center justify-center shrink-0 group-hover:bg-[#FF9933] group-hover:text-white transition-colors"
+                  aria-hidden="true"
                 >
-                  <div className="w-12 h-12 bg-white rounded-2xl flex items-center justify-center mb-4 shadow-sm group-hover:bg-navy group-hover:text-white transition-all">
-                    <IconRenderer name="house" className="w-6 h-6" />
-                  </div>
-                  <h4 className="font-bold text-navy text-xl mb-1">Go Home</h4>
-                  <p className="text-slate-500 text-sm">Return to the main page</p>
-                </button>
-              </div>
+                  <IconRenderer name="user" className="w-5 h-5" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[17px] sm:text-[18px] font-bold text-[#000080] leading-snug">
+                    Sign in again
+                  </span>
+                  <span className="block text-[13px] sm:text-sm text-slate-600 leading-snug mt-0.5">
+                    Continue using your account
+                  </span>
+                </span>
+                <svg
+                  className="w-5 h-5 text-slate-400 group-hover:text-[#FF9933] shrink-0 transition-colors"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
 
               <button
-                onClick={onClose}
-                className="w-full py-4 text-slate-400 font-medium hover:text-navy transition-colors"
+                type="button"
+                data-testid="logout-home-btn"
+                onClick={() => onChoice('home')}
+                className="group w-full min-h-[44px] flex items-center gap-3.5 p-4 rounded-xl bg-white border border-slate-200 hover:border-[#000080] hover:bg-slate-50/80 active:scale-[0.99] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000080] focus-visible:ring-offset-2 transition-colors text-left cursor-pointer"
+              >
+                <span
+                  className="w-11 h-11 rounded-xl bg-[#000080]/[0.07] text-[#000080] flex items-center justify-center shrink-0 group-hover:bg-[#000080] group-hover:text-white transition-colors"
+                  aria-hidden="true"
+                >
+                  <IconRenderer name="house" className="w-5 h-5" />
+                </span>
+                <span className="flex-1 min-w-0">
+                  <span className="block text-[17px] sm:text-[18px] font-bold text-[#000080] leading-snug">
+                    Back to homepage
+                  </span>
+                  <span className="block text-[13px] sm:text-sm text-slate-600 leading-snug mt-0.5">
+                    Explore India Cyber Cafe
+                  </span>
+                </span>
+                <svg
+                  className="w-5 h-5 text-slate-400 group-hover:text-[#000080] shrink-0 transition-colors"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden="true"
+                >
+                  <path d="m9 18 6-6-6-6" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="mt-5 text-center space-y-3">
+              <button
+                type="button"
+                data-testid="logout-close-window-btn"
+                onClick={handleCloseWindow}
+                className="inline-flex items-center justify-center min-h-[44px] px-4 py-2 text-sm font-medium text-slate-600 underline underline-offset-4 hover:text-[#000080] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000080] focus-visible:ring-offset-2 rounded-lg transition-colors cursor-pointer"
               >
                 Close this window
               </button>
+
+              {closeBlocked && (
+                <div
+                  role="status"
+                  data-testid="logout-close-fallback"
+                  className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-xs sm:text-[13px] text-slate-700 leading-relaxed"
+                >
+                  <p>
+                    Your browser blocked closing this tab automatically. You may safely close it manually, or{' '}
+                    <button
+                      type="button"
+                      data-testid="logout-dismiss-fallback-btn"
+                      onClick={onClose}
+                      className="inline-flex items-center min-h-[44px] px-1.5 -my-2 font-semibold text-[#000080] underline underline-offset-2 hover:text-[#FF9933] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#000080] rounded cursor-pointer"
+                    >
+                      dismiss this overlay
+                    </button>
+                    .
+                  </p>
+                </div>
+              )}
             </div>
           </motion.div>
         </div>
