@@ -15,6 +15,7 @@ process.env.RAZORPAY_WEBHOOK_SECRET = 'test_webhook_secret';
 const OPERATOR_STORE_PATH = path.resolve('data/operator_test_store.json');
 const ORDERS_STORE_PATH = path.resolve('data/orders_store.json');
 const LEDGER_PATH = path.resolve('data/notification_events.json');
+const OUTBOX_PATH = path.resolve('data/notification_outbox.json');
 
 interface CapturedMail {
   from: string;
@@ -47,6 +48,7 @@ async function runTests() {
     backupFile(OPERATOR_STORE_PATH),
     backupFile(ORDERS_STORE_PATH),
     backupFile(LEDGER_PATH),
+    backupFile(OUTBOX_PATH),
   ];
 
   let server: any = null;
@@ -59,11 +61,15 @@ async function runTests() {
 
     const sentMails: CapturedMail[] = [];
     let transportBehavior: 'ok' | 'flaky2' | 'failAll' = 'ok';
+    let transportDelayMs = 0;
     let attemptCounter = 0;
 
     emailSvc.setEmailTransportForTesting({
       sendMail: async (mail) => {
         attemptCounter += 1;
+        if (transportDelayMs > 0) {
+          await new Promise(resolve => setTimeout(resolve, transportDelayMs));
+        }
         if (transportBehavior === 'failAll') {
           const err: any = new Error('550 5.1.1 Mailbox unavailable');
           err.responseCode = 550;
@@ -219,7 +225,12 @@ async function runTests() {
       const data = await resp.json();
       assert.strictEqual(resp.status, 200);
       assert.strictEqual(data.success, true);
-      assert.strictEqual(data.emailDelivery.failedCount, 0);
+      assert.strictEqual(data.notificationQueued, true);
+
+      const flushedJobs = await emailSvc.flushNotificationOutboxForTesting();
+      const job = flushedJobs.find(j => j.appId === 'ICC-APP-1001' && j.state === 'completed');
+      assert(job, 'Outbox job for ICC-APP-1001 must complete cleanly');
+      assert.strictEqual(job!.report?.failedCount, 0);
 
       const custMails = sentMails.filter(m => m.to === 'priya.verma@example.com');
       const adminMails = sentMails.filter(m => m.to === 'icc@indiacybercafe.com' || m.to === 'indiacybercafe.com@gmail.com');
@@ -257,6 +268,9 @@ async function runTests() {
       const data = await resp.json();
       assert.strictEqual(resp.status, 200);
       assert.strictEqual(data.success, true);
+      assert.strictEqual(data.notificationQueued, true);
+
+      await emailSvc.flushNotificationOutboxForTesting();
 
       const opMails = sentMails.filter(m => m.to === 'ramesh.op@example.com');
       assert.strictEqual(opMails.length, 1, 'Assigned operator should receive update notification when admin acts');
@@ -300,6 +314,7 @@ async function runTests() {
         body: JSON.stringify({ note: 'Follow-up after reassignment' }),
       });
       assert.strictEqual(updateAfterReassign.status, 200);
+      await emailSvc.flushNotificationOutboxForTesting();
       assert.strictEqual(sentMails.filter(m => m.to === 'ramesh.op@example.com').length, 0, 'Previous operator must receive ZERO future updates');
       assert.strictEqual(sentMails.filter(m => m.to === 'suresh.op@example.com').length, 1, 'Current operator receives update');
     });
@@ -572,11 +587,16 @@ async function runTests() {
       });
       const data = await resp.json();
       assert.strictEqual(resp.status, 200);
-      assert.strictEqual(data.emailDelivery.hasFailures, true);
-      assert(data.emailDelivery.failedCount >= 1);
-      assert(data.emailDelivery.sentCount >= 2, 'Admin notifications still succeed');
-      const failedCust = data.emailDelivery.events.find((e: any) => e.recipientRole === 'customer');
-      assert.strictEqual(failedCust.state, 'failed');
+      assert.strictEqual(data.notificationQueued, true);
+
+      const jobs = await emailSvc.flushNotificationOutboxForTesting();
+      const badMailJob = jobs.find(j => j.appId === 'ICC-APP-BADMAIL');
+      assert(badMailJob && badMailJob.report, 'Outbox job must record delivery report for BADMAIL');
+      assert.strictEqual(badMailJob!.report!.hasFailures, true);
+      assert(badMailJob!.report!.failedCount >= 1);
+      assert(badMailJob!.report!.sentCount >= 2, 'Admin notifications still succeed');
+      const failedCust = badMailJob!.report!.events.find((e: any) => e.recipientRole === 'customer');
+      assert.strictEqual(failedCust?.state, 'failed');
     });
 
     // 13. Transient SMTP retry (flaky2 -> succeeds on 3rd attempt) + permanent fail + Admin retry without DB mutation
@@ -595,7 +615,7 @@ async function runTests() {
       assert.strictEqual(transientData.emailDelivery.events[0].wasRetried, true);
       assert.strictEqual(transientData.emailDelivery.events[0].attempts, 3);
 
-      // Permanent failure, then Admin retry
+      // Permanent failure in outbox, then Admin retry
       clearMails();
       transportBehavior = 'failAll';
       attemptCounter = 0;
@@ -606,9 +626,14 @@ async function runTests() {
       });
       const failData = await failResp.json();
       assert.strictEqual(failResp.status, 200);
-      assert.strictEqual(failData.emailDelivery.hasFailures, true);
-      const failedEventId = failData.emailDelivery.events[0].eventId;
+      assert.strictEqual(failData.notificationQueued, true);
       const storeBeforeRetry = fs.readFileSync(OPERATOR_STORE_PATH, 'utf-8');
+
+      const jobsAfterFail = await emailSvc.flushNotificationOutboxForTesting();
+      const failedJob = [...jobsAfterFail].reverse().find(j => j.appId === 'ICC-APP-1001' && j.state === 'failed');
+      assert(failedJob && failedJob.report, 'Outbox job must be marked failed after exhausting retries');
+      assert.strictEqual(failedJob!.report!.hasFailures, true);
+      const failedEventId = failedJob!.report!.events[0].eventId;
 
       // Verify Admin can list failed events
       const listResp = await fetch(`${baseUrl}/api/admin/notifications?state=failed`, {
@@ -709,6 +734,31 @@ async function runTests() {
       assert.strictEqual(codData.success, true);
       assert.strictEqual(codData.emailDelivery.hasFailures, true);
       transportBehavior = 'ok';
+    });
+
+    // 17. DB-first non-blocking update under 600ms SMTP delay
+    await check('17. Slow SMTP (600ms/email) does not block DB-first HTTP response (<250ms), then delivers in background', async () => {
+      clearMails();
+      transportDelayMs = 600;
+      const startedAt = Date.now();
+      const slowResp = await fetch(`${baseUrl}/api/operator/applications/ICC-APP-1001/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: adminToken },
+        body: JSON.stringify({
+          note: 'Update submitted during high SMTP latency',
+          clientRequestId: 'slow-smtp-req-1',
+        }),
+      });
+      const elapsedMs = Date.now() - startedAt;
+      const slowData = await slowResp.json();
+      assert.strictEqual(slowResp.status, 200);
+      assert.strictEqual(slowData.success, true);
+      assert.strictEqual(slowData.notificationQueued, true);
+      assert(elapsedMs < 250, `Expected non-blocking response <250ms, got ${elapsedMs}ms`);
+
+      await emailSvc.flushNotificationOutboxForTesting();
+      transportDelayMs = 0;
+      assert(sentMails.some(m => m.html.includes('Update submitted during high SMTP latency')), 'Background outbox must deliver queued email');
     });
 
     console.log(`\n🎉 All ${passed} email system audit, routing, template, reliability & security tests passed!`);

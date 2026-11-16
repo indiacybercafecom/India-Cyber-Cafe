@@ -73,6 +73,7 @@ export interface ApplicationNote {
   attachmentName?: string;
   attachments?: Array<ApplicationNoteAttachment | string>;
   clientReplyId?: string;
+  clientRequestId?: string;
 }
 
 export interface Application {

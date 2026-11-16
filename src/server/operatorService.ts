@@ -19,6 +19,8 @@ import {
   notifyReviewSubmitted,
   getNotificationEvents,
   retryNotificationEvent,
+  enqueueOutboxNotification,
+  registerOutboxOperatorProfileResolver,
   normalizeEmailAddress,
   isValidEmailAddress,
   NotificationDeliveryState,
@@ -34,7 +36,7 @@ const MAX_NOTE_LENGTH = 2000;
 const MAX_REPLY_ATTACHMENTS = 5;
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_STATUSES = new Set(['processing', 'clarification', 'completed', 'rejected']);
-const ALLOWED_UPDATE_BODY_FIELDS = new Set(['status', 'note', 'attachmentUrl', 'attachmentName', 'attachments']);
+const ALLOWED_UPDATE_BODY_FIELDS = new Set(['status', 'note', 'attachmentUrl', 'attachmentName', 'attachments', 'clientRequestId']);
 const ALLOWED_REPLY_BODY_FIELDS = new Set(['note', 'attachments', 'clientReplyId']);
 const PROTECTED_UPDATE_FIELDS = new Set([
   'paymentStatus', 'paymentMethod', 'charge', 'uid', 'userId', 'email',
@@ -216,6 +218,35 @@ function readTestStore(): { users: Record<string, any>; applications: Record<str
 function writeTestStore(store: { users: Record<string, any>; applications: Record<string, any>; payments: Record<string, any> }) {
   fs.mkdirSync(path.dirname(TEST_STORE_PATH), { recursive: true });
   fs.writeFileSync(TEST_STORE_PATH, JSON.stringify(store, null, 2), 'utf-8');
+}
+
+let testDbDelayMs = 0;
+let testDbTimeoutMs = 8000;
+
+export function setOperatorTestDbBehaviorForTesting(opts: { delayMs?: number; timeoutMs?: number }) {
+  if (!isTestMode()) return;
+  if (typeof opts.delayMs === 'number') testDbDelayMs = Math.max(0, opts.delayMs);
+  if (typeof opts.timeoutMs === 'number') testDbTimeoutMs = Math.max(10, opts.timeoutMs);
+}
+
+async function runWithTestDbTiming<T>(op: () => T, label: string): Promise<T> {
+  if (testDbDelayMs <= 0) {
+    return op();
+  }
+  return await withTimeout(
+    new Promise<T>((resolve, reject) => {
+      const t = setTimeout(() => {
+        try {
+          resolve(op());
+        } catch (err) {
+          reject(err);
+        }
+      }, testDbDelayMs);
+      if (typeof t.unref === 'function') t.unref();
+    }),
+    testDbTimeoutMs,
+    label
+  );
 }
 
 export interface VerifiedCaller {
@@ -531,6 +562,8 @@ async function readUserProfile(uid: string): Promise<{ uid: string; email: strin
   }
 }
 
+registerOutboxOperatorProfileResolver(readUserProfile);
+
 async function findOperatorProfile(params: { operatorUid?: string; operatorEmail?: string }) {
   const targetUid = cleanText(params.operatorUid || '', 128);
   const targetEmail = normalizeEmailAddress(params.operatorEmail || '');
@@ -656,6 +689,18 @@ export async function handleOperatorUpdateApplication(req: Request, res: Respons
     const attachmentName = cleanText(body.attachmentName, 150);
     const attachmentsCheck = normalizeValidatedAttachmentsList(body.attachments, appId);
 
+    let clientRequestId = '';
+    if (body.clientRequestId !== undefined && body.clientRequestId !== null) {
+      if (typeof body.clientRequestId !== 'string') {
+        return res.status(400).json({ success: false, error: 'clientRequestId must be a string.' });
+      }
+      const trimmedReqId = body.clientRequestId.trim();
+      if (trimmedReqId && (trimmedReqId.length > 128 || !/^[a-zA-Z0-9_-]+$/.test(trimmedReqId))) {
+        return res.status(400).json({ success: false, error: 'Invalid clientRequestId format.' });
+      }
+      clientRequestId = trimmedReqId;
+    }
+
     if (!attachmentsCheck.ok) {
       return res.status(400).json({ success: false, error: attachmentsCheck.error || 'Invalid attachments payload' });
     }
@@ -697,6 +742,9 @@ export async function handleOperatorUpdateApplication(req: Request, res: Respons
       time: new Date(nowMs).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
       createdAt: nowMs,
     };
+    if (clientRequestId) {
+      newNote.clientRequestId = clientRequestId;
+    }
     if (rawStatus) newNote.status = rawStatus;
     if (attachmentUrl) {
       newNote.attachment = attachmentUrl;
@@ -714,29 +762,61 @@ export async function handleOperatorUpdateApplication(req: Request, res: Respons
     let previousStatus = 'pending';
 
     if (isTestMode()) {
-      const store = readTestStore();
-      const target = store.applications?.[appId];
-      if (!target) {
-        return res.status(404).json({ success: false, error: 'Application not found' });
-      }
-      if (caller.role !== 'admin' && !isCallerAssignedToApp(target, caller)) {
-        return res.status(403).json({ success: false, error: 'Access denied: application is not assigned to your account.' });
-      }
-      previousStatus = String(target.status || 'pending');
-      if (!target.notes || Array.isArray(target.notes)) {
-        const mapped: Record<string, any> = {};
-        if (Array.isArray(target.notes)) {
-          target.notes.forEach((n: any, idx: number) => {
-            if (n && typeof n === 'object') mapped[n.id || `legacy_${idx}`] = n;
-          });
+      const txOut = await runWithTestDbTiming(() => {
+        const store = readTestStore();
+        const target = store.applications?.[appId];
+        if (!target) {
+          return { status: 404 as const, body: { success: false, error: 'Application not found' } };
         }
-        target.notes = mapped;
+        if (caller.role !== 'admin' && !isCallerAssignedToApp(target, caller)) {
+          return { status: 403 as const, body: { success: false, error: 'Access denied: application is not assigned to your account.' } };
+        }
+        previousStatus = String(target.status || 'pending');
+        if (!target.notes || Array.isArray(target.notes)) {
+          const mapped: Record<string, any> = {};
+          if (Array.isArray(target.notes)) {
+            target.notes.forEach((n: any, idx: number) => {
+              if (n && typeof n === 'object') mapped[n.id || `legacy_${idx}`] = n;
+            });
+          }
+          target.notes = mapped;
+        }
+        if (clientRequestId) {
+          const existingDup = Object.values(target.notes).find(
+            (n: any) => n && typeof n === 'object' && n.clientRequestId === clientRequestId && n.authorUid === caller.uid
+          );
+          if (existingDup) {
+            return {
+              status: 200 as const,
+              duplicate: true,
+              body: {
+                success: true,
+                duplicate: true,
+                note: existingDup,
+                status: target.status || 'pending',
+                updatedAt: target.updatedAt || nowIso,
+              },
+            };
+          }
+        }
+        target.notes[noteId] = newNote;
+        if (rawStatus) target.status = rawStatus;
+        target.updatedAt = nowIso;
+        writeTestStore(store);
+        return {
+          status: 200 as const,
+          duplicate: false,
+          snapshot: { id: appId, ...target },
+        };
+      }, 'Atomic application update');
+
+      if (txOut.status !== 200) {
+        return res.status(txOut.status).json(txOut.body);
       }
-      target.notes[noteId] = newNote;
-      if (rawStatus) target.status = rawStatus;
-      target.updatedAt = nowIso;
-      writeTestStore(store);
-      appSnapshotAfter = { id: appId, ...target };
+      if (txOut.duplicate) {
+        return res.json(txOut.body);
+      }
+      appSnapshotAfter = txOut.snapshot;
     } else if (ensureAdminInit() && rtdbAdmin) {
       const initialApp = await readApplication(appId);
       if (!initialApp) {
@@ -746,14 +826,16 @@ export async function handleOperatorUpdateApplication(req: Request, res: Respons
         return res.status(403).json({ success: false, error: 'Access denied: application is not assigned to your account.' });
       }
 
-      // Atomic RTDB transaction prevents TOCTOU race if Admin reassigns or disables Operator mid-request
-      const txState: { abortReason: 'NONE' | 'FORBIDDEN'; previousStatus: string } = {
+      // Atomic RTDB transaction prevents TOCTOU race & ensures duplicate clientRequestId idempotency
+      const txState: { abortReason: 'NONE' | 'FORBIDDEN' | 'DUPLICATE'; previousStatus: string; duplicateNote: any } = {
         abortReason: 'NONE',
         previousStatus: String(initialApp.status || 'pending'),
+        duplicateNote: null,
       };
       const txResult = await withTimeout(
         rtdbAdmin.ref(`applications/${appId}`).transaction((currentApp: any) => {
           txState.abortReason = 'NONE';
+          txState.duplicateNote = null;
           if (currentApp === null) {
             return null;
           }
@@ -769,6 +851,16 @@ export async function handleOperatorUpdateApplication(req: Request, res: Respons
             });
           } else if (currentApp.notes && typeof currentApp.notes === 'object') {
             Object.assign(nextNotes, currentApp.notes);
+          }
+          if (clientRequestId) {
+            const existingDup = Object.values(nextNotes).find(
+              (n: any) => n && typeof n === 'object' && n.clientRequestId === clientRequestId && n.authorUid === caller.uid
+            );
+            if (existingDup) {
+              txState.abortReason = 'DUPLICATE';
+              txState.duplicateNote = existingDup;
+              return undefined;
+            }
           }
           nextNotes[noteId] = newNote;
 
@@ -786,6 +878,15 @@ export async function handleOperatorUpdateApplication(req: Request, res: Respons
       if (txState.abortReason === 'FORBIDDEN') {
         return res.status(403).json({ success: false, error: 'Access denied: application assignment changed.' });
       }
+      if (txState.abortReason === 'DUPLICATE' && txState.duplicateNote) {
+        return res.json({
+          success: true,
+          duplicate: true,
+          note: txState.duplicateNote,
+          status: initialApp.status || 'pending',
+          updatedAt: initialApp.updatedAt || nowIso,
+        });
+      }
       const valAfter = txResult.snapshot?.val();
       if (!valAfter) {
         return res.status(404).json({ success: false, error: 'Application not found' });
@@ -799,20 +900,27 @@ export async function handleOperatorUpdateApplication(req: Request, res: Respons
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: 'Firebase Admin credentials not configured on server' });
     }
 
-    const assignedOperatorProfile = appSnapshotAfter.assignedToUid
-      ? await readUserProfile(String(appSnapshotAfter.assignedToUid))
-      : null;
+    const attachmentSummary = normalizedAttachments.length > 0
+      ? normalizedAttachments.map(a => a.name).join(', ')
+      : (attachmentName || (attachmentUrl ? 'Attachment' : undefined));
 
-    const emailDelivery = await notifyApplicationUpdate({
+    const outboxKey = clientRequestId
+      ? `app_update:${appId}:req:${clientRequestId}`
+      : `app_update:${appId}:${noteId}`;
+
+    enqueueOutboxNotification({
+      idempotencyKey: outboxKey,
+      kind: 'application_update',
       appId,
-      app: appSnapshotAfter,
-      previousStatus,
-      newStatus: rawStatus || undefined,
-      noteText: noteText || undefined,
-      attachmentName: attachmentName || (attachmentUrl ? 'Attachment' : undefined),
-      performedBy: { uid: caller.uid, name: caller.name, email: caller.email, role: caller.role },
-      assignedOperator: assignedOperatorProfile,
-      idempotencyKey: `app_update:${appId}:${noteId}`,
+      payload: {
+        appSnapshot: appSnapshotAfter,
+        previousStatus,
+        newStatus: rawStatus || undefined,
+        noteText: noteText || undefined,
+        attachmentName: attachmentSummary,
+        performedBy: { uid: caller.uid, name: caller.name, email: caller.email, role: caller.role },
+        timestamp: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      },
     });
 
     return res.json({
@@ -820,11 +928,14 @@ export async function handleOperatorUpdateApplication(req: Request, res: Respons
       note: newNote,
       status: rawStatus || appSnapshotAfter.status,
       updatedAt: nowIso,
-      emailDelivery,
+      notificationQueued: true,
     });
   } catch (err: any) {
     if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
+    }
+    if (String(err?.message || '').toLowerCase().includes('timed out')) {
+      return res.status(504).json({ success: false, code: 'DB_TIMEOUT', error: 'Database did not respond in time. Please try again.' });
     }
     console.error('[operatorService] handleOperatorUpdateApplication error:', err);
     return res.status(500).json({ success: false, error: 'Failed to update application' });
@@ -1116,40 +1227,58 @@ export async function handleUserReplyApplication(req: Request, res: Response) {
     let appSnapshotAfter: any = null;
 
     if (isTestMode()) {
-      const store = readTestStore();
-      const target = store.applications?.[appId];
-      if (!target) {
-        return res.status(404).json({ success: false, error: 'Application not found' });
-      }
-      if (!isCallerOwnerOfApp(target, caller)) {
-        return res.status(403).json({ success: false, error: 'Access denied: you can only reply to your own applications.' });
-      }
-      if (!target.notes || Array.isArray(target.notes)) {
-        const mapped: Record<string, any> = {};
-        if (Array.isArray(target.notes)) {
-          target.notes.forEach((n: any, idx: number) => {
-            if (n && typeof n === 'object') mapped[n.id || `legacy_${idx}`] = n;
-          });
+      const txOut = await runWithTestDbTiming(() => {
+        const store = readTestStore();
+        const target = store.applications?.[appId];
+        if (!target) {
+          return { status: 404 as const, body: { success: false, error: 'Application not found' } };
         }
-        target.notes = mapped;
-      }
-      if (clientReplyId) {
-        const existingDup = Object.values(target.notes).find(
-          (n: any) => n && typeof n === 'object' && n.clientReplyId === clientReplyId && n.authorUid === caller.uid
-        );
-        if (existingDup) {
-          return res.json({
-            success: true,
-            duplicate: true,
-            note: existingDup,
-            updatedAt: target.updatedAt || nowIso,
-          });
+        if (!isCallerOwnerOfApp(target, caller)) {
+          return { status: 403 as const, body: { success: false, error: 'Access denied: you can only reply to your own applications.' } };
         }
+        if (!target.notes || Array.isArray(target.notes)) {
+          const mapped: Record<string, any> = {};
+          if (Array.isArray(target.notes)) {
+            target.notes.forEach((n: any, idx: number) => {
+              if (n && typeof n === 'object') mapped[n.id || `legacy_${idx}`] = n;
+            });
+          }
+          target.notes = mapped;
+        }
+        if (clientReplyId) {
+          const existingDup = Object.values(target.notes).find(
+            (n: any) => n && typeof n === 'object' && n.clientReplyId === clientReplyId && n.authorUid === caller.uid
+          );
+          if (existingDup) {
+            return {
+              status: 200 as const,
+              duplicate: true,
+              body: {
+                success: true,
+                duplicate: true,
+                note: existingDup,
+                updatedAt: target.updatedAt || nowIso,
+              },
+            };
+          }
+        }
+        target.notes[noteId] = newNote;
+        target.updatedAt = nowIso;
+        writeTestStore(store);
+        return {
+          status: 200 as const,
+          duplicate: false,
+          snapshot: { id: appId, ...target },
+        };
+      }, 'Atomic user application reply');
+
+      if (txOut.status !== 200) {
+        return res.status(txOut.status).json(txOut.body);
       }
-      target.notes[noteId] = newNote;
-      target.updatedAt = nowIso;
-      writeTestStore(store);
-      appSnapshotAfter = { id: appId, ...target };
+      if (txOut.duplicate) {
+        return res.json(txOut.body);
+      }
+      appSnapshotAfter = txOut.snapshot;
     } else if (ensureAdminInit() && rtdbAdmin) {
       const initialApp = await readApplication(appId);
       if (!initialApp) {
@@ -1226,29 +1355,35 @@ export async function handleUserReplyApplication(req: Request, res: Response) {
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: 'Firebase Admin credentials not configured on server' });
     }
 
-    const assignedOperatorProfile = appSnapshotAfter.assignedToUid
-      ? await readUserProfile(String(appSnapshotAfter.assignedToUid)).catch(() => null)
-      : null;
+    const outboxKey = clientReplyId
+      ? `app_user_reply:${appId}:req:${clientReplyId}`
+      : `app_user_reply:${appId}:${noteId}`;
 
-    const emailDelivery = await notifyUserApplicationReply({
+    enqueueOutboxNotification({
+      idempotencyKey: outboxKey,
+      kind: 'user_reply',
       appId,
-      app: appSnapshotAfter,
-      noteText: newNote.text,
-      attachmentNames: normalizedAttachments.map(a => a.name),
-      performedBy: { uid: caller.uid, name: caller.name, email: caller.email },
-      assignedOperator: assignedOperatorProfile,
-      idempotencyKey: `app_user_reply:${appId}:${noteId}`,
-    }).catch(() => null);
+      payload: {
+        appSnapshot: appSnapshotAfter,
+        noteText: newNote.text,
+        attachmentNames: normalizedAttachments.map(a => a.name),
+        performedBy: { uid: caller.uid, name: caller.name, email: caller.email, role: 'user' },
+        timestamp: new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      },
+    });
 
     return res.json({
       success: true,
       note: newNote,
       updatedAt: nowIso,
-      ...(emailDelivery ? { emailDelivery } : {}),
+      notificationQueued: true,
     });
   } catch (err: any) {
     if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
+    }
+    if (String(err?.message || '').toLowerCase().includes('timed out')) {
+      return res.status(504).json({ success: false, code: 'DB_TIMEOUT', error: 'Database did not respond in time. Please try again.' });
     }
     console.error('[operatorService] handleUserReplyApplication error:', err);
     return res.status(500).json({ success: false, error: 'Failed to submit reply' });

@@ -50,7 +50,8 @@ import {
 } from './src/server/operatorService.js';
 import {
   notifyDirectPayLinkPayment,
-  notifyPrivacyRequestSubmitted
+  notifyPrivacyRequestSubmitted,
+  recoverNotificationOutbox
 } from './src/server/emailNotificationService.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -73,6 +74,15 @@ const app = express();
 initializePublicDataOnStartup().catch(error => {
   console.error('[DATA SYNC] Startup initialization error:', error);
 });
+
+try {
+  const recoveredCount = recoverNotificationOutbox();
+  if (recoveredCount > 0) {
+    console.log(`[EMAIL OUTBOX] Recovered ${recoveredCount} pending notification job(s) on startup.`);
+  }
+} catch (error) {
+  console.warn('[EMAIL OUTBOX] Startup recovery notice:', error);
+}
 
 // Trust proxy for correct protocol and host detection behind proxies
 app.set('trust proxy', true);

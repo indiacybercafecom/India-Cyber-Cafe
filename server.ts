@@ -50,7 +50,8 @@ import {
 } from "./src/server/operatorService.js";
 import {
   notifyDirectPayLinkPayment,
-  notifyPrivacyRequestSubmitted
+  notifyPrivacyRequestSubmitted,
+  recoverNotificationOutbox
 } from "./src/server/emailNotificationService.js";
 
 const resolvedRoot = fs.existsSync(path.join(process.cwd(), 'package.json'))
@@ -72,6 +73,15 @@ async function startServer() {
     console.error("[DATA SYNC] Startup initialization error (non-fatal):", err);
     // App continues to run; Firebase fallback will be used
   });
+
+  try {
+    const recoveredCount = recoverNotificationOutbox();
+    if (recoveredCount > 0) {
+      console.log(`[EMAIL OUTBOX] Recovered ${recoveredCount} pending notification job(s) on startup.`);
+    }
+  } catch (err) {
+    console.warn("[EMAIL OUTBOX] Startup recovery notice:", err);
+  }
 
   // Trust proxy for correct protocol and host detection behind proxies
   app.set('trust proxy', true);

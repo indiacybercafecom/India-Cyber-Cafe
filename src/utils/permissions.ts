@@ -131,7 +131,31 @@ export function normalizeApplicationNotes(
     });
   }
 
-  return entries
+  const seenIds = new Set<string>();
+  const seenReplyIds = new Set<string>();
+  const seenRequestIds = new Set<string>();
+  const deduped: Array<ApplicationNote & { _sortOrder: number }> = [];
+
+  for (const entry of entries) {
+    const noteId = typeof entry.id === 'string' ? entry.id.trim() : '';
+    const replyKey = typeof entry.clientReplyId === 'string' ? entry.clientReplyId.trim() : '';
+    const requestKey = typeof entry.clientRequestId === 'string' ? entry.clientRequestId.trim() : '';
+
+    if (
+      (noteId && seenIds.has(noteId)) ||
+      (replyKey && seenReplyIds.has(replyKey)) ||
+      (requestKey && seenRequestIds.has(requestKey))
+    ) {
+      continue;
+    }
+
+    if (noteId) seenIds.add(noteId);
+    if (replyKey) seenReplyIds.add(replyKey);
+    if (requestKey) seenRequestIds.add(requestKey);
+    deduped.push(entry);
+  }
+
+  return deduped
     .sort((a, b) => a._sortOrder - b._sortOrder)
     .map(({ _sortOrder, ...note }) => note);
 }

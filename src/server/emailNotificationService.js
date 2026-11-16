@@ -10,6 +10,7 @@ const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
   : path.resolve(process.cwd(), '..');
 
 const NOTIFICATION_LEDGER_PATH = path.join(APP_ROOT, 'data/notification_events.json');
+const NOTIFICATION_OUTBOX_PATH = path.join(APP_ROOT, 'data/notification_outbox.json');
 const DEFAULT_ADMIN_EMAILS = ['icc@indiacybercafe.com', 'indiacybercafe.com@gmail.com'];
 const BRAND_LOGO_URL = 'https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png';
 const SITE_URL = 'https://b.indiacybercafe.com';
@@ -27,6 +28,7 @@ export function setEmailTransportForTesting(transport) {
 export function resetNotificationStateForTesting() {
   memoryLedger.clear();
   dedupIndex.clear();
+  resetNotificationOutboxForTesting();
   if (isTestMode()) {
     try {
       if (fs.existsSync(NOTIFICATION_LEDGER_PATH)) {
@@ -1880,3 +1882,353 @@ export async function notifyPrivacyRequestSubmitted(params) {
 
   return dispatchNotificationBatch(queue);
 }
+
+// =============================================================================
+// DURABLE BACKGROUND NOTIFICATION OUTBOX (NON-BLOCKING QUEUE + RETRY + RECOVERY)
+// =============================================================================
+
+const outboxJobs = new Map();
+const outboxIdempotencyIndex = new Map();
+let outboxHydrated = false;
+let outboxWorkerTimer = null;
+let outboxWorkerPromise = null;
+let outboxOperatorResolver = null;
+
+export function registerOutboxOperatorProfileResolver(resolver) {
+  outboxOperatorResolver = resolver;
+}
+
+function readDiskOutbox() {
+  try {
+    if (fs.existsSync(NOTIFICATION_OUTBOX_PATH)) {
+      return JSON.parse(fs.readFileSync(NOTIFICATION_OUTBOX_PATH, 'utf-8'));
+    }
+  } catch {}
+  return {};
+}
+
+function writeDiskOutbox() {
+  try {
+    fs.mkdirSync(path.dirname(NOTIFICATION_OUTBOX_PATH), { recursive: true });
+    const all = Array.from(outboxJobs.values());
+    const activeOrFailed = all.filter(j => j.state !== 'completed');
+    const completed = all
+      .filter(j => j.state === 'completed')
+      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+      .slice(0, 200);
+    const bounded = [...activeOrFailed, ...completed];
+    const obj = {};
+    for (const j of bounded) {
+      obj[j.jobId] = j;
+    }
+    fs.writeFileSync(NOTIFICATION_OUTBOX_PATH, JSON.stringify(obj, null, 2), 'utf-8');
+  } catch (err) {
+    console.warn('[emailOutbox] Could not persist outbox to disk:', err?.message || err);
+  }
+}
+
+function hydrateOutboxCache(resetInFlightOnStartup = false) {
+  if (outboxHydrated && !resetInFlightOnStartup) return;
+  const disk = readDiskOutbox();
+  if (!outboxHydrated) {
+    outboxJobs.clear();
+    outboxIdempotencyIndex.clear();
+    for (const [jobId, rec] of Object.entries(disk)) {
+      if (!rec || typeof rec !== 'object') continue;
+      if (resetInFlightOnStartup && rec.state === 'processing') {
+        rec.state = 'queued';
+        rec.nextAttemptAt = Date.now();
+        rec.updatedAt = new Date().toISOString();
+      }
+      outboxJobs.set(jobId, rec);
+      if (rec.idempotencyKey) {
+        outboxIdempotencyIndex.set(rec.idempotencyKey, jobId);
+      }
+    }
+    outboxHydrated = true;
+    if (resetInFlightOnStartup) {
+      writeDiskOutbox();
+    }
+  } else if (resetInFlightOnStartup) {
+    let changed = false;
+    for (const job of outboxJobs.values()) {
+      if (job.state === 'processing') {
+        job.state = 'queued';
+        job.nextAttemptAt = Date.now();
+        job.updatedAt = new Date().toISOString();
+        changed = true;
+      }
+    }
+    if (changed) writeDiskOutbox();
+  }
+}
+
+export function resetNotificationOutboxForTesting() {
+  if (outboxWorkerTimer) {
+    clearTimeout(outboxWorkerTimer);
+    outboxWorkerTimer = null;
+  }
+  outboxJobs.clear();
+  outboxIdempotencyIndex.clear();
+  outboxHydrated = true;
+  if (isTestMode()) {
+    try {
+      if (fs.existsSync(NOTIFICATION_OUTBOX_PATH)) {
+        fs.unlinkSync(NOTIFICATION_OUTBOX_PATH);
+      }
+    } catch {}
+  }
+}
+
+export function getOutboxJobsForTesting(filters = {}) {
+  hydrateOutboxCache();
+  let list = Array.from(outboxJobs.values());
+  if (filters?.state) list = list.filter(j => j.state === filters.state);
+  if (filters?.appId) list = list.filter(j => j.appId === filters.appId);
+  return list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+}
+
+function mirrorOutboxFailureAsync(job) {
+  if (isTestMode() || getApps().length === 0) return;
+  try {
+    const db = getDatabase(getApps()[0]);
+    Promise.race([
+      db.ref(`notificationOutbox/${job.jobId}`).set({
+        jobId: job.jobId,
+        idempotencyKey: job.idempotencyKey,
+        kind: job.kind,
+        appId: job.appId,
+        state: job.state,
+        attempts: job.attempts,
+        maxAttempts: job.maxAttempts,
+        lastError: job.lastError || null,
+        createdAt: job.createdAt,
+        updatedAt: job.updatedAt,
+      }),
+      new Promise(resolve => setTimeout(resolve, 2500)),
+    ]).catch(() => {});
+  } catch {}
+}
+
+function scheduleOutboxWorker(delayMs = 0) {
+  if (outboxWorkerTimer) {
+    clearTimeout(outboxWorkerTimer);
+    outboxWorkerTimer = null;
+  }
+  const safeDelay = Math.max(0, delayMs);
+  outboxWorkerTimer = setTimeout(() => {
+    outboxWorkerTimer = null;
+    void runOutboxWorkerLoop();
+  }, safeDelay);
+  if (typeof outboxWorkerTimer.unref === 'function') {
+    outboxWorkerTimer.unref();
+  }
+}
+
+async function processSingleOutboxJob(job) {
+  job.state = 'processing';
+  job.attempts += 1;
+  job.updatedAt = new Date().toISOString();
+  writeDiskOutbox();
+
+  try {
+    let assignedOperator = job.payload.assignedOperator ?? null;
+    const assignedUid = job.payload.appSnapshot?.assignedToUid;
+    if (!assignedOperator && assignedUid && outboxOperatorResolver) {
+      assignedOperator = await outboxOperatorResolver(String(assignedUid)).catch(() => null);
+    }
+
+    let report;
+    if (job.kind === 'application_update') {
+      report = await notifyApplicationUpdate({
+        appId: job.appId,
+        app: job.payload.appSnapshot,
+        previousStatus: job.payload.previousStatus || 'processing',
+        newStatus: job.payload.newStatus,
+        noteText: job.payload.noteText,
+        attachmentName: job.payload.attachmentName,
+        performedBy: {
+          uid: job.payload.performedBy.uid,
+          name: job.payload.performedBy.name,
+          email: job.payload.performedBy.email,
+          role: job.payload.performedBy.role || 'operator',
+        },
+        assignedOperator,
+        timestamp: job.payload.timestamp,
+        idempotencyKey: job.idempotencyKey,
+      });
+    } else {
+      report = await notifyUserApplicationReply({
+        appId: job.appId,
+        app: job.payload.appSnapshot,
+        noteText: job.payload.noteText || '',
+        attachmentNames: job.payload.attachmentNames || [],
+        performedBy: {
+          uid: job.payload.performedBy.uid,
+          name: job.payload.performedBy.name,
+          email: job.payload.performedBy.email,
+        },
+        assignedOperator,
+        timestamp: job.payload.timestamp,
+        idempotencyKey: job.idempotencyKey,
+      });
+    }
+
+    job.report = report;
+    if (!report.hasFailures) {
+      const doneAt = new Date().toISOString();
+      job.state = 'completed';
+      job.lastError = undefined;
+      job.completedAt = doneAt;
+      job.updatedAt = doneAt;
+      writeDiskOutbox();
+      return;
+    }
+
+    const failedEvents = report.events.filter(e => e.state === 'failed');
+    const summaryErr = failedEvents.map(e => `${e.recipientRole}:${e.error || 'failed'}`).join('; ').slice(0, 300);
+    const hasRetryableError = failedEvents.some(
+      e => e.error !== 'MISSING_OR_INVALID_CUSTOMER_EMAIL' && e.error !== 'MISSING_OR_INVALID_RECIPIENT_EMAIL'
+    );
+
+    if (hasRetryableError && job.attempts < job.maxAttempts) {
+      const backoffMs = (isTestMode() || testingTransport)
+        ? 15 * job.attempts
+        : 2000 * Math.pow(2, job.attempts - 1);
+      job.state = 'queued';
+      job.nextAttemptAt = Date.now() + backoffMs;
+      job.lastError = summaryErr || 'Partial email failure scheduled for outbox retry';
+      job.updatedAt = new Date().toISOString();
+      writeDiskOutbox();
+      return;
+    }
+
+    job.state = 'failed';
+    job.lastError = summaryErr || 'Email notification delivery failed';
+    job.updatedAt = new Date().toISOString();
+    writeDiskOutbox();
+    console.error(`[EMAIL OUTBOX] Job permanently failed (jobId=${job.jobId}, kind=${job.kind}, appId=${job.appId}, attempts=${job.attempts}): ${job.lastError}`);
+    mirrorOutboxFailureAsync(job);
+  } catch (err) {
+    const errMsg = String(err?.message || err || 'Outbox worker error').slice(0, 300);
+    if (job.attempts < job.maxAttempts) {
+      const backoffMs = (isTestMode() || testingTransport)
+        ? 15 * job.attempts
+        : 2000 * Math.pow(2, job.attempts - 1);
+      job.state = 'queued';
+      job.nextAttemptAt = Date.now() + backoffMs;
+      job.lastError = errMsg;
+      job.updatedAt = new Date().toISOString();
+      writeDiskOutbox();
+    } else {
+      job.state = 'failed';
+      job.lastError = errMsg;
+      job.updatedAt = new Date().toISOString();
+      writeDiskOutbox();
+      console.error(`[EMAIL OUTBOX] Job threw permanent error (jobId=${job.jobId}, kind=${job.kind}, appId=${job.appId}): ${errMsg}`);
+      mirrorOutboxFailureAsync(job);
+    }
+  }
+}
+
+async function runOutboxWorkerLoop() {
+  if (outboxWorkerPromise) {
+    return outboxWorkerPromise;
+  }
+
+  outboxWorkerPromise = (async () => {
+    try {
+      hydrateOutboxCache();
+      while (true) {
+        const now = Date.now();
+        const dueJobs = Array.from(outboxJobs.values())
+          .filter(j => j.state === 'queued' && j.nextAttemptAt <= now)
+          .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt);
+
+        if (dueJobs.length === 0) break;
+
+        for (const job of dueJobs) {
+          await processSingleOutboxJob(job);
+        }
+      }
+
+      const pendingFuture = Array.from(outboxJobs.values())
+        .filter(j => j.state === 'queued' && j.nextAttemptAt > Date.now())
+        .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt);
+
+      if (pendingFuture.length > 0) {
+        const delayMs = Math.max(5, pendingFuture[0].nextAttemptAt - Date.now());
+        scheduleOutboxWorker(delayMs);
+      }
+    } finally {
+      outboxWorkerPromise = null;
+    }
+  })();
+
+  return outboxWorkerPromise;
+}
+
+export function enqueueOutboxNotification(params) {
+  hydrateOutboxCache();
+
+  const existingId = params.idempotencyKey ? outboxIdempotencyIndex.get(params.idempotencyKey) : undefined;
+  if (existingId) {
+    const existing = outboxJobs.get(existingId);
+    if (existing && (existing.state === 'queued' || existing.state === 'processing' || existing.state === 'completed')) {
+      return { queued: false, duplicate: true, job: existing };
+    }
+  }
+
+  const nowIso = new Date().toISOString();
+  const jobId = `obx_${Date.now()}_${crypto.randomBytes(5).toString('hex')}`;
+  const job = {
+    jobId,
+    idempotencyKey: params.idempotencyKey || jobId,
+    kind: params.kind,
+    appId: params.appId,
+    payload: params.payload,
+    state: 'queued',
+    attempts: 0,
+    maxAttempts: params.maxAttempts ?? 3,
+    nextAttemptAt: Date.now(),
+    createdAt: nowIso,
+    updatedAt: nowIso,
+  };
+
+  outboxJobs.set(jobId, job);
+  outboxIdempotencyIndex.set(job.idempotencyKey, jobId);
+  writeDiskOutbox();
+  scheduleOutboxWorker(0);
+
+  return { queued: true, duplicate: false, job };
+}
+
+export function recoverNotificationOutbox() {
+  hydrateOutboxCache(true);
+  const pendingCount = Array.from(outboxJobs.values()).filter(j => j.state === 'queued').length;
+  if (pendingCount > 0) {
+    scheduleOutboxWorker(0);
+  }
+  return pendingCount;
+}
+
+export async function flushNotificationOutboxForTesting() {
+  hydrateOutboxCache();
+  if (outboxWorkerTimer) {
+    clearTimeout(outboxWorkerTimer);
+    outboxWorkerTimer = null;
+  }
+  if (outboxWorkerPromise) {
+    await outboxWorkerPromise;
+  }
+  while (true) {
+    const queued = Array.from(outboxJobs.values()).filter(j => j.state === 'queued');
+    if (queued.length === 0) break;
+    for (const j of queued) {
+      j.nextAttemptAt = 0;
+    }
+    await runOutboxWorkerLoop();
+  }
+  return getOutboxJobsForTesting();
+}
+

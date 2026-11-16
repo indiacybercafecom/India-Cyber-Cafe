@@ -78,13 +78,37 @@ function extractFileUrls(value: unknown): string[] | null {
   return nonEmpty.map((item) => item.trim());
 }
 
+const REQUEST_TIMEOUT_MS = 15000;
+
+async function fetchWithTimeout(
+  input: RequestInfo | URL,
+  init?: RequestInit,
+  timeoutMs = REQUEST_TIMEOUT_MS
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      throw new Error('Server took too long to respond. Your entered data is preserved.');
+    }
+    throw new Error('Connection failed while saving. Your entered data is preserved.');
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export function ApplicationDetailsModal({ app, onClose, currentUser, operators }: ApplicationDetailsModalProps) {
   const [noteText, setNoteText] = useState('');
   const [newStatus, setNewStatus] = useState('');
   const [noteFile, setNoteFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [downloadingAttachment, setDownloadingAttachment] = useState<string | null>(null);
+  const [localStatusOverride, setLocalStatusOverride] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const staffSubmittingRef = useRef(false);
+  const staffClientKeyRef = useRef<string | null>(null);
 
   // User two-way reply state
   const [isReplyExpanded, setIsReplyExpanded] = useState(false);
@@ -99,12 +123,27 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
   useEffect(() => {
     setIsReplyExpanded(false);
     setLocalAppendedNotes([]);
+    setLocalStatusOverride(null);
     setReplyText('');
     setReplyFiles([]);
     setReplyLoading(false);
     replySubmittingRef.current = false;
     replyClientKeyRef.current = null;
+    setNoteText('');
+    setNewStatus('');
+    setNoteFile(null);
+    setLoading(false);
+    staffSubmittingRef.current = false;
+    staffClientKeyRef.current = null;
+    if (replyFileInputRef.current) replyFileInputRef.current.value = '';
+    if (fileInputRef.current) fileInputRef.current.value = '';
   }, [app?.id]);
+
+  useEffect(() => {
+    if (localStatusOverride && app?.status === localStatusOverride) {
+      setLocalStatusOverride(null);
+    }
+  }, [app?.status, localStatusOverride]);
 
   if (!app) return null;
 
@@ -128,8 +167,29 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
 
   const baseNormalizedNotes = normalizeApplicationNotes(app.notes);
   const existingNoteIds = new Set(baseNormalizedNotes.map(n => n.id).filter(Boolean));
-  const pendingLocalNotes = localAppendedNotes.filter(n => !n.id || !existingNoteIds.has(n.id));
+  const existingClientReplyIds = new Set(baseNormalizedNotes.map(n => n.clientReplyId).filter(Boolean));
+  const existingClientRequestIds = new Set(baseNormalizedNotes.map(n => n.clientRequestId).filter(Boolean));
+  const pendingLocalNotes = localAppendedNotes.filter(
+    n =>
+      (!n.id || !existingNoteIds.has(n.id)) &&
+      (!n.clientReplyId || !existingClientReplyIds.has(n.clientReplyId)) &&
+      (!n.clientRequestId || !existingClientRequestIds.has(n.clientRequestId))
+  );
   const normalizedNotes = normalizeApplicationNotes([...baseNormalizedNotes, ...pendingLocalNotes]);
+  const displayStatus = localStatusOverride || app.status;
+
+  const appendLocalNoteUnique = (incoming: ApplicationNote | null | undefined) => {
+    if (!incoming || typeof incoming !== 'object') return;
+    setLocalAppendedNotes(prev => {
+      const alreadyExists = prev.some(
+        n =>
+          (incoming.id && n.id === incoming.id) ||
+          (incoming.clientReplyId && n.clientReplyId === incoming.clientReplyId) ||
+          (incoming.clientRequestId && n.clientRequestId === incoming.clientRequestId)
+      );
+      return alreadyExists ? prev : [...prev, incoming];
+    });
+  };
 
   const handleOpenAttachment = async (url: string, filename?: string) => {
     if (!url) return;
@@ -177,8 +237,14 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
   };
 
   const handleFileChange = (file: File | null) => {
+    if (staffSubmittingRef.current || loading) return;
     if (!file) {
       setNoteFile(null);
+      staffClientKeyRef.current = null;
+      return;
+    }
+    if (file.size <= 0) {
+      showToast('Attachment file is empty or unreadable.', 'error');
       return;
     }
     if (file.size > MAX_ATTACHMENT_BYTES) {
@@ -190,6 +256,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       return;
     }
     setNoteFile(file);
+    staffClientKeyRef.current = null;
   };
 
   const handleReplyFilesChange = (fileList: FileList | null) => {
@@ -306,7 +373,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
         replyFiles.forEach(file => {
           formData.append('files', file);
         });
-        const uploadResp = await fetch(
+        const uploadResp = await fetchWithTimeout(
           `/api/applications/${encodeURIComponent(app.id)}/reply-attachments`,
           {
             method: 'POST',
@@ -318,12 +385,12 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
         );
         const uploadData = await uploadResp.json().catch(() => ({}));
         if (!uploadResp.ok || !uploadData.success || !Array.isArray(uploadData.attachments)) {
-          throw new Error(uploadData.error || 'Failed to upload reply attachments.');
+          throw new Error(uploadData.error || 'Unable to upload files. Your message is still here.');
         }
         uploadedAttachments = uploadData.attachments;
       }
 
-      const resp = await fetch(`/api/applications/${encodeURIComponent(app.id)}/reply`, {
+      const resp = await fetchWithTimeout(`/api/applications/${encodeURIComponent(app.id)}/reply`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -337,14 +404,10 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       });
       const data = await resp.json().catch(() => ({}));
       if (!resp.ok || !data.success) {
-        throw new Error(data.error || 'Failed to send reply.');
+        throw new Error(data.error || 'Unable to save reply. Your message and files are safe.');
       }
 
-      if (data.note && typeof data.note === 'object') {
-        setLocalAppendedNotes(prev =>
-          prev.some(n => n.id && n.id === data.note.id) ? prev : [...prev, data.note]
-        );
-      }
+      appendLocalNoteUnique(data.note);
 
       setReplyText('');
       setReplyFiles([]);
@@ -353,9 +416,13 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       if (replyFileInputRef.current) {
         replyFileInputRef.current.value = '';
       }
-      showToast('Reply sent successfully!');
+      showToast('Sent — Reply saved!');
     } catch (error: any) {
-      showToast(error?.message || 'Failed to send reply.', 'error');
+      showToast(
+        error?.message || 'Unable to send reply.',
+        'error',
+        'Unable to send reply. Your message and files are preserved.'
+      );
     } finally {
       replySubmittingRef.current = false;
       setReplyLoading(false);
@@ -363,21 +430,24 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
   };
 
   const handleUpdatePaymentStatus = async (status: 'pending' | 'completed') => {
+    if (staffSubmittingRef.current || loading) return;
     if (!perms.canUpdatePayment) {
       showToast('Only Admins can update payment status.', 'error');
       return;
     }
+    staffSubmittingRef.current = true;
     setLoading(true);
     try {
       const result = await updateApplicationPaymentStatusApi(app.id, status);
       if (result.emailDelivery?.hasFailures) {
         showToast(`Payment status updated to ${status}, but email notification could not be sent.`, 'info');
       } else {
-        showToast(`Payment status updated to ${status}`);
+        showToast(`Sent — Payment status updated to ${status}`);
       }
     } catch (error: any) {
-      showToast(error.message || 'Failed to update payment status', 'error');
+      showToast(error?.message || 'Failed to update payment status', 'error');
     } finally {
+      staffSubmittingRef.current = false;
       setLoading(false);
     }
   };
@@ -386,7 +456,8 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
     status?: string;
     note?: string;
     file?: File | null;
-  }): Promise<EmailDeliverySummary | undefined> => {
+    explicitClientRequestId?: string;
+  }): Promise<{ note?: ApplicationNote; status?: string; notificationQueued?: boolean; emailDelivery?: EmailDeliverySummary }> => {
     const sanitizedNote = trimWhitespace(opts.note || '');
     const sanitizedStatus = trimWhitespace(opts.status || '');
 
@@ -402,6 +473,11 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       throw new Error('Authentication session expired. Please sign in again.');
     }
 
+    const requestKey =
+      opts.explicitClientRequestId ||
+      staffClientKeyRef.current ||
+      (staffClientKeyRef.current = `req_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`);
+
     let attachmentUrl = '';
     let attachmentName = '';
 
@@ -411,7 +487,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       }
       const formData = new FormData();
       formData.append('file', opts.file);
-      const uploadResp = await fetch(
+      const uploadResp = await fetchWithTimeout(
         `/api/operator/applications/${encodeURIComponent(app.id)}/upload-attachment`,
         {
           method: 'POST',
@@ -427,16 +503,14 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
         attachmentUrl = uploadedUrl;
         attachmentName = uploadData.attachmentName || opts.file.name;
       } else if (uploadResp.status === 503 && uploadData.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
-        throw new Error(
-          'Attachment upload service is unavailable on the server. Note and attachment were not saved.'
-        );
+        throw new Error('File upload service unavailable. Note was not saved.');
       } else {
-        throw new Error(uploadData.error || 'Failed to upload attachment. Note and attachment were not saved.');
+        throw new Error(uploadData.error || 'Unable to upload file. Your note is still here.');
       }
     }
 
-    // Server-authoritative update + role-separated Customer / Admin / Operator email dispatch
-    const resp = await fetch(`/api/operator/applications/${encodeURIComponent(app.id)}/update`, {
+    // Server-authoritative atomic DB save first; background outbox dispatches notifications asynchronously
+    const resp = await fetchWithTimeout(`/api/operator/applications/${encodeURIComponent(app.id)}/update`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -447,72 +521,105 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
         note: sanitizedNote || undefined,
         attachmentUrl: attachmentUrl || undefined,
         attachmentName: attachmentName || undefined,
+        clientRequestId: requestKey,
       }),
     });
     const data = await resp.json().catch(() => ({}));
     if (!resp.ok || !data.success) {
-      throw new Error(data.error || 'Failed to update application.');
+      throw new Error(data.error || 'Unable to save update. Your note is still here.');
     }
-    return data.emailDelivery as EmailDeliverySummary | undefined;
+
+    appendLocalNoteUnique(data.note);
+    if (typeof data.status === 'string' && data.status) {
+      setLocalStatusOverride(data.status);
+    }
+
+    return {
+      note: data.note as ApplicationNote | undefined,
+      status: data.status as string | undefined,
+      notificationQueued: Boolean(data.notificationQueued),
+      emailDelivery: data.emailDelivery as EmailDeliverySummary | undefined,
+    };
   };
 
   const handleUpdateStatusDirect = async (status: string) => {
+    if (staffSubmittingRef.current || loading) return;
     if (!perms.isAdmin) {
       showToast('Only Admins can use quick status controls.', 'error');
       return;
     }
+    staffSubmittingRef.current = true;
     setLoading(true);
     try {
-      const emailDelivery = await submitStatusOrNote({ status });
-      if (emailDelivery?.hasFailures) {
+      const quickKey = `quick_${status}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const result = await submitStatusOrNote({ status, explicitClientRequestId: quickKey });
+      if (result.emailDelivery?.hasFailures) {
         showToast(`Status updated to ${status}, but one or more email notifications failed.`, 'info');
       } else {
-        showToast(`Status updated to ${status}`);
+        showToast(`Sent — Status updated to ${status}`);
       }
     } catch (error: any) {
-      showToast(error.message || 'Failed to update status', 'error');
+      showToast(
+        error?.message || 'Failed to update status',
+        'error',
+        'Unable to update status. Please try again.'
+      );
     } finally {
+      staffSubmittingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleAddNote = async () => {
+    if (staffSubmittingRef.current || loading) return;
     if (!perms.canAddNote && !perms.canUpdateStatus) {
       showToast('You do not have permission to update this application.', 'error');
       return;
     }
-    if (!noteText.trim() && !newStatus && !noteFile) return;
+    if (!noteText.trim() && !newStatus && !noteFile) {
+      showToast('Please provide a status update, note, or attachment.', 'error');
+      return;
+    }
 
+    staffSubmittingRef.current = true;
     setLoading(true);
     try {
-      const emailDelivery = await submitStatusOrNote({
+      const result = await submitStatusOrNote({
         status: newStatus,
         note: noteText,
         file: noteFile,
       });
-      if (emailDelivery?.hasFailures) {
+      if (result.emailDelivery?.hasFailures) {
         showToast('Update saved, but one or more email notifications could not be delivered.', 'info');
       } else {
-        showToast('Update added successfully!');
+        showToast('Sent — Update saved!');
       }
       setNoteText('');
       setNewStatus('');
       setNoteFile(null);
+      staffClientKeyRef.current = null;
       if (fileInputRef.current) {
         fileInputRef.current.value = '';
       }
     } catch (error: any) {
-      showToast(error.message || 'Failed to add update', 'error');
+      showToast(
+        error?.message || 'Unable to save update.',
+        'error',
+        'Unable to save update. Your entered text and files are preserved.'
+      );
     } finally {
+      staffSubmittingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleAssign = async (operatorEmail: string) => {
+    if (staffSubmittingRef.current || loading) return;
     if (!perms.canAssignOperator) {
       showToast('Only Admins can assign operators.', 'error');
       return;
     }
+    staffSubmittingRef.current = true;
     setLoading(true);
     try {
       const operator = operatorEmail
@@ -541,8 +648,9 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
         showToast(operatorEmail ? `Assigned to ${operatorEmail}` : 'Application unassigned');
       }
     } catch (error: any) {
-      showToast(error.message || 'Failed to update assignment', 'error');
+      showToast(error?.message || 'Failed to update assignment', 'error');
     } finally {
+      staffSubmittingRef.current = false;
       setLoading(false);
     }
   };
@@ -611,8 +719,11 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
             </div>
             <div className="flex justify-between sm:justify-start gap-2 items-center">
               <span className="text-navy font-bold text-xs sm:text-sm min-w-[100px] sm:min-w-[140px]">Status:</span>
-              <span className={`px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-bold text-white uppercase tracking-wider ${getStatusBadge(app.status)}`}>
-                {app.status}
+              <span
+                data-testid="app-status-badge"
+                className={`px-2 py-0.5 rounded-md text-[9px] sm:text-[10px] font-bold text-white uppercase tracking-wider ${getStatusBadge(displayStatus)}`}
+              >
+                {displayStatus}
               </span>
             </div>
             <div className="flex justify-between sm:justify-start gap-2">
@@ -899,7 +1010,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                               className="flex-1 py-2.5 sm:py-3 bg-navy text-white font-bold rounded-xl hover:bg-navy/90 transition-all shadow-sm flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                               <IconRenderer name="paper-plane" className="w-4 h-4" />
-                              {replyLoading ? 'Sending...' : 'Send Reply'}
+                              {replyLoading ? 'Saving...' : 'Send Reply'}
                             </button>
                           </div>
                         </div>
@@ -913,7 +1024,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
 
           {/* Add Note & Update Section - Restricted to Admin or Assigned Operator */}
           {(perms.canAddNote || perms.canUpdateStatus) && (
-            <div className="space-y-3 sm:space-y-4 pt-4 border-t border-slate-100">
+            <div className="space-y-3 sm:space-y-4 pt-4 border-t border-slate-100" data-testid="staff-controls-section">
               <h4 className="text-base sm:text-lg font-bold text-navy flex items-center gap-2">
                 <IconRenderer name="user-pen" className="w-4 h-4 sm:w-5 sm:h-5 text-primary" />
                 {perms.isAdmin ? 'Admin Controls' : 'Operator Controls'}
@@ -921,11 +1032,16 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
               <div className="space-y-3 sm:space-y-4">
                 <div>
                   <textarea
+                    data-testid="staff-note-textarea"
                     placeholder="Add a note or reason for the user..."
                     maxLength={MAX_NOTE_LENGTH}
-                    className="w-full p-3 sm:p-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all min-h-[80px] sm:min-h-[100px] text-xs sm:text-sm"
+                    disabled={loading}
+                    className="w-full p-3 sm:p-4 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all min-h-[80px] sm:min-h-[100px] text-xs sm:text-sm disabled:bg-slate-100"
                     value={noteText}
-                    onChange={e => setNoteText(e.target.value)}
+                    onChange={e => {
+                      setNoteText(e.target.value);
+                      staffClientKeyRef.current = null;
+                    }}
                   />
                   <div className="text-[10px] text-slate-400 text-right mt-1">
                     {noteText.length}/{MAX_NOTE_LENGTH}
@@ -937,7 +1053,11 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                   <SelectDropdown
                     className="w-full p-2 sm:p-3 rounded-lg border border-slate-200 bg-white text-xs sm:text-sm outline-none"
                     value={newStatus}
-                    onChange={setNewStatus}
+                    disabled={loading}
+                    onChange={(val) => {
+                      setNewStatus(val);
+                      staffClientKeyRef.current = null;
+                    }}
                     options={[
                       { value: '', label: 'No Status Change' },
                       { value: 'processing', label: 'Processing' },
@@ -949,8 +1069,8 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                 </div>
 
                 <div
-                  onClick={() => fileInputRef.current?.click()}
-                  className="p-4 sm:p-6 border-2 border-dashed border-orange-200 rounded-xl bg-orange-50/30 flex flex-col items-center justify-center gap-1.5 sm:gap-2 cursor-pointer hover:bg-orange-50 transition-all"
+                  onClick={() => { if (!loading) fileInputRef.current?.click(); }}
+                  className={`p-4 sm:p-6 border-2 border-dashed border-orange-200 rounded-xl bg-orange-50/30 flex flex-col items-center justify-center gap-1.5 sm:gap-2 transition-all ${loading ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-orange-50'}`}
                 >
                   <IconRenderer name="upload" className="w-5 h-5 sm:w-6 sm:h-6 text-navy" />
                   <span className="text-[10px] sm:text-xs font-medium text-slate-600 text-center">
@@ -958,6 +1078,8 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                   </span>
                   <input
                     type="file"
+                    data-testid="staff-note-file-input"
+                    disabled={loading}
                     ref={fileInputRef}
                     accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
                     className="hidden"
@@ -966,11 +1088,13 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                 </div>
 
                 <button
+                  type="button"
+                  data-testid="staff-note-submit-btn"
                   onClick={handleAddNote}
                   disabled={loading}
-                  className="w-full py-2.5 sm:py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/20 text-sm sm:text-base disabled:opacity-60"
+                  className="w-full py-2.5 sm:py-3 bg-orange-500 text-white font-bold rounded-xl hover:bg-orange-600 transition-all shadow-lg shadow-orange-500/20 text-sm sm:text-base disabled:opacity-60 disabled:cursor-not-allowed"
                 >
-                  {loading ? 'Processing...' : 'Add Note & Update'}
+                  {loading ? 'Saving...' : 'Add Note & Update'}
                 </button>
               </div>
             </div>
@@ -984,6 +1108,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                 <SelectDropdown
                   className="w-full p-2.5 sm:p-3 rounded-xl border border-slate-200 bg-white text-xs sm:text-sm outline-none"
                   value={app.assignedTo || ''}
+                  disabled={loading}
                   onChange={handleAssign}
                   options={[
                     { value: '', label: 'Unassigned' },

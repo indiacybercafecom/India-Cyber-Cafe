@@ -13,7 +13,14 @@ import {
   handleUserReplyApplication,
   handleGetOperatorAttachment,
   handleVerifyApplicationPayment,
+  setOperatorTestDbBehaviorForTesting,
 } from '../src/server/operatorService';
+import {
+  setEmailTransportForTesting,
+  resetNotificationStateForTesting,
+  flushNotificationOutboxForTesting,
+  getOutboxJobsForTesting,
+} from '../src/server/emailNotificationService';
 import { normalizeApplicationNotes, normalizeNoteAttachments } from '../src/utils/permissions';
 import {
   planOperatorSecurityMigration,
@@ -946,6 +953,36 @@ async function runApiIntegrationTests(): Promise<Array<{ name: string; ok: boole
   const testStorePath = path.join(dataDir, 'operator_test_store.json');
   const prevStoreExists = fs.existsSync(testStorePath);
   const prevStoreContent = prevStoreExists ? fs.readFileSync(testStorePath, 'utf-8') : null;
+  const ledgerPath = path.join(dataDir, 'notification_events.json');
+  const prevLedgerExists = fs.existsSync(ledgerPath);
+  const prevLedgerContent = prevLedgerExists ? fs.readFileSync(ledgerPath, 'utf-8') : null;
+  const outboxPath = path.join(dataDir, 'notification_outbox.json');
+  const prevOutboxExists = fs.existsSync(outboxPath);
+  const prevOutboxContent = prevOutboxExists ? fs.readFileSync(outboxPath, 'utf-8') : null;
+
+  let testSmtpDelayMs = 0;
+  let testSmtpMode: 'ok' | 'flaky1' | 'failAll' = 'ok';
+  let testSmtpAttempt = 0;
+  const sentTestMails: Array<{ to: string; subject: string; html: string }> = [];
+
+  setEmailTransportForTesting({
+    sendMail: async (mail) => {
+      testSmtpAttempt += 1;
+      if (testSmtpDelayMs > 0) {
+        await new Promise(resolve => setTimeout(resolve, testSmtpDelayMs));
+      }
+      if (testSmtpMode === 'failAll') {
+        throw new Error('550 Simulated permanent SMTP failure');
+      }
+      if (testSmtpMode === 'flaky1' && testSmtpAttempt === 1) {
+        throw new Error('421 Simulated transient SMTP failure');
+      }
+      sentTestMails.push({ to: mail.to, subject: mail.subject, html: mail.html });
+      return { messageId: `<rules-test-${Date.now()}-${testSmtpAttempt}@indiacybercafe.com>` };
+    },
+  });
+  resetNotificationStateForTesting();
+  setOperatorTestDbBehaviorForTesting({ delayMs: 0, timeoutMs: 8000 });
 
   const writeSeedStore = (overrideApps?: Record<string, any>) => {
     fs.writeFileSync(
@@ -1452,7 +1489,133 @@ async function runApiIntegrationTests(): Promise<Array<{ name: string; ok: boole
         rCrossUserAtt.status === 400,
       detail: `custB=${rUnauthCustB.status}, disabled=${rDisabledCust.status}, op=${rUnauthOp.status}, prot=${rReplyProtectedStatus.status}, unk=${rReplyUnknown.status}, empty=${rReplyEmpty.status}, long=${rReplyTooLong.status}, >5=${rUpTooMany.status}, >5MB=${rUpTooBig.status}, bad=${rUpBadMagic.status}, unownedAtt=${rCrossUserAtt.status}`,
     });
+
+    // 12. Staff update clientRequestId idempotency (concurrent/duplicate clicks save only once & enqueue 1 outbox job)
+    await flushNotificationOutboxForTesting();
+    resetNotificationStateForTesting();
+    sentTestMails.length = 0;
+    const reqKey = 'staff_req_idemp_1';
+    const [rStaff1, rStaff2] = await Promise.all([
+      fetch(`${baseUrl}/api/operator/applications/app_op1_test/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenAdmin}` },
+        body: JSON.stringify({ status: 'processing', note: 'Idempotent staff note', clientRequestId: reqKey }),
+      }),
+      fetch(`${baseUrl}/api/operator/applications/app_op1_test/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenAdmin}` },
+        body: JSON.stringify({ status: 'processing', note: 'Idempotent staff note', clientRequestId: reqKey }),
+      }),
+    ]);
+    const [jStaff1, jStaff2] = await Promise.all([rStaff1.json(), rStaff2.json()]);
+    const storeAfterStaffIdemp = JSON.parse(fs.readFileSync(testStorePath, 'utf-8'));
+    const matchingStaffNotes = Object.values(storeAfterStaffIdemp.applications['app_op1_test']?.notes || {}).filter(
+      (n: any) => n?.clientRequestId === reqKey
+    );
+    const staffIdempJobs = getOutboxJobsForTesting({ appId: 'app_op1_test' }).filter(j =>
+      j.idempotencyKey.includes(reqKey)
+    );
+    await flushNotificationOutboxForTesting();
+
+    results.push({
+      name: 'API: Staff update clientRequestId deduplicates concurrent submissions (1 DB note, 1 outbox job)',
+      ok:
+        rStaff1.status === 200 &&
+        rStaff2.status === 200 &&
+        Boolean(jStaff1.duplicate || jStaff2.duplicate) &&
+        matchingStaffNotes.length === 1 &&
+        staffIdempJobs.length === 1,
+      detail: `dup1=${Boolean(jStaff1.duplicate)}, dup2=${Boolean(jStaff2.duplicate)}, notes=${matchingStaffNotes.length}, jobs=${staffIdempJobs.length}`,
+    });
+
+    // 13. Database-first fast HTTP response under slow email (1000ms SMTP delay) + background outbox retry & failure recording
+    resetNotificationStateForTesting();
+    sentTestMails.length = 0;
+    testSmtpDelayMs = 1000;
+    testSmtpMode = 'flaky1';
+    testSmtpAttempt = 0;
+    const tSlowStart = Date.now();
+    const rSlowReply = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({ note: 'Fast save despite slow SMTP', clientReplyId: 'reply_slow_smtp_1' }),
+    });
+    const slowElapsed = Date.now() - tSlowStart;
+    const jSlowReply = await rSlowReply.json();
+    const jobsAfterSlow = await flushNotificationOutboxForTesting();
+    testSmtpDelayMs = 0;
+    const completedSlowJob = jobsAfterSlow.find(j => j.idempotencyKey.includes('reply_slow_smtp_1'));
+
+    // Permanent SMTP failure records failed outbox job cleanly after DB save succeeds
+    testSmtpMode = 'failAll';
+    const rFailEmailNote = await fetch(`${baseUrl}/api/operator/applications/app_op1_test/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenOp2}` },
+      body: JSON.stringify({ note: 'Saved even when SMTP fails', clientRequestId: 'req_smtp_down_1' }),
+    });
+    const jFailEmailNote = await rFailEmailNote.json();
+    const jobsAfterPermFail = await flushNotificationOutboxForTesting();
+    testSmtpMode = 'ok';
+    const failedOutboxJob = jobsAfterPermFail.find(j => j.idempotencyKey.includes('req_smtp_down_1'));
+    const storeAfterFailEmail = JSON.parse(fs.readFileSync(testStorePath, 'utf-8'));
+    const savedEvenWhenEmailDown = Object.values(storeAfterFailEmail.applications['app_op1_test']?.notes || {}).some(
+      (n: any) => n?.clientRequestId === 'req_smtp_down_1'
+    );
+
+    results.push({
+      name: 'API: Slow/flaky/failed SMTP never blocks DB commit (<250ms), retries transient errors, and logs permanent outbox failures',
+      ok:
+        rSlowReply.status === 200 &&
+        jSlowReply.notificationQueued === true &&
+        slowElapsed < 250 &&
+        completedSlowJob?.state === 'completed' &&
+        rFailEmailNote.status === 200 &&
+        jFailEmailNote.notificationQueued === true &&
+        savedEvenWhenEmailDown &&
+        failedOutboxJob?.state === 'failed' &&
+        Boolean(failedOutboxJob?.lastError),
+      detail: `slowMs=${slowElapsed}, flakyJob=${completedSlowJob?.state}, savedOnFail=${savedEvenWhenEmailDown}, permFailState=${failedOutboxJob?.state}`,
+    });
+
+    // 14. Database timeout returns 504 DB_TIMEOUT cleanly without saving note or enqueueing email
+    resetNotificationStateForTesting();
+    setOperatorTestDbBehaviorForTesting({ delayMs: 120, timeoutMs: 30 });
+    const rTimeoutOp = await fetch(`${baseUrl}/api/operator/applications/app_op1_test/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenOp2}` },
+      body: JSON.stringify({ note: 'Should time out cleanly', clientRequestId: 'req_timeout_1' }),
+    });
+    const jTimeoutOp = await rTimeoutOp.json();
+    const rTimeoutReply = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({ note: 'Reply should time out cleanly', clientReplyId: 'reply_timeout_1' }),
+    });
+    const jTimeoutReply = await rTimeoutReply.json();
+    setOperatorTestDbBehaviorForTesting({ delayMs: 0, timeoutMs: 8000 });
+    const storeAfterTimeout = JSON.parse(fs.readFileSync(testStorePath, 'utf-8'));
+    const notesAfterTimeout = Object.values(storeAfterTimeout.applications['app_op1_test']?.notes || {});
+    const leakedTimeoutNotes = notesAfterTimeout.filter(
+      (n: any) => n?.clientRequestId === 'req_timeout_1' || n?.clientReplyId === 'reply_timeout_1'
+    );
+    const leakedJobs = getOutboxJobsForTesting({ appId: 'app_op1_test' });
+
+    results.push({
+      name: 'API: Database timeout returns 504 DB_TIMEOUT for staff update & user reply without saving partial data or queuing email',
+      ok:
+        rTimeoutOp.status === 504 &&
+        jTimeoutOp.code === 'DB_TIMEOUT' &&
+        rTimeoutReply.status === 504 &&
+        jTimeoutReply.code === 'DB_TIMEOUT' &&
+        leakedTimeoutNotes.length === 0 &&
+        leakedJobs.length === 0,
+      detail: `op=${rTimeoutOp.status}/${jTimeoutOp.code}, reply=${rTimeoutReply.status}/${jTimeoutReply.code}, leakedNotes=${leakedTimeoutNotes.length}, leakedJobs=${leakedJobs.length}`,
+    });
   } finally {
+    setOperatorTestDbBehaviorForTesting({ delayMs: 0, timeoutMs: 8000 });
+    await flushNotificationOutboxForTesting().catch(() => {});
+    resetNotificationStateForTesting();
+    setEmailTransportForTesting(null);
     await new Promise<void>(resolve => server.close(() => resolve()));
     const testUploadSubdir = path.join(APP_ROOT_ATTACHMENTS_DIR(), 'app_op1_test');
     if (fs.existsSync(testUploadSubdir)) {
@@ -1462,6 +1625,16 @@ async function runApiIntegrationTests(): Promise<Array<{ name: string; ok: boole
       fs.writeFileSync(testStorePath, prevStoreContent);
     } else if (fs.existsSync(testStorePath)) {
       fs.unlinkSync(testStorePath);
+    }
+    if (prevLedgerExists && prevLedgerContent !== null) {
+      fs.writeFileSync(ledgerPath, prevLedgerContent);
+    } else if (fs.existsSync(ledgerPath)) {
+      fs.unlinkSync(ledgerPath);
+    }
+    if (prevOutboxExists && prevOutboxContent !== null) {
+      fs.writeFileSync(outboxPath, prevOutboxContent);
+    } else if (fs.existsSync(outboxPath)) {
+      fs.unlinkSync(outboxPath);
     }
   }
 
@@ -1591,18 +1764,22 @@ function runMigrationAndContractTests(): Array<{ name: string; ok: boolean; deta
     } as any,
     attachment: 'https://example.com/one.pdf',
   });
-  const chronological = normalizeApplicationNotes({
-    n2: { type: 'reply', by: 'Customer', email: 'c@x.com', text: 'Second', time: 't2', createdAt: 2000 },
-    n1: { type: 'note', by: 'Admin', email: 'a@x.com', text: 'First', time: 't1', createdAt: 1000 },
-  });
+  const chronological = normalizeApplicationNotes([
+    { id: 'n2', type: 'reply', by: 'Customer', email: 'c@x.com', text: 'Second', time: 't2', createdAt: 2000, clientReplyId: 'cr_1' },
+    { id: 'n2_dup_client', type: 'reply', by: 'Customer', email: 'c@x.com', text: 'Second', time: 't2', createdAt: 2000, clientReplyId: 'cr_1' },
+    { id: 'n1', type: 'note', by: 'Admin', email: 'a@x.com', text: 'First', time: 't1', createdAt: 1000, clientRequestId: 'req_1' },
+    { id: 'n1_dup_req', type: 'note', by: 'Admin', email: 'a@x.com', text: 'First', time: 't1', createdAt: 1000, clientRequestId: 'req_1' },
+  ]);
   const replyContractOk =
     modalSrc.includes('/reply-attachments') &&
     modalSrc.includes('/reply') &&
     modalSrc.includes('Send Reply') &&
-    modalSrc.includes('canReplyToApplication');
+    modalSrc.includes('canReplyToApplication') &&
+    modalSrc.includes('clientRequestId') &&
+    modalSrc.includes('staffSubmittingRef');
 
   results.push({
-    name: 'Notes & Attachments: Chronological sort, legacy single attachment, RTDB numeric map attachments[], deduplication & User Reply UI contract',
+    name: 'Notes & Attachments: Chronological sort, legacy single attachment, RTDB numeric map attachments[], deduplication & User/Staff Lifecycle contract',
     ok:
       legacySingle.length === 1 &&
       legacySingle[0].name === 'legacy.pdf' &&
