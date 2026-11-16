@@ -118,7 +118,7 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
           <p className="text-sm text-slate-600">
             You do not have permission to view this application.
           </p>
-          <button onClick={onClose} className="btn-primary px-6 py-2.5 text-sm">
+          <button type="button" onClick={(e) => { e.stopPropagation(); onClose(); }} className="btn-primary px-6 py-2.5 text-sm">
             Close
           </button>
         </div>
@@ -580,7 +580,16 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       >
         <div className="p-4 sm:p-6 bg-white border-b border-slate-100 flex justify-between items-center">
           <h3 className="text-xl sm:text-2xl font-bold text-navy">Application Details</h3>
-          <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-full transition-all">
+          <button
+            type="button"
+            aria-label="Close application details"
+            data-testid="close-app-modal-btn"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-full transition-all"
+          >
             <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
           </button>
         </div>

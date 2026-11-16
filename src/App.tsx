@@ -1,5 +1,5 @@
 import { BrowserRouter as Router, Routes, Route, Navigate, useNavigate, useLocation, useParams } from 'react-router-dom';
-import { useEffect, useState, lazy, Suspense } from 'react';
+import { useEffect, useState, useRef, lazy, Suspense } from 'react';
 import { useAuth } from './hooks/useAuth';
 import { useServices } from './hooks/useServices';
 import { useProducts } from './hooks/useProducts';
@@ -131,6 +131,18 @@ function AppContent() {
   const [isLogoutConfirmOpen, setIsLogoutConfirmOpen] = useState(false);
   const [isLogoutChoiceOpen, setIsLogoutChoiceOpen] = useState(false);
 
+  const operatorRouteMatch = location.pathname.match(/^\/operator\/applications\/([^/]+)$/);
+  const operatorRouteAppId = operatorRouteMatch ? decodeURIComponent(operatorRouteMatch[1]) : null;
+  const trackRouteMatch = location.pathname.match(/^\/track\/([^/]+)$/);
+  const trackRouteAppId = trackRouteMatch ? decodeURIComponent(trackRouteMatch[1]) : null;
+  const isRouteBackedAppView = Boolean(operatorRouteAppId || trackRouteAppId);
+
+  const prevPathnameRef = useRef<string>(location.pathname);
+  const routeModalOriginRef = useRef<'/operator' | '/track' | null>(null);
+  const wasOpenedFromRouteRef = useRef(false);
+  const closingRoutePathRef = useRef<string | null>(null);
+  const ignoringPopStateCountRef = useRef(0);
+
   // Determine which data to use based on user role
   const applications = userIsAdmin ? adminApplications.applications : userApplications.applications;
   const orders = userIsAdmin ? adminOrders.orders : userOrders.orders;
@@ -141,20 +153,39 @@ function AppContent() {
   const ordersError = userIsAdmin ? adminOrders.error : userOrders.error;
   const usersLoading = adminUsers.loading;
 
-  // Keep selectedApp synced live and close/redirect if unassigned or disabled on operator routes
+  // Track route origin and clear closing guard once pathname settles away from dismissed route
   useEffect(() => {
-    const operatorMatch = location.pathname.match(/^\/operator\/applications\/([^/]+)$/);
-    const routeAppId = operatorMatch ? decodeURIComponent(operatorMatch[1]) : null;
+    const prevPath = prevPathnameRef.current;
+    if (prevPath !== location.pathname) {
+      if (closingRoutePathRef.current && location.pathname !== closingRoutePathRef.current) {
+        closingRoutePathRef.current = null;
+      }
+      if (operatorRouteAppId && prevPath === '/operator') {
+        routeModalOriginRef.current = '/operator';
+      } else if (trackRouteAppId && prevPath === '/track') {
+        routeModalOriginRef.current = '/track';
+      } else if (!isRouteBackedAppView) {
+        routeModalOriginRef.current = null;
+      }
+      prevPathnameRef.current = location.pathname;
+    }
+  }, [location.pathname, operatorRouteAppId, trackRouteAppId, isRouteBackedAppView]);
 
-    if (routeAppId && isOperatorRoute) {
+  // Synchronize selectedApp with route URL (/operator/applications/:id and /track/:id)
+  useEffect(() => {
+    if (operatorRouteAppId && isOperatorRoute) {
+      if (closingRoutePathRef.current === location.pathname) {
+        return;
+      }
+      wasOpenedFromRouteRef.current = true;
       if (userIsDisabled || (!authLoading && !profileLoading && !userIsOperator)) {
         setSelectedApp(null);
         return;
       }
       if (!userApplications.loading) {
-        const found = userApplications.applications.find((a) => a.id === routeAppId);
+        const found = userApplications.applications.find((a) => a.id === operatorRouteAppId);
         if (found) {
-          setSelectedApp(found);
+          setSelectedApp((prev) => (prev === found ? prev : found));
         } else {
           setSelectedApp(null);
           showToast('Application not found or no longer assigned to you.', 'error');
@@ -164,17 +195,23 @@ function AppContent() {
       return;
     }
 
-    if (selectedApp) {
-      const updated = applications.find((a) => a.id === selectedApp.id);
-      if (updated) {
-        setSelectedApp(updated);
-      } else if (isOperatorRoute && !userApplications.loading) {
-        setSelectedApp(null);
-        showToast('Application is no longer assigned to you.', 'info');
+    if (trackRouteAppId) {
+      if (closingRoutePathRef.current === location.pathname) {
+        return;
       }
+      wasOpenedFromRouteRef.current = true;
+      return;
+    }
+
+    if (wasOpenedFromRouteRef.current) {
+      wasOpenedFromRouteRef.current = false;
+      setSelectedApp(null);
     }
   }, [
     location.pathname,
+    operatorRouteAppId,
+    trackRouteAppId,
+    isRouteBackedAppView,
     isOperatorRoute,
     userIsOperator,
     userIsDisabled,
@@ -182,13 +219,62 @@ function AppContent() {
     profileLoading,
     userApplications.loading,
     userApplications.applications,
-    applications,
-    selectedApp?.id,
+    navigate,
   ]);
 
-  // Back button handling for modals and sidebar
+  // Keep an already-open selectedApp updated live and close if unassigned on operator routes
   useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
+    if (!selectedApp) return;
+    const updated = applications.find((a) => a.id === selectedApp.id);
+    if (updated) {
+      if (updated !== selectedApp) {
+        setSelectedApp(updated);
+      }
+    } else if (isOperatorRoute && !userApplications.loading) {
+      setSelectedApp(null);
+      showToast('Application is no longer assigned to you.', 'info');
+      if (operatorRouteAppId) {
+        closingRoutePathRef.current = location.pathname;
+        wasOpenedFromRouteRef.current = false;
+        navigate('/operator', { replace: true });
+      }
+    }
+  }, [
+    selectedApp,
+    applications,
+    isOperatorRoute,
+    userApplications.loading,
+    operatorRouteAppId,
+    location.pathname,
+    navigate,
+  ]);
+
+  const hasNonRouteOverlay =
+    isSidebarOpen ||
+    (Boolean(selectedApp) && !isRouteBackedAppView) ||
+    isServiceBuilderOpen ||
+    Boolean(selectedUser) ||
+    isLogoutConfirmOpen ||
+    isLogoutChoiceOpen ||
+    isAuthModalOpen;
+
+  const hasNonRouteOverlayRef = useRef(hasNonRouteOverlay);
+  hasNonRouteOverlayRef.current = hasNonRouteOverlay;
+
+  // Back button handling for non-route modals and sidebar
+  useEffect(() => {
+    const handlePopState = () => {
+      if (ignoringPopStateCountRef.current > 0) {
+        ignoringPopStateCountRef.current -= 1;
+        if (hasNonRouteOverlayRef.current && !window.history.state?.modal) {
+          window.history.pushState(
+            { ...(window.history.state && typeof window.history.state === 'object' ? window.history.state : {}), modal: true },
+            ''
+          );
+        }
+        return;
+      }
+
       if (isSidebarOpen) {
         setIsSidebarOpen(false);
       } else if (isLogoutChoiceOpen) {
@@ -199,7 +285,7 @@ function AppContent() {
         setSelectedUser(null);
       } else if (isServiceBuilderOpen) {
         setIsServiceBuilderOpen(false);
-      } else if (selectedApp) {
+      } else if (selectedApp && !isRouteBackedAppView) {
         setSelectedApp(null);
       } else if (isAuthModalOpen) {
         setIsAuthModalOpen(false);
@@ -208,21 +294,80 @@ function AppContent() {
 
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
-  }, [isSidebarOpen, selectedApp, isServiceBuilderOpen, selectedUser, isLogoutConfirmOpen, isLogoutChoiceOpen, isAuthModalOpen]);
+  }, [
+    isSidebarOpen,
+    selectedApp,
+    isRouteBackedAppView,
+    isServiceBuilderOpen,
+    selectedUser,
+    isLogoutConfirmOpen,
+    isLogoutChoiceOpen,
+    isAuthModalOpen,
+  ]);
 
+  // Push modal history entry ONLY for non-route overlays (preserve React Router history state)
   useEffect(() => {
-    const isAnyModalOpen = isSidebarOpen || !!selectedApp || isServiceBuilderOpen || !!selectedUser || isLogoutConfirmOpen || isLogoutChoiceOpen || isAuthModalOpen;
-    if (isAnyModalOpen) {
-      if (!window.history.state?.modal) {
-        window.history.pushState({ modal: true }, '');
-      }
+    if (hasNonRouteOverlay && !window.history.state?.modal) {
+      window.history.pushState(
+        { ...(window.history.state && typeof window.history.state === 'object' ? window.history.state : {}), modal: true },
+        ''
+      );
     }
-  }, [isSidebarOpen, !!selectedApp, isServiceBuilderOpen, !!selectedUser, isLogoutConfirmOpen, isLogoutChoiceOpen, isAuthModalOpen]);
+  }, [hasNonRouteOverlay]);
+
+  const popNonRouteModalHistory = () => {
+    if (window.history.state?.modal) {
+      ignoringPopStateCountRef.current += 1;
+      window.history.back();
+    }
+  };
 
   const closeSidebar = () => {
     setIsSidebarOpen(false);
-    if (window.history.state?.modal) {
-      window.history.back();
+    popNonRouteModalHistory();
+  };
+
+  const handleOpenTrackApp = (app: Application) => {
+    if (closingRoutePathRef.current === location.pathname) {
+      return;
+    }
+    setSelectedApp((prev) => (prev === app ? prev : app));
+  };
+
+  const handleOpenOperatorApp = (app: Application) => {
+    closingRoutePathRef.current = null;
+    routeModalOriginRef.current = '/operator';
+    wasOpenedFromRouteRef.current = true;
+    navigate(`/operator/applications/${app.id}`);
+  };
+
+  const handleCloseAppModal = () => {
+    const currentPath = location.pathname;
+    if (currentPath.startsWith('/track/')) {
+      closingRoutePathRef.current = currentPath;
+      wasOpenedFromRouteRef.current = false;
+      setSelectedApp(null);
+      if (routeModalOriginRef.current === '/track') {
+        routeModalOriginRef.current = null;
+        navigate(-1);
+      } else {
+        routeModalOriginRef.current = null;
+        navigate('/track', { replace: true });
+      }
+    } else if (currentPath.startsWith('/operator/applications/')) {
+      closingRoutePathRef.current = currentPath;
+      wasOpenedFromRouteRef.current = false;
+      setSelectedApp(null);
+      if (routeModalOriginRef.current === '/operator') {
+        routeModalOriginRef.current = null;
+        navigate(-1);
+      } else {
+        routeModalOriginRef.current = null;
+        navigate('/operator', { replace: true });
+      }
+    } else {
+      setSelectedApp(null);
+      popNonRouteModalHistory();
     }
   };
 
@@ -430,7 +575,7 @@ function AppContent() {
                   orders={[]}
                   user={user || null}
                   gateways={[]}
-                  onViewDetails={setSelectedApp}
+                  onViewDetails={handleOpenTrackApp}
                   onUpdateApp={async () => {}}
                   guestOnly
                 />
@@ -448,7 +593,7 @@ function AppContent() {
                     orders={orders}
                     user={user}
                     gateways={gateways.gateways}
-                    onViewDetails={setSelectedApp}
+                    onViewDetails={handleOpenTrackApp}
                     onUpdateApp={userApplications.updateApplication}
                     ordersLoading={ordersLoading}
                     ordersError={ordersError}
@@ -462,7 +607,7 @@ function AppContent() {
                     orders={[]}
                     user={null}
                     gateways={[]}
-                    onViewDetails={setSelectedApp}
+                    onViewDetails={handleOpenTrackApp}
                     onUpdateApp={async () => {}}
                   />
                 )
@@ -479,7 +624,7 @@ function AppContent() {
                     orders={orders}
                     user={user}
                     gateways={gateways.gateways}
-                    onViewDetails={setSelectedApp}
+                    onViewDetails={handleOpenTrackApp}
                     onUpdateApp={userApplications.updateApplication}
                     ordersLoading={ordersLoading}
                     ordersError={ordersError}
@@ -528,10 +673,7 @@ function AppContent() {
                     user={user}
                     loading={userApplications.loading}
                     error={userApplications.error}
-                    onViewApp={(app) => {
-                      setSelectedApp(app);
-                      navigate(`/operator/applications/${app.id}`);
-                    }}
+                    onViewApp={handleOpenOperatorApp}
                   />
                 )
               }
@@ -551,10 +693,7 @@ function AppContent() {
                     user={user}
                     loading={userApplications.loading}
                     error={userApplications.error}
-                    onViewApp={(app) => {
-                      setSelectedApp(app);
-                      navigate(`/operator/applications/${app.id}`);
-                    }}
+                    onViewApp={handleOpenOperatorApp}
                   />
                 )
               }
@@ -637,17 +776,9 @@ function AppContent() {
 
       {selectedApp && user && (
         <ApplicationDetailsModal
+          key={selectedApp.id}
           app={selectedApp}
-          onClose={() => {
-            setSelectedApp(null);
-            if (location.pathname.includes('/track/')) {
-              navigate('/track');
-            } else if (location.pathname.startsWith('/operator/applications/')) {
-              navigate('/operator');
-            } else if (window.history.state?.modal) {
-              window.history.back();
-            }
-          }}
+          onClose={handleCloseAppModal}
           currentUser={user}
           operators={userIsAdmin ? users.filter((u) => u.role === 'operator' && !u.disabled) : []}
         />
@@ -659,7 +790,7 @@ function AppContent() {
           onClose={() => {
             setIsServiceBuilderOpen(false);
             setEditingService(null);
-            if (window.history.state?.modal) window.history.back();
+            popNonRouteModalHistory();
           }}
           onSave={handleSaveService}
         />
@@ -670,7 +801,7 @@ function AppContent() {
           user={selectedUser}
           onClose={() => {
             setSelectedUser(null);
-            if (window.history.state?.modal) window.history.back();
+            popNonRouteModalHistory();
           }}
         />
       )}
