@@ -34,6 +34,77 @@ const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
 const ALLOWED_ATTACHMENT_EXTENSIONS = /\.(pdf|jpe?g|png|webp)$/i;
 const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 
+const ORDINAL_WORDS = [
+  'First',
+  'Second',
+  'Third',
+  'Fourth',
+  'Fifth',
+  'Sixth',
+  'Seventh',
+  'Eighth',
+  'Ninth',
+  'Tenth',
+] as const;
+
+function isFileUrl(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  const lower = trimmed.toLowerCase();
+  if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('vbscript:')) {
+    return false;
+  }
+  return lower.startsWith('http://') || lower.startsWith('https://') || lower.includes('/uploads/');
+}
+
+function extractFileUrls(value: unknown): string[] | null {
+  if (isFileUrl(value)) {
+    return [value.trim()];
+  }
+
+  let candidates: unknown[] | null = null;
+  if (Array.isArray(value)) {
+    candidates = value;
+  } else if (value && typeof value === 'object') {
+    const keys = Object.keys(value as Record<string, unknown>);
+    if (keys.length > 0 && keys.every((k) => /^\d+$/.test(k))) {
+      candidates = keys
+        .sort((a, b) => Number(a) - Number(b))
+        .map((k) => (value as Record<string, unknown>)[k]);
+    }
+  }
+
+  if (!candidates) return null;
+
+  const nonEmpty = candidates.filter(
+    (item): item is string => typeof item === 'string' && item.trim().length > 0
+  );
+  if (nonEmpty.length === 0 || !nonEmpty.every(isFileUrl)) {
+    return null;
+  }
+  return nonEmpty.map((item) => item.trim());
+}
+
+function getOrdinalLabel(index: number): string {
+  if (index < ORDINAL_WORDS.length) {
+    return ORDINAL_WORDS[index];
+  }
+  const num = index + 1;
+  const mod100 = num % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${num}th`;
+  switch (num % 10) {
+    case 1:
+      return `${num}st`;
+    case 2:
+      return `${num}nd`;
+    case 3:
+      return `${num}rd`;
+    default:
+      return `${num}th`;
+  }
+}
+
 export function ApplicationDetailsModal({ app, onClose, currentUser, operators }: ApplicationDetailsModalProps) {
   const [noteText, setNoteText] = useState('');
   const [newStatus, setNewStatus] = useState('');
@@ -378,19 +449,39 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
           <div className="space-y-2 sm:space-y-4 pb-4 border-b border-slate-100">
             <h4 className="text-base sm:text-lg font-bold text-navy">Form Information</h4>
             <div className="grid grid-cols-1 gap-1.5 sm:gap-3 bg-slate-50 p-2.5 sm:p-4 rounded-xl sm:rounded-2xl border border-slate-100">
-              {Object.entries(app.details || {}).map(([key, value]) => (
-                <div key={key} className="flex flex-col sm:flex-row sm:gap-2 border-b border-slate-200 pb-1 sm:pb-2 last:border-0 last:pb-0">
-                  <span className="text-navy font-bold min-w-[120px] sm:min-w-[160px] capitalize text-[10px] sm:text-sm">{key.replace(/_/g, ' ')}:</span>
-                  <span className="text-slate-600 text-[10px] sm:text-sm break-words">
-                    {typeof value === 'string' && (value.startsWith('http') || value.includes('/uploads/')) ? (
-                      <a href={value} target="_blank" rel="noreferrer" className="text-primary hover:underline font-bold flex items-center gap-1">
-                        <IconRenderer name="external-link" className="w-3 h-3" />
-                        View
-                      </a>
-                    ) : String(value)}
-                  </span>
-                </div>
-              ))}
+              {Object.entries(app.details || {}).map(([key, value]) => {
+                const fileUrls = extractFileUrls(value);
+                return (
+                  <div key={key} className="flex flex-col sm:flex-row sm:gap-2 border-b border-slate-200 pb-1 sm:pb-2 last:border-0 last:pb-0">
+                    <span className="text-navy font-bold min-w-[120px] sm:min-w-[160px] capitalize text-[10px] sm:text-sm">{key.replace(/_/g, ' ')}:</span>
+                    <span className="text-slate-600 text-[10px] sm:text-sm break-words">
+                      {fileUrls ? (
+                        fileUrls.length === 1 ? (
+                          <a href={fileUrls[0]} target="_blank" rel="noreferrer" className="text-primary hover:underline font-bold flex items-center gap-1">
+                            <IconRenderer name="external-link" className="w-3 h-3" />
+                            View
+                          </a>
+                        ) : (
+                          <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                            {fileUrls.map((url, index) => (
+                              <a
+                                key={`${key}-${index}`}
+                                href={url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-primary hover:underline font-bold inline-flex items-center gap-1"
+                              >
+                                <IconRenderer name="external-link" className="w-3 h-3" />
+                                {`View ${getOrdinalLabel(index)}`}
+                              </a>
+                            ))}
+                          </span>
+                        )
+                      ) : String(value)}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
