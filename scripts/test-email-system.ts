@@ -16,6 +16,9 @@ const OPERATOR_STORE_PATH = path.resolve('data/operator_test_store.json');
 const ORDERS_STORE_PATH = path.resolve('data/orders_store.json');
 const LEDGER_PATH = path.resolve('data/notification_events.json');
 const OUTBOX_PATH = path.resolve('data/notification_outbox.json');
+const STORE_IDEMPOTENCY_PATH = path.resolve('data/store_idempotency.json');
+const ASYNC_QUEUE_PATH = path.resolve('data/async_queue_jobs.json');
+const ASYNC_DLQ_PATH = path.resolve('data/async_queue_dlq.json');
 
 interface CapturedMail {
   from: string;
@@ -49,6 +52,9 @@ async function runTests() {
     backupFile(ORDERS_STORE_PATH),
     backupFile(LEDGER_PATH),
     backupFile(OUTBOX_PATH),
+    backupFile(STORE_IDEMPOTENCY_PATH),
+    backupFile(ASYNC_QUEUE_PATH),
+    backupFile(ASYNC_DLQ_PATH),
   ];
 
   let server: any = null;
@@ -327,7 +333,10 @@ async function runTests() {
         headers: { 'Content-Type': 'application/json', Authorization: custToken },
         body: JSON.stringify({ appId: 'ICC-APP-1001' }),
       });
+      const subData = await subResp.json();
       assert.strictEqual(subResp.status, 200);
+      assert.strictEqual(subData.notificationQueued, true);
+      await emailSvc.flushNotificationOutboxForTesting();
       assert.strictEqual(sentMails.filter(m => m.to === 'priya.verma@example.com').length, 1);
       assert.strictEqual(sentMails.filter(m => m.to === 'icc@indiacybercafe.com').length, 1);
 
@@ -344,6 +353,8 @@ async function runTests() {
       const verifyPayData = await verifyPayResp.json();
       assert.strictEqual(verifyPayResp.status, 200);
       assert.strictEqual(verifyPayData.paymentStatus, 'completed');
+      assert.strictEqual(verifyPayData.notificationQueued, true);
+      await emailSvc.flushNotificationOutboxForTesting();
       assert.strictEqual(sentMails.filter(m => m.to === 'priya.verma@example.com').length, 1);
       assert.strictEqual(sentMails.filter(m => m.to === 'icc@indiacybercafe.com').length, 1);
 
@@ -354,7 +365,10 @@ async function runTests() {
         headers: { 'Content-Type': 'application/json', Authorization: adminToken },
         body: JSON.stringify({ paymentStatus: 'completed' }),
       });
+      const adminPayData = await adminPayResp.json();
       assert.strictEqual(adminPayResp.status, 200);
+      assert.strictEqual(adminPayData.notificationQueued, true);
+      await emailSvc.flushNotificationOutboxForTesting();
       assert.strictEqual(sentMails.filter(m => m.to === 'priya.verma@example.com').length, 1);
       assert.strictEqual(sentMails.filter(m => m.to === 'icc@indiacybercafe.com').length, 1);
     });
@@ -404,8 +418,12 @@ async function runTests() {
       });
       const codData = await codResp.json();
       assert.strictEqual(codResp.status, 201);
+      assert.strictEqual(codData.notificationQueued, true);
       codOrderId = codData.orderId;
-      assert.strictEqual(codData.emailDelivery.failedCount, 0);
+      const codFlushed = await emailSvc.flushNotificationOutboxForTesting();
+      const codJob = codFlushed.find(j => j.jobId === codData.outboxJobId);
+      assert(codJob && codJob.report, 'COD outbox job must have delivery report');
+      assert.strictEqual(codJob.report.failedCount, 0);
       assert.strictEqual(sentMails.filter(m => m.to === 'priya.verma@example.com').length, 1);
       assert.strictEqual(sentMails.filter(m => m.to === 'icc@indiacybercafe.com').length, 1);
 
@@ -438,6 +456,8 @@ async function runTests() {
       const verifyData = await verifyResp.json();
       assert.strictEqual(verifyResp.status, 200);
       assert.strictEqual(verifyData.verified, true);
+      assert.strictEqual(verifyData.notificationQueued, true);
+      await emailSvc.flushNotificationOutboxForTesting();
       assert.strictEqual(sentMails.filter(m => m.to === 'priya.verma@example.com').length, 1);
       assert.strictEqual(sentMails.filter(m => m.to === 'icc@indiacybercafe.com').length, 1);
     });
@@ -449,7 +469,10 @@ async function runTests() {
         headers: { 'Content-Type': 'application/json', Authorization: adminToken },
         body: JSON.stringify({ orderStatus: 'shipped', estimatedDelivery: '20 Nov 2026' }),
       });
+      const shipData = await shipResp.json();
       assert.strictEqual(shipResp.status, 200);
+      assert.strictEqual(shipData.notificationQueued, true);
+      await emailSvc.flushNotificationOutboxForTesting();
       assert.strictEqual(sentMails.filter(m => m.to === 'priya.verma@example.com').length, 1);
       assert(sentMails[0].subject.includes('SHIPPED'));
 
@@ -462,6 +485,8 @@ async function runTests() {
       const cancelData = await cancelResp.json();
       assert.strictEqual(cancelResp.status, 200);
       assert.strictEqual(cancelData.order.orderStatus, 'cancelled');
+      assert.strictEqual(cancelData.notificationQueued, true);
+      await emailSvc.flushNotificationOutboxForTesting();
 
       const custCancel = sentMails.filter(m => m.to === 'priya.verma@example.com');
       const adminCancel = sentMails.filter(m => m.to === 'icc@indiacybercafe.com' || m.to === 'indiacybercafe.com@gmail.com');
@@ -484,6 +509,8 @@ async function runTests() {
       const refundData = await refundResp.json();
       assert.strictEqual(refundResp.status, 200);
       assert.strictEqual(refundData.order.paymentStatus, 'refunded');
+      assert.strictEqual(refundData.notificationQueued, true);
+      await emailSvc.flushNotificationOutboxForTesting();
       assert.strictEqual(sentMails.filter(m => m.to === 'priya.verma@example.com').length, 1);
       assert.strictEqual(sentMails.filter(m => m.to === 'icc@indiacybercafe.com').length, 1);
     });
@@ -524,6 +551,8 @@ async function runTests() {
       });
       assert.strictEqual(cbResp.status, 200);
 
+      await emailSvc.flushNotificationOutboxForTesting();
+
       // Verify zero plaintext password strings anywhere in generated HTML or client fallback templates
       for (const m of sentMails) {
         assert(!m.html.includes('YOUR PASSWORD'), 'Must never include plaintext password block');
@@ -548,6 +577,7 @@ async function runTests() {
           reviewText: 'Nice <img src=x onerror=alert(1)> guide!',
         }),
       });
+      await emailSvc.flushNotificationOutboxForTesting();
       const adminRev = sentMails.find(m => m.to === 'icc@indiacybercafe.com');
       assert(adminRev, 'Admin review email must be present');
       assert(!adminRev!.html.includes('<script>'), 'Raw <script> tag must never appear in sent email');
@@ -611,9 +641,14 @@ async function runTests() {
       });
       const transientData = await transientResp.json();
       assert.strictEqual(transientResp.status, 200);
-      assert.strictEqual(transientData.emailDelivery.failedCount, 0);
-      assert.strictEqual(transientData.emailDelivery.events[0].wasRetried, true);
-      assert.strictEqual(transientData.emailDelivery.events[0].attempts, 3);
+      assert.strictEqual(transientData.notificationQueued, true);
+
+      const flakyFlushed = await emailSvc.flushNotificationOutboxForTesting();
+      const profileJob = [...flakyFlushed].reverse().find(j => j.kind === 'profile_updated' && j.jobId === transientData.outboxJobId);
+      assert(profileJob && profileJob.report, 'Outbox job must record delivery report after transient retry');
+      assert.strictEqual(profileJob!.report!.failedCount, 0);
+      assert.strictEqual(profileJob!.report!.events[0].wasRetried, true);
+      assert.strictEqual(profileJob!.report!.events[0].attempts, 3);
 
       // Permanent failure in outbox, then Admin retry
       clearMails();
@@ -732,7 +767,10 @@ async function runTests() {
       const codData = await codResp.json();
       assert.strictEqual(codResp.status, 201);
       assert.strictEqual(codData.success, true);
-      assert.strictEqual(codData.emailDelivery.hasFailures, true);
+      assert.strictEqual(codData.notificationQueued, true);
+      const flushedDown = await emailSvc.flushNotificationOutboxForTesting();
+      const downJob = flushedDown.find(j => j.jobId === codData.outboxJobId);
+      assert(downJob && downJob.report && downJob.report.hasFailures === true, 'Outbox must record failure details when SMTP is down');
       transportBehavior = 'ok';
     });
 

@@ -1,6 +1,5 @@
 import "dotenv/config";
 import express from "express";
-import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
@@ -12,6 +11,8 @@ import { driveRouter } from "./src/server/driveRoutes.js";
 import { renderUniversalPage, injectSsrIntoTemplate } from "./src/server/universalHtmlRenderer.js";
 import { generateSitemapXml, generateRobotsTxt } from "./src/server/sitemapService.js";
 import { invalidatePublicDataCache } from "./src/server/publicDataService.js";
+import { getApps } from "firebase-admin/app";
+import { getDatabase } from "firebase-admin/database";
 import {
   handleCodOrder,
   handleCreatePaymentOrder,
@@ -25,6 +26,9 @@ import {
   handleUploadCustomImage,
   handleAdminUpdateOrderStatus,
   handleAdminOrderRefund,
+  handleAdminAddOrderNote,
+  handleSubmitStoreReview,
+  registerApplicationWebhookReconciler,
   getStoreServiceHealth
 } from "./src/server/storeOrderService.js";
 import {
@@ -40,19 +44,35 @@ import {
   handleVerifyApplicationPayment,
   handleAssignApplicationOperator,
   handleAdminUpdateApplicationPaymentStatus,
+  handleCreateApplication,
+  handleCreateApplicationPayment,
+  handleConfirmApplicationPayment,
+  handleRecoverApplicationPayment,
+  reconcilePendingApplicationFromWebhook,
+  handleProfileUpdate,
   handleNotifyApplicationSubmitted,
   handleNotifyRegistration,
   handleNotifyProfileUpdated,
   handleNotifyReviewSubmitted,
   handleNotifyCallback,
   handleListNotificationEvents,
-  handleRetryNotificationEvent
+  handleRetryNotificationEvent,
+  handleGetQueueStats,
+  handleListDlqJobs,
+  handleReplayDlqJob,
+  handleInternalWorkerProcess
 } from "./src/server/operatorService.js";
 import {
-  notifyDirectPayLinkPayment,
-  notifyPrivacyRequestSubmitted,
+  enqueueOutboxNotification,
+  buildQueuedEmailDeliverySummary,
+  getNotificationOutboxStats,
   recoverNotificationOutbox
 } from "./src/server/emailNotificationService.js";
+import {
+  startAsyncWorkerLoop,
+  shutdownAsyncWorkerLoop,
+  getQueueStats
+} from "./src/server/asyncQueueService.js";
 
 const resolvedRoot = fs.existsSync(path.join(process.cwd(), 'package.json'))
   ? process.cwd()
@@ -68,23 +88,103 @@ async function startServer() {
   const DIST_PATH = path.join(APP_ROOT, 'dist');
 
   // Initialize public data on startup (non-blocking)
-  // This ensures JSON files exist or are created before the app starts handling requests
   initializePublicDataOnStartup().catch(err => {
     console.error("[DATA SYNC] Startup initialization error (non-fatal):", err);
-    // App continues to run; Firebase fallback will be used
   });
 
+  // Wire Razorpay webhook reconciliation for paid service applications
+  registerApplicationWebhookReconciler(reconcilePendingApplicationFromWebhook);
+
+  // Recover persisted email outbox & start distributed async queue worker pool
   try {
     const recoveredCount = recoverNotificationOutbox();
     if (recoveredCount > 0) {
       console.log(`[EMAIL OUTBOX] Recovered ${recoveredCount} pending notification job(s) on startup.`);
     }
+    if (process.env.DISABLE_EMBEDDED_WORKER !== '1') {
+      startAsyncWorkerLoop();
+    }
   } catch (err) {
     console.warn("[EMAIL OUTBOX] Startup recovery notice:", err);
   }
 
+  // Rolling API observability & bounded concurrency backpressure
+  const MAX_CONCURRENT_API_REQUESTS = Math.max(50, Number(process.env.MAX_CONCURRENT_API_REQUESTS || '500') || 500);
+  let inFlightApiRequests = 0;
+  let totalApiRequests = 0;
+  let totalApiErrors = 0;
+  let totalShedRequests = 0;
+  const apiLatencySamples: number[] = [];
+
+  const getApiMetricsSnapshot = () => {
+    const sorted = [...apiLatencySamples].sort((a, b) => a - b);
+    const pct = (p: number) => sorted.length === 0 ? 0 : Math.round(sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))]);
+    return {
+      inFlight: inFlightApiRequests,
+      maxConcurrent: MAX_CONCURRENT_API_REQUESTS,
+      totalRequests: totalApiRequests,
+      totalErrors: totalApiErrors,
+      totalShed: totalShedRequests,
+      sampleCount: sorted.length,
+      p50Ms: pct(0.5),
+      p95Ms: pct(0.95),
+      p99Ms: pct(0.99),
+    };
+  };
+
   // Trust proxy for correct protocol and host detection behind proxies
   app.set('trust proxy', true);
+
+  app.use('/api', (req, res, next) => {
+    const requestId = (typeof req.headers['x-request-id'] === 'string' && req.headers['x-request-id'].trim())
+      ? req.headers['x-request-id'].trim().slice(0, 64)
+      : `req_${Date.now().toString(36)}_${crypto.randomBytes(4).toString('hex')}`;
+    (req as any).requestId = requestId;
+    res.setHeader('X-Request-Id', requestId);
+
+    if (req.path !== '/health' && inFlightApiRequests >= MAX_CONCURRENT_API_REQUESTS) {
+      totalShedRequests += 1;
+      res.setHeader('Retry-After', '2');
+      return res.status(503).json({
+        success: false,
+        code: 'SERVER_BUSY',
+        requestId,
+        error: 'Server is handling high traffic. Please retry in a moment.',
+      });
+    }
+
+    const startedAt = process.hrtime.bigint();
+    inFlightApiRequests += 1;
+    totalApiRequests += 1;
+    let countedOut = false;
+    const finalizeMetrics = () => {
+      if (countedOut) return;
+      countedOut = true;
+      inFlightApiRequests = Math.max(0, inFlightApiRequests - 1);
+      const durationMs = Number(process.hrtime.bigint() - startedAt) / 1_000_000;
+      apiLatencySamples.push(durationMs);
+      if (apiLatencySamples.length > 1000) {
+        apiLatencySamples.splice(0, apiLatencySamples.length - 1000);
+      }
+      if (res.statusCode >= 500) {
+        totalApiErrors += 1;
+      }
+      if (durationMs > 1500 || (res.statusCode >= 500 && req.path !== '/health')) {
+        console.log(JSON.stringify({
+          level: res.statusCode >= 500 ? 'error' : 'warn',
+          type: 'api_request',
+          requestId,
+          method: req.method,
+          path: req.path,
+          status: res.statusCode,
+          durationMs: Math.round(durationMs),
+        }));
+      }
+    };
+    res.on('finish', finalizeMetrics);
+    res.on('close', finalizeMetrics);
+    next();
+  });
 
   app.use(express.json({
     limit: '2mb',
@@ -222,8 +322,30 @@ async function startServer() {
       success: true,
       publicDataAvailable: hasPublicData,
       ...health,
+      queue: getQueueStats(),
+      outbox: getNotificationOutboxStats(),
+      apiMetrics: getApiMetricsSnapshot(),
       environment: process.env.NODE_ENV || 'production',
       uptime: Math.round(process.uptime()),
+      timestamp: new Date().toISOString(),
+    });
+  });
+
+  // Admin Runtime Metrics & Queue Observability
+  app.get("/api/admin/metrics", requireAdminMiddleware, async (_req, res) => {
+    const mem = process.memoryUsage();
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({
+      success: true,
+      uptimeSeconds: Math.round(process.uptime()),
+      memoryMb: {
+        rss: Math.round(mem.rss / 1048576),
+        heapUsed: Math.round(mem.heapUsed / 1048576),
+        heapTotal: Math.round(mem.heapTotal / 1048576),
+      },
+      api: getApiMetricsSnapshot(),
+      queue: getQueueStats(),
+      outbox: getNotificationOutboxStats(),
       timestamp: new Date().toISOString(),
     });
   });
@@ -244,6 +366,16 @@ async function startServer() {
   const phoneLookupRateLimits = new Map<string, { count: number; resetTime: number }>();
   function checkPhoneRateLimit(ip: string, maxRequests = 20, windowMs = 60000): boolean {
     const now = Date.now();
+    if (phoneLookupRateLimits.size > 10000) {
+      for (const [k, rec] of phoneLookupRateLimits.entries()) {
+        if (now > rec.resetTime) phoneLookupRateLimits.delete(k);
+        if (phoneLookupRateLimits.size <= 5000) break;
+      }
+      if (phoneLookupRateLimits.size > 10000) {
+        const oldest = phoneLookupRateLimits.keys().next().value;
+        if (oldest) phoneLookupRateLimits.delete(oldest);
+      }
+    }
     const record = phoneLookupRateLimits.get(ip);
     if (!record || now > record.resetTime) {
       phoneLookupRateLimits.set(ip, { count: 1, resetTime: now + windowMs });
@@ -272,7 +404,9 @@ async function startServer() {
       const current = readPhoneIndex();
       current[phone] = data;
       fs.mkdirSync(path.dirname(PHONE_INDEX_PATH), { recursive: true });
-      fs.writeFileSync(PHONE_INDEX_PATH, JSON.stringify(current, null, 2), 'utf-8');
+      const tmp = `${PHONE_INDEX_PATH}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(current, null, 2), 'utf-8');
+      fs.renameSync(tmp, PHONE_INDEX_PATH);
     } catch (e) {
       console.warn("Could not update phone index:", e);
     }
@@ -366,7 +500,13 @@ async function startServer() {
     return res.json({ success: true });
   });
 
-  // --- Trusted Operator & Application Endpoints (Server-Authoritative) ---
+  // --- Trusted Server-Authoritative Applications, Profile & Operator Endpoints ---
+  app.post("/api/applications", handleCreateApplication);
+  app.post("/api/applications/create-payment", handleCreateApplicationPayment);
+  app.post("/api/applications/:appId/confirm-payment", handleConfirmApplicationPayment);
+  app.post("/api/applications/:appId/recover-payment", handleRecoverApplicationPayment);
+  app.post("/api/profile/update", handleProfileUpdate);
+
   app.get("/api/operator/applications/:appId", handleGetOperatorApplication);
   app.post("/api/operator/applications/:appId/update", handleOperatorUpdateApplication);
   app.post("/api/operator/applications/:appId/upload-attachment", operatorAttachmentUploadMiddleware, handleOperatorUploadAttachment);
@@ -377,7 +517,7 @@ async function startServer() {
   app.post("/api/applications/:appId/assign", handleAssignApplicationOperator);
   app.post("/api/applications/:appId/payment-status", handleAdminUpdateApplicationPaymentStatus);
 
-  // --- Dedicated Notification & Admin Alert Endpoints ---
+  // --- Dedicated Notification & Distributed Queue Endpoints ---
   app.post("/api/notifications/application-submitted", handleNotifyApplicationSubmitted);
   app.post("/api/notifications/registration", handleNotifyRegistration);
   app.post("/api/notifications/profile-updated", handleNotifyProfileUpdated);
@@ -385,8 +525,12 @@ async function startServer() {
   app.post("/api/notifications/callback", handleNotifyCallback);
   app.get("/api/admin/notifications", handleListNotificationEvents);
   app.post("/api/admin/notifications/:eventId/retry", handleRetryNotificationEvent);
+  app.get("/api/admin/queue/stats", handleGetQueueStats);
+  app.get("/api/admin/queue/dlq", handleListDlqJobs);
+  app.post("/api/admin/queue/:jobId/replay", handleReplayDlqJob);
+  app.post("/api/internal/workers/process", handleInternalWorkerProcess);
 
-  // --- Trusted Store Order Endpoints (Server-Authoritative, COD & Razorpay) ---
+  // --- Trusted Store Order & Review Endpoints (Server-Authoritative, COD & Razorpay) ---
   app.post("/api/auth/lookup-email", handleLookupEmail);
   app.post("/api/store/upload-custom-image", customImageUpload.single("customImage"), handleUploadCustomImage);
   app.post("/api/store/orders/cod", handleCodOrder);
@@ -397,8 +541,10 @@ async function startServer() {
   app.get("/api/store/orders/my", handleGetMyOrders);
   app.post("/api/store/orders/guest-track", handleGuestTrackOrder);
   app.post("/api/store/orders/link-guest-orders", handleLinkGuestOrders);
+  app.post("/api/store/reviews", handleSubmitStoreReview);
   app.post("/api/admin/orders/:orderId/status", handleAdminUpdateOrderStatus);
   app.post("/api/admin/orders/:orderId/refund", handleAdminOrderRefund);
+  app.post("/api/admin/orders/:orderId/notes", handleAdminAddOrderNote);
 
 
   app.options("/api/pdf-proxy", (req, res) => {
@@ -707,7 +853,9 @@ async function startServer() {
     }
   });
 
-  // Pay-by-Link Server-side Payment Verification & Recording Endpoint
+  const processedPayLinkPayments = new Map<string, any>();
+
+  // Pay-by-Link Server-side Payment Verification & Recording Endpoint (Idempotent & Non-Blocking Notifications)
   app.post("/api/pay-link/verify", async (req, res) => {
     try {
       const {
@@ -717,13 +865,19 @@ async function startServer() {
         amount,
         reference,
         receiptId
-      } = req.body;
+      } = req.body || {};
 
       if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
         return res.status(400).json({
           verified: false,
           error: "Missing required payment verification data"
         });
+      }
+
+      const dedupKey = `${String(razorpay_order_id)}:${String(razorpay_payment_id)}`;
+      if (processedPayLinkPayments.has(dedupKey)) {
+        const cached = processedPayLinkPayments.get(dedupKey);
+        return res.json({ ...cached, duplicate: true });
       }
 
       const keySecret = process.env.RAZORPAY_KEY_SECRET;
@@ -743,7 +897,7 @@ async function startServer() {
         .digest("hex");
 
       const expectedSignatureBuffer = Buffer.from(expectedSignature, "utf8");
-      const receivedSignatureBuffer = Buffer.from(razorpay_signature, "utf8");
+      const receivedSignatureBuffer = Buffer.from(String(razorpay_signature), "utf8");
       const isSignatureValid = expectedSignatureBuffer.length === receivedSignatureBuffer.length &&
         crypto.timingSafeEqual(expectedSignatureBuffer, receivedSignatureBuffer);
 
@@ -759,7 +913,7 @@ async function startServer() {
 
       const numAmount = typeof amount === 'number' ? amount : (parseFloat(amount) || 0);
       const createdAt = new Date().toISOString();
-      const finalRef = typeof reference === 'string' && reference.trim() ? reference.trim() : (receiptId || 'none');
+      const finalRef = typeof reference === 'string' && reference.trim() ? reference.trim().slice(0, 80) : (receiptId || 'none');
 
       const paymentRecord = {
         payment_id: razorpay_payment_id,
@@ -776,35 +930,55 @@ async function startServer() {
         createdAt: createdAt
       };
 
-      // Persist verified transaction record to Firebase RTDB
-      try {
-        const databaseURL = "https://india-cyber-cafe-default-rtdb.firebaseio.com";
-        await fetch(`${databaseURL}/payments.json`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(paymentRecord)
+      // Persist verified transaction record to Firebase RTDB (Admin SDK preferred, bounded REST fallback)
+      const payKey = `paylink_${String(razorpay_order_id)}_${String(razorpay_payment_id)}`.replace(/[/.#$[\]]/g, '_');
+      if (getApps().length > 0) {
+        await getDatabase(getApps()[0]).ref(`payments/${payKey}`).set(paymentRecord).catch((dbError: any) => {
+          console.error("Failed to record pay-link payment in RTDB via Admin SDK:", dbError?.message || dbError);
         });
-      } catch (dbError) {
-        console.error("Failed to record payment in RTDB from server:", dbError);
+      } else {
+        try {
+          const databaseURL = (process.env.FIREBASE_DATABASE_URL || "https://india-cyber-cafe-default-rtdb.firebaseio.com").replace(/\/+$/, '');
+          await fetch(`${databaseURL}/payments/${encodeURIComponent(payKey)}.json`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(paymentRecord),
+            signal: AbortSignal.timeout(6000)
+          });
+        } catch (dbError) {
+          console.error("Failed to record payment in RTDB from server:", dbError);
+        }
       }
 
-      const emailDelivery = await notifyDirectPayLinkPayment({
-        receiptId: paymentRecord.receiptId,
-        amount: paymentRecord.amount,
-        razorpayPaymentId: razorpay_payment_id,
-        razorpayOrderId: razorpay_order_id,
-        reference: finalRef !== 'none' ? finalRef : undefined,
-      }).catch((err: any) => {
-        console.warn("Pay-link admin notification error:", err?.message || err);
-        return null;
+      const obx = enqueueOutboxNotification({
+        idempotencyKey: `paylink:${razorpay_order_id}:${razorpay_payment_id}`,
+        kind: 'pay_link_payment',
+        payload: {
+          receiptId: paymentRecord.receiptId,
+          amount: paymentRecord.amount,
+          razorpayPaymentId: razorpay_payment_id,
+          razorpayOrderId: razorpay_order_id,
+          reference: finalRef !== 'none' ? finalRef : undefined,
+          timestamp: createdAt,
+        },
+        maxAttempts: 5,
       });
 
-      return res.json({
+      const responsePayload = {
         verified: true,
         message: "Payment successfully verified",
         record: paymentRecord,
-        ...(emailDelivery ? { emailDelivery } : {})
-      });
+        notificationQueued: true,
+        outboxJobId: obx.job.jobId,
+        emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId)
+      };
+      if (processedPayLinkPayments.size >= 5000) {
+        const firstKey = processedPayLinkPayments.keys().next().value;
+        if (firstKey) processedPayLinkPayments.delete(firstKey);
+      }
+      processedPayLinkPayments.set(dedupKey, responsePayload);
+
+      return res.json(responsePayload);
     } catch (error: any) {
       console.error("Pay link verification error:", error);
       res.status(500).json({
@@ -857,6 +1031,7 @@ async function startServer() {
             'Authorization': authHeader,
             'Content-Type': 'application/json'
           },
+          signal: AbortSignal.timeout(12000),
           body: JSON.stringify({
             amount: amount, // in paisa
             currency: currency,
@@ -1675,22 +1850,24 @@ async function startServer() {
 
   const saveLocalPrivacyRequest = (record: any) => {
     try {
-      const dataDir = path.dirname(PRIVACY_STORE_PATH);
-      if (!fs.existsSync(dataDir)) {
-        fs.mkdirSync(dataDir, { recursive: true });
-      }
       const existing = readLocalPrivacyRequests();
       existing[record.id] = record;
-      fs.writeFileSync(PRIVACY_STORE_PATH, JSON.stringify(existing, null, 2), 'utf-8');
+      writeJsonAtomically(PRIVACY_STORE_PATH, existing);
     } catch (err) {
       console.error("Failed to write to local privacy store:", err);
     }
   };
 
-  // Public submission of privacy request or grievance
+  const processedPrivacyIdempotency = new Map<string, any>();
+
+  // Public submission of privacy request or grievance (DB-first + atomic persistence + non-blocking async email queue)
   app.post("/api/privacy-requests", async (req, res) => {
     try {
-      const { category, name, email, phone, referenceId, description } = req.body;
+      const { category, name, email, phone, referenceId, description, idempotencyKey } = req.body || {};
+      const cleanIdemp = typeof idempotencyKey === 'string' && idempotencyKey.trim() ? idempotencyKey.trim().slice(0, 120) : '';
+      if (cleanIdemp && processedPrivacyIdempotency.has(cleanIdemp)) {
+        return res.json({ ...processedPrivacyIdempotency.get(cleanIdemp), duplicate: true });
+      }
 
       if (!name || typeof name !== 'string' || !name.trim()) {
         return res.status(400).json({ success: false, error: "Name is required" });
@@ -1730,41 +1907,69 @@ async function startServer() {
         updatedAt: now,
       };
 
-      // Always persist to local secure data store
+      // Always persist atomically to local secure data store
       saveLocalPrivacyRequest(privacyRecord);
 
-      // Attempt to save to Firebase RTDB if possible
-      try {
-        await fetch(`${RTDB_URL}/privacy_requests/${ticketId}.json`, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(privacyRecord)
-        });
-      } catch (dbErr) {
-        console.warn("RTDB write notice:", dbErr);
+      // Persist to Firebase RTDB (Admin SDK preferred, bounded timeout; skip in test mode)
+      const isTestEnv = process.env.OPERATOR_TEST_MODE === '1' || process.env.STORE_ORDER_TEST_MODE === '1';
+      if (!isTestEnv) {
+        if (getApps().length > 0) {
+          await Promise.race([
+            getDatabase(getApps()[0]).ref(`privacy_requests/${ticketId}`).set(privacyRecord),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('RTDB privacy write timeout')), 6000)),
+          ]).catch((dbErr: any) => {
+            console.warn("RTDB Admin privacy write notice:", dbErr?.message || dbErr);
+          });
+        } else {
+          try {
+            await fetch(`${RTDB_URL}/privacy_requests/${ticketId}.json`, {
+              method: "PUT",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(privacyRecord),
+              signal: AbortSignal.timeout(6000),
+            });
+          } catch (dbErr) {
+            console.warn("RTDB write notice:", dbErr);
+          }
+        }
       }
 
-      // Send structured confirmation email to customer & all admins
-      const emailDelivery = await notifyPrivacyRequestSubmitted({
+      // Enqueue confirmation emails to customer & admins cleanly without blocking response
+      const obx = enqueueOutboxNotification({
+        idempotencyKey: cleanIdemp ? `privacy:${cleanIdemp}` : `privacy:${ticketId}`,
+        kind: 'privacy_request',
         ticketId,
-        category: selectedCategory,
-        name: privacyRecord.name,
-        email: privacyRecord.email,
-        phone: privacyRecord.phone || undefined,
-        referenceId: privacyRecord.referenceId || undefined,
-        description: privacyRecord.description,
-      }).catch((mailErr: any) => {
-        console.warn("Mail dispatch failed:", mailErr?.message || mailErr);
-        return null;
+        payload: {
+          ticketId,
+          category: selectedCategory,
+          name: privacyRecord.name,
+          email: privacyRecord.email,
+          phone: privacyRecord.phone || undefined,
+          referenceId: privacyRecord.referenceId || undefined,
+          description: privacyRecord.description,
+          timestamp: now,
+        },
+        maxAttempts: 5,
       });
 
-      return res.json({
+      const result = {
         success: true,
         ticketId,
-        message: "Your request has been recorded. An acknowledgment has been generated.",
+        message: "Your request has been recorded. An acknowledgment has been queued.",
         request: privacyRecord,
-        ...(emailDelivery ? { emailDelivery } : {})
-      });
+        notificationQueued: true,
+        outboxJobId: obx.job.jobId,
+        emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
+      };
+      if (cleanIdemp) {
+        if (processedPrivacyIdempotency.size >= 2000) {
+          const oldest = processedPrivacyIdempotency.keys().next().value;
+          if (oldest) processedPrivacyIdempotency.delete(oldest);
+        }
+        processedPrivacyIdempotency.set(cleanIdemp, result);
+      }
+
+      return res.status(201).json(result);
     } catch (error: any) {
       console.error("Privacy request submission error:", error);
       res.status(500).json({ success: false, error: "Failed to process privacy request" });
@@ -1906,6 +2111,7 @@ async function startServer() {
   const isProduction = process.env.NODE_ENV === "production" || fs.existsSync(distIndex);
 
   if (!isProduction) {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -2077,6 +2283,29 @@ async function startServer() {
   const server = app.listen(PORT, "0.0.0.0", () => {
     console.log(`Server running on http://localhost:${PORT}`);
   });
+
+  server.keepAliveTimeout = 65000;
+  server.headersTimeout = 66000;
+  server.requestTimeout = 30000;
+
+  let shuttingDown = false;
+  const gracefulShutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    console.log(`[SERVER] Received ${signal}, draining active requests and worker leases...`);
+    (server as any).closeIdleConnections?.();
+    server.close(async () => {
+      await shutdownAsyncWorkerLoop(8000).catch(() => {});
+      process.exit(0);
+    });
+    const forceTimer = setTimeout(async () => {
+      await shutdownAsyncWorkerLoop(2000).catch(() => {});
+      process.exit(0);
+    }, 10000);
+    if (forceTimer.unref) forceTimer.unref();
+  };
+  process.once('SIGTERM', () => void gracefulShutdown('SIGTERM'));
+  process.once('SIGINT', () => void gracefulShutdown('SIGINT'));
 
   server.on("error", (error: NodeJS.ErrnoException) => {
     if (error.code === "EADDRINUSE") {

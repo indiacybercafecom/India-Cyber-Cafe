@@ -1,23 +1,30 @@
-import { useState, useEffect } from 'react';
-import { ref, onValue, update, remove } from 'firebase/database';
+import { useState, useEffect, useCallback } from 'react';
+import { ref, onValue, update, remove, query, orderByChild, limitToLast } from 'firebase/database';
 import { rtdb } from '../firebase';
 import { UserProfile } from '../types';
 
-const PAGINATION_LIMIT = 200;
+const INITIAL_LIMIT = 200;
+const PAGE_STEP = 200;
 
 /**
  * Hook for loading users data (admin only)
- * Loads all user profiles from the database
- * Real-time updates are maintained
+ * Uses indexed limitToLast RTDB queries with pagination.
  */
 export function useUsers(enabled = false) {
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(enabled);
   const [error, setError] = useState<Error | null>(null);
+  const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
+  const [hasMore, setHasMore] = useState(false);
+
+  const loadMore = useCallback(() => {
+    setLimitCount((prev) => prev + PAGE_STEP);
+  }, []);
 
   useEffect(() => {
     if (!enabled) {
       setUsers([]);
+      setHasMore(false);
       setLoading(false);
       return;
     }
@@ -28,24 +35,28 @@ export function useUsers(enabled = false) {
       try {
         setLoading(true);
 
-        const usersRef = ref(rtdb, 'users');
+        const usersRef = query(ref(rtdb, 'users'), orderByChild('createdAt'), limitToLast(limitCount));
         unsubscribe = onValue(
           usersRef,
           (snapshot) => {
             try {
               const data = snapshot.val();
-              let users: UserProfile[] = [];
+              let usersList: UserProfile[] = [];
 
               if (data) {
-                users = Object.entries(data)
+                const entries = Object.entries(data);
+                setHasMore(entries.length >= limitCount);
+                usersList = entries
                   .map(([uid, val]: [string, any]) => ({
                     uid,
                     ...val,
                   } as UserProfile))
-                  .slice(0, PAGINATION_LIMIT);
+                  .sort((a, b) => Number(b.createdAt || 0) - Number(a.createdAt || 0));
+              } else {
+                setHasMore(false);
               }
 
-              setUsers(users);
+              setUsers(usersList);
               setError(null);
               setLoading(false);
             } catch (err) {
@@ -74,7 +85,7 @@ export function useUsers(enabled = false) {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [enabled]);
+  }, [enabled, limitCount]);
 
   const updateUser = async (uid: string, data: Partial<UserProfile>) => {
     return await update(ref(rtdb, `users/${uid}`), data);
@@ -88,6 +99,8 @@ export function useUsers(enabled = false) {
     users,
     loading,
     error,
+    hasMore,
+    loadMore,
     updateUser,
     deleteUser,
   };

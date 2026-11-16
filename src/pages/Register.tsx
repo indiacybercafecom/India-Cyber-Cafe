@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { auth, rtdb } from '../firebase';
 import { createUserWithEmailAndPassword } from 'firebase/auth';
@@ -9,9 +9,10 @@ import { IconRenderer } from '../components/Icons';
 import { GoogleSignInButton } from '../components/GoogleSignInButton';
 import { motion } from 'motion/react';
 import { UserProfile } from '../types';
-import { sanitizeUserProfile, sanitizeEmail, sanitizePhone } from '../utils/sanitizer';
+import { sanitizeUserProfile, sanitizeEmail } from '../utils/sanitizer';
 import { signInWithGoogle, normalizeIndianMobile, checkPhoneRegistered, mapAuthError, sendRegistrationNotificationsOnce } from '../services/authService';
 import { DEFAULT_AVATAR } from '../utils/avatar';
+import { fetchWithTimeout, withClientTimeout } from '../utils/fetchWithTimeout';
 
 interface RegisterProps {
   user: UserProfile | null;
@@ -25,6 +26,7 @@ export function Register({ user }: RegisterProps) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
+  const submittingRef = useRef(false);
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
@@ -38,25 +40,33 @@ export function Register({ user }: RegisterProps) {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     try {
       const sanitizedEmail = sanitizeEmail(email);
       const sanitizedName = name.trim();
       const sanitizedPassword = password.trim();
 
-      // Validate mobile number
       const { valid, normalized, error: phoneErr } = normalizeIndianMobile(phone);
       if (!valid) {
         throw new Error(phoneErr || 'Please enter a valid 10-digit Indian mobile number.');
       }
 
-      // Check if mobile number is already in use
-      const phoneCheck = await checkPhoneRegistered(normalized);
+      const phoneCheck = await withClientTimeout(
+        checkPhoneRegistered(normalized),
+        10000,
+        'Phone verification timed out. Please try again.'
+      );
       if (phoneCheck.inUse) {
         throw new Error('This mobile number is already registered with another account. Please use a different number or sign in.');
       }
 
-      const { user: firebaseUser } = await createUserWithEmailAndPassword(auth, sanitizedEmail, sanitizedPassword);
+      const { user: firebaseUser } = await withClientTimeout(
+        createUserWithEmailAndPassword(auth, sanitizedEmail, sanitizedPassword),
+        15000,
+        'Registration timed out. Please try again.'
+      );
       const role = sanitizedEmail === 'indiacybercafe.com@gmail.com' ? 'admin' : 'user';
 
       const userProfile: UserProfile = {
@@ -74,11 +84,14 @@ export function Register({ user }: RegisterProps) {
       };
 
       const sanitizedProfile = sanitizeUserProfile(userProfile);
-      await set(ref(rtdb, `users/${firebaseUser.uid}`), sanitizedProfile);
+      await withClientTimeout(
+        set(ref(rtdb, `users/${firebaseUser.uid}`), sanitizedProfile),
+        12000,
+        'Saving profile timed out. Please refresh and check your account.'
+      );
 
-      // Securely index phone number for mobile login
       firebaseUser.getIdToken().then(idToken => {
-        fetch('/api/auth/sync-phone', {
+        fetchWithTimeout('/api/auth/sync-phone', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -89,7 +102,8 @@ export function Register({ user }: RegisterProps) {
             phone: normalized,
             email: sanitizedEmail,
             isGoogleOnly: false
-          })
+          }),
+          timeoutMs: 10000,
         }).catch(err => console.warn('Phone index sync notice:', err));
       }).catch(() => {});
 
@@ -100,11 +114,14 @@ export function Register({ user }: RegisterProps) {
     } catch (error: any) {
       showToast(mapAuthError(error), 'error');
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleGoogleRegister = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setGoogleLoading(true);
     try {
       const res = await signInWithGoogle();
@@ -119,6 +136,7 @@ export function Register({ user }: RegisterProps) {
     } catch (err: any) {
       showToast(mapAuthError(err), 'error');
     } finally {
+      submittingRef.current = false;
       setGoogleLoading(false);
     }
   };

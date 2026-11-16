@@ -6,17 +6,28 @@ import { IconRenderer } from '../components/Icons';
 import { SelectDropdown } from '../components/SelectDropdown';
 import { secureUrl } from '../utils/secureUrl';
 import { showToast } from '../components/Toast';
-import { auth, rtdb } from '../firebase';
-import { ref as dbRef, set } from 'firebase/database';
-import { notifyApplicationSubmittedApi } from '../services/emailService';
-import { MAX_SERVICE_FILE_SIZE, uploadFile } from '../services/uploadService';
+import { auth } from '../firebase';
+import {
+  createApplicationApi,
+  createApplicationPaymentApi,
+  confirmApplicationPaymentApi,
+  recoverApplicationPaymentApi,
+} from '../services/emailService';
+import {
+  MAX_SERVICE_FILE_SIZE,
+  uploadFileWithRetry,
+  uploadFilesBounded,
+} from '../services/uploadService';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
 import { SEO } from '../components/SEO';
 import { ShareButton } from '../components/ShareButton';
 import { getServiceShareData, getSubServiceShareData } from '../utils/shareUtils';
-import { getRazorpayKeyId, loadRazorpayScript, verifyRazorpayPayment } from '../services/razorpayService';
-import { sanitizeFormData, sanitizeEmail } from '../utils/sanitizer';
+import { getRazorpayKeyId, loadRazorpayScript } from '../services/razorpayService';
+import { sanitizeFormData } from '../utils/sanitizer';
 import { ApplySkeleton } from '../components/Skeleton';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
+
+const PENDING_APP_PAYMENT_KEY = 'icc_pending_app_payment';
 
 interface ApplyProps {
   services: Service[];
@@ -58,11 +69,59 @@ export function Apply({
   const [subServiceNotFound, setSubServiceNotFound] = useState(false);
   const [formData, setFormData] = useState<Record<string, any>>({});
   const [files, setFiles] = useState<Record<string, File[]>>({});
-  const [loading, setLoading] = useState(false);
   const [declarationChecked, setDeclarationChecked] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const paymentProcessingRef = useRef(false);
-  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number }>({ current: 0, total: 0 });
+  const isMountedRef = useRef(true);
+  const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; percent: number }>({
+    current: 0,
+    total: 0,
+    percent: 0,
+  });
+
+  const {
+    isSubmitting: loading,
+    submittingRef,
+    runSubmission,
+  } = useSubmissionLifecycle();
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
+
+  // Attempt crash/tab-close payment recovery if a paid service application was interrupted
+  useEffect(() => {
+    if (!isAuthenticated || !auth.currentUser) return;
+    let pendingRaw: string | null = null;
+    try {
+      pendingRaw = window.localStorage.getItem(PENDING_APP_PAYMENT_KEY);
+    } catch {}
+    if (!pendingRaw) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const pending = JSON.parse(pendingRaw!);
+        if (!pending?.appId || (pending.createdAt && Date.now() - pending.createdAt > 6 * 60 * 60 * 1000)) {
+          try { window.localStorage.removeItem(PENDING_APP_PAYMENT_KEY); } catch {}
+          return;
+        }
+        const rec = await recoverApplicationPaymentApi(pending.appId);
+        if (!cancelled && rec?.verified && rec?.application) {
+          try { window.localStorage.removeItem(PENDING_APP_PAYMENT_KEY); } catch {}
+          showToast('Recovered your completed payment and confirmed your application!', 'success');
+          onSuccess();
+        }
+      } catch {}
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isAuthenticated]);
 
   useEffect(() => {
     if (!paymentProcessing) return;
@@ -174,7 +233,7 @@ export function Apply({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (loading || paymentProcessingRef.current) return;
+    if (submittingRef.current || paymentProcessingRef.current) return;
 
     const currentAuthUser = auth.currentUser;
     if (!isAuthenticated || !user || !currentAuthUser) {
@@ -219,210 +278,197 @@ export function Apply({
       return;
     }
 
-    setLoading(true);
     try {
-      const uploadedFiles: Record<string, string | string[]> = {};
-      
-      // Upload files to Firebase Storage
-      const fileEntries = Object.entries(files) as [string, File[]][];
-      setUploadProgress({ current: 0, total: fileEntries.reduce((total, [, fieldFiles]) => total + fieldFiles.length, 0) });
-      
-      for (let i = 0; i < fileEntries.length; i++) {
-        const [label, fieldFiles] = fileEntries[i];
-        const urls: string[] = [];
-        for (const file of fieldFiles) {
-          urls.push(await uploadFile(file, 'applications', MAX_SERVICE_FILE_SIZE));
-          setUploadProgress(prev => ({ current: prev.current + 1, total: prev.total }));
-        }
-        const activeFields = selectedSubService?.fields && selectedSubService.fields.length > 0
-          ? selectedSubService.fields
-          : service.fields;
-        const field = activeFields.find(activeField => activeField.label === label);
-        uploadedFiles[label] = field?.multiple === true ? urls : urls[0];
-      }
+      await runSubmission(async ({ signal, idempotencyKey, setPhase, setProgress }) => {
+        const uploadedFiles: Record<string, string | string[]> = {};
+        const fileEntries = Object.entries(files) as [string, File[]][];
+        const uploadTasks = fileEntries.flatMap(([label, fieldFiles]) => {
+          const field = activeFields.find(activeField => activeField.label === label);
+          const isMultiple = field?.multiple === true;
+          return fieldFiles.map(file => ({ label, file, isMultiple }));
+        });
 
-      // Generate ID: ICC-DDMMYYYY-HHMMSS-RRRR
-      const now = new Date();
-      const dateStr = now.toLocaleDateString('en-GB').replace(/\//g, ''); // DDMMYYYY
-      const timeStr = now.toTimeString().split(' ')[0].replace(/:/g, ''); // HHMMSS
-      const randomStr = Math.floor(1000 + Math.random() * 9000).toString(); // 4 random digits
-      const appId = `ICC-${dateStr}-${timeStr}-${randomStr}`;
+        if (uploadTasks.length > 0) {
+          setPhase('uploading');
+          setUploadProgress({ current: 0, total: uploadTasks.length, percent: 0 });
 
-      // Sanitize all form data before saving - convert display labels to valid database keys
-      const sanitizedDetails = sanitizeFormData({ ...formData, ...uploadedFiles });
-      const sanitizedEmail = sanitizeEmail(user.email);
-
-      const application: any = {
-        uid: user.uid,
-        email: sanitizedEmail,
-        name: user.name.trim(),
-        serviceName: service.name.trim(),
-        serviceId: service.id,
-        details: sanitizedDetails,
-        status: 'processing',
-        date: now.toISOString(),
-        notes: [],
-        paymentStatus: (selectedSubService?.paymentMethods?.includes('free') || selectedSubService?.paymentMethods?.includes('cash')) ? 'completed' : 'pending'
-      };
-
-      if (selectedSubService) {
-        application.subserviceName = selectedSubService.name;
-        application.charge = selectedSubService.charge || 0;
-      }
-
-      const submitApp = async (appData: any) => {
-        const appWithId = { ...appData, id: appId };
-        await set(dbRef(rtdb, `applications/${appId}`), appWithId);
-
-        // Notify customer and admins via server-authoritative role-separated email templates
-        const notifyRes = await notifyApplicationSubmittedApi(appId).catch(() => null);
-        if (notifyRes?.emailDelivery?.hasFailures) {
-          showToast('Application submitted! Email confirmation delayed — our team will follow up.', 'info');
-        } else {
-          showToast('Application Submitted Successfully!');
-        }
-        onSuccess();
-      };
-
-      if (selectedSubService) {
-        const methods = selectedSubService.paymentMethods;
-        
-        if (methods.includes('razorpay')) {
-          // Handle Razorpay - Create order on backend first
-          try {
-            const charge = selectedSubService.charge || 0;
-            const chargeInPaisa = charge * 100;
-            const idToken = await currentAuthUser.getIdToken();
-
-            const orderResponse = await fetch('/api/create-razorpay-order', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${idToken}`,
+          const uploadedUrls = await uploadFilesBounded(
+            uploadTasks,
+            (task, _idx, reportItemProgress) =>
+              uploadFileWithRetry(task.file, {
+                category: 'applications',
+                maxSizeBytes: MAX_SERVICE_FILE_SIZE,
+                signal,
+                onProgress: reportItemProgress,
+              }),
+            {
+              concurrency: 3,
+              signal,
+              onProgress: (completed, total, percent) => {
+                setProgress(percent);
+                if (isMountedRef.current) {
+                  setUploadProgress({ current: completed, total, percent });
+                }
               },
-              body: JSON.stringify({
-                amount: chargeInPaisa,
-                currency: 'INR',
-                receipt: appId,
-                notes: {
-                  serviceId: service.id,
-                  serviceName: service.name,
-                  subServiceName: selectedSubService.name
+            }
+          );
+
+          const groupedUrls: Record<string, { urls: string[]; isMultiple: boolean }> = {};
+          uploadTasks.forEach((task, idx) => {
+            if (!groupedUrls[task.label]) {
+              groupedUrls[task.label] = { urls: [], isMultiple: task.isMultiple };
+            }
+            groupedUrls[task.label].urls.push(uploadedUrls[idx]);
+          });
+          for (const [label, entry] of Object.entries(groupedUrls)) {
+            uploadedFiles[label] = entry.isMultiple ? entry.urls : entry.urls[0];
+          }
+        }
+
+        setPhase('submitting');
+        const sanitizedDetails = sanitizeFormData({ ...formData, ...uploadedFiles });
+        const methods = selectedSubService?.paymentMethods || [];
+        const hasRazorpay = Boolean(selectedSubService && methods.includes('razorpay') && (Number(selectedSubService.charge) || 0) > 0);
+
+        if (hasRazorpay && selectedSubService) {
+          const createRes = await createApplicationPaymentApi(
+            {
+              serviceId: service.id,
+              subserviceName: selectedSubService.name,
+              details: sanitizedDetails,
+              phone: user.phone,
+              clientRequestId: idempotencyKey,
+            },
+            { signal }
+          );
+
+          if (!createRes?.razorpayOrderId || !createRes?.appId) {
+            throw new Error(createRes?.error || 'Failed to initiate application payment.');
+          }
+
+          const scriptLoaded = await loadRazorpayScript(12000);
+          if (!scriptLoaded || !window.Razorpay) {
+            throw new Error('Payment system not available. Please refresh the page.');
+          }
+
+          try {
+            window.localStorage.setItem(
+              PENDING_APP_PAYMENT_KEY,
+              JSON.stringify({ appId: createRes.appId, createdAt: Date.now() })
+            );
+          } catch {}
+
+          const activeRazorpay = gateways.find(g => g.type === 'razorpay' && g.active);
+          const key = createRes.keyId || activeRazorpay?.credentials?.keyId || getRazorpayKeyId();
+
+          const options = {
+            key,
+            amount: createRes.amount,
+            currency: createRes.currency || 'INR',
+            order_id: createRes.razorpayOrderId,
+            name: 'India Cyber Cafe',
+            description: `Payment for ${service.name}`,
+            handler: async (response: any) => {
+              if (paymentProcessingRef.current) return;
+              paymentProcessingRef.current = true;
+              if (isMountedRef.current) setPaymentProcessing(true);
+
+              try {
+                const confirmRes = await confirmApplicationPaymentApi(createRes.appId, {
+                  razorpay_payment_id: response.razorpay_payment_id,
+                  razorpay_order_id: response.razorpay_order_id,
+                  razorpay_signature: response.razorpay_signature,
+                });
+
+                if (!confirmRes?.verified) {
+                  throw new Error(confirmRes?.error || 'Payment verification failed');
                 }
-              })
-            });
 
-            if (!orderResponse.ok) {
-              const errorData = await orderResponse.json().catch(() => ({ error: 'Unknown error' }));
-              console.error('❌ Order creation failed:', errorData);
-              throw new Error(errorData.error || `Server error: ${orderResponse.status}`);
-            }
-
-            const orderData = await orderResponse.json();
-
-            if (!orderData.order_id && !orderData.orderId) {
-              throw new Error('No order ID returned from server');
-            }
-
-            const razorpayOrderId = orderData.order_id || orderData.orderId;
-
-            const scriptLoaded = await loadRazorpayScript();
-            if (!scriptLoaded || !window.Razorpay) {
-              console.error('❌ Razorpay window object not found');
-              showToast('❌ Payment system not available. Please refresh the page.', 'error');
-              setLoading(false);
-              return;
-            }
-
-            const activeRazorpay = gateways.find(g => g.type === 'razorpay' && g.active);
-            const key = orderData.keyId || activeRazorpay?.credentials?.keyId || getRazorpayKeyId();
-
-            const options = {
-              key,
-              amount: chargeInPaisa,
-              currency: 'INR',
-              order_id: razorpayOrderId,
-              name: 'India Cyber Cafe',
-              description: `Payment for ${service.name}`,
-              handler: async (response: any) => {
-                if (paymentProcessingRef.current) return;
-                paymentProcessingRef.current = true;
-                setPaymentProcessing(true);
-
-                try {
-                  // Verify payment with backend using Razorpay signature
-                  const verificationResult = await verifyRazorpayPayment(
-                    response.razorpay_payment_id,
-                  response.razorpay_order_id,
-                  response.razorpay_signature
-                );
-
-                if (!verificationResult.verified) {
-                  throw new Error(verificationResult.error || 'Payment verification failed');
+                try { window.localStorage.removeItem(PENDING_APP_PAYMENT_KEY); } catch {}
+                showToast('Application Submitted Successfully!');
+                onSuccess();
+              } catch (err: any) {
+                console.error('Application payment confirmation error:', err);
+                const recovered = await recoverApplicationPaymentApi(createRes.appId).catch(() => null);
+                if (recovered?.verified) {
+                  try { window.localStorage.removeItem(PENDING_APP_PAYMENT_KEY); } catch {}
+                  showToast('Application Submitted Successfully!');
+                  onSuccess();
+                  return;
                 }
-
-                // Payment verified, save application
-                application.paymentMethod = 'razorpay';
-                application.paymentStatus = 'completed';
-                application.razorpayPaymentId = response.razorpay_payment_id;
-                application.razorpayOrderId = response.razorpay_order_id;
-                await submitApp(application);
-              } catch (error: any) {
-                console.error('Payment verification error:', error);
                 paymentProcessingRef.current = false;
-                setPaymentProcessing(false);
-                showToast(error, 'error', 'Payment could not be verified.');
+                if (isMountedRef.current) setPaymentProcessing(false);
+                showToast(err, 'error', 'Payment could not be verified. Please check Track Applications before retrying.');
               }
             },
-              prefill: {
-                name: user.name,
-                email: user.email,
-                contact: user.phone || ''
-              },
-              modal: {
-                ondismiss: () => {
-                  paymentProcessingRef.current = false;
-                  setPaymentProcessing(false);
-                  setLoading(false);
-                  showToast('Payment was cancelled. You can try again whenever you\'re ready.', 'info');
+            prefill: {
+              name: user.name,
+              email: user.email,
+              contact: user.phone || '',
+            },
+            modal: {
+              ondismiss: async () => {
+                paymentProcessingRef.current = false;
+                if (isMountedRef.current) setPaymentProcessing(false);
+                const recovered = await recoverApplicationPaymentApi(createRes.appId).catch(() => null);
+                if (recovered?.verified && isMountedRef.current) {
+                  try { window.localStorage.removeItem(PENDING_APP_PAYMENT_KEY); } catch {}
+                  showToast('Payment detected! Application submitted.', 'success');
+                  onSuccess();
+                  return;
                 }
+                showToast("Payment was cancelled. You can try again whenever you're ready.", 'info');
               },
-              theme: { color: '#FF9933' }
-            };
+            },
+            theme: { color: '#FF9933' },
+          };
 
-            const rzp = new (window as any).Razorpay(options);
-            rzp.open();
-          } catch (error: any) {
-            console.error('❌ Razorpay payment error:', error);
-            paymentProcessingRef.current = false;
-            setPaymentProcessing(false);
-            showToast(error, 'error', 'Unable to start payment. Please try again.');
-            setLoading(false);
+          const rzp = new (window as any).Razorpay(options);
+          if (typeof rzp?.on === 'function') {
+            rzp.on('payment.failed', (failureResp: any) => {
+              paymentProcessingRef.current = false;
+              if (isMountedRef.current) setPaymentProcessing(false);
+              showToast(
+                failureResp?.error?.description || failureResp?.error?.reason || 'Payment failed. Please try again.',
+                'error'
+              );
+            });
           }
-        } else if (methods.includes('pay_after_work')) {
-          application.paymentMethod = 'pay_after_work';
-          application.paymentStatus = 'pending';
-          await submitApp(application);
-        } else if (methods.includes('cash')) {
-          application.paymentMethod = 'cash';
-          application.paymentStatus = 'completed';
-          await submitApp(application);
-        } else if (methods.includes('free')) {
-          application.paymentMethod = 'free';
-          application.paymentStatus = 'completed';
-          application.charge = 0;
-          await submitApp(application);
-        } else {
-          // Default to simple submission
-          await submitApp(application);
+          rzp.open();
+          return;
         }
-      } else {
-        await submitApp(application);
-      }
+
+        const resolvedMethod = methods.includes('pay_after_work')
+          ? 'pay_after_work'
+          : methods.includes('cash')
+            ? 'cash'
+            : methods.includes('free') || (selectedSubService && Number(selectedSubService.charge || 0) === 0)
+              ? 'free'
+              : 'cash';
+
+        await createApplicationApi(
+          {
+            serviceId: service.id,
+            subserviceName: selectedSubService?.name,
+            paymentMethod: resolvedMethod,
+            details: sanitizedDetails,
+            phone: user.phone,
+            clientRequestId: idempotencyKey,
+          },
+          { signal }
+        );
+
+        showToast('Application Submitted Successfully!');
+        onSuccess();
+      });
     } catch (error: any) {
-      showToast(error, 'error', 'Something went wrong. Please try again.');
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Something went wrong. Please try again.');
+      }
     } finally {
-      setLoading(false);
+      if (isMountedRef.current) {
+        setUploadProgress({ current: 0, total: 0, percent: 0 });
+      }
     }
   };
 

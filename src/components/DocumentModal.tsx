@@ -4,6 +4,8 @@ import { IconRenderer } from './Icons';
 import { SelectDropdown } from './SelectDropdown';
 import { normalizePdfUrl } from '../utils/driveUrl';
 import { showToast } from './Toast';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
+import { withClientTimeout } from '../utils/fetchWithTimeout';
 
 interface DocumentModalProps {
   document?: FormDocument | null;
@@ -14,25 +16,31 @@ interface DocumentModalProps {
 
 export function DocumentModal({ document, categories, onClose, onSave }: DocumentModalProps) {
   const [formData, setFormData] = useState({ name: document?.name || '', description: document?.description || '', category: document?.category || '', url: document?.previewUrl || document?.downloadUrl || '', thumbnailUrl: document?.thumbnailUrl || '', active: document?.active !== false });
-  const [saving, setSaving] = useState(false);
+  const { isSubmitting: saving, submittingRef, runSubmission } = useSubmissionLifecycle();
   const categoryOptions = categories.map(category => ({ value: category.name, label: category.name }));
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (submittingRef.current) return;
     const urls = normalizePdfUrl(formData.url);
     if (!formData.name.trim() || !formData.category || !urls) {
       showToast('Name, category and a valid PDF URL are required.', 'error');
       return;
     }
-    setSaving(true);
     try {
-      await onSave({ name: formData.name.trim(), description: formData.description.trim(), category: formData.category, ...urls, thumbnailUrl: formData.thumbnailUrl.trim() || undefined, fileType: 'PDF', active: formData.active }, document?.id);
-      showToast(document ? 'PDF updated successfully!' : 'PDF added successfully!', 'success');
-      onClose();
+      await runSubmission(async () => {
+        await withClientTimeout(
+          onSave({ name: formData.name.trim(), description: formData.description.trim(), category: formData.category, ...urls, thumbnailUrl: formData.thumbnailUrl.trim() || undefined, fileType: 'PDF', active: formData.active }, document?.id),
+          15000,
+          'Saving PDF timed out.'
+        );
+        showToast(document ? 'PDF updated successfully!' : 'PDF added successfully!', 'success');
+        onClose();
+      });
     } catch (error: any) {
-      showToast(error, 'error', 'Failed to save PDF.');
-    } finally {
-      setSaving(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Failed to save PDF.');
+      }
     }
   };
 

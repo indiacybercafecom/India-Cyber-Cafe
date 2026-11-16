@@ -11,6 +11,7 @@ import {
 import { PrivacyRequest, PrivacyRequestCategory } from '../types';
 import { showToast } from '../components/Toast';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
 
 export function PrivacyRequestPage() {
   const [searchParams] = useSearchParams();
@@ -26,8 +27,8 @@ export function PrivacyRequestPage() {
   const [referenceId, setReferenceId] = useState('');
   const [category, setCategory] = useState<PrivacyRequestCategory>('privacy_question');
   const [description, setDescription] = useState('');
-  const [submitting, setSubmitting] = useState(false);
   const [submittedTicket, setSubmittedTicket] = useState<string | null>(null);
+  const { isSubmitting: submitting, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   // Track state
   const [trackTicketId, setTrackTicketId] = useState(initialTicket);
@@ -38,39 +39,44 @@ export function PrivacyRequestPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submitting) return;
+    if (submittingRef.current) return;
 
     if (!name.trim() || !email.trim() || !description.trim()) {
       showToast('Please fill in all required fields.', 'error');
       return;
     }
 
-    setSubmitting(true);
     try {
-      const res = await submitPrivacyRequest({
-        category,
-        name,
-        email,
-        phone,
-        referenceId,
-        description,
-      });
+      await runSubmission(async ({ signal, idempotencyKey }) => {
+        const res = await submitPrivacyRequest(
+          {
+            category,
+            name,
+            email,
+            phone,
+            referenceId,
+            description,
+            idempotencyKey,
+          },
+          { signal }
+        );
 
-      if (res.success && res.ticketId) {
-        setSubmittedTicket(res.ticketId);
-        showToast('Your request has been recorded successfully.', 'success');
-        setName('');
-        setEmail('');
-        setPhone('');
-        setReferenceId('');
-        setDescription('');
-      } else {
-        showToast(res.error || 'Failed to submit request.', 'error', 'Unable to submit request. Please try again.');
-      }
+        if (res.success && res.ticketId) {
+          setSubmittedTicket(res.ticketId);
+          showToast('Your request has been recorded successfully.', 'success');
+          setName('');
+          setEmail('');
+          setPhone('');
+          setReferenceId('');
+          setDescription('');
+        } else {
+          throw new Error(res.error || 'Failed to submit request.');
+        }
+      });
     } catch (err: any) {
-      showToast(err, 'error', 'Unable to submit request. Please try again.');
-    } finally {
-      setSubmitting(false);
+      if (err?.name !== 'AbortError') {
+        showToast(err, 'error', 'Unable to submit request. Please try again.');
+      }
     }
   };
 

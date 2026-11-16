@@ -4,9 +4,11 @@ import { IconRenderer } from './Icons';
 import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { motion } from 'motion/react';
-import { updateAdminOrderStatusApi } from '../services/emailService';
-import { uploadFile } from '../services/uploadService';
+import { addOrderNoteApi, updateAdminOrderStatusApi } from '../services/emailService';
+import { uploadFileWithRetry, MAX_SERVICE_FILE_SIZE } from '../services/uploadService';
 import { normalizeApplicationNotes } from '../utils/permissions';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
+import { withClientTimeout } from '../utils/fetchWithTimeout';
 
 interface OrderManageModalProps {
   order: Order | null;
@@ -23,16 +25,15 @@ export function OrderManageModal({
   order, 
   onClose, 
   currentUser,
-  onUpdateOrder,
   onDeleteOrder 
 }: OrderManageModalProps) {
   const [newOrderStatus, setNewOrderStatus] = useState(order?.orderStatus || 'pending');
   const [newPaymentStatus, setNewPaymentStatus] = useState(order?.paymentStatus || 'pending');
   const [noteText, setNoteText] = useState('');
   const [noteFile, setNoteFile] = useState<File | null>(null);
-  const [loading, setLoading] = useState(false);
   const [uploadingFile, setUploadingFile] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const { isSubmitting: loading, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   if (!order) return null;
 
@@ -41,12 +42,7 @@ export function OrderManageModal({
   if (!Array.isArray(order.items) && typeof order.items === 'object' && order.items !== null) {
     items = Object.values(order.items as any).filter(item => item && typeof item === 'object') as OrderItem[];
   }
-  
-  // Debug logging to check image URLs
-  console.log('Order items with images:', items.map(item => ({ 
-    productName: (item as any).productName, 
-    customImageUrl: (item as any).customImageUrl 
-  })));
+
   const deliveryAddress: Partial<OrderAddress> = order.deliveryAddress || {};
   const total = order.total || 0;
   const subtotal = order.subtotal || 0;
@@ -55,36 +51,33 @@ export function OrderManageModal({
   const notes = normalizeApplicationNotes(order.notes);
 
   const handleStatusUpdate = async () => {
-    if (!order.id) return;
+    if (!order.id || submittingRef.current) return;
 
     const statusChanged = newOrderStatus !== order.orderStatus;
     const paymentChanged = newPaymentStatus !== order.paymentStatus;
     if (!statusChanged && !paymentChanged) return;
 
-    setLoading(true);
     try {
-      let estimatedDelivery: string | undefined;
-      if (statusChanged && newOrderStatus === 'shipped') {
-        const deliveryDate = new Date();
-        deliveryDate.setDate(deliveryDate.getDate() + 3);
-        estimatedDelivery = deliveryDate.toLocaleDateString('en-IN');
-      }
+      await runSubmission(async () => {
+        let estimatedDelivery: string | undefined;
+        if (statusChanged && newOrderStatus === 'shipped') {
+          const deliveryDate = new Date();
+          deliveryDate.setDate(deliveryDate.getDate() + 3);
+          estimatedDelivery = deliveryDate.toLocaleDateString('en-IN');
+        }
 
-      const result = await updateAdminOrderStatusApi(order.id, {
-        ...(statusChanged ? { orderStatus: newOrderStatus } : {}),
-        ...(paymentChanged ? { paymentStatus: newPaymentStatus } : {}),
-        ...(estimatedDelivery ? { estimatedDelivery } : {}),
-      });
+        await updateAdminOrderStatusApi(order.id, {
+          ...(statusChanged ? { orderStatus: newOrderStatus } : {}),
+          ...(paymentChanged ? { paymentStatus: newPaymentStatus } : {}),
+          ...(estimatedDelivery ? { estimatedDelivery } : {}),
+        });
 
-      if (result.emailDelivery?.hasFailures) {
-        showToast('Order updated, but one or more notification emails failed to dispatch.', 'info');
-      } else {
         showToast('Order updated successfully!', 'success');
-      }
+      });
     } catch (error: any) {
-      showToast(error, 'error', 'Failed to update order. Please try again.');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Failed to update order. Please try again.');
+      }
     }
   };
 
@@ -92,8 +85,7 @@ export function OrderManageModal({
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
+    if (file.size > MAX_SERVICE_FILE_SIZE) {
       showToast('File size must be less than 5MB', 'error');
       return;
     }
@@ -103,6 +95,7 @@ export function OrderManageModal({
   };
 
   const handleAddNote = async () => {
+    if (submittingRef.current) return;
     if (!noteText.trim() && !noteFile) {
       showToast('Please enter a note or select a file', 'error');
       return;
@@ -115,68 +108,71 @@ export function OrderManageModal({
 
     if (!order.id) return;
 
-    setLoading(true);
     try {
-      let attachmentUrl = '';
-      let attachmentName = '';
+      await runSubmission(async ({ idempotencyKey, signal, setPhase }) => {
+        let attachmentUrl = '';
+        let attachmentName = '';
 
-      // Upload file if selected
-      if (noteFile) {
-        setUploadingFile(true);
-        attachmentUrl = await uploadFile(noteFile, 'order-notes');
-        attachmentName = noteFile.name;
-        setUploadingFile(false);
-      }
+        if (noteFile) {
+          setUploadingFile(true);
+          setPhase('uploading');
+          try {
+            attachmentUrl = await uploadFileWithRetry(noteFile, {
+              category: 'order-notes',
+              maxSizeBytes: MAX_SERVICE_FILE_SIZE,
+              signal,
+            });
+            attachmentName = noteFile.name;
+          } finally {
+            setUploadingFile(false);
+          }
+        }
 
-      const newNote: any = {
-        type: 'note',
-        by: currentUser.name,
-        email: currentUser.email,
-        text: noteText,
-        time: new Date().toLocaleString()
-      };
+        setPhase('submitting');
+        await addOrderNoteApi(
+          order.id,
+          {
+            text: noteText.trim(),
+            ...(attachmentUrl ? { attachmentUrl, attachmentName } : {}),
+            clientRequestId: idempotencyKey,
+          },
+          { signal }
+        );
 
-      if (attachmentUrl) {
-        newNote.attachment = attachmentUrl;
-        newNote.attachmentName = attachmentName;
-      }
-
-      const updatedNotes = [...notes, newNote];
-      if (onUpdateOrder) {
-        await onUpdateOrder(order.id, { notes: updatedNotes as any });
-      }
-      setNoteText('');
-      setNoteFile(null);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
-      showToast('Note added successfully!', 'success');
+        setNoteText('');
+        setNoteFile(null);
+        if (fileInputRef.current) {
+          fileInputRef.current.value = '';
+        }
+        showToast('Note added successfully!', 'success');
+      });
     } catch (error: any) {
-      showToast(error, 'error', 'Failed to add note. Please try again.');
-    } finally {
-      setLoading(false);
-      setUploadingFile(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Failed to add note. Please try again.');
+      }
     }
   };
 
   const handleDeleteOrder = async () => {
+    if (submittingRef.current) return;
     if (!window.confirm('Are you sure you want to delete this order? This action cannot be undone.')) {
       return;
     }
 
     if (!order.id) return;
 
-    setLoading(true);
     try {
-      if (onDeleteOrder) {
-        await onDeleteOrder(order.id);
-      }
-      showToast('Order deleted successfully!', 'success');
-      onClose();
+      await runSubmission(async () => {
+        if (onDeleteOrder) {
+          await withClientTimeout(onDeleteOrder(order.id), 15000, 'Deleting order timed out.');
+        }
+        showToast('Order deleted successfully!', 'success');
+        onClose();
+      });
     } catch (error: any) {
-      showToast(error, 'error', 'Failed to delete order. Please try again.');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Failed to delete order. Please try again.');
+      }
     }
   };
 

@@ -9,23 +9,24 @@ import { initializeApp, getApps, cert, ServiceAccount } from 'firebase-admin/app
 import { getDatabase, Database } from 'firebase-admin/database';
 import { getAuth, Auth } from 'firebase-admin/auth';
 import {
-  notifyApplicationUpdate,
-  notifyUserApplicationReply,
-  notifyApplicationAssignment,
-  notifyApplicationSubmitted,
-  notifyApplicationPaymentConfirmed,
-  notifyUserRegistration,
-  notifyProfileUpdated,
-  notifyCallbackRequest,
-  notifyReviewSubmitted,
   getNotificationEvents,
   retryNotificationEvent,
   enqueueOutboxNotification,
+  buildQueuedEmailDeliverySummary,
+  getNotificationOutboxStats,
+  getOutboxDlqJobs,
+  replayOutboxJob,
   registerOutboxOperatorProfileResolver,
   normalizeEmailAddress,
   isValidEmailAddress,
   NotificationDeliveryState,
 } from './emailNotificationService.js';
+import {
+  getQueueStats,
+  getDlqJobs,
+  replayDlqJob,
+  processPushWorkerJob,
+} from './asyncQueueService.js';
 
 const __filename_op = fileURLToPath(import.meta.url);
 const __dirname_op = path.dirname(__filename_op);
@@ -272,10 +273,21 @@ function sanitizeFilename(name: string): string {
   return base.slice(0, 120) || 'attachment';
 }
 
+const MAX_OPERATOR_RL_ENTRIES = 10000;
 const callbackRateLimitMap = new Map<string, { count: number; resetTime: number }>();
 function checkPublicNotificationRateLimit(bucket: string, ip: string, maxRequests = 10, windowMs = 60000): boolean {
   const key = `${bucket}:${ip}`;
   const now = Date.now();
+  if (callbackRateLimitMap.size >= MAX_OPERATOR_RL_ENTRIES) {
+    let removed = 0;
+    for (const [k, v] of callbackRateLimitMap.entries()) {
+      if (now > v.resetTime || removed < 500) {
+        callbackRateLimitMap.delete(k);
+        removed++;
+        if (callbackRateLimitMap.size < MAX_OPERATOR_RL_ENTRIES - 500) break;
+      }
+    }
+  }
   const entry = callbackRateLimitMap.get(key);
   if (!entry || now > entry.resetTime) {
     callbackRateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
@@ -286,19 +298,81 @@ function checkPublicNotificationRateLimit(bucket: string, ip: string, maxRequest
   return true;
 }
 
+const MAX_APP_IDEMPOTENCY_ENTRIES = 5000;
+const appIdempotencyCache = new Map<string, { timestamp: number; result: any }>();
+function checkAppIdempotency(key?: string): any | null {
+  if (!key) return null;
+  const cached = appIdempotencyCache.get(key);
+  if (cached && Date.now() - cached.timestamp < 30 * 60 * 1000) {
+    return cached.result;
+  }
+  return null;
+}
+function recordAppIdempotency(key: string | undefined, result: any) {
+  if (!key) return;
+  if (appIdempotencyCache.size >= MAX_APP_IDEMPOTENCY_ENTRIES) {
+    const first = appIdempotencyCache.keys().next().value;
+    if (first) appIdempotencyCache.delete(first);
+  }
+  appIdempotencyCache.set(key, { timestamp: Date.now(), result });
+}
+
+let serviceCatalogCache: { expiresAt: number; services: any[] } = { expiresAt: 0, services: [] };
+async function loadServiceCatalog(): Promise<any[]> {
+  if (Date.now() < serviceCatalogCache.expiresAt && serviceCatalogCache.services.length > 0) {
+    return serviceCatalogCache.services;
+  }
+  let services: any[] = [];
+  if (!isTestMode() && ensureAdminInit() && rtdbAdmin) {
+    try {
+      const snap = await withTimeout(rtdbAdmin.ref('services').once('value'), 4000, 'Load services catalog');
+      if (snap.exists()) {
+        const val = snap.val();
+        services = Array.isArray(val)
+          ? val.filter(Boolean)
+          : Object.entries(val || {}).map(([id, s]: [string, any]) => ({ id, ...s }));
+      }
+    } catch {}
+  }
+  if (services.length === 0) {
+    const candidates = [
+      path.join(APP_ROOT, 'public/data/services.json'),
+      path.join(APP_ROOT, 'dist/data/services.json'),
+    ];
+    for (const candidate of candidates) {
+      try {
+        if (fs.existsSync(candidate)) {
+          const parsed = JSON.parse(fs.readFileSync(candidate, 'utf-8'));
+          const list = Array.isArray(parsed) ? parsed : Array.isArray(parsed?.services) ? parsed.services : [];
+          if (list.length > 0) {
+            services = list;
+            break;
+          }
+        }
+      } catch {}
+    }
+  }
+  if (services.length > 0) {
+    serviceCatalogCache = { expiresAt: Date.now() + 60000, services };
+  }
+  return services;
+}
+
 // Local test store helper (used ONLY when STORE_ORDER_TEST_MODE=1 or OPERATOR_TEST_MODE=1)
-function readTestStore(): { users: Record<string, any>; applications: Record<string, any>; payments: Record<string, any> } {
+function readTestStore(): { users: Record<string, any>; applications: Record<string, any>; pendingApplications?: Record<string, any>; payments: Record<string, any>; callbacks?: Record<string, any> } {
   try {
     if (fs.existsSync(TEST_STORE_PATH)) {
       return JSON.parse(fs.readFileSync(TEST_STORE_PATH, 'utf-8'));
     }
   } catch {}
-  return { users: {}, applications: {}, payments: {} };
+  return { users: {}, applications: {}, pendingApplications: {}, payments: {}, callbacks: {} };
 }
 
-function writeTestStore(store: { users: Record<string, any>; applications: Record<string, any>; payments: Record<string, any> }) {
+function writeTestStore(store: { users: Record<string, any>; applications: Record<string, any>; pendingApplications?: Record<string, any>; payments: Record<string, any>; callbacks?: Record<string, any> }) {
   fs.mkdirSync(path.dirname(TEST_STORE_PATH), { recursive: true });
-  fs.writeFileSync(TEST_STORE_PATH, JSON.stringify(store, null, 2), 'utf-8');
+  const tmpPath = `${TEST_STORE_PATH}.${process.pid}.${crypto.randomBytes(3).toString('hex')}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(store, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, TEST_STORE_PATH);
 }
 
 let testDbDelayMs = 0;
@@ -1822,16 +1896,27 @@ export async function handleVerifyApplicationPayment(req: Request, res: Response
       );
     }
 
-    const emailDelivery = await notifyApplicationPaymentConfirmed({
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `app_payment:${appId}:${String(razorpay_payment_id)}`,
+      kind: 'application_payment',
       appId,
-      app: { ...app, paymentStatus: 'completed' },
-      transactionId: String(razorpay_payment_id),
-      paymentMethod: 'razorpay',
-      razorpayOrderId: String(razorpay_order_id),
-      timestamp: nowIso,
+      payload: {
+        app: { ...app, paymentStatus: 'completed', paymentMethod: 'razorpay' },
+        transactionId: String(razorpay_payment_id),
+        paymentMethod: 'razorpay',
+        razorpayOrderId: String(razorpay_order_id),
+        timestamp: nowIso,
+      },
+      maxAttempts: 5,
     });
 
-    return res.json({ success: true, paymentStatus: 'completed', emailDelivery });
+    return res.json({
+      success: true,
+      paymentStatus: 'completed',
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
+    });
   } catch (err: any) {
     if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
@@ -1843,7 +1928,7 @@ export async function handleVerifyApplicationPayment(req: Request, res: Response
 
 /**
  * POST /api/applications/:appId/assign
- * Admin-only operator assignment / reassignment with role-separated emails
+ * Admin-only operator assignment / reassignment with non-blocking async notifications
  */
 export async function handleAssignApplicationOperator(req: Request, res: Response) {
   try {
@@ -1906,13 +1991,18 @@ export async function handleAssignApplicationOperator(req: Request, res: Respons
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: 'Firebase Admin credentials not configured on server' });
     }
 
-    const emailDelivery = await notifyApplicationAssignment({
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `app_assigned:${appId}:${newOperator?.uid || 'none'}:${nowIso}`,
+      kind: 'application_assigned',
       appId,
-      app: { ...app, ...updates },
-      newOperator,
-      previousOperator,
-      assignedBy: { uid: caller.uid, name: caller.name, email: caller.email, role: caller.role },
-      timestamp: nowIso,
+      payload: {
+        app: { ...app, ...updates },
+        newOperator,
+        previousOperator,
+        assignedBy: { uid: caller.uid, name: caller.name, email: caller.email, role: caller.role },
+        timestamp: nowIso,
+      },
+      maxAttempts: 5,
     });
 
     return res.json({
@@ -1920,7 +2010,9 @@ export async function handleAssignApplicationOperator(req: Request, res: Respons
       assignedTo: updates.assignedTo,
       assignedToUid: updates.assignedToUid,
       updatedAt: nowIso,
-      emailDelivery,
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
     });
   } catch (err: any) {
     if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
@@ -1933,7 +2025,7 @@ export async function handleAssignApplicationOperator(req: Request, res: Respons
 
 /**
  * POST /api/applications/:appId/payment-status
- * Admin-only application payment status toggle with confirmed payment emails
+ * Admin-only application payment status toggle with non-blocking async emails
  */
 export async function handleAdminUpdateApplicationPaymentStatus(req: Request, res: Response) {
   try {
@@ -1968,24 +2060,821 @@ export async function handleAdminUpdateApplicationPaymentStatus(req: Request, re
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: 'Firebase Admin credentials not configured on server' });
     }
 
-    let emailDelivery = null;
+    let obxJobId: string | undefined;
     if (paymentStatus === 'completed' && previousPaymentStatus !== 'completed') {
-      emailDelivery = await notifyApplicationPaymentConfirmed({
+      const obx = enqueueOutboxNotification({
+        idempotencyKey: `app_payment:${appId}:${String(app.razorpayPaymentId || nowIso)}`,
+        kind: 'application_payment',
         appId,
-        app: { ...app, paymentStatus },
-        transactionId: String(app.razorpayPaymentId || `ADMIN-${Date.now()}`),
-        paymentMethod: app.paymentMethod || 'manual_admin',
-        timestamp: nowIso,
+        payload: {
+          app: { ...app, paymentStatus },
+          transactionId: String(app.razorpayPaymentId || `ADMIN-${Date.now()}`),
+          paymentMethod: app.paymentMethod || 'manual_admin',
+          timestamp: nowIso,
+        },
+        maxAttempts: 5,
       });
+      obxJobId = obx.job.jobId;
     }
 
-    return res.json({ success: true, paymentStatus, updatedAt: nowIso, emailDelivery });
+    return res.json({
+      success: true,
+      paymentStatus,
+      updatedAt: nowIso,
+      notificationQueued: Boolean(obxJobId),
+      ...(obxJobId ? { outboxJobId: obxJobId } : {}),
+      emailDelivery: obxJobId ? buildQueuedEmailDeliverySummary(obxJobId) : null,
+    });
   } catch (err: any) {
     if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
     }
     console.error('[operatorService] handleAdminUpdateApplicationPaymentStatus error:', err);
     return res.status(500).json({ success: false, error: 'Failed to update application payment status' });
+  }
+}
+
+/**
+ * Sanitize service application submission payload and calculate authoritative charge
+ */
+async function buildAndValidateApplicationDraft(params: {
+  caller: { uid: string; email: string; name: string };
+  body: any;
+  paymentMethod: 'cash' | 'razorpay' | 'pay_after_work';
+}) {
+  const { caller, body, paymentMethod } = params;
+  const serviceId = cleanText(body?.serviceId, 120);
+  const subserviceName = cleanText(body?.subserviceName, 160);
+  const formData = body?.formData && typeof body.formData === 'object' ? body.formData : {};
+  const profileName = cleanText(body?.name, 120) || caller.name || 'Customer';
+  const profilePhone = cleanText(body?.phone, 24);
+
+  if (!serviceId) {
+    throw Object.assign(new Error('Service ID is required.'), { statusCode: 400 });
+  }
+
+  const services = await loadServiceCatalog();
+  const service = services.find(
+    (s: any) => s?.id === serviceId || String(s?.name || '').toLowerCase() === String(body?.serviceName || '').toLowerCase()
+  );
+
+  let authoritativeName = cleanText(body?.serviceName, 160) || serviceId;
+  let authoritativeCharge = Math.max(0, Number(body?.charge) || 0);
+  let allowedMethods: string[] = ['razorpay', 'cash', 'pay_after_work'];
+
+  if (service) {
+    authoritativeName = cleanText(service.name, 160) || authoritativeName;
+    if (subserviceName && Array.isArray(service.subservices) && service.subservices.length > 0) {
+      const sub = service.subservices.find((ss: any) => String(ss?.name || '').trim() === subserviceName);
+      if (!sub) {
+        throw Object.assign(new Error('Selected service variant could not be found.'), { statusCode: 400 });
+      }
+      authoritativeCharge = Math.max(0, Number(sub.charge) || 0);
+      if (Array.isArray(sub.paymentMethods) && sub.paymentMethods.length > 0) {
+        allowedMethods = sub.paymentMethods;
+      }
+    } else if (typeof service.charge === 'number') {
+      authoritativeCharge = Math.max(0, Number(service.charge) || 0);
+      if (Array.isArray(service.paymentMethods) && service.paymentMethods.length > 0) {
+        allowedMethods = service.paymentMethods;
+      }
+    }
+  }
+
+  if (authoritativeCharge > 0 && !allowedMethods.includes(paymentMethod) && paymentMethod !== 'razorpay') {
+    throw Object.assign(new Error(`Payment method "${paymentMethod}" is not enabled for this service.`), { statusCode: 400 });
+  }
+
+  // Sanitize formData (limit field count and string size; keep safe URLs)
+  const sanitizedDetails: Record<string, any> = {};
+  const entries = Object.entries(formData).slice(0, 60);
+  let primaryFileUrl = '';
+  for (const [k, v] of entries) {
+    const cleanKey = cleanText(k, 120);
+    if (!cleanKey) continue;
+    if (Array.isArray(v)) {
+      const cleanedArr = v
+        .slice(0, 10)
+        .map(item => (typeof item === 'string' ? item.trim().slice(0, 1500) : ''))
+        .filter(Boolean);
+      sanitizedDetails[cleanKey] = cleanedArr;
+      if (!primaryFileUrl && cleanedArr.length > 0 && cleanedArr[0].startsWith('https://')) {
+        primaryFileUrl = cleanedArr[0];
+      }
+    } else if (typeof v === 'string') {
+      const cleanedVal = v.trim().slice(0, 2000);
+      sanitizedDetails[cleanKey] = cleanedVal;
+      if (!primaryFileUrl && (cleanedVal.startsWith('https://') || cleanedVal.startsWith('/api/'))) {
+        primaryFileUrl = cleanedVal;
+      }
+    } else if (typeof v === 'number' || typeof v === 'boolean') {
+      sanitizedDetails[cleanKey] = v;
+    }
+  }
+
+  if (!primaryFileUrl && typeof body?.fileUrl === 'string' && (body.fileUrl.startsWith('https://') || body.fileUrl.startsWith('/api/'))) {
+    primaryFileUrl = body.fileUrl.trim().slice(0, 1500);
+  }
+
+  return {
+    serviceId: service?.id || serviceId,
+    serviceName: authoritativeName,
+    subserviceName: subserviceName || undefined,
+    charge: authoritativeCharge,
+    paymentMethod,
+    name: profileName,
+    phone: profilePhone,
+    email: caller.email,
+    uid: caller.uid,
+    details: sanitizedDetails,
+    fileUrl: primaryFileUrl || undefined,
+  };
+}
+
+/**
+ * POST /api/applications
+ * Server-authoritative application creation for Free / Cash / Pay After Work submissions
+ */
+export async function handleCreateApplication(req: Request, res: Response) {
+  try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    if (!checkPublicNotificationRateLimit('create-app', `${caller.uid}:${clientIp}`, 20, 60000)) {
+      return res.status(429).json({ success: false, error: 'Too many submissions. Please wait a moment.' });
+    }
+
+    const body = req.body || {};
+    const rawMethod = String(body.paymentMethod || 'cash').trim();
+    const paymentMethod = rawMethod === 'pay_after_work' ? 'pay_after_work' : 'cash';
+    const clientRequestId = cleanText(body.clientRequestId || body.idempotencyKey, 120);
+
+    const dedupKey = clientRequestId ? `app_create:${caller.uid}:${clientRequestId}` : undefined;
+    const cached = checkAppIdempotency(dedupKey);
+    if (cached) {
+      return res.status(200).json({ ...cached, duplicate: true });
+    }
+
+    const draft = await buildAndValidateApplicationDraft({ caller, body, paymentMethod });
+    if (rawMethod === 'razorpay' && draft.charge > 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Paid Razorpay applications must go through /api/applications/create-payment and /confirm-payment.',
+      });
+    }
+
+    const nowIso = new Date().toISOString();
+    const appId = `ICC-APP-${Date.now()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+    const paymentStatus: 'pending' | 'completed' = draft.charge === 0 ? 'completed' : 'pending';
+
+    const appRecord: Record<string, any> = {
+      id: appId,
+      uid: caller.uid,
+      userId: caller.uid,
+      name: draft.name,
+      email: draft.email,
+      ...(draft.phone ? { phone: draft.phone } : {}),
+      serviceId: draft.serviceId,
+      serviceName: draft.serviceName,
+      ...(draft.subserviceName ? { subserviceName: draft.subserviceName } : {}),
+      charge: draft.charge,
+      status: 'processing',
+      paymentStatus,
+      paymentMethod: draft.paymentMethod,
+      details: draft.details,
+      ...(draft.fileUrl ? { fileUrl: draft.fileUrl } : {}),
+      date: nowIso,
+      updatedAt: nowIso,
+      ...(clientRequestId ? { clientRequestId } : {}),
+      notes: {
+        [`init_${Date.now()}`]: {
+          type: 'status',
+          by: 'System',
+          email: 'system@indiacybercafe.com',
+          text: draft.charge === 0
+            ? 'Application submitted (no service fee).'
+            : draft.paymentMethod === 'pay_after_work'
+              ? 'Application submitted with Pay After Work.'
+              : 'Application submitted with Cash / Pay at Center.',
+          time: nowIso,
+          createdAt: Date.now(),
+        },
+      },
+    };
+
+    if (isTestMode()) {
+      const store = readTestStore();
+      if (clientRequestId) {
+        const existing = Object.values(store.applications || {}).find((a: any) => a?.uid === caller.uid && a?.clientRequestId === clientRequestId);
+        if (existing) {
+          const dupResult = { success: true, duplicate: true, appId: existing.id, application: existing, notificationQueued: true };
+          recordAppIdempotency(dedupKey, dupResult);
+          return res.status(200).json(dupResult);
+        }
+      }
+      store.applications[appId] = appRecord;
+      writeTestStore(store);
+    } else if (ensureAdminInit() && rtdbAdmin) {
+      await withTimeout(rtdbAdmin.ref(`applications/${appId}`).set(appRecord), 8000, 'Save service application');
+    } else {
+      return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: 'Firebase Admin credentials not configured on server' });
+    }
+
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `app_submitted:${appId}`,
+      kind: 'application_submitted',
+      appId,
+      payload: { app: appRecord, timestamp: nowIso },
+      maxAttempts: 5,
+    });
+
+    const result = {
+      success: true,
+      appId,
+      application: appRecord,
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
+    };
+    recordAppIdempotency(dedupKey, result);
+    return res.status(201).json(result);
+  } catch (err: any) {
+    const status = err?.statusCode || (err?.message?.includes('timed out') ? 504 : 500);
+    if (status >= 500) console.error('[operatorService] handleCreateApplication error:', err);
+    return res.status(status).json({ success: false, error: err?.message || 'Failed to submit application.' });
+  }
+}
+
+/**
+ * POST /api/applications/create-payment
+ * Persists a durable pending application draft and creates a server-verified Razorpay order BEFORE opening checkout
+ */
+export async function handleCreateApplicationPayment(req: Request, res: Response) {
+  try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    if (!checkPublicNotificationRateLimit('create-app-payment', `${caller.uid}:${clientIp}`, 15, 60000)) {
+      return res.status(429).json({ success: false, error: 'Too many payment attempts. Please wait a minute.' });
+    }
+
+    const body = req.body || {};
+    const clientRequestId = cleanText(body.clientRequestId || body.idempotencyKey, 120);
+    const dedupKey = clientRequestId ? `app_create_pay:${caller.uid}:${clientRequestId}` : undefined;
+    const cached = checkAppIdempotency(dedupKey);
+    if (cached) {
+      return res.status(200).json({ ...cached, duplicate: true });
+    }
+
+    const draft = await buildAndValidateApplicationDraft({ caller, body, paymentMethod: 'razorpay' });
+    if (draft.charge <= 0) {
+      return res.status(400).json({ success: false, error: 'This service has ₹0 fee and does not require online payment.' });
+    }
+
+    const amountPaise = Math.round(draft.charge * 100);
+    const appId = `ICC-APP-${Date.now()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+    const keyId = (process.env.RAZORPAY_KEY_ID || '').trim();
+    const keySecret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
+
+    let razorpayOrderId = '';
+    if (isTestMode()) {
+      razorpayOrderId = `order_test_app_${crypto.randomBytes(6).toString('hex')}`;
+    } else {
+      if (!keyId || !keySecret) {
+        return res.status(503).json({ success: false, error: 'Payment gateway is not configured on the server.' });
+      }
+      const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+      const rzpResp = await fetch('https://api.razorpay.com/v1/orders', {
+        method: 'POST',
+        headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          amount: amountPaise,
+          currency: 'INR',
+          receipt: appId.slice(0, 40),
+          notes: {
+            kind: 'service_application',
+            appId,
+            uid: caller.uid,
+            serviceId: draft.serviceId,
+          },
+        }),
+        signal: AbortSignal.timeout(10000),
+      });
+      if (!rzpResp.ok) {
+        const errData = await rzpResp.json().catch(() => ({}));
+        console.error('[operatorService] Razorpay order creation failed:', errData);
+        return res.status(502).json({ success: false, error: 'Failed to create Razorpay payment order.' });
+      }
+      const rzpOrder: any = await rzpResp.json();
+      razorpayOrderId = rzpOrder.id;
+    }
+
+    const nowIso = new Date().toISOString();
+    const pendingDraft = {
+      ...draft,
+      id: appId,
+      razorpayOrderId,
+      amountPaise,
+      status: 'pending_payment',
+      paymentStatus: 'pending',
+      date: nowIso,
+      updatedAt: nowIso,
+      ...(clientRequestId ? { clientRequestId } : {}),
+    };
+
+    if (isTestMode()) {
+      const store = readTestStore();
+      if (!store.pendingApplications) store.pendingApplications = {};
+      store.pendingApplications[appId] = pendingDraft;
+      writeTestStore(store);
+    } else if (ensureAdminInit() && rtdbAdmin) {
+      await withTimeout(rtdbAdmin.ref(`pendingApplications/${appId}`).set(pendingDraft), 8000, 'Save pending application draft');
+    }
+
+    const result = {
+      success: true,
+      appId,
+      razorpayOrderId,
+      order_id: razorpayOrderId,
+      amount: amountPaise,
+      amountInRupees: draft.charge,
+      currency: 'INR',
+      keyId: keyId || 'rzp_test_key',
+    };
+    recordAppIdempotency(dedupKey, result);
+    return res.status(201).json(result);
+  } catch (err: any) {
+    const status = err?.statusCode || (err?.message?.includes('timed out') ? 504 : 500);
+    if (status >= 500) console.error('[operatorService] handleCreateApplicationPayment error:', err);
+    return res.status(status).json({ success: false, error: err?.message || 'Failed to initiate application payment.' });
+  }
+}
+
+async function finalizePendingApplicationRecord(params: {
+  appId: string;
+  pendingDraft: any;
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+}): Promise<any> {
+  const { appId, pendingDraft, razorpayOrderId, razorpayPaymentId } = params;
+  const nowIso = new Date().toISOString();
+
+  const existingCommitted = await readApplication(appId).catch(() => null);
+  if (existingCommitted && existingCommitted.paymentStatus === 'completed') {
+    return existingCommitted;
+  }
+
+  const finalRecord: Record<string, any> = {
+    ...(pendingDraft || {}),
+    id: appId,
+    uid: pendingDraft?.uid || '',
+    userId: pendingDraft?.uid || '',
+    status: 'processing',
+    paymentStatus: 'completed',
+    paymentMethod: 'razorpay',
+    razorpayOrderId,
+    razorpayPaymentId,
+    date: pendingDraft?.date || nowIso,
+    updatedAt: nowIso,
+    notes: {
+      [`pay_${Date.now()}`]: {
+        type: 'status',
+        by: 'System',
+        email: 'system@indiacybercafe.com',
+        text: `Application submitted and payment verified via Razorpay (${razorpayPaymentId}).`,
+        time: nowIso,
+        createdAt: Date.now(),
+      },
+    },
+  };
+
+  if (isTestMode()) {
+    const store = readTestStore();
+    store.applications[appId] = finalRecord;
+    if (store.pendingApplications) delete store.pendingApplications[appId];
+    store.payments[`pay_${razorpayPaymentId}`] = {
+      id: `pay_${razorpayPaymentId}`,
+      amount: Number(finalRecord.charge) || 0,
+      currency: 'INR',
+      paymentId: razorpayPaymentId,
+      orderId: appId,
+      razorpayOrderId,
+      status: 'completed',
+      type: 'service_application',
+      createdAt: nowIso,
+    };
+    writeTestStore(store);
+  } else if (ensureAdminInit() && rtdbAdmin) {
+    const payKey = `app_${appId}_${razorpayPaymentId}`.replace(/[/.#$[\]]/g, '_');
+    await withTimeout(
+      rtdbAdmin.ref().update({
+        [`applications/${appId}`]: finalRecord,
+        [`pendingApplications/${appId}`]: null,
+        [`payments/${payKey}`]: {
+          id: payKey,
+          amount: Number(finalRecord.charge) || 0,
+          currency: 'INR',
+          paymentId: razorpayPaymentId,
+          orderId: appId,
+          razorpayOrderId,
+          status: 'completed',
+          type: 'service_application',
+          createdAt: nowIso,
+        },
+      }),
+      8000,
+      'Commit verified application'
+    );
+  }
+
+  enqueueOutboxNotification({
+    idempotencyKey: `app_submitted:${appId}`,
+    kind: 'application_submitted',
+    appId,
+    payload: { app: finalRecord, timestamp: nowIso },
+    maxAttempts: 5,
+  });
+
+  return finalRecord;
+}
+
+/**
+ * POST /api/applications/:appId/confirm-payment
+ * Atomically verifies Razorpay signature + amount and commits the application in RTDB
+ */
+export async function handleConfirmApplicationPayment(req: Request, res: Response) {
+  try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
+    const appId = cleanText(req.params.appId, 120);
+    const { razorpay_payment_id, razorpay_order_id, razorpay_signature } = req.body || {};
+    if (!appId || !razorpay_payment_id || !razorpay_order_id || !razorpay_signature) {
+      return res.status(400).json({ success: false, verified: false, error: 'Missing payment verification details.' });
+    }
+
+    const existingApp = await readApplication(appId);
+    if (existingApp) {
+      if (caller.role !== 'admin' && !isCallerOwnerOfApp(existingApp, caller)) {
+        return res.status(403).json({ success: false, verified: false, error: 'Access denied' });
+      }
+      if (existingApp.paymentStatus === 'completed') {
+        return res.json({ success: true, verified: true, appId, application: existingApp, notificationQueued: true });
+      }
+    }
+
+    let pendingDraft: any = null;
+    if (isTestMode()) {
+      pendingDraft = readTestStore().pendingApplications?.[appId] || null;
+    } else if (ensureAdminInit() && rtdbAdmin) {
+      const snap = await withTimeout(rtdbAdmin.ref(`pendingApplications/${appId}`).once('value'), 6000, 'Read pending application draft');
+      pendingDraft = snap.exists() ? snap.val() : null;
+    }
+
+    if (!pendingDraft) {
+      return res.status(404).json({ success: false, verified: false, error: 'Pending application draft not found or expired.' });
+    }
+    if (caller.role !== 'admin' && pendingDraft.uid !== caller.uid) {
+      return res.status(403).json({ success: false, verified: false, error: 'Access denied.' });
+    }
+    if (pendingDraft.razorpayOrderId && pendingDraft.razorpayOrderId !== razorpay_order_id) {
+      return res.status(400).json({ success: false, verified: false, error: 'Razorpay order ID mismatch.' });
+    }
+
+    const keyId = (process.env.RAZORPAY_KEY_ID || '').trim();
+    const keySecret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
+    if (!isTestMode()) {
+      if (!keySecret) {
+        return res.status(503).json({ success: false, verified: false, error: 'Payment secret is not configured.' });
+      }
+      const expected = crypto
+        .createHmac('sha256', keySecret)
+        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+        .digest('hex');
+      const a = Buffer.from(expected, 'utf8');
+      const b = Buffer.from(String(razorpay_signature), 'utf8');
+      if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+        return res.status(400).json({ success: false, verified: false, error: 'Invalid payment signature.' });
+      }
+      if (keyId && pendingDraft.amountPaise) {
+        try {
+          const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+          const pResp = await fetch(`https://api.razorpay.com/v1/payments/${encodeURIComponent(String(razorpay_payment_id))}`, {
+            headers: { Authorization: authHeader },
+            signal: AbortSignal.timeout(6000),
+          });
+          if (pResp.ok) {
+            const pData: any = await pResp.json();
+            if (pData.order_id && pData.order_id !== razorpay_order_id) {
+              return res.status(400).json({ success: false, verified: false, error: 'Payment does not belong to this order.' });
+            }
+            if (typeof pData.amount === 'number' && pData.amount !== Number(pendingDraft.amountPaise)) {
+              return res.status(400).json({ success: false, verified: false, error: 'Paid amount mismatch.' });
+            }
+          }
+        } catch {}
+      }
+    } else {
+      const testSecret = keySecret || 'test_rzp_secret';
+      const expectedTestSig = crypto
+        .createHmac('sha256', testSecret)
+        .update(`${razorpay_order_id}|${razorpay_payment_id}`)
+        .digest('hex');
+      const a = Buffer.from(expectedTestSig, 'utf8');
+      const b = Buffer.from(String(razorpay_signature), 'utf8');
+      const validTestHmac = a.length === b.length && crypto.timingSafeEqual(a, b);
+      if (!validTestHmac && String(razorpay_signature) !== 'test_valid_sig') {
+        return res.status(400).json({ success: false, verified: false, error: 'Invalid test payment signature.' });
+      }
+    }
+
+    const finalApp = await finalizePendingApplicationRecord({
+      appId,
+      pendingDraft,
+      razorpayOrderId: String(razorpay_order_id),
+      razorpayPaymentId: String(razorpay_payment_id),
+    });
+
+    return res.status(200).json({
+      success: true,
+      verified: true,
+      appId,
+      application: finalApp,
+      notificationQueued: true,
+      emailDelivery: buildQueuedEmailDeliverySummary(),
+    });
+  } catch (err: any) {
+    console.error('[operatorService] handleConfirmApplicationPayment error:', err);
+    return res.status(500).json({ success: false, verified: false, error: 'Failed to confirm application payment.' });
+  }
+}
+
+/**
+ * POST /api/applications/:appId/recover-payment
+ * Recovers a paid service application if the browser tab closed before /confirm-payment finished
+ */
+export async function handleRecoverApplicationPayment(req: Request, res: Response) {
+  try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
+    const appId = cleanText(req.params.appId, 120);
+    const existingApp = await readApplication(appId);
+    if (existingApp) {
+      if (caller.role !== 'admin' && !isCallerOwnerOfApp(existingApp, caller)) {
+        return res.status(403).json({ success: false, error: 'Access denied' });
+      }
+      return res.json({ success: true, verified: existingApp.paymentStatus === 'completed', appId, application: existingApp });
+    }
+
+    let pendingDraft: any = null;
+    if (isTestMode()) {
+      pendingDraft = readTestStore().pendingApplications?.[appId] || null;
+    } else if (ensureAdminInit() && rtdbAdmin) {
+      const snap = await withTimeout(rtdbAdmin.ref(`pendingApplications/${appId}`).once('value'), 6000, 'Read pending application draft');
+      pendingDraft = snap.exists() ? snap.val() : null;
+    }
+
+    if (!pendingDraft || (caller.role !== 'admin' && pendingDraft.uid !== caller.uid)) {
+      return res.status(404).json({ success: false, error: 'Application draft not found.' });
+    }
+
+    const keyId = (process.env.RAZORPAY_KEY_ID || '').trim();
+    const keySecret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
+    if (!keyId || !keySecret || isTestMode() || !pendingDraft.razorpayOrderId) {
+      return res.json({ success: false, verified: false, error: 'Payment is still pending.' });
+    }
+
+    const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+    const resp = await fetch(`https://api.razorpay.com/v1/orders/${encodeURIComponent(pendingDraft.razorpayOrderId)}/payments`, {
+      headers: { Authorization: authHeader },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!resp.ok) {
+      return res.status(502).json({ success: false, error: 'Failed to check payment status with Razorpay.' });
+    }
+    const data: any = await resp.json();
+    const expectedPaise = Number(pendingDraft.amountPaise) || Math.round((Number(pendingDraft.charge) || 0) * 100);
+    const captured = (data.items || []).find(
+      (p: any) => (p.status === 'captured' || p.status === 'authorized') && p.currency === 'INR' && p.amount === expectedPaise
+    );
+    if (!captured) {
+      return res.json({ success: false, verified: false, error: 'No captured payment found yet.' });
+    }
+
+    const finalApp = await finalizePendingApplicationRecord({
+      appId,
+      pendingDraft,
+      razorpayOrderId: pendingDraft.razorpayOrderId,
+      razorpayPaymentId: captured.id,
+    });
+    return res.json({ success: true, verified: true, appId, application: finalApp, notificationQueued: true });
+  } catch (err: any) {
+    console.error('[operatorService] handleRecoverApplicationPayment error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to recover application payment.' });
+  }
+}
+
+export async function reconcilePendingApplicationFromWebhook(params: {
+  razorpayOrderId: string;
+  razorpayPaymentId?: string;
+  amountPaise?: number;
+  notes?: Record<string, any>;
+}): Promise<boolean> {
+  const { razorpayOrderId, razorpayPaymentId, amountPaise, notes } = params;
+  const candidateAppId = notes?.appId ? cleanText(String(notes.appId), 120) : '';
+
+  if (isTestMode()) {
+    const store = readTestStore();
+    const match = candidateAppId
+      ? store.pendingApplications?.[candidateAppId]
+      : Object.values(store.pendingApplications || {}).find((p: any) => p?.razorpayOrderId === razorpayOrderId);
+    if (!match) return false;
+    if (typeof amountPaise === 'number' && match.amountPaise && amountPaise !== Number(match.amountPaise)) return false;
+    await finalizePendingApplicationRecord({
+      appId: match.id,
+      pendingDraft: match,
+      razorpayOrderId,
+      razorpayPaymentId: razorpayPaymentId || razorpayOrderId,
+    });
+    return true;
+  }
+
+  if (!ensureAdminInit() || !rtdbAdmin) return false;
+  let pendingDraft: any = null;
+  if (candidateAppId) {
+    const snap = await withTimeout(rtdbAdmin.ref(`pendingApplications/${candidateAppId}`).once('value'), 5000, 'Read webhook pending app');
+    if (snap.exists()) pendingDraft = snap.val();
+  }
+  if (!pendingDraft) {
+    const snap = await withTimeout(
+      rtdbAdmin.ref('pendingApplications').orderByChild('razorpayOrderId').equalTo(razorpayOrderId).limitToFirst(1).once('value'),
+      5000,
+      'Query webhook pending app'
+    ).catch(() => null);
+    if (snap?.exists()) {
+      const first = Object.values(snap.val() || {})[0];
+      if (first) pendingDraft = first;
+    }
+  }
+  if (!pendingDraft) return false;
+  if (typeof amountPaise === 'number' && pendingDraft.amountPaise && amountPaise !== Number(pendingDraft.amountPaise)) {
+    return false;
+  }
+  await finalizePendingApplicationRecord({
+    appId: pendingDraft.id,
+    pendingDraft,
+    razorpayOrderId,
+    razorpayPaymentId: razorpayPaymentId || razorpayOrderId,
+  });
+  return true;
+}
+
+/**
+ * POST /api/profile/update
+ * Server-authoritative user profile update with phone collision check, phone index sync, and async notification
+ */
+export async function handleProfileUpdate(req: Request, res: Response) {
+  try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
+    const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
+    if (!checkPublicNotificationRateLimit('profile-update', `${caller.uid}:${clientIp}`, 20, 60000)) {
+      return res.status(429).json({ success: false, error: 'Too many profile updates. Please wait a minute.' });
+    }
+
+    const body = req.body || {};
+    const avatarOnly = Boolean(body.avatarOnly);
+    const avatar = typeof body.avatar === 'string' && /^https:\/\//i.test(body.avatar.trim()) ? body.avatar.trim().slice(0, 1024) : undefined;
+    const existingProfile = await readUserProfile(caller.uid);
+
+    if (avatarOnly) {
+      if (!avatar) {
+        return res.status(400).json({ success: false, error: 'A valid avatar URL is required.' });
+      }
+      const nowMs = Date.now();
+      const avatarUpdates: Record<string, any> = {
+        avatar,
+        customAvatar: true,
+        updatedAt: nowMs,
+      };
+      if (isTestMode()) {
+        const store = readTestStore();
+        store.users[caller.uid] = { ...(store.users[caller.uid] || { uid: caller.uid, email: caller.email, role: caller.role }), ...avatarUpdates };
+        writeTestStore(store);
+      } else if (ensureAdminInit() && rtdbAdmin) {
+        await withTimeout(rtdbAdmin.ref(`users/${caller.uid}`).update(avatarUpdates), 8000, 'Save profile avatar');
+      } else {
+        return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: 'Firebase Admin credentials not configured on server' });
+      }
+      const obx = enqueueOutboxNotification({
+        idempotencyKey: `profile_avatar:${caller.uid}:${nowMs}`,
+        kind: 'profile_updated',
+        payload: {
+          uid: caller.uid,
+          userName: existingProfile?.name || caller.name || 'Customer',
+          userEmail: existingProfile?.email || caller.email,
+          updateType: 'Profile Picture',
+        },
+        maxAttempts: 4,
+      });
+      return res.json({
+        success: true,
+        profile: { ...(existingProfile || {}), ...avatarUpdates },
+        notificationQueued: true,
+        outboxJobId: obx.job.jobId,
+        emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
+      });
+    }
+
+    const name = cleanText(body.name, 120);
+    const rawPhone = String(body.phone || '').replace(/\D/g, '');
+    const digitsPhone =
+      rawPhone.startsWith('91') && rawPhone.length === 12
+        ? rawPhone.slice(2)
+        : rawPhone.startsWith('0') && rawPhone.length === 11
+          ? rawPhone.slice(1)
+          : rawPhone;
+
+    if (!name) {
+      return res.status(400).json({ success: false, error: 'Name is required.' });
+    }
+    if (!/^[6-9]\d{9}$/.test(digitsPhone)) {
+      return res.status(400).json({ success: false, error: 'Valid 10-digit Indian mobile number starting with 6–9 is required.' });
+    }
+
+    const address = cleanText(body.address, 400);
+    const updateType = cleanText(body.updateType, 100) || 'Profile Details';
+    const prevPhone = String(existingProfile?.phone || '').replace(/\D/g, '').slice(-10);
+
+    const nowMs = Date.now();
+    const updates: Record<string, any> = {
+      name,
+      phone: digitsPhone,
+      address,
+      profileCompleted: true,
+      updatedAt: nowMs,
+      ...(avatar ? { avatar, customAvatar: true } : {}),
+    };
+
+    if (isTestMode()) {
+      const store = readTestStore();
+      const collision = Object.values(store.users || {}).find(
+        (u: any) => u && u.uid !== caller.uid && String(u.phone || '').replace(/\D/g, '').slice(-10) === digitsPhone
+      );
+      if (collision) {
+        return res.status(409).json({ success: false, error: 'This mobile number is already linked to another account.' });
+      }
+      store.users[caller.uid] = { ...(store.users[caller.uid] || { uid: caller.uid, email: caller.email, role: caller.role }), ...updates };
+      writeTestStore(store);
+    } else if (ensureAdminInit() && rtdbAdmin) {
+      const idxSnap = await withTimeout(rtdbAdmin.ref(`phoneIndex/${digitsPhone}`).once('value'), 5000, 'Check phone uniqueness');
+      if (idxSnap.exists() && idxSnap.val()?.uid && idxSnap.val()?.uid !== caller.uid) {
+        return res.status(409).json({ success: false, error: 'This mobile number is already registered to another account.' });
+      }
+      const multiUpdates: Record<string, any> = {};
+      for (const [k, v] of Object.entries(updates)) {
+        multiUpdates[`users/${caller.uid}/${k}`] = v;
+      }
+      multiUpdates[`phoneIndex/${digitsPhone}`] = {
+        uid: caller.uid,
+        email: existingProfile?.email || caller.email,
+        isGoogleOnly: (existingProfile?.authProvider || '') === 'google',
+        updatedAt: nowMs,
+      };
+      if (prevPhone && prevPhone !== digitsPhone) {
+        multiUpdates[`phoneIndex/${prevPhone}`] = null;
+      }
+      await withTimeout(rtdbAdmin.ref().update(multiUpdates), 8000, 'Save profile update');
+    } else {
+      return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: 'Firebase Admin credentials not configured on server' });
+    }
+
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `profile_update:${caller.uid}:${nowMs}`,
+      kind: 'profile_updated',
+      payload: {
+        uid: caller.uid,
+        userName: name,
+        userEmail: existingProfile?.email || caller.email,
+        updateType,
+      },
+      maxAttempts: 4,
+    });
+
+    return res.json({
+      success: true,
+      profile: { ...(existingProfile || {}), ...updates },
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
+    });
+  } catch (err: any) {
+    console.error('[operatorService] handleProfileUpdate error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to update profile.' });
   }
 }
 
@@ -2011,8 +2900,20 @@ export async function handleNotifyApplicationSubmitted(req: Request, res: Respon
       return res.status(403).json({ success: false, error: 'Access denied' });
     }
 
-    const emailDelivery = await notifyApplicationSubmitted({ appId, app });
-    return res.json({ success: true, emailDelivery });
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `app_submitted:${appId}`,
+      kind: 'application_submitted',
+      appId,
+      payload: { app },
+      maxAttempts: 5,
+    });
+
+    return res.json({
+      success: true,
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
+    });
   } catch (err: any) {
     if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
@@ -2038,11 +2939,11 @@ export async function handleNotifyRegistration(req: Request, res: Response) {
       return res.json({
         success: true,
         alreadyNotified: true,
+        notificationQueued: false,
         emailDelivery: { success: true, hasFailures: false, totalCount: 0, sentCount: 0, failedCount: 0, skippedDuplicateCount: 1, events: [] },
       });
     }
 
-    // Best-effort atomic flag on DB record so repeated logins never re-trigger welcome emails
     if (isTestMode()) {
       const store = readTestStore();
       if (store.users?.[caller.uid]) {
@@ -2053,16 +2954,26 @@ export async function handleNotifyRegistration(req: Request, res: Response) {
       await withTimeout(rtdbAdmin.ref(`users/${caller.uid}/registrationNotified`).set(true), 4000, 'Mark registration notified').catch(() => {});
     }
 
-    const emailDelivery = await notifyUserRegistration({
-      uid: caller.uid,
-      userName: profile?.name || caller.name,
-      userEmail: profile?.email || caller.email,
-      phone: profile?.phone,
-      authProvider: isGoogle ? 'google' : (profile?.authProvider || 'password'),
-      isGuestCheckout,
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `registration:${caller.uid}`,
+      kind: 'user_registration',
+      payload: {
+        uid: caller.uid,
+        userName: profile?.name || caller.name,
+        userEmail: profile?.email || caller.email,
+        phone: profile?.phone,
+        authProvider: isGoogle ? 'google' : (profile?.authProvider || 'password'),
+        isGuestCheckout,
+      },
+      maxAttempts: 5,
     });
 
-    return res.json({ success: true, emailDelivery });
+    return res.json({
+      success: true,
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
+    });
   } catch (err: any) {
     console.error('[operatorService] handleNotifyRegistration error:', err);
     return res.status(500).json({ success: false, error: 'Failed to process registration notification' });
@@ -2080,14 +2991,24 @@ export async function handleNotifyProfileUpdated(req: Request, res: Response) {
     const updateType = cleanText(req.body?.updateType, 100) || 'Profile Details';
     const profile = await readUserProfile(caller.uid);
 
-    const emailDelivery = await notifyProfileUpdated({
-      uid: caller.uid,
-      userName: profile?.name || caller.name,
-      userEmail: profile?.email || caller.email,
-      updateType,
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `profile_update:${caller.uid}:${updateType}:${Date.now()}`,
+      kind: 'profile_updated',
+      payload: {
+        uid: caller.uid,
+        userName: profile?.name || caller.name,
+        userEmail: profile?.email || caller.email,
+        updateType,
+      },
+      maxAttempts: 4,
     });
 
-    return res.json({ success: true, emailDelivery });
+    return res.json({
+      success: true,
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
+    });
   } catch (err: any) {
     console.error('[operatorService] handleNotifyProfileUpdated error:', err);
     return res.status(500).json({ success: false, error: 'Failed to send profile update notification' });
@@ -2121,17 +3042,27 @@ export async function handleNotifyReviewSubmitted(req: Request, res: Response) {
     }
 
     const profile = await readUserProfile(caller.uid);
-    const emailDelivery = await notifyReviewSubmitted({
-      uid: caller.uid,
-      productId,
-      productName,
-      customerName: profile?.name || caller.name,
-      customerEmail: profile?.email || caller.email,
-      rating,
-      reviewText,
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `review_notify:${caller.uid}:${productId}:${Date.now()}`,
+      kind: 'review_submitted',
+      payload: {
+        uid: caller.uid,
+        productId,
+        productName,
+        customerName: profile?.name || caller.name,
+        customerEmail: profile?.email || caller.email,
+        rating,
+        reviewText,
+      },
+      maxAttempts: 4,
     });
 
-    return res.json({ success: true, emailDelivery });
+    return res.json({
+      success: true,
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
+    });
   } catch (err: any) {
     console.error('[operatorService] handleNotifyReviewSubmitted error:', err);
     return res.status(500).json({ success: false, error: 'Failed to send review notification' });
@@ -2140,7 +3071,7 @@ export async function handleNotifyReviewSubmitted(req: Request, res: Response) {
 
 /**
  * POST /api/notifications/callback
- * Public rate-limited callback request notification (server sends fixed Admin template + optional Customer ack)
+ * Public rate-limited callback request persistence + non-blocking async email enqueue
  */
 export async function handleNotifyCallback(req: Request, res: Response) {
   try {
@@ -2166,13 +3097,44 @@ export async function handleNotifyCallback(req: Request, res: Response) {
         ? caller.email
         : undefined;
 
-    const emailDelivery = await notifyCallbackRequest({
+    const cbId = `cb_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+    const nowIso = new Date().toISOString();
+    const cbRecord = {
+      id: cbId,
       mobileNumber: mobile,
-      customerName,
-      customerEmail,
+      ...(customerName ? { customerName } : {}),
+      ...(customerEmail ? { customerEmail } : {}),
+      ...(caller?.uid ? { uid: caller.uid } : {}),
+      createdAt: nowIso,
+    };
+
+    if (isTestMode()) {
+      const store = readTestStore();
+      if (!store.callbacks) store.callbacks = {};
+      store.callbacks[cbId] = cbRecord;
+      writeTestStore(store);
+    } else if (ensureAdminInit() && rtdbAdmin) {
+      await withTimeout(rtdbAdmin.ref(`callbackRequests/${cbId}`).set(cbRecord), 4000, 'Save callback request').catch(() => {});
+    }
+
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `callback:${mobile}:${Math.floor(Date.now() / 60000)}`,
+      kind: 'callback_request',
+      payload: {
+        mobileNumber: mobile,
+        customerName,
+        customerEmail,
+      },
+      maxAttempts: 4,
     });
 
-    return res.json({ success: true, emailDelivery });
+    return res.json({
+      success: true,
+      callbackId: cbId,
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
+    });
   } catch (err: any) {
     console.error('[operatorService] handleNotifyCallback error:', err);
     return res.status(500).json({ success: false, error: 'Failed to submit callback notification' });
@@ -2217,3 +3179,91 @@ export async function handleRetryNotificationEvent(req: Request, res: Response) 
 
   return res.json({ success: true, event: result.event });
 }
+
+/**
+ * GET /api/admin/queue/stats
+ */
+export async function handleGetQueueStats(req: Request, res: Response) {
+  const caller = await requireAdminCaller(req, res);
+  if (!caller) return;
+  return res.json({
+    success: true,
+    queue: getQueueStats(),
+    outbox: getNotificationOutboxStats(),
+  });
+}
+
+/**
+ * GET /api/admin/queue/dlq
+ */
+export async function handleListDlqJobs(req: Request, res: Response) {
+  const caller = await requireAdminCaller(req, res);
+  if (!caller) return;
+  const limit = Math.min(Math.max(parseInt(String(req.query.limit || '50'), 10) || 50, 1), 200);
+  return res.json({
+    success: true,
+    queueDlq: getDlqJobs(limit),
+    outboxDlq: getOutboxDlqJobs(limit),
+  });
+}
+
+/**
+ * POST /api/admin/queue/:jobId/replay
+ */
+export async function handleReplayDlqJob(req: Request, res: Response) {
+  const caller = await requireAdminCaller(req, res);
+  if (!caller) return;
+  const jobId = cleanText(req.params.jobId, 120);
+  if (!jobId) {
+    return res.status(400).json({ success: false, error: 'Valid jobId is required' });
+  }
+  const outboxRes = await replayOutboxJob(jobId);
+  if (outboxRes.found) {
+    return res.json({ success: true, source: 'outbox', job: outboxRes.job });
+  }
+  const queueRes = await replayDlqJob(jobId);
+  if (queueRes.found) {
+    return res.json({ success: true, source: 'asyncQueue', job: queueRes.job });
+  }
+  return res.status(404).json({ success: false, error: 'Queue/DLQ job not found' });
+}
+
+/**
+ * POST /api/internal/workers/process
+ * Push worker receiver for Cloud Tasks / PubSub HTTP workers
+ */
+export async function handleInternalWorkerProcess(req: Request, res: Response) {
+  const expectedSecret = (process.env.INTERNAL_WORKER_SECRET || '').trim();
+  const providedSecret = String(req.headers['x-worker-secret'] || '').trim();
+  if (expectedSecret) {
+    const a = Buffer.from(expectedSecret, 'utf8');
+    const b = Buffer.from(providedSecret, 'utf8');
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return res.status(401).json({ success: false, error: 'Unauthorized worker call' });
+    }
+  } else if (!isTestMode()) {
+    // Allow fallback check via Admin token if shared secret isn't set
+    const caller = await verifyCallerWithRole(req);
+    if (!caller || caller.role !== 'admin') {
+      return res.status(401).json({ success: false, error: 'Worker secret or Admin auth required' });
+    }
+  }
+
+  let job = req.body?.job;
+  if (!job && req.body?.message?.data) {
+    try {
+      const decoded = Buffer.from(String(req.body.message.data), 'base64').toString('utf-8');
+      job = JSON.parse(decoded)?.job;
+    } catch {}
+  }
+  if (!job || !job.jobId || !job.kind) {
+    return res.status(400).json({ success: false, error: 'Invalid worker job payload' });
+  }
+
+  const outcome = await processPushWorkerJob(job);
+  if (!outcome.ok) {
+    return res.status(500).json({ success: false, error: outcome.error || 'Worker processing failed' });
+  }
+  return res.json({ success: true, jobId: job.jobId, state: outcome.job?.state });
+}
+

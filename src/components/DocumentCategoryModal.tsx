@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { DocumentCategory } from '../types';
 import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
+import { withClientTimeout } from '../utils/fetchWithTimeout';
 
 interface DocumentCategoryModalProps {
   category?: DocumentCategory | null;
@@ -11,23 +13,29 @@ interface DocumentCategoryModalProps {
 
 export function DocumentCategoryModal({ category, onClose, onSave }: DocumentCategoryModalProps) {
   const [formData, setFormData] = useState<DocumentCategory>(category || { id: '', name: '', description: '', icon: 'file-text', order: 0 });
-  const [saving, setSaving] = useState(false);
+  const { isSubmitting: saving, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
+    if (submittingRef.current) return;
     if (!formData.name.trim()) {
       showToast('Category name is required.', 'error');
       return;
     }
-    setSaving(true);
     try {
-      await onSave({ ...formData, name: formData.name.trim(), description: formData.description?.trim() || '' });
-      showToast(category ? 'Category updated successfully!' : 'Category added successfully!', 'success');
-      onClose();
+      await runSubmission(async () => {
+        await withClientTimeout(
+          onSave({ ...formData, name: formData.name.trim(), description: formData.description?.trim() || '' }),
+          15000,
+          'Saving category timed out.'
+        );
+        showToast(category ? 'Category updated successfully!' : 'Category added successfully!', 'success');
+        onClose();
+      });
     } catch (error: any) {
-      showToast(error.message || 'Failed to save category.', 'error');
-    } finally {
-      setSaving(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error.message || 'Failed to save category.', 'error');
+      }
     }
   };
 

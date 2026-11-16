@@ -495,39 +495,33 @@ export function StoreCheckout({
       });
     }
 
-    // Save address to profile if logged in and profile has no address yet
+    // Save address to profile non-blockingly if logged in and profile has no address yet
     if (auth.currentUser && user && !user.address) {
-      try {
-        await withClientTimeout(
-          update(dbRef(rtdb, `users/${auth.currentUser.uid}`), { address: sanitizedAddress }),
-          5000,
-          'Address save timed out.'
-        );
-      } catch {}
+      void withClientTimeout(
+        update(dbRef(rtdb, `users/${auth.currentUser.uid}`), { address: sanitizedAddress }),
+        5000,
+        'Address save timed out.'
+      ).catch(() => {});
     }
 
-    // Optional guest account creation AFTER order is persisted
+    // Optional guest account creation in background AFTER critical order is confirmed & persisted
     if (!auth.currentUser && createGuestAccount) {
-      try {
-        const accountRes = await withClientTimeout(
-          createGuestAccountInDB(
-            sanitizedAddress.email,
-            sanitizedAddress.name,
-            sanitizedAddress.phone
-          ),
-          10000,
-          'Account setup timed out.'
-        );
-        if (accountRes.success) {
-          notifyRegistrationApi({ isGuestCheckout: true }).catch(() => {});
-          await linkGuestOrdersToAuthenticatedUser().catch(() => {});
-          showToast('Order placed & account created! Welcome email sent.', 'success');
-        } else {
-          showToast('Order placed! (Could not create account automatically, use Track Order anytime.)', 'info');
-        }
-      } catch {
-        showToast('Order placed! Use your Order ID to track your order.', 'info');
-      }
+      void withClientTimeout(
+        createGuestAccountInDB(
+          sanitizedAddress.email,
+          sanitizedAddress.name,
+          sanitizedAddress.phone
+        ),
+        10000,
+        'Account setup timed out.'
+      )
+        .then(async (accountRes) => {
+          if (accountRes?.success) {
+            notifyRegistrationApi({ isGuestCheckout: true }).catch(() => {});
+            await linkGuestOrdersToAuthenticatedUser().catch(() => {});
+          }
+        })
+        .catch(() => {});
     }
 
     idempotencyKeyRef.current = generateIdempotencyKey();

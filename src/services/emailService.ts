@@ -92,6 +92,8 @@ const baseTemplate = (title: string, content: string) => `
   </div>
 `;
 
+import { fetchWithTimeout } from '../utils/fetchWithTimeout';
+
 async function getAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
   try {
@@ -106,13 +108,15 @@ async function getAuthHeaders(): Promise<Record<string, string>> {
 async function postJson<T = any>(
   url: string,
   body: Record<string, any>,
-  options: { throwOnError?: boolean } = {}
-): Promise<T & { success: boolean; status?: number; error?: string; emailDelivery?: EmailDeliverySummary }> {
+  options: { throwOnError?: boolean; timeoutMs?: number; signal?: AbortSignal } = {}
+): Promise<T & { success: boolean; status?: number; error?: string; emailDelivery?: EmailDeliverySummary; notificationQueued?: boolean }> {
   const headers = await getAuthHeaders();
-  const response = await fetch(url, {
+  const response = await fetchWithTimeout(url, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),
+    timeoutMs: options.timeoutMs ?? 15000,
+    signal: options.signal,
   });
   const data = await response.json().catch(() => ({}));
   if (!response.ok || data?.success === false) {
@@ -125,7 +129,111 @@ async function postJson<T = any>(
   return { ...data, success: true, status: response.status };
 }
 
-// ============= SERVER-AUTHORITATIVE NOTIFICATION & MUTATION APIS =============
+// ============= SERVER-AUTHORITATIVE APPLICATION, ORDER & NOTIFICATION APIS =============
+
+export async function createApplicationApi(
+  payload: Record<string, any>,
+  opts?: { signal?: AbortSignal; timeoutMs?: number }
+) {
+  return postJson('/api/applications', payload, {
+    throwOnError: true,
+    signal: opts?.signal,
+    timeoutMs: opts?.timeoutMs ?? 20000,
+  });
+}
+
+export async function createApplicationPaymentApi(
+  payload: Record<string, any>,
+  opts?: { signal?: AbortSignal; timeoutMs?: number }
+) {
+  return postJson('/api/applications/create-payment', payload, {
+    throwOnError: true,
+    signal: opts?.signal,
+    timeoutMs: opts?.timeoutMs ?? 20000,
+  });
+}
+
+export async function confirmApplicationPaymentApi(
+  appId: string,
+  payload: {
+    razorpay_payment_id: string;
+    razorpay_order_id: string;
+    razorpay_signature: string;
+  },
+  opts?: { signal?: AbortSignal; timeoutMs?: number }
+) {
+  return postJson(`/api/applications/${encodeURIComponent(appId)}/confirm-payment`, payload, {
+    throwOnError: true,
+    signal: opts?.signal,
+    timeoutMs: opts?.timeoutMs ?? 20000,
+  });
+}
+
+export async function recoverApplicationPaymentApi(
+  appId: string,
+  opts?: { signal?: AbortSignal; timeoutMs?: number }
+) {
+  return postJson(`/api/applications/${encodeURIComponent(appId)}/recover-payment`, {}, {
+    throwOnError: false,
+    signal: opts?.signal,
+    timeoutMs: opts?.timeoutMs ?? 15000,
+  });
+}
+
+export async function updateProfileApi(
+  payload: {
+    name?: string;
+    phone?: string;
+    address?: any;
+    avatar?: string;
+    avatarOnly?: boolean;
+    updateType?: string;
+  },
+  opts?: { signal?: AbortSignal; timeoutMs?: number }
+) {
+  return postJson('/api/profile/update', payload, {
+    throwOnError: true,
+    signal: opts?.signal,
+    timeoutMs: opts?.timeoutMs ?? 15000,
+  });
+}
+
+export async function submitStoreReviewApi(
+  payload: {
+    productId: string;
+    productName?: string;
+    rating: number;
+    comment: string;
+    images?: string[];
+    userName?: string;
+    userAvatar?: string;
+    idempotencyKey?: string;
+  },
+  opts?: { signal?: AbortSignal; timeoutMs?: number }
+) {
+  return postJson('/api/store/reviews', payload, {
+    throwOnError: true,
+    signal: opts?.signal,
+    timeoutMs: opts?.timeoutMs ?? 15000,
+  });
+}
+
+export async function addOrderNoteApi(
+  orderId: string,
+  payload: {
+    text: string;
+    attachmentUrl?: string;
+    attachmentName?: string;
+    clientRequestId?: string;
+  },
+  opts?: { signal?: AbortSignal; timeoutMs?: number }
+) {
+  return postJson(`/api/admin/orders/${encodeURIComponent(orderId)}/notes`, payload, {
+    throwOnError: true,
+    signal: opts?.signal,
+    timeoutMs: opts?.timeoutMs ?? 15000,
+  });
+}
 
 export async function notifyApplicationSubmittedApi(appId: string) {
   return postJson('/api/notifications/application-submitted', { appId });
@@ -174,12 +282,19 @@ export async function notifyReviewSubmittedApi(payload: {
   return postJson('/api/notifications/review-submitted', payload);
 }
 
-export async function notifyCallbackApi(payload: {
-  mobileNumber: string;
-  name?: string;
-  email?: string;
-}) {
-  return postJson('/api/notifications/callback', payload, { throwOnError: true });
+export async function notifyCallbackApi(
+  payload: {
+    mobileNumber: string;
+    name?: string;
+    email?: string;
+  },
+  opts?: { signal?: AbortSignal; timeoutMs?: number }
+) {
+  return postJson('/api/notifications/callback', payload, {
+    throwOnError: true,
+    signal: opts?.signal,
+    timeoutMs: opts?.timeoutMs ?? 12000,
+  });
 }
 
 export async function updateAdminOrderStatusApi(

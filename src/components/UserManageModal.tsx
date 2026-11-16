@@ -10,6 +10,8 @@ import { ConfirmationModal } from './ConfirmationModal';
 import { trimWhitespace } from '../utils/sanitizer';
 import { isSuperAdmin } from '../utils/permissions';
 import { UserAvatar } from './UserAvatar';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
+import { withClientTimeout } from '../utils/fetchWithTimeout';
 
 interface UserManageModalProps {
   user: UserProfile | null;
@@ -20,8 +22,8 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
   const [name, setName] = useState(user?.name || '');
   const [role, setRole] = useState<UserRole>(user?.role || 'user');
   const [disabled, setDisabled] = useState<boolean>(Boolean(user?.disabled === true));
-  const [loading, setLoading] = useState(false);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const { isSubmitting: loading, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   useEffect(() => {
     setName(user?.name || '');
@@ -35,41 +37,49 @@ export function UserManageModal({ user, onClose }: UserManageModalProps) {
 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    if (submittingRef.current) return;
     try {
-      const sanitizedName = trimWhitespace(name);
-      const nextRole: UserRole = targetIsSuperAdmin ? 'admin' : role;
-      const nextDisabled = targetIsSuperAdmin ? false : Boolean(disabled);
+      await runSubmission(async () => {
+        const sanitizedName = trimWhitespace(name);
+        const nextRole: UserRole = targetIsSuperAdmin ? 'admin' : role;
+        const nextDisabled = targetIsSuperAdmin ? false : Boolean(disabled);
 
-      await update(ref(rtdb, `users/${user.uid}`), {
-        name: sanitizedName,
-        role: nextRole,
-        disabled: nextDisabled,
-        updatedAt: Date.now(),
+        await withClientTimeout(
+          update(ref(rtdb, `users/${user.uid}`), {
+            name: sanitizedName,
+            role: nextRole,
+            disabled: nextDisabled,
+            updatedAt: Date.now(),
+          }),
+          12000,
+          'Updating user timed out.'
+        );
+        showToast('User updated successfully!');
+        onClose();
       });
-      showToast('User updated successfully!');
-      onClose();
     } catch (error: any) {
-      showToast(error, 'error', 'Failed to update user. Please try again.');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Failed to update user. Please try again.');
+      }
     }
   };
 
   const handleDelete = async () => {
+    if (submittingRef.current) return;
     if (targetIsSuperAdmin) {
       showToast('Super Admin account cannot be deleted.', 'error');
       return;
     }
-    setLoading(true);
     try {
-      await remove(ref(rtdb, `users/${user.uid}`));
-      showToast('User deleted successfully!');
-      onClose();
+      await runSubmission(async () => {
+        await withClientTimeout(remove(ref(rtdb, `users/${user.uid}`)), 12000, 'Deleting user timed out.');
+        showToast('User deleted successfully!');
+        onClose();
+      });
     } catch (error: any) {
-      showToast(error, 'error', 'Failed to delete user. Please try again.');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Failed to delete user. Please try again.');
+      }
     }
   };
 

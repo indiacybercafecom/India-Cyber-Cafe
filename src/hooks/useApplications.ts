@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   ref,
   onValue,
@@ -9,18 +9,20 @@ import {
   query,
   orderByChild,
   equalTo,
+  limitToLast,
 } from 'firebase/database';
 import { rtdb } from '../firebase';
 import { Application } from '../types';
 import { isAssignedToOperator } from '../utils/permissions';
 
-const PAGINATION_LIMIT = 50;
+const INITIAL_LIMIT = 50;
+const PAGE_STEP = 50;
 
 /**
- * Hook for loading applications data
+ * Hook for loading applications data with indexed server-side limitToLast queries
  * - disabled: does not subscribe
  * - user: loads only applications belonging to that user
- * - admin: loads all applications
+ * - admin: loads paginated applications ordered by date
  * - operator: loads strictly applications assigned to that operator (canonically by assignedToUid)
  */
 export type ApplicationLoadOptions =
@@ -33,10 +35,21 @@ export function useApplications(options: ApplicationLoadOptions) {
   const [applications, setApplications] = useState<Application[]>([]);
   const [loading, setLoading] = useState(options.mode !== 'disabled');
   const [error, setError] = useState<Error | null>(null);
+  const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
+  const [hasMore, setHasMore] = useState(false);
+
+  const loadMore = useCallback(() => {
+    setLimitCount((prev) => prev + PAGE_STEP);
+  }, []);
+
+  useEffect(() => {
+    setLimitCount(INITIAL_LIMIT);
+  }, [options.mode, options.mode === 'user' || options.mode === 'operator' ? options.uid : null]);
 
   useEffect(() => {
     if (options.mode === 'disabled') {
       setApplications([]);
+      setHasMore(false);
       setLoading(false);
       setError(null);
       return;
@@ -51,25 +64,26 @@ export function useApplications(options: ApplicationLoadOptions) {
         setError(null);
 
         if (options.mode === 'admin') {
-          // Admin: load all applications
-          const appsRef = query(ref(rtdb, 'applications'), orderByChild('date'));
+          const appsRef = query(ref(rtdb, 'applications'), orderByChild('date'), limitToLast(limitCount));
           unsubscribe = onValue(
             appsRef,
             (snapshot) => {
               try {
                 const data = snapshot.val();
                 if (data) {
-                  const apps = Object.entries(data)
+                  const entries = Object.entries(data);
+                  const apps = entries
                     .map(([id, val]: [string, any]) => ({
                       id,
                       ...val,
                     } as Application))
-                    .reverse()
-                    .slice(0, PAGINATION_LIMIT);
+                    .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
+                  setHasMore(entries.length >= limitCount);
                   setApplications(apps);
                   setError(null);
                 } else {
+                  setHasMore(false);
                   setApplications([]);
                 }
                 setLoading(false);
@@ -88,25 +102,27 @@ export function useApplications(options: ApplicationLoadOptions) {
           );
         } else if (options.mode === 'user') {
           const uid = options.uid;
+          const userLimit = Math.max(100, limitCount);
           const appsRef = query(
             ref(rtdb, 'applications'),
             orderByChild('uid'),
-            equalTo(uid)
+            equalTo(uid),
+            limitToLast(userLimit)
           );
           unsubscribe = onValue(
             appsRef,
             (snapshot) => {
               try {
                 const data = snapshot.val();
-                const apps: Application[] = data
-                  ? Object.entries(data)
-                      .map(([id, val]: [string, any]) => ({
-                        id,
-                        ...val,
-                      } as Application))
-                      .reverse()
-                  : [];
+                const entries = data ? Object.entries(data) : [];
+                const apps: Application[] = entries
+                  .map(([id, val]: [string, any]) => ({
+                    id,
+                    ...val,
+                  } as Application))
+                  .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime());
 
+                setHasMore(entries.length >= userLimit);
                 setApplications(apps);
                 setError(null);
                 setLoading(false);
@@ -129,22 +145,24 @@ export function useApplications(options: ApplicationLoadOptions) {
             email: options.operatorEmail,
             disabled: false,
           };
+          const opLimit = Math.max(100, limitCount);
 
           const uidQuery = query(
             ref(rtdb, 'applications'),
             orderByChild('assignedToUid'),
-            equalTo(options.uid)
+            equalTo(options.uid),
+            limitToLast(opLimit)
           );
           assignedByUidUnsubscribe = onValue(
             uidQuery,
             (snapshot) => {
               const data = snapshot.val();
-              const validAssigned: Application[] = data
-                ? Object.entries(data)
-                    .map(([id, val]: [string, any]) => ({ id, ...val } as Application))
-                    .filter((app) => isAssignedToOperator(app, operatorIdentity))
-                    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-                : [];
+              const entries = data ? Object.entries(data) : [];
+              const validAssigned: Application[] = entries
+                .map(([id, val]: [string, any]) => ({ id, ...val } as Application))
+                .filter((app) => isAssignedToOperator(app, operatorIdentity))
+                .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+              setHasMore(entries.length >= opLimit);
               setApplications(validAssigned);
               setError(null);
               setLoading(false);
@@ -174,6 +192,7 @@ export function useApplications(options: ApplicationLoadOptions) {
   }, [
     options.mode,
     options.mode === 'user' || options.mode === 'operator' ? options.uid : null,
+    limitCount,
   ]);
 
   const addApplication = async (app: Omit<Application, 'id'>) => {
@@ -193,6 +212,8 @@ export function useApplications(options: ApplicationLoadOptions) {
     applications,
     loading,
     error,
+    hasMore,
+    loadMore,
     addApplication,
     updateApplication,
     deleteApplication,

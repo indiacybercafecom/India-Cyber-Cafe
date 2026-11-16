@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { ref, onValue, update, remove, get, query, orderByChild, equalTo } from 'firebase/database';
+import { ref, onValue, update, remove, get, query, orderByChild, equalTo, limitToLast } from 'firebase/database';
 import { auth, rtdb } from '../firebase';
 import { Order } from '../types';
 import { fetchWithTimeout, withClientTimeout } from '../utils/fetchWithTimeout';
 
-const PAGINATION_LIMIT = 150;
+const INITIAL_LIMIT = 150;
+const PAGE_STEP = 100;
 
 export function toRtdbOrderKey(orderId: string): string {
   return String(orderId || '').trim().replace(/[/.#$[\]]/g, '-');
@@ -52,7 +53,7 @@ function extractOrders(obj: any, prefix: string = ''): Order[] {
   return result;
 }
 
-function mergeAndSortOrders(lists: Order[][]): Order[] {
+function mergeAndSortOrders(lists: Order[][], maxItems = INITIAL_LIMIT): Order[] {
   const map = new Map<string, Order>();
   for (const list of lists) {
     for (const ord of list) {
@@ -71,7 +72,7 @@ function mergeAndSortOrders(lists: Order[][]): Order[] {
   }
   return Array.from(map.values())
     .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-    .slice(0, PAGINATION_LIMIT);
+    .slice(0, maxItems);
 }
 
 export type OrderLoadOptions =
@@ -87,14 +88,25 @@ export function useOrders(options?: OrderLoadOptions | null) {
   const [loading, setLoading] = useState(mode !== 'disabled');
   const [error, setError] = useState<Error | null>(null);
   const [reloadNonce, setReloadNonce] = useState(0);
+  const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
+  const [hasMore, setHasMore] = useState(false);
 
   const refresh = useCallback(() => {
     setReloadNonce(n => n + 1);
   }, []);
 
+  const loadMore = useCallback(() => {
+    setLimitCount(prev => prev + PAGE_STEP);
+  }, []);
+
+  useEffect(() => {
+    setLimitCount(INITIAL_LIMIT);
+  }, [mode, userUid]);
+
   useEffect(() => {
     if (mode === 'disabled') {
       setOrders([]);
+      setHasMore(false);
       setLoading(false);
       setError(null);
       return;
@@ -107,13 +119,16 @@ export function useOrders(options?: OrderLoadOptions | null) {
 
     if (mode === 'admin') {
       setLoading(true);
+      const adminOrdersQuery = query(ref(rtdb, 'orders'), orderByChild('createdAt'), limitToLast(limitCount));
       unsubAdmin = onValue(
-        ref(rtdb, 'orders'),
+        adminOrdersQuery,
         (snapshot) => {
           if (!isActive) return;
           try {
             const data = snapshot.val();
-            const parsed = data ? mergeAndSortOrders([extractOrders(data)]) : [];
+            const extracted = data ? extractOrders(data) : [];
+            setHasMore(extracted.length >= limitCount);
+            const parsed = extracted.length > 0 ? mergeAndSortOrders([extracted], limitCount) : [];
             setOrders(parsed);
             setError(null);
           } catch (err) {
@@ -198,7 +213,7 @@ export function useOrders(options?: OrderLoadOptions | null) {
 
       fetchMyOrdersFromApi();
 
-      const uidQuery = query(ref(rtdb, 'orders'), orderByChild('uid'), equalTo(userUid));
+      const uidQuery = query(ref(rtdb, 'orders'), orderByChild('uid'), equalTo(userUid), limitToLast(limitCount));
       unsubUid = onValue(
         uidQuery,
         (snapshot) => {
@@ -211,7 +226,7 @@ export function useOrders(options?: OrderLoadOptions | null) {
         }
       );
 
-      const legacyQuery = query(ref(rtdb, 'orders'), orderByChild('userId'), equalTo(userUid));
+      const legacyQuery = query(ref(rtdb, 'orders'), orderByChild('userId'), equalTo(userUid), limitToLast(limitCount));
       unsubLegacy = onValue(
         legacyQuery,
         (snapshot) => {
@@ -234,13 +249,15 @@ export function useOrders(options?: OrderLoadOptions | null) {
     if (mode === 'operator' && userUid) {
       setLoading(true);
       setError(null);
-      const opQuery = query(ref(rtdb, 'orders'), orderByChild('assignedToUid'), equalTo(userUid));
+      const opQuery = query(ref(rtdb, 'orders'), orderByChild('assignedToUid'), equalTo(userUid), limitToLast(limitCount));
       const unsubOp = onValue(
         opQuery,
         (snapshot) => {
           if (!isActive) return;
           const data = snapshot.val();
-          const parsed = data ? mergeAndSortOrders([extractOrders(data)]) : [];
+          const extracted = data ? extractOrders(data) : [];
+          setHasMore(extracted.length >= limitCount);
+          const parsed = extracted.length > 0 ? mergeAndSortOrders([extracted], limitCount) : [];
           setOrders(parsed);
           setError(null);
           setLoading(false);
@@ -261,7 +278,7 @@ export function useOrders(options?: OrderLoadOptions | null) {
 
     setLoading(false);
     return undefined;
-  }, [mode, userUid, reloadNonce]);
+  }, [mode, userUid, reloadNonce, limitCount]);
 
   const updateOrder = async (id: string, data: Partial<Order>) => {
     const targetPath = await resolveOrderRtdbPath(id);
@@ -277,6 +294,8 @@ export function useOrders(options?: OrderLoadOptions | null) {
     orders,
     loading,
     error,
+    hasMore,
+    loadMore,
     refresh,
     retry: refresh,
     updateOrder,

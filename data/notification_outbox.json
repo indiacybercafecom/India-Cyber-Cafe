@@ -1,1 +1,671 @@
-{}
+{
+  "obx_1794844098363_cb8de0a0b8": {
+    "jobId": "obx_1794844098363_cb8de0a0b8",
+    "idempotencyKey": "app_update:app_op1_test:note_1794844098362_d7251c1d",
+    "kind": "application_update",
+    "appId": "app_op1_test",
+    "payload": {
+      "appSnapshot": {
+        "id": "app_op1_test",
+        "uid": "cust_uid_A",
+        "userId": "cust_uid_A",
+        "name": "Customer A",
+        "email": "customerA@gmail.com",
+        "serviceId": "srv_1",
+        "serviceName": "PAN Card Application",
+        "charge": 199,
+        "paymentStatus": "completed",
+        "status": "processing",
+        "assignedTo": "operator2@indiacybercafe.com",
+        "assignedToUid": "op_uid_456",
+        "notes": {
+          "note_1794844098154_f05e0496": {
+            "id": "note_1794844098154_f05e0496",
+            "type": "status",
+            "by": "Operator One",
+            "email": "operator1@indiacybercafe.com",
+            "authorUid": "op_uid_123",
+            "authorRole": "operator",
+            "text": "Verified scriptalert(1)/script clear scan uploaded.",
+            "time": "16/11/2026, 9:18:18 pm",
+            "createdAt": 1794844098154,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794844097979_07dda3e6efc982bc.pdf?appId=app_op1_test",
+            "attachmentName": "receipt.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794844097979_07dda3e6efc982bc.pdf?appId=app_op1_test",
+                "name": "receipt.pdf"
+              }
+            ]
+          },
+          "reply_1794844098301_9e991313": {
+            "id": "reply_1794844098301_9e991313",
+            "type": "reply",
+            "by": "Customer A",
+            "email": "customera@gmail.com",
+            "authorUid": "cust_uid_A",
+            "authorRole": "user",
+            "text": "Clarification scriptx/script files attached.",
+            "time": "16/11/2026, 9:18:18 pm",
+            "createdAt": 1794844098301,
+            "clientReplyId": "client_reply_multi_1",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/reply_att_1794844098296_0_0c9e0b17210a52fb.pdf?appId=app_op1_test",
+                "name": "aadhaar.pdf"
+              },
+              {
+                "url": "/api/operator/attachments/reply_att_1794844098296_1_ca35067c90197c9b.jpg?appId=app_op1_test",
+                "name": "pan.jpg"
+              },
+              {
+                "url": "/api/operator/attachments/reply_att_1794844098297_2_34a7dcec0b6df417.png?appId=app_op1_test",
+                "name": "photo.png"
+              }
+            ]
+          },
+          "reply_1794844098329_8cfc820d": {
+            "id": "reply_1794844098329_8cfc820d",
+            "type": "reply",
+            "by": "Customer A",
+            "email": "customera@gmail.com",
+            "authorUid": "cust_uid_A",
+            "authorRole": "user",
+            "text": "Uploaded 1 attachment",
+            "time": "16/11/2026, 9:18:18 pm",
+            "createdAt": 1794844098329,
+            "clientReplyId": "client_reply_single_1",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/reply_att_1794844098323_0_bc9e9166261ed8c9.webp?appId=app_op1_test",
+                "name": "single.webp"
+              }
+            ],
+            "attachment": "/api/operator/attachments/reply_att_1794844098323_0_bc9e9166261ed8c9.webp?appId=app_op1_test",
+            "attachmentName": "single.webp"
+          },
+          "note_1794844098362_d7251c1d": {
+            "id": "note_1794844098362_d7251c1d",
+            "type": "status",
+            "by": "Super Admin",
+            "email": "indiacybercafe.com@gmail.com",
+            "authorUid": "fC9a8NWCx7XsnPb2iJKMa1UtZMr2",
+            "authorRole": "admin",
+            "text": "Thanks, received all 3 documents.",
+            "time": "16/11/2026, 9:18:18 pm",
+            "createdAt": 1794844098362,
+            "status": "processing"
+          }
+        },
+        "updatedAt": "2026-11-16T15:48:18.362Z",
+        "paymentMethod": "razorpay",
+        "razorpayPaymentId": "pay_1",
+        "razorpayOrderId": "ord_1"
+      },
+      "previousStatus": "clarification",
+      "newStatus": "processing",
+      "noteText": "Thanks, received all 3 documents.",
+      "performedBy": {
+        "uid": "fC9a8NWCx7XsnPb2iJKMa1UtZMr2",
+        "name": "Super Admin",
+        "email": "indiacybercafe.com@gmail.com",
+        "role": "admin"
+      },
+      "timestamp": "16/11/2026, 9:18:18 pm"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 3,
+    "nextAttemptAt": 1794844098363,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-16T15:48:18.363Z",
+    "updatedAt": "2026-11-16T15:48:18.374Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 4,
+      "sentCount": 4,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794844098365_3da1582930",
+          "templateId": "customerStatusUpdated",
+          "recipient": "customera@gmail.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794844098367_db74369675",
+          "templateId": "adminStatusUpdated",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794844098369_d4bc48c0a3",
+          "templateId": "adminStatusUpdated",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794844098371_105728300e",
+          "templateId": "operatorStatusUpdated",
+          "recipient": "operator2@indiacybercafe.com",
+          "recipientRole": "operator",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-16T15:48:18.374Z"
+  },
+  "obx_1794844098330_0817d4dd93": {
+    "jobId": "obx_1794844098330_0817d4dd93",
+    "idempotencyKey": "app_user_reply:app_op1_test:req:client_reply_single_1",
+    "kind": "user_reply",
+    "appId": "app_op1_test",
+    "payload": {
+      "appSnapshot": {
+        "id": "app_op1_test",
+        "uid": "cust_uid_A",
+        "userId": "cust_uid_A",
+        "name": "Customer A",
+        "email": "customerA@gmail.com",
+        "serviceId": "srv_1",
+        "serviceName": "PAN Card Application",
+        "charge": 199,
+        "paymentStatus": "completed",
+        "status": "clarification",
+        "assignedTo": "operator2@indiacybercafe.com",
+        "assignedToUid": "op_uid_456",
+        "notes": {
+          "note_1794844098154_f05e0496": {
+            "id": "note_1794844098154_f05e0496",
+            "type": "status",
+            "by": "Operator One",
+            "email": "operator1@indiacybercafe.com",
+            "authorUid": "op_uid_123",
+            "authorRole": "operator",
+            "text": "Verified scriptalert(1)/script clear scan uploaded.",
+            "time": "16/11/2026, 9:18:18 pm",
+            "createdAt": 1794844098154,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794844097979_07dda3e6efc982bc.pdf?appId=app_op1_test",
+            "attachmentName": "receipt.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794844097979_07dda3e6efc982bc.pdf?appId=app_op1_test",
+                "name": "receipt.pdf"
+              }
+            ]
+          },
+          "reply_1794844098301_9e991313": {
+            "id": "reply_1794844098301_9e991313",
+            "type": "reply",
+            "by": "Customer A",
+            "email": "customera@gmail.com",
+            "authorUid": "cust_uid_A",
+            "authorRole": "user",
+            "text": "Clarification scriptx/script files attached.",
+            "time": "16/11/2026, 9:18:18 pm",
+            "createdAt": 1794844098301,
+            "clientReplyId": "client_reply_multi_1",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/reply_att_1794844098296_0_0c9e0b17210a52fb.pdf?appId=app_op1_test",
+                "name": "aadhaar.pdf"
+              },
+              {
+                "url": "/api/operator/attachments/reply_att_1794844098296_1_ca35067c90197c9b.jpg?appId=app_op1_test",
+                "name": "pan.jpg"
+              },
+              {
+                "url": "/api/operator/attachments/reply_att_1794844098297_2_34a7dcec0b6df417.png?appId=app_op1_test",
+                "name": "photo.png"
+              }
+            ]
+          },
+          "reply_1794844098329_8cfc820d": {
+            "id": "reply_1794844098329_8cfc820d",
+            "type": "reply",
+            "by": "Customer A",
+            "email": "customera@gmail.com",
+            "authorUid": "cust_uid_A",
+            "authorRole": "user",
+            "text": "Uploaded 1 attachment",
+            "time": "16/11/2026, 9:18:18 pm",
+            "createdAt": 1794844098329,
+            "clientReplyId": "client_reply_single_1",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/reply_att_1794844098323_0_bc9e9166261ed8c9.webp?appId=app_op1_test",
+                "name": "single.webp"
+              }
+            ],
+            "attachment": "/api/operator/attachments/reply_att_1794844098323_0_bc9e9166261ed8c9.webp?appId=app_op1_test",
+            "attachmentName": "single.webp"
+          }
+        },
+        "updatedAt": "2026-11-16T15:48:18.329Z",
+        "paymentMethod": "razorpay",
+        "razorpayPaymentId": "pay_1",
+        "razorpayOrderId": "ord_1"
+      },
+      "noteText": "Uploaded 1 attachment",
+      "attachmentNames": [
+        "single.webp"
+      ],
+      "performedBy": {
+        "uid": "cust_uid_A",
+        "name": "Customer A",
+        "email": "customera@gmail.com",
+        "role": "user"
+      },
+      "timestamp": "16/11/2026, 9:18:18 pm"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 3,
+    "nextAttemptAt": 1794844098330,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-16T15:48:18.330Z",
+    "updatedAt": "2026-11-16T15:48:18.356Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794844098332_e7a42a4073",
+          "templateId": "adminNoteAdded",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794844098334_5ef4e8e12e",
+          "templateId": "adminNoteAdded",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794844098353_8023457e19",
+          "templateId": "operatorStatusUpdated",
+          "recipient": "operator2@indiacybercafe.com",
+          "recipientRole": "operator",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-16T15:48:18.356Z"
+  },
+  "obx_1794844098303_5c5bacc586": {
+    "jobId": "obx_1794844098303_5c5bacc586",
+    "idempotencyKey": "app_user_reply:app_op1_test:req:client_reply_multi_1",
+    "kind": "user_reply",
+    "appId": "app_op1_test",
+    "payload": {
+      "appSnapshot": {
+        "id": "app_op1_test",
+        "uid": "cust_uid_A",
+        "userId": "cust_uid_A",
+        "name": "Customer A",
+        "email": "customerA@gmail.com",
+        "serviceId": "srv_1",
+        "serviceName": "PAN Card Application",
+        "charge": 199,
+        "paymentStatus": "completed",
+        "status": "clarification",
+        "assignedTo": "operator2@indiacybercafe.com",
+        "assignedToUid": "op_uid_456",
+        "notes": {
+          "note_1794844098154_f05e0496": {
+            "id": "note_1794844098154_f05e0496",
+            "type": "status",
+            "by": "Operator One",
+            "email": "operator1@indiacybercafe.com",
+            "authorUid": "op_uid_123",
+            "authorRole": "operator",
+            "text": "Verified scriptalert(1)/script clear scan uploaded.",
+            "time": "16/11/2026, 9:18:18 pm",
+            "createdAt": 1794844098154,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794844097979_07dda3e6efc982bc.pdf?appId=app_op1_test",
+            "attachmentName": "receipt.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794844097979_07dda3e6efc982bc.pdf?appId=app_op1_test",
+                "name": "receipt.pdf"
+              }
+            ]
+          },
+          "reply_1794844098301_9e991313": {
+            "id": "reply_1794844098301_9e991313",
+            "type": "reply",
+            "by": "Customer A",
+            "email": "customera@gmail.com",
+            "authorUid": "cust_uid_A",
+            "authorRole": "user",
+            "text": "Clarification scriptx/script files attached.",
+            "time": "16/11/2026, 9:18:18 pm",
+            "createdAt": 1794844098301,
+            "clientReplyId": "client_reply_multi_1",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/reply_att_1794844098296_0_0c9e0b17210a52fb.pdf?appId=app_op1_test",
+                "name": "aadhaar.pdf"
+              },
+              {
+                "url": "/api/operator/attachments/reply_att_1794844098296_1_ca35067c90197c9b.jpg?appId=app_op1_test",
+                "name": "pan.jpg"
+              },
+              {
+                "url": "/api/operator/attachments/reply_att_1794844098297_2_34a7dcec0b6df417.png?appId=app_op1_test",
+                "name": "photo.png"
+              }
+            ]
+          }
+        },
+        "updatedAt": "2026-11-16T15:48:18.301Z",
+        "paymentMethod": "razorpay",
+        "razorpayPaymentId": "pay_1",
+        "razorpayOrderId": "ord_1"
+      },
+      "noteText": "Clarification scriptx/script files attached.",
+      "attachmentNames": [
+        "aadhaar.pdf",
+        "pan.jpg",
+        "photo.png"
+      ],
+      "performedBy": {
+        "uid": "cust_uid_A",
+        "name": "Customer A",
+        "email": "customera@gmail.com",
+        "role": "user"
+      },
+      "timestamp": "16/11/2026, 9:18:18 pm"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 3,
+    "nextAttemptAt": 1794844098303,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-16T15:48:18.303Z",
+    "updatedAt": "2026-11-16T15:48:18.313Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794844098307_93601ba579",
+          "templateId": "adminNoteAdded",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794844098309_526f222891",
+          "templateId": "adminNoteAdded",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794844098311_0529a19e09",
+          "templateId": "operatorStatusUpdated",
+          "recipient": "operator2@indiacybercafe.com",
+          "recipientRole": "operator",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-16T15:48:18.313Z"
+  },
+  "obx_1794844098275_d5764f0afe": {
+    "jobId": "obx_1794844098275_d5764f0afe",
+    "idempotencyKey": "app_payment:app_op1_test:pay_1",
+    "kind": "application_payment",
+    "appId": "app_op1_test",
+    "payload": {
+      "app": {
+        "id": "app_op1_test",
+        "uid": "cust_uid_A",
+        "userId": "cust_uid_A",
+        "name": "Customer A",
+        "email": "customerA@gmail.com",
+        "serviceId": "srv_1",
+        "serviceName": "PAN Card Application",
+        "charge": 199,
+        "paymentStatus": "completed",
+        "status": "clarification",
+        "assignedTo": "operator2@indiacybercafe.com",
+        "assignedToUid": "op_uid_456",
+        "notes": {
+          "note_1794844098154_f05e0496": {
+            "id": "note_1794844098154_f05e0496",
+            "type": "status",
+            "by": "Operator One",
+            "email": "operator1@indiacybercafe.com",
+            "authorUid": "op_uid_123",
+            "authorRole": "operator",
+            "text": "Verified scriptalert(1)/script clear scan uploaded.",
+            "time": "16/11/2026, 9:18:18 pm",
+            "createdAt": 1794844098154,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794844097979_07dda3e6efc982bc.pdf?appId=app_op1_test",
+            "attachmentName": "receipt.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794844097979_07dda3e6efc982bc.pdf?appId=app_op1_test",
+                "name": "receipt.pdf"
+              }
+            ]
+          }
+        },
+        "updatedAt": "2026-11-16T15:48:18.154Z",
+        "paymentMethod": "razorpay"
+      },
+      "transactionId": "pay_1",
+      "paymentMethod": "razorpay",
+      "razorpayOrderId": "ord_1",
+      "timestamp": "2026-11-16T15:48:18.275Z"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 5,
+    "nextAttemptAt": 1794844098275,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-16T15:48:18.275Z",
+    "updatedAt": "2026-11-16T15:48:18.282Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794844098277_bc02aead71",
+          "templateId": "customerPaymentConfirmed",
+          "recipient": "customera@gmail.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794844098279_69a924ca4f",
+          "templateId": "adminPaymentReceived",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794844098280_008fc08173",
+          "templateId": "adminPaymentReceived",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-16T15:48:18.282Z"
+  },
+  "obx_1794844098180_86363e0c69": {
+    "jobId": "obx_1794844098180_86363e0c69",
+    "idempotencyKey": "app_update:app_op1_test:note_1794844098154_f05e0496",
+    "kind": "application_update",
+    "appId": "app_op1_test",
+    "payload": {
+      "appSnapshot": {
+        "id": "app_op1_test",
+        "uid": "cust_uid_A",
+        "userId": "cust_uid_A",
+        "name": "Customer A",
+        "email": "customerA@gmail.com",
+        "serviceId": "srv_1",
+        "serviceName": "PAN Card Application",
+        "charge": 199,
+        "paymentStatus": "pending",
+        "status": "clarification",
+        "assignedTo": "operator1@indiacybercafe.com",
+        "assignedToUid": "op_uid_123",
+        "notes": {
+          "note_1794844098154_f05e0496": {
+            "id": "note_1794844098154_f05e0496",
+            "type": "status",
+            "by": "Operator One",
+            "email": "operator1@indiacybercafe.com",
+            "authorUid": "op_uid_123",
+            "authorRole": "operator",
+            "text": "Verified scriptalert(1)/script clear scan uploaded.",
+            "time": "16/11/2026, 9:18:18 pm",
+            "createdAt": 1794844098154,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794844097979_07dda3e6efc982bc.pdf?appId=app_op1_test",
+            "attachmentName": "receipt.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794844097979_07dda3e6efc982bc.pdf?appId=app_op1_test",
+                "name": "receipt.pdf"
+              }
+            ]
+          }
+        },
+        "updatedAt": "2026-11-16T15:48:18.154Z"
+      },
+      "previousStatus": "processing",
+      "newStatus": "clarification",
+      "noteText": "Verified scriptalert(1)/script clear scan uploaded.",
+      "attachmentName": "receipt.pdf",
+      "performedBy": {
+        "uid": "op_uid_123",
+        "name": "Operator One",
+        "email": "operator1@indiacybercafe.com",
+        "role": "operator"
+      },
+      "timestamp": "16/11/2026, 9:18:18 pm"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 3,
+    "nextAttemptAt": 1794844098180,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-16T15:48:18.180Z",
+    "updatedAt": "2026-11-16T15:48:18.188Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794844098183_88763f63d6",
+          "templateId": "customerStatusUpdated",
+          "recipient": "customera@gmail.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794844098185_72ad18bc20",
+          "templateId": "adminStatusUpdated",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794844098186_cd887e0f8d",
+          "templateId": "adminStatusUpdated",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-16T15:48:18.188Z"
+  }
+}

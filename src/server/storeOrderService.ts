@@ -8,11 +8,10 @@ import { initializeApp, getApps, cert, ServiceAccount } from 'firebase-admin/app
 import { getDatabase, Database } from 'firebase-admin/database';
 import { getAuth, Auth } from 'firebase-admin/auth';
 import {
-  notifyOrderConfirmed,
-  notifyOrderStatusUpdated,
-  notifyOrderRefundInitiated,
+  enqueueOutboxNotification,
+  buildQueuedEmailDeliverySummary,
 } from './emailNotificationService.js';
-import { requireAdminCaller } from './operatorService.js';
+import { requireAdminCaller, verifyCallerWithRole } from './operatorService.js';
 
 // Resolve application root
 const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
@@ -340,11 +339,22 @@ export async function getStoreServiceHealth(options: { checkConnectivity?: boole
 
 // Email notifications are delegated to ./emailNotificationService.js
 
-// In-memory sliding window rate limiter
+// Bounded LRU-evicting rate limiter (prevents unbounded memory growth at high load)
+const MAX_RATE_LIMIT_ENTRIES = 10000;
 const rateLimitMap = new Map<string, { count: number; resetTime: number }>();
 function checkRateLimit(bucket: string, ip: string, maxRequests = 20, windowMs = 60000): boolean {
   const key = `${bucket}:${ip}`;
   const now = Date.now();
+  if (rateLimitMap.size >= MAX_RATE_LIMIT_ENTRIES) {
+    let removed = 0;
+    for (const [k, v] of rateLimitMap.entries()) {
+      if (now > v.resetTime || removed < 500) {
+        rateLimitMap.delete(k);
+        removed++;
+        if (rateLimitMap.size < MAX_RATE_LIMIT_ENTRIES - 500) break;
+      }
+    }
+  }
   const entry = rateLimitMap.get(key);
   if (!entry || now > entry.resetTime) {
     rateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
@@ -355,24 +365,77 @@ function checkRateLimit(bucket: string, ip: string, maxRequests = 20, windowMs =
   return true;
 }
 
-// Idempotency cache to prevent double-clicks on submit
+// Durable + bounded idempotency cache to prevent double-clicks and survive restarts
+const MAX_IDEMPOTENCY_ENTRIES = 5000;
+const STORE_IDEMPOTENCY_PATH = path.join(APP_ROOT, 'data/store_idempotency.json');
 const idempotencyCache = new Map<string, { timestamp: number; result: any }>();
+let idempotencyHydrated = false;
+
+function hydrateIdempotencyDisk() {
+  if (idempotencyHydrated) return;
+  idempotencyHydrated = true;
+  try {
+    if (fs.existsSync(STORE_IDEMPOTENCY_PATH)) {
+      const parsed = JSON.parse(fs.readFileSync(STORE_IDEMPOTENCY_PATH, 'utf-8'));
+      const now = Date.now();
+      for (const [k, v] of Object.entries(parsed || {}) as [string, any][]) {
+        if (v && typeof v === 'object' && now - Number(v.timestamp || 0) < 24 * 60 * 60 * 1000) {
+          idempotencyCache.set(k, v);
+        }
+      }
+    }
+  } catch {}
+}
+
 function checkIdempotency(key?: string): any | null {
   if (!key || typeof key !== 'string') return null;
+  hydrateIdempotencyDisk();
   const now = Date.now();
   const cached = idempotencyCache.get(key);
-  if (cached && now - cached.timestamp < 5 * 60 * 1000) {
+  if (cached && now - cached.timestamp < 30 * 60 * 1000) {
     return cached.result;
   }
   return null;
 }
+
 function recordIdempotency(key: string | undefined, result: any) {
   if (!key || typeof key !== 'string') return;
+  hydrateIdempotencyDisk();
+  if (idempotencyCache.size >= MAX_IDEMPOTENCY_ENTRIES) {
+    const firstKey = idempotencyCache.keys().next().value;
+    if (firstKey) idempotencyCache.delete(firstKey);
+  }
   idempotencyCache.set(key, { timestamp: Date.now(), result });
+  try {
+    fs.mkdirSync(path.dirname(STORE_IDEMPOTENCY_PATH), { recursive: true });
+    const recent = Object.fromEntries(Array.from(idempotencyCache.entries()).slice(-500));
+    const tmp = `${STORE_IDEMPOTENCY_PATH}.${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(recent), 'utf-8');
+    fs.renameSync(tmp, STORE_IDEMPOTENCY_PATH);
+  } catch {}
 }
 
-// Processed webhook events cache (prevents duplicate webhook execution)
+// Bounded processed webhook events cache (prevents duplicate webhook execution)
 const processedWebhookEvents = new Set<string>();
+function rememberWebhookEvent(eventId: string) {
+  if (processedWebhookEvents.size >= 5000) {
+    const first = processedWebhookEvents.values().next().value;
+    if (first) processedWebhookEvents.delete(first);
+  }
+  processedWebhookEvents.add(eventId);
+}
+
+// Optional hook registered by operatorService for Razorpay webhook application reconciliation
+type ApplicationWebhookHandler = (params: {
+  razorpayOrderId: string;
+  razorpayPaymentId?: string;
+  amountPaise?: number;
+  notes?: Record<string, any>;
+}) => Promise<boolean>;
+let applicationWebhookHandler: ApplicationWebhookHandler | null = null;
+export function registerApplicationWebhookReconciler(handler: ApplicationWebhookHandler | null) {
+  applicationWebhookHandler = handler;
+}
 
 // Product catalog short-TTL cache
 let catalogCache: { expiresAt: number; products: any[] } = { expiresAt: 0, products: [] };
@@ -1004,9 +1067,12 @@ export async function handleCodOrder(req: Request, res: Response) {
     }
 
     await saveOrderToDatabase(newOrder);
-    const emailDelivery = await notifyOrderConfirmed({ order: newOrder, type: 'cod' }).catch((err: any) => {
-      console.warn('COD order email dispatch notice:', err?.message || err);
-      return null;
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `order_confirmed:cod:${orderId}`,
+      kind: 'order_confirmed',
+      orderId,
+      payload: { order: { ...newOrder, paymentMethod: 'cash' } },
+      maxAttempts: 5,
     });
 
     const result = {
@@ -1014,7 +1080,9 @@ export async function handleCodOrder(req: Request, res: Response) {
       orderId,
       order: sanitizeOrderForClient(newOrder, { includeOwnerUid: !isGuest }),
       guestTrackingToken,
-      ...(emailDelivery ? { emailDelivery } : {})
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
     };
 
     recordIdempotency(idempotencyKey ? `cod:${idempotencyKey}` : undefined, result);
@@ -1292,9 +1360,12 @@ export async function handleVerifyPayment(req: Request, res: Response) {
     };
 
     await recordVerifiedPaymentTransaction(completedOrder, razorpay_payment_id, razorpay_order_id, now);
-    const emailDelivery = await notifyOrderConfirmed({ order: completedOrder, type: 'online' }).catch((err: any) => {
-      console.warn('Online order email dispatch notice:', err?.message || err);
-      return null;
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `order_confirmed:online:${orderId}:${razorpay_payment_id}`,
+      kind: 'order_confirmed',
+      orderId,
+      payload: { order: completedOrder },
+      maxAttempts: 5,
     });
 
     return res.json({
@@ -1302,7 +1373,9 @@ export async function handleVerifyPayment(req: Request, res: Response) {
       orderId,
       order: sanitizeOrderForClient(completedOrder, { includeOwnerUid: !completedOrder.isGuest }),
       message: 'Payment verified and order confirmed successfully.',
-      ...(emailDelivery ? { emailDelivery } : {})
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
     });
   } catch (error: any) {
     console.error('Payment verification error:', error);
@@ -1403,16 +1476,21 @@ export async function handleRecoverPayment(req: Request, res: Response) {
     await updateOrderInDatabase(order.id, updates, rtdbPath);
     const updatedOrder = { ...order, ...updates };
     await recordVerifiedPaymentTransaction(updatedOrder, capturedPayment.id, order.razorpayOrderId, now);
-    const emailDelivery = await notifyOrderConfirmed({ order: updatedOrder, type: 'online' }).catch((err: any) => {
-      console.warn('Recovered order email dispatch notice:', err?.message || err);
-      return null;
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `order_confirmed:recovered:${order.id}:${capturedPayment.id}`,
+      kind: 'order_confirmed',
+      orderId: order.id,
+      payload: { order: updatedOrder },
+      maxAttempts: 5,
     });
 
     return res.json({
       success: true,
       verified: true,
       order: sanitizeOrderForClient(updatedOrder, { includeOwnerUid: !updatedOrder.isGuest }),
-      ...(emailDelivery ? { emailDelivery } : {})
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
     });
   } catch (error: any) {
     console.error('Recover payment error:', error);
@@ -1490,15 +1568,28 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
           if (paymentId) {
             await recordVerifiedPaymentTransaction(updatedOrder, paymentId, rzpOrderId, now);
           }
-          await notifyOrderConfirmed({ order: updatedOrder, type: 'online' }).catch((err: any) => {
-            console.warn('Webhook order email dispatch notice:', err?.message || err);
+          enqueueOutboxNotification({
+            idempotencyKey: `order_confirmed:webhook:${order.id}:${paymentId || rzpOrderId}`,
+            kind: 'order_confirmed',
+            orderId: order.id,
+            payload: { order: updatedOrder },
+            maxAttempts: 5,
           });
         }
+      } else if (applicationWebhookHandler) {
+        await applicationWebhookHandler({
+          razorpayOrderId: rzpOrderId,
+          razorpayPaymentId: paymentId,
+          amountPaise: typeof payment?.amount === 'number' ? payment.amount : undefined,
+          notes: payment?.notes || req.body?.payload?.order?.entity?.notes,
+        }).catch((err: any) => {
+          console.warn('Application webhook reconciliation notice:', err?.message || err);
+        });
       }
     }
 
     if (eventId) {
-      processedWebhookEvents.add(eventId);
+      rememberWebhookEvent(eventId);
     }
 
     return res.status(200).json({ status: 'ok' });
@@ -1510,7 +1601,7 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
 
 /**
  * 5. GET /api/store/orders/my
- * Loads all orders owned by verified user (uid, legacy userId, migrated nested ICC/STORE-..., and guest orders matching verified email)
+ * Loads orders owned by verified user using bounded parallel RTDB queries
  */
 export async function handleGetMyOrders(req: Request, res: Response) {
   try {
@@ -1550,9 +1641,18 @@ export async function handleGetMyOrders(req: Request, res: Response) {
         }
       }
     } else if (ensureFirebaseAdminInitialized() && rtdbAdmin) {
-      // 1. Canonical uid query
-      const uidSnap = await withTimeout(rtdbAdmin.ref('orders').orderByChild('uid').equalTo(uid).once('value'), 9000, 'Querying user orders');
-      if (uidSnap.exists()) {
+      // Run canonical uid, legacy userId, and email queries IN PARALLEL (bounded to last 150 each)
+      const [uidSnap, legacySnap, emailSnap] = await Promise.all([
+        withTimeout(rtdbAdmin.ref('orders').orderByChild('uid').equalTo(uid).limitToLast(150).once('value'), 9000, 'Querying user orders'),
+        withTimeout(rtdbAdmin.ref('orders').orderByChild('userId').equalTo(uid).limitToLast(150).once('value'), 9000, 'Querying legacy orders'),
+        email
+          ? withTimeout(rtdbAdmin.ref('orders').orderByChild('email').equalTo(email).limitToLast(50).once('value'), 9000, 'Querying email orders')
+          : Promise.resolve(null),
+      ]);
+
+      const deferredMigrations: Promise<any>[] = [];
+
+      if (uidSnap?.exists()) {
         for (const [key, val] of Object.entries(uidSnap.val() || {}) as [string, any][]) {
           if (val && typeof val === 'object') {
             collectOrder({ id: val.id || key, ...val });
@@ -1560,59 +1660,62 @@ export async function handleGetMyOrders(req: Request, res: Response) {
         }
       }
 
-      // 2. Legacy userId query
-      const legacySnap = await withTimeout(rtdbAdmin.ref('orders').orderByChild('userId').equalTo(uid).once('value'), 9000, 'Querying legacy orders');
-      if (legacySnap.exists()) {
+      if (legacySnap?.exists()) {
         for (const [key, val] of Object.entries(legacySnap.val() || {}) as [string, any][]) {
           if (val && typeof val === 'object') {
             const ord = { id: val.id || key, ...val };
             if (ord.uid !== uid) {
               ord.uid = uid;
-              await updateOrderInDatabase(ord.id, { uid }, `orders/${key}`);
+              deferredMigrations.push(updateOrderInDatabase(ord.id, { uid }, `orders/${key}`).catch(() => {}));
             }
             collectOrder(ord);
           }
         }
       }
 
-      // 3. Auto-link unlinked guest orders matching verified email
-      if (email) {
-        const emailSnap = await withTimeout(rtdbAdmin.ref('orders').orderByChild('email').equalTo(email).once('value'), 9000, 'Querying email orders');
-        if (emailSnap.exists()) {
-          for (const [key, val] of Object.entries(emailSnap.val() || {}) as [string, any][]) {
-            if (val && typeof val === 'object' && (val.isGuest || val.uid === 'guest' || !val.uid)) {
-              const ord = { id: val.id || key, ...val, uid, userId: uid, isGuest: false };
-              await updateOrderInDatabase(ord.id, { uid, userId: uid, isGuest: false, linkedAt: new Date().toISOString() }, `orders/${key}`);
-              collectOrder(ord);
-            }
+      if (emailSnap?.exists()) {
+        for (const [key, val] of Object.entries(emailSnap.val() || {}) as [string, any][]) {
+          if (val && typeof val === 'object' && (val.isGuest || val.uid === 'guest' || !val.uid)) {
+            const linkedAt = new Date().toISOString();
+            const ord = { id: val.id || key, ...val, uid, userId: uid, isGuest: false, linkedAt };
+            deferredMigrations.push(
+              updateOrderInDatabase(ord.id, { uid, userId: uid, isGuest: false, linkedAt }, `orders/${key}`).catch(() => {})
+            );
+            collectOrder(ord);
           }
         }
       }
 
-      // 4. Legacy nested `orders/ICC/...` path migration (caused by slashes in ICC/STORE-... keys)
-      const nestedIccSnap = await withTimeout(rtdbAdmin.ref('orders/ICC').once('value'), 8000, 'Checking legacy nested orders');
-      if (nestedIccSnap.exists()) {
-        for (const [subKey, val] of Object.entries(nestedIccSnap.val() || {}) as [string, any][]) {
-          if (!val || typeof val !== 'object') continue;
-          const ordId = val.id || `ICC/${subKey}`;
-          const ordEmail = (val.email || val.deliveryAddress?.email || '').toLowerCase().trim();
-          const belongsToUser =
-            val.uid === uid ||
-            val.userId === uid ||
-            (Boolean(email) && (val.isGuest || val.uid === 'guest' || !val.uid) && ordEmail === email);
+      if (deferredMigrations.length > 0) {
+        void Promise.allSettled(deferredMigrations);
+      }
 
-          if (belongsToUser) {
-            const flatKey = toRtdbOrderKey(ordId);
-            const migrated = stripUndefinedDeep({
-              ...val,
-              id: ordId,
-              uid,
-              userId: uid,
-              isGuest: false
-            });
-            await withTimeout(rtdbAdmin.ref(`orders/${flatKey}`).set(migrated), 8000, 'Migrating nested order');
-            await withTimeout(rtdbAdmin.ref(`orders/ICC/${subKey}`).remove(), 6000, 'Removing nested order').catch(() => {});
-            collectOrder(migrated);
+      // Legacy nested `orders/ICC/...` path migration only when no canonical orders exist or quick check needed
+      if (orderMap.size === 0) {
+        const nestedIccSnap = await withTimeout(rtdbAdmin.ref('orders/ICC').limitToLast(100).once('value'), 6000, 'Checking legacy nested orders').catch(() => null);
+        if (nestedIccSnap?.exists()) {
+          for (const [subKey, val] of Object.entries(nestedIccSnap.val() || {}) as [string, any][]) {
+            if (!val || typeof val !== 'object') continue;
+            const ordId = val.id || `ICC/${subKey}`;
+            const ordEmail = (val.email || val.deliveryAddress?.email || '').toLowerCase().trim();
+            const belongsToUser =
+              val.uid === uid ||
+              val.userId === uid ||
+              (Boolean(email) && (val.isGuest || val.uid === 'guest' || !val.uid) && ordEmail === email);
+
+            if (belongsToUser) {
+              const flatKey = toRtdbOrderKey(ordId);
+              const migrated = stripUndefinedDeep({
+                ...val,
+                id: ordId,
+                uid,
+                userId: uid,
+                isGuest: false
+              });
+              await withTimeout(rtdbAdmin.ref(`orders/${flatKey}`).set(migrated), 6000, 'Migrating nested order');
+              void withTimeout(rtdbAdmin.ref(`orders/ICC/${subKey}`).remove(), 5000, 'Removing nested order').catch(() => {});
+              collectOrder(migrated);
+            }
           }
         }
       }
@@ -1942,29 +2045,34 @@ export async function handleAdminUpdateOrderStatus(req: Request, res: Response) 
     await updateOrderInDatabase(existingOrder.id, updates, rtdbPath);
     const updatedOrder = { ...existingOrder, ...updates };
 
-    let emailDelivery = null;
+    let obxJobId: string | undefined;
     if (statusChanged && nextOrderStatus) {
-      emailDelivery = await notifyOrderStatusUpdated({
-        order: updatedOrder,
-        newStatus: nextOrderStatus,
-        reason: cleanReason || undefined,
-        estimatedDelivery: cleanEstimatedDelivery || undefined,
-        performedBy: {
-          uid: admin.uid,
-          name: admin.name || admin.email,
-          email: admin.email,
+      const obx = enqueueOutboxNotification({
+        idempotencyKey: `order_status:${existingOrder.id}:${nextOrderStatus}:${now}`,
+        kind: 'order_status',
+        orderId: existingOrder.id,
+        payload: {
+          order: updatedOrder,
+          newStatus: nextOrderStatus,
+          reason: cleanReason || undefined,
+          estimatedDelivery: cleanEstimatedDelivery || undefined,
+          performedBy: {
+            uid: admin.uid,
+            name: admin.name || admin.email,
+            email: admin.email,
+          },
         },
-      }).catch((err: any) => {
-        console.warn('Order status email dispatch notice:', err?.message || err);
-        return null;
+        maxAttempts: 5,
       });
+      obxJobId = obx.job.jobId;
     }
 
     return res.json({
       success: true,
       orderId: existingOrder.id,
       order: sanitizeOrderForClient(updatedOrder, { includeOwnerUid: !updatedOrder.isGuest }),
-      ...(emailDelivery ? { emailDelivery } : {}),
+      notificationQueued: Boolean(statusChanged && nextOrderStatus),
+      ...(obxJobId ? { outboxJobId: obxJobId, emailDelivery: buildQueuedEmailDeliverySummary(obxJobId) } : {}),
     });
   } catch (error: any) {
     console.error('Admin update order status error:', error);
@@ -1974,7 +2082,7 @@ export async function handleAdminUpdateOrderStatus(req: Request, res: Response) 
 
 /**
  * 11. POST /api/admin/orders/:orderId/refund
- * Admin-authoritative order refund notification & status recording
+ * Admin-authoritative order refund status recording + async email enqueue
  */
 export async function handleAdminOrderRefund(req: Request, res: Response) {
   try {
@@ -2025,29 +2133,266 @@ export async function handleAdminOrderRefund(req: Request, res: Response) {
     await updateOrderInDatabase(existingOrder.id, updates, rtdbPath);
     const updatedOrder = { ...existingOrder, ...updates };
 
-    const emailDelivery = await notifyOrderRefundInitiated({
-      order: updatedOrder,
-      refundAmount: requestedAmount,
-      expectedDays,
-      reason: reason || undefined,
-      performedBy: {
-        uid: admin.uid,
-        name: admin.name || admin.email,
-        email: admin.email,
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `order_refund:${existingOrder.id}:${requestedAmount}:${now}`,
+      kind: 'order_refund',
+      orderId: existingOrder.id,
+      payload: {
+        order: updatedOrder,
+        refundAmount: requestedAmount,
+        expectedDays,
+        reason: reason || undefined,
+        performedBy: {
+          uid: admin.uid,
+          name: admin.name || admin.email,
+          email: admin.email,
+        },
       },
-    }).catch((err: any) => {
-      console.warn('Refund email dispatch notice:', err?.message || err);
-      return null;
+      maxAttempts: 5,
     });
 
     return res.json({
       success: true,
       orderId: existingOrder.id,
       order: sanitizeOrderForClient(updatedOrder, { includeOwnerUid: !updatedOrder.isGuest }),
-      ...(emailDelivery ? { emailDelivery } : {}),
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+      emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
     });
   } catch (error: any) {
     console.error('Admin order refund error:', error);
     return res.status(500).json({ success: false, error: 'Failed to initiate order refund.' });
   }
 }
+
+/**
+ * 12. POST /api/admin/orders/:orderId/notes
+ * Atomic server-authoritative note append on store orders (Admin or assigned Operator)
+ */
+export async function handleAdminAddOrderNote(req: Request, res: Response) {
+  try {
+    const caller = await verifyCallerWithRole(req);
+    if (!caller) {
+      return res.status(401).json({ success: false, error: 'Authentication required' });
+    }
+    if (caller.role !== 'admin' && caller.role !== 'operator') {
+      return res.status(403).json({ success: false, error: 'Admin or operator role required.' });
+    }
+
+    const orderId = decodeURIComponent(String(req.params.orderId || '')).trim();
+    if (!orderId) {
+      return res.status(400).json({ success: false, error: 'Order ID is required.' });
+    }
+
+    const record = await findOrderRecord(orderId);
+    if (!record) {
+      return res.status(404).json({ success: false, error: 'Order not found.' });
+    }
+
+    const { order: existingOrder, rtdbPath } = record;
+    if (caller.role === 'operator') {
+      const assignedUid = String(existingOrder.assignedToUid || '').trim();
+      if (!assignedUid || assignedUid !== caller.uid) {
+        return res.status(403).json({ success: false, error: 'You are not assigned to this order.' });
+      }
+    }
+
+    const text = cleanText(req.body?.text, 2000);
+    const attachmentUrl = typeof req.body?.attachmentUrl === 'string' ? req.body.attachmentUrl.trim() : '';
+    const attachmentName = cleanText(req.body?.attachmentName, 150);
+    const clientRequestId = cleanText(req.body?.clientRequestId, 120);
+
+    if (!text && !attachmentUrl) {
+      return res.status(400).json({ success: false, error: 'Please enter a note or attach a file.' });
+    }
+    if (attachmentUrl && !isValidSafeUrl(attachmentUrl) && !attachmentUrl.startsWith('/api/')) {
+      return res.status(400).json({ success: false, error: 'Invalid attachment URL.' });
+    }
+
+    const idempKey = clientRequestId ? `order_note:${orderId}:${clientRequestId}` : undefined;
+    const cached = checkIdempotency(idempKey);
+    if (cached) {
+      return res.json({ ...cached, duplicate: true });
+    }
+
+    const now = new Date().toISOString();
+    const noteEntry: Record<string, any> = {
+      type: 'note',
+      by: caller.name || caller.email || caller.role,
+      email: caller.email,
+      authorUid: caller.uid,
+      authorRole: caller.role,
+      text: text || (attachmentName ? `Attached file: ${attachmentName}` : 'Attachment uploaded'),
+      time: now,
+      createdAt: Date.now(),
+      ...(clientRequestId ? { clientRequestId } : {}),
+      ...(attachmentUrl ? { attachment: attachmentUrl, attachmentName: attachmentName || 'Attachment' } : {}),
+    };
+
+    const existingNotes = Array.isArray(existingOrder.notes) ? existingOrder.notes : [];
+    if (clientRequestId && existingNotes.some((n: any) => n?.clientRequestId === clientRequestId)) {
+      const result = {
+        success: true,
+        duplicate: true,
+        orderId: existingOrder.id,
+        notes: existingNotes,
+      };
+      recordIdempotency(idempKey, result);
+      return res.json(result);
+    }
+
+    const updatedNotes = [...existingNotes, noteEntry];
+    await updateOrderInDatabase(existingOrder.id, { notes: updatedNotes, updatedAt: now }, rtdbPath);
+
+    const result = {
+      success: true,
+      orderId: existingOrder.id,
+      note: noteEntry,
+      notes: updatedNotes,
+    };
+    recordIdempotency(idempKey, result);
+    return res.json(result);
+  } catch (error: any) {
+    console.error('Admin add order note error:', error);
+    return res.status(500).json({ success: false, error: 'Failed to save order note.' });
+  }
+}
+
+/**
+ * 13. POST /api/store/reviews
+ * Server-authoritative product review submission + async notification enqueue
+ */
+export async function handleSubmitStoreReview(req: Request, res: Response) {
+  try {
+    const authUser = await getVerifiedAuthUser(req);
+    if (!authUser) {
+      return res.status(401).json({ success: false, error: 'Please sign in to submit a review.' });
+    }
+
+    if (!checkRateLimit('store-review', authUser.uid, 10, 60000)) {
+      return res.status(429).json({ success: false, error: 'Too many review submissions. Please wait a minute.' });
+    }
+
+    const { productId, rating, comment, images, idempotencyKey, userName, userAvatar } = req.body || {};
+    const cleanProductId = cleanText(productId, 140);
+    const numRating = Number(rating);
+    const cleanComment = cleanText(comment, 2000);
+    const cleanUserName = cleanText(userName, 120) || authUser.email.split('@')[0] || 'Customer';
+
+    if (!cleanProductId) {
+      return res.status(400).json({ success: false, error: 'Product ID is required.' });
+    }
+    if (!Number.isInteger(numRating) || numRating < 1 || numRating > 5) {
+      return res.status(400).json({ success: false, error: 'Rating must be between 1 and 5 stars.' });
+    }
+    if (!cleanComment) {
+      return res.status(400).json({ success: false, error: 'Please write a review comment.' });
+    }
+
+    const safeImages: string[] = [];
+    if (Array.isArray(images)) {
+      for (const img of images.slice(0, 5)) {
+        if (typeof img === 'string' && isValidSafeUrl(img.trim())) {
+          safeImages.push(img.trim().slice(0, 1024));
+        }
+      }
+    }
+
+    const dedupKey = idempotencyKey ? `review:${authUser.uid}:${cleanProductId}:${cleanText(idempotencyKey, 120)}` : undefined;
+    const cached = checkIdempotency(dedupKey);
+    if (cached) {
+      return res.status(200).json({ ...cached, duplicate: true });
+    }
+
+    const catalog = await loadProductCatalog();
+    const product = catalog.find(p => p.id === cleanProductId);
+    const productName = cleanText(product?.name || req.body?.productName || cleanProductId, 200);
+
+    const nowIso = new Date().toISOString();
+    const reviewId = `rev_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    const reviewPayload: Record<string, any> = {
+      id: reviewId,
+      productId: cleanProductId,
+      uid: authUser.uid,
+      userName: cleanUserName,
+      rating: numRating,
+      comment: cleanComment,
+      text: cleanComment,
+      verified: true,
+      helpful: 0,
+      helpfulBy: [],
+      createdAt: nowIso,
+      date: nowIso,
+      ...(typeof userAvatar === 'string' && isValidSafeUrl(userAvatar.trim()) ? { userAvatar: userAvatar.trim().slice(0, 1024) } : {}),
+      ...(safeImages.length > 0 ? { images: safeImages } : {}),
+    };
+
+    if (isTestMode()) {
+      const storePath = path.join(APP_ROOT, 'data/reviews_test_store.json');
+      let existing: Record<string, any> = {};
+      try {
+        if (fs.existsSync(storePath)) existing = JSON.parse(fs.readFileSync(storePath, 'utf-8'));
+      } catch {}
+      existing[reviewId] = reviewPayload;
+      fs.mkdirSync(path.dirname(storePath), { recursive: true });
+      fs.writeFileSync(storePath, JSON.stringify(existing, null, 2), 'utf-8');
+    } else {
+      const db = requireAdminDatabase();
+      await withTimeout(db.ref(`productReviews/${reviewId}`).set(reviewPayload), 8000, 'Saving product review');
+
+      // Recompute product rating aggregate atomically best-effort
+      try {
+        const revSnap = await withTimeout(
+          db.ref('productReviews').orderByChild('productId').equalTo(cleanProductId).limitToLast(200).once('value'),
+          5000,
+          'Aggregating product ratings'
+        );
+        if (revSnap.exists()) {
+          const allRevs = Object.values(revSnap.val() || {}) as any[];
+          const breakdown: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+          let totalScore = 0;
+          let count = 0;
+          for (const r of allRevs) {
+            const rv = Math.max(1, Math.min(5, Math.round(Number(r?.rating) || 5)));
+            breakdown[rv] = (breakdown[rv] || 0) + 1;
+            totalScore += rv;
+            count += 1;
+          }
+          if (count > 0) {
+            const average = Math.round((totalScore / count) * 10) / 10;
+            void db.ref(`products/${cleanProductId}/ratings`).set({ average, count, breakdown }).catch(() => {});
+          }
+        }
+      } catch {}
+    }
+
+    const obx = enqueueOutboxNotification({
+      idempotencyKey: `review_submitted:${reviewId}`,
+      kind: 'review_submitted',
+      payload: {
+        productId: cleanProductId,
+        productName,
+        customerName: cleanUserName,
+        customerEmail: authUser.email,
+        rating: numRating,
+        reviewText: cleanComment,
+      },
+      maxAttempts: 4,
+    });
+
+    const result = {
+      success: true,
+      reviewId,
+      review: reviewPayload,
+      notificationQueued: true,
+      outboxJobId: obx.job.jobId,
+    };
+    recordIdempotency(dedupKey, result);
+    return res.status(201).json(result);
+  } catch (error: any) {
+    console.error('Submit review error:', error);
+    const status = error instanceof DatabaseConfigError ? error.statusCode : error?.message?.includes('timed out') ? 504 : 500;
+    return res.status(status).json({ success: false, error: 'Failed to submit review. Please try again.' });
+  }
+}
+

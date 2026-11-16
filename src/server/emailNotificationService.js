@@ -4,421 +4,397 @@ import path from 'path';
 import nodemailer from 'nodemailer';
 import { getApps } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
-
+import { enqueueAsyncJob, getQueueDriver, registerQueueProcessor, resetAsyncQueueForTesting, } from './asyncQueueService.js';
 const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
-  ? process.cwd()
-  : path.resolve(process.cwd(), '..');
-
+    ? process.cwd()
+    : path.resolve(process.cwd(), '..');
 const NOTIFICATION_LEDGER_PATH = path.join(APP_ROOT, 'data/notification_events.json');
 const NOTIFICATION_OUTBOX_PATH = path.join(APP_ROOT, 'data/notification_outbox.json');
 const DEFAULT_ADMIN_EMAILS = ['icc@indiacybercafe.com', 'indiacybercafe.com@gmail.com'];
 const BRAND_LOGO_URL = 'https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png';
 const SITE_URL = 'https://b.indiacybercafe.com';
-
 const isTestMode = () => process.env.STORE_ORDER_TEST_MODE === '1' || process.env.OPERATOR_TEST_MODE === '1';
-
 let testingTransport = null;
 const memoryLedger = new Map();
-const dedupIndex = new Map();
-
+const dedupIndex = new Map(); // `${idempotencyKey}|${recipientRole}|${recipient}` -> eventId
 export function setEmailTransportForTesting(transport) {
-  testingTransport = transport;
+    testingTransport = transport;
 }
-
 export function resetNotificationStateForTesting() {
-  memoryLedger.clear();
-  dedupIndex.clear();
-  resetNotificationOutboxForTesting();
-  if (isTestMode()) {
-    try {
-      if (fs.existsSync(NOTIFICATION_LEDGER_PATH)) {
-        fs.unlinkSync(NOTIFICATION_LEDGER_PATH);
-      }
-    } catch {}
-  }
+    memoryLedger.clear();
+    dedupIndex.clear();
+    resetNotificationOutboxForTesting();
+    if (isTestMode()) {
+        try {
+            if (fs.existsSync(NOTIFICATION_LEDGER_PATH)) {
+                fs.unlinkSync(NOTIFICATION_LEDGER_PATH);
+            }
+        }
+        catch { }
+    }
 }
-
 export function isValidEmailAddress(email) {
-  if (typeof email !== 'string') return false;
-  const trimmed = email.trim();
-  if (!trimmed || trimmed.length > 254) return false;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
+    if (typeof email !== 'string')
+        return false;
+    const trimmed = email.trim();
+    if (!trimmed || trimmed.length > 254)
+        return false;
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
 }
-
 export function normalizeEmailAddress(email) {
-  if (typeof email !== 'string') return '';
-  return email.trim().toLowerCase();
+    if (typeof email !== 'string')
+        return '';
+    return email.trim().toLowerCase();
 }
-
 export function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
 }
-
 export function safePortalUrl(pathOrUrl, fallback = SITE_URL) {
-  if (!pathOrUrl || typeof pathOrUrl !== 'string') return fallback;
-  if (pathOrUrl.startsWith('/')) {
-    return `${SITE_URL}${pathOrUrl}`;
-  }
-  try {
-    const parsed = new URL(pathOrUrl);
-    if (parsed.protocol === 'https:' && (parsed.hostname === 'b.indiacybercafe.com' || parsed.hostname === 'indiacybercafe.com')) {
-      return parsed.toString();
+    if (!pathOrUrl || typeof pathOrUrl !== 'string')
+        return fallback;
+    if (pathOrUrl.startsWith('/')) {
+        return `${SITE_URL}${pathOrUrl}`;
     }
-  } catch {}
-  return fallback;
+    try {
+        const parsed = new URL(pathOrUrl);
+        if (parsed.protocol === 'https:' && (parsed.hostname === 'b.indiacybercafe.com' || parsed.hostname === 'indiacybercafe.com')) {
+            return parsed.toString();
+        }
+    }
+    catch { }
+    return fallback;
 }
-
 export function getAdminEmails() {
-  const configuredRaw = process.env.ADMIN_NOTIFICATION_EMAILS || process.env.ADMIN_EMAILS || '';
-  const fromEnv = configuredRaw
-    .split(',')
-    .map(item => normalizeEmailAddress(item))
-    .filter(isValidEmailAddress);
-
-  const merged = new Set(DEFAULT_ADMIN_EMAILS.map(normalizeEmailAddress));
-  for (const addr of fromEnv) {
-    merged.add(addr);
-  }
-  return Array.from(merged);
+    const configuredRaw = process.env.ADMIN_NOTIFICATION_EMAILS || process.env.ADMIN_EMAILS || '';
+    const fromEnv = configuredRaw
+        .split(',')
+        .map(item => normalizeEmailAddress(item))
+        .filter(isValidEmailAddress);
+    const merged = new Set(DEFAULT_ADMIN_EMAILS.map(normalizeEmailAddress));
+    for (const addr of fromEnv) {
+        merged.add(addr);
+    }
+    return Array.from(merged);
 }
-
 export const OFFICIAL_ADMIN_EMAILS = new Set(getAdminEmails());
-
-export function resolveOperatorRecipient(app, operatorProfile = null) {
-  const uid = typeof (operatorProfile?.uid || app?.assignedToUid) === 'string'
-    ? String(operatorProfile?.uid || app?.assignedToUid).trim()
-    : '';
-  const rawEmail = operatorProfile?.email || app?.assignedTo || '';
-  const email = normalizeEmailAddress(rawEmail);
-  const name = String(operatorProfile?.name || (email ? email.split('@')[0] : '') || 'Operator').trim();
-
-  if (!uid && !email) return null;
-  return { uid, email, name };
+export function resolveOperatorRecipient(app, operatorProfile) {
+    const uid = typeof (operatorProfile?.uid || app?.assignedToUid) === 'string'
+        ? String(operatorProfile?.uid || app?.assignedToUid).trim()
+        : '';
+    const rawEmail = operatorProfile?.email || app?.assignedTo || '';
+    const email = normalizeEmailAddress(rawEmail);
+    const name = String(operatorProfile?.name || (email ? email.split('@')[0] : '') || 'Operator').trim();
+    if (!uid && !email)
+        return null;
+    return { uid, email, name };
 }
-
 function getActiveTransport() {
-  const smtpUser = (process.env.SMTP_USER || '').trim();
-  const smtpPass = (process.env.SMTP_PASS || '').trim();
-
-  if (testingTransport) {
-    return {
-      transporter: testingTransport,
-      fromEmail: smtpUser || 'icc@indiacybercafe.com',
-    };
-  }
-
-  if (!smtpUser || !smtpPass) {
-    return {
-      transporter: null,
-      fromEmail: smtpUser || 'icc@indiacybercafe.com',
-      missingReason: 'SMTP credentials (SMTP_USER / SMTP_PASS) are not configured',
-    };
-  }
-
-  const transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'smtp.hostinger.com',
-    port: parseInt(process.env.SMTP_PORT || '587', 10),
-    secure: false,
-    connectionTimeout: 5000,
-    greetingTimeout: 5000,
-    socketTimeout: 8000,
-    auth: { user: smtpUser, pass: smtpPass },
-    tls: { rejectUnauthorized: false },
-  });
-
-  return { transporter, fromEmail: smtpUser };
-}
-
-function readDiskLedger() {
-  try {
-    if (fs.existsSync(NOTIFICATION_LEDGER_PATH)) {
-      return JSON.parse(fs.readFileSync(NOTIFICATION_LEDGER_PATH, 'utf-8'));
+    const smtpUser = (process.env.SMTP_USER || '').trim();
+    const smtpPass = (process.env.SMTP_PASS || '').trim();
+    if (testingTransport) {
+        return {
+            transporter: testingTransport,
+            fromEmail: smtpUser || 'icc@indiacybercafe.com',
+        };
     }
-  } catch {}
-  return {};
-}
-
-function writeDiskLedger(records) {
-  try {
-    fs.mkdirSync(path.dirname(NOTIFICATION_LEDGER_PATH), { recursive: true });
-    const entries = Object.entries(records)
-      .sort((a, b) => new Date(b[1].createdAt || 0).getTime() - new Date(a[1].createdAt || 0).getTime())
-      .slice(0, 500);
-    const trimmed = Object.fromEntries(entries);
-    fs.writeFileSync(NOTIFICATION_LEDGER_PATH, JSON.stringify(trimmed, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[emailNotificationService] Could not persist ledger:', err?.message || err);
-  }
-}
-
-function hydrateLedgerCache() {
-  if (memoryLedger.size > 0) return;
-  const disk = readDiskLedger();
-  for (const [id, rec] of Object.entries(disk)) {
-    memoryLedger.set(id, rec);
-    if (rec.idempotencyKey && rec.recipientRole && rec.recipient && rec.state === 'sent_to_smtp') {
-      const dedupKey = `${rec.idempotencyKey}|${rec.recipientRole}|${normalizeEmailAddress(rec.recipient)}`;
-      dedupIndex.set(dedupKey, id);
+    if (!smtpUser || !smtpPass) {
+        return {
+            transporter: null,
+            fromEmail: smtpUser || 'icc@indiacybercafe.com',
+            missingReason: 'SMTP credentials (SMTP_USER / SMTP_PASS) are not configured',
+        };
     }
-  }
-}
-
-async function persistNotificationEvent(record) {
-  hydrateLedgerCache();
-  memoryLedger.set(record.eventId, record);
-  if (record.state === 'sent_to_smtp' && record.idempotencyKey && record.recipient) {
-    const dedupKey = `${record.idempotencyKey}|${record.recipientRole}|${normalizeEmailAddress(record.recipient)}`;
-    dedupIndex.set(dedupKey, record.eventId);
-  }
-
-  const disk = readDiskLedger();
-  disk[record.eventId] = record;
-  writeDiskLedger(disk);
-
-  if (!isTestMode() && getApps().length > 0) {
-    try {
-      const db = getDatabase(getApps()[0]);
-      await Promise.race([
-        db.ref(`notificationEvents/${record.eventId}`).set({
-          eventId: record.eventId,
-          idempotencyKey: record.idempotencyKey,
-          templateId: record.templateId,
-          recipient: record.recipient,
-          recipientRole: record.recipientRole,
-          subject: record.subject,
-          state: record.state,
-          attempts: record.attempts,
-          wasRetried: record.wasRetried,
-          smtpAccepted: record.smtpAccepted,
-          error: record.error || null,
-          context: record.context || null,
-          createdAt: record.createdAt,
-          updatedAt: record.updatedAt,
-          sentToSmtpAt: record.sentToSmtpAt || null,
-        }),
-        new Promise(resolve => setTimeout(resolve, 2500)),
-      ]);
-    } catch {}
-  }
-}
-
-export function getNotificationEvents(filters = {}) {
-  hydrateLedgerCache();
-  let items = Array.from(memoryLedger.values());
-  if (filters?.state) {
-    items = items.filter(i => i.state === filters.state);
-  }
-  if (filters?.appId) {
-    items = items.filter(i => i.context?.appId === filters.appId);
-  }
-  if (filters?.orderId) {
-    items = items.filter(i => i.context?.orderId === filters.orderId);
-  }
-  items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-  return items.slice(0, filters?.limit || 100);
-}
-
-export function getNotificationEventById(eventId) {
-  hydrateLedgerCache();
-  return memoryLedger.get(eventId) || null;
-}
-
-function sleep(ms) {
-  return new Promise(resolve => {
-    const t = setTimeout(resolve, ms);
-    if (typeof t.unref === 'function') t.unref();
-  });
-}
-
-async function deliverSingleEvent(record, options = {}) {
-  const maxAttempts = options?.maxAttempts ?? record.maxAttempts ?? 3;
-  const retryDelayMs = options?.retryDelayMs ?? (isTestMode() || testingTransport ? 5 : 300);
-
-  if (!isValidEmailAddress(record.recipient)) {
-    record.state = 'failed';
-    record.stateHistory.push('failed');
-    record.smtpAccepted = false;
-    record.error = record.recipientRole === 'customer'
-      ? 'MISSING_OR_INVALID_CUSTOMER_EMAIL'
-      : 'MISSING_OR_INVALID_RECIPIENT_EMAIL';
-    record.updatedAt = new Date().toISOString();
-    await persistNotificationEvent(record);
-    console.warn(`[EMAIL] Delivery failed (eventId=${record.eventId}, template=${record.templateId}, role=${record.recipientRole}): ${record.error}`);
-    return record;
-  }
-
-  const { transporter, fromEmail, missingReason } = getActiveTransport();
-  if (!transporter) {
-    record.state = 'failed';
-    record.stateHistory.push('failed');
-    record.smtpAccepted = false;
-    record.error = missingReason || 'SMTP transport unavailable';
-    record.updatedAt = new Date().toISOString();
-    await persistNotificationEvent(record);
-    console.warn(`[EMAIL] Delivery failed (eventId=${record.eventId}, template=${record.templateId}, to=${record.recipient}): ${record.error}`);
-    return record;
-  }
-
-  const senderLabel = (record.fromName || 'India Cyber Cafe').replace(/["\r\n]/g, '').trim() || 'India Cyber Cafe';
-  let lastErr = '';
-
-  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
-    if (attempt > 1) {
-      record.wasRetried = true;
-      record.state = 'retried';
-      record.stateHistory.push('retried');
-      await sleep(retryDelayMs * attempt);
-    }
-
-    record.attempts += 1;
-    try {
-      await transporter.sendMail({
-        from: `"${senderLabel}" <${fromEmail}>`,
-        to: record.recipient,
-        subject: record.subject,
-        html: record.html,
-        ...(record.text ? { text: record.text } : {}),
-      });
-
-      const sentAt = new Date().toISOString();
-      record.state = 'sent_to_smtp';
-      record.stateHistory.push('sent_to_smtp');
-      record.smtpAccepted = true;
-      record.error = undefined;
-      record.sentToSmtpAt = sentAt;
-      record.updatedAt = sentAt;
-      await persistNotificationEvent(record);
-      return record;
-    } catch (err) {
-      lastErr = String(err?.message || err || 'SMTP delivery error').slice(0, 300);
-      console.warn(`[EMAIL] Attempt ${attempt}/${maxAttempts} failed (eventId=${record.eventId}, template=${record.templateId}, to=${record.recipient}): ${lastErr}`);
-    }
-  }
-
-  record.state = 'failed';
-  record.stateHistory.push('failed');
-  record.smtpAccepted = false;
-  record.error = lastErr || 'SMTP delivery failed after retries';
-  record.updatedAt = new Date().toISOString();
-  await persistNotificationEvent(record);
-  return record;
-}
-
-export async function dispatchNotificationBatch(items, options = {}) {
-  hydrateLedgerCache();
-
-  const reportEvents = [];
-  let sentCount = 0;
-  let failedCount = 0;
-  let skippedDuplicateCount = 0;
-
-  for (const item of items) {
-    const normalizedRecipient = normalizeEmailAddress(item.recipient);
-    const dedupKey = `${item.idempotencyKey}|${item.recipientRole}|${normalizedRecipient}`;
-
-    if (item.idempotencyKey && normalizedRecipient && dedupIndex.has(dedupKey)) {
-      const existingId = dedupIndex.get(dedupKey);
-      const existing = memoryLedger.get(existingId);
-      if (existing && existing.state === 'sent_to_smtp') {
-        skippedDuplicateCount += 1;
-        reportEvents.push({
-          eventId: existing.eventId,
-          templateId: existing.templateId,
-          recipient: existing.recipient,
-          recipientRole: existing.recipientRole,
-          state: existing.state,
-          wasRetried: existing.wasRetried,
-          attempts: existing.attempts,
-          smtpAccepted: existing.smtpAccepted,
-          skippedDuplicate: true,
-        });
-        continue;
-      }
-    }
-
-    const now = new Date().toISOString();
-    const eventId = `ntf_${Date.now()}_${crypto.randomBytes(5).toString('hex')}`;
-    const record = {
-      eventId,
-      idempotencyKey: item.idempotencyKey || eventId,
-      templateId: item.templateId,
-      recipient: normalizedRecipient,
-      recipientRole: item.recipientRole,
-      subject: String(item.subject || '').slice(0, 200),
-      html: item.html,
-      ...(item.text ? { text: item.text } : {}),
-      fromName: item.fromName || 'India Cyber Cafe',
-      state: 'queued',
-      stateHistory: ['queued'],
-      attempts: 0,
-      maxAttempts: options?.maxAttempts ?? 3,
-      wasRetried: false,
-      smtpAccepted: false,
-      context: item.context,
-      createdAt: now,
-      updatedAt: now,
-    };
-
-    await persistNotificationEvent(record);
-    const finalRecord = await deliverSingleEvent(record, options);
-
-    if (finalRecord.state === 'sent_to_smtp') {
-      sentCount += 1;
-    } else {
-      failedCount += 1;
-    }
-
-    reportEvents.push({
-      eventId: finalRecord.eventId,
-      templateId: finalRecord.templateId,
-      recipient: finalRecord.recipient,
-      recipientRole: finalRecord.recipientRole,
-      state: finalRecord.state,
-      wasRetried: finalRecord.wasRetried,
-      attempts: finalRecord.attempts,
-      smtpAccepted: finalRecord.smtpAccepted,
-      ...(finalRecord.error ? { error: finalRecord.error } : {}),
+    const transporter = nodemailer.createTransport({
+        host: process.env.SMTP_HOST || 'smtp.hostinger.com',
+        port: parseInt(process.env.SMTP_PORT || '587', 10),
+        secure: false,
+        connectionTimeout: 5000,
+        greetingTimeout: 5000,
+        socketTimeout: 8000,
+        auth: { user: smtpUser, pass: smtpPass },
+        tls: { rejectUnauthorized: false },
     });
-  }
-
-  return {
-    success: failedCount === 0,
-    hasFailures: failedCount > 0,
-    totalCount: reportEvents.length,
-    sentCount,
-    failedCount,
-    skippedDuplicateCount,
-    events: reportEvents,
-  };
+    return { transporter, fromEmail: smtpUser };
 }
-
+function readDiskLedger() {
+    try {
+        if (fs.existsSync(NOTIFICATION_LEDGER_PATH)) {
+            return JSON.parse(fs.readFileSync(NOTIFICATION_LEDGER_PATH, 'utf-8'));
+        }
+    }
+    catch { }
+    return {};
+}
+function writeJsonAtomicSync(filePath, data) {
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const tmpPath = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+    fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    fs.renameSync(tmpPath, filePath);
+}
+function writeDiskLedger(records) {
+    try {
+        // Keep last 500 events so disk file remains bounded
+        const entries = Object.entries(records)
+            .sort((a, b) => new Date(b[1].createdAt || 0).getTime() - new Date(a[1].createdAt || 0).getTime())
+            .slice(0, 500);
+        const trimmed = Object.fromEntries(entries);
+        writeJsonAtomicSync(NOTIFICATION_LEDGER_PATH, trimmed);
+    }
+    catch (err) {
+        console.warn('[emailNotificationService] Could not persist ledger:', err?.message || err);
+    }
+}
+function hydrateLedgerCache() {
+    if (memoryLedger.size > 0)
+        return;
+    const disk = readDiskLedger();
+    for (const [id, rec] of Object.entries(disk)) {
+        memoryLedger.set(id, rec);
+        if (rec.idempotencyKey && rec.recipientRole && rec.recipient && rec.state === 'sent_to_smtp') {
+            const dedupKey = `${rec.idempotencyKey}|${rec.recipientRole}|${normalizeEmailAddress(rec.recipient)}`;
+            dedupIndex.set(dedupKey, id);
+        }
+    }
+}
+async function persistNotificationEvent(record) {
+    hydrateLedgerCache();
+    memoryLedger.set(record.eventId, record);
+    if (record.state === 'sent_to_smtp' && record.idempotencyKey && record.recipient) {
+        const dedupKey = `${record.idempotencyKey}|${record.recipientRole}|${normalizeEmailAddress(record.recipient)}`;
+        dedupIndex.set(dedupKey, record.eventId);
+    }
+    const disk = readDiskLedger();
+    disk[record.eventId] = record;
+    writeDiskLedger(disk);
+    // Best-effort mirror to Firebase RTDB when Admin SDK is active outside test mode
+    if (!isTestMode() && getApps().length > 0) {
+        try {
+            const db = getDatabase(getApps()[0]);
+            // Store metadata summary in RTDB (never store raw credentials or tokens)
+            await Promise.race([
+                db.ref(`notificationEvents/${record.eventId}`).set({
+                    eventId: record.eventId,
+                    idempotencyKey: record.idempotencyKey,
+                    templateId: record.templateId,
+                    recipient: record.recipient,
+                    recipientRole: record.recipientRole,
+                    subject: record.subject,
+                    state: record.state,
+                    attempts: record.attempts,
+                    wasRetried: record.wasRetried,
+                    smtpAccepted: record.smtpAccepted,
+                    error: record.error || null,
+                    context: record.context || null,
+                    createdAt: record.createdAt,
+                    updatedAt: record.updatedAt,
+                    sentToSmtpAt: record.sentToSmtpAt || null,
+                }),
+                new Promise(resolve => setTimeout(resolve, 2500)),
+            ]);
+        }
+        catch { }
+    }
+}
+export function getNotificationEvents(filters) {
+    hydrateLedgerCache();
+    let items = Array.from(memoryLedger.values());
+    if (filters?.state) {
+        items = items.filter(i => i.state === filters.state);
+    }
+    if (filters?.appId) {
+        items = items.filter(i => i.context?.appId === filters.appId);
+    }
+    if (filters?.orderId) {
+        items = items.filter(i => i.context?.orderId === filters.orderId);
+    }
+    items.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+    return items.slice(0, filters?.limit || 100);
+}
+export function getNotificationEventById(eventId) {
+    hydrateLedgerCache();
+    return memoryLedger.get(eventId) || null;
+}
+function sleep(ms) {
+    return new Promise(resolve => {
+        const t = setTimeout(resolve, ms);
+        if (typeof t.unref === 'function')
+            t.unref();
+    });
+}
+async function deliverSingleEvent(record, options) {
+    const maxAttempts = options?.maxAttempts ?? record.maxAttempts ?? 3;
+    const retryDelayMs = options?.retryDelayMs ?? (isTestMode() || testingTransport ? 5 : 300);
+    if (!isValidEmailAddress(record.recipient)) {
+        record.state = 'failed';
+        record.stateHistory.push('failed');
+        record.smtpAccepted = false;
+        record.error = record.recipientRole === 'customer'
+            ? 'MISSING_OR_INVALID_CUSTOMER_EMAIL'
+            : 'MISSING_OR_INVALID_RECIPIENT_EMAIL';
+        record.updatedAt = new Date().toISOString();
+        await persistNotificationEvent(record);
+        console.warn(`[EMAIL] Delivery failed (eventId=${record.eventId}, template=${record.templateId}, role=${record.recipientRole}): ${record.error}`);
+        return record;
+    }
+    const { transporter, fromEmail, missingReason } = getActiveTransport();
+    if (!transporter) {
+        record.state = 'failed';
+        record.stateHistory.push('failed');
+        record.smtpAccepted = false;
+        record.error = missingReason || 'SMTP transport unavailable';
+        record.updatedAt = new Date().toISOString();
+        await persistNotificationEvent(record);
+        console.warn(`[EMAIL] Delivery failed (eventId=${record.eventId}, template=${record.templateId}, to=${record.recipient}): ${record.error}`);
+        return record;
+    }
+    const senderLabel = (record.fromName || 'India Cyber Cafe').replace(/["\r\n]/g, '').trim() || 'India Cyber Cafe';
+    let lastErr = '';
+    for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        if (attempt > 1) {
+            record.wasRetried = true;
+            record.state = 'retried';
+            record.stateHistory.push('retried');
+            await sleep(retryDelayMs * attempt);
+        }
+        record.attempts += 1;
+        try {
+            await transporter.sendMail({
+                from: `"${senderLabel}" <${fromEmail}>`,
+                to: record.recipient,
+                subject: record.subject,
+                html: record.html,
+                ...(record.text ? { text: record.text } : {}),
+            });
+            const sentAt = new Date().toISOString();
+            record.state = 'sent_to_smtp';
+            record.stateHistory.push('sent_to_smtp');
+            record.smtpAccepted = true;
+            record.error = undefined;
+            record.sentToSmtpAt = sentAt;
+            record.updatedAt = sentAt;
+            await persistNotificationEvent(record);
+            return record;
+        }
+        catch (err) {
+            lastErr = String(err?.message || err || 'SMTP delivery error').slice(0, 300);
+            console.warn(`[EMAIL] Attempt ${attempt}/${maxAttempts} failed (eventId=${record.eventId}, template=${record.templateId}, to=${record.recipient}): ${lastErr}`);
+        }
+    }
+    record.state = 'failed';
+    record.stateHistory.push('failed');
+    record.smtpAccepted = false;
+    record.error = lastErr || 'SMTP delivery failed after retries';
+    record.updatedAt = new Date().toISOString();
+    await persistNotificationEvent(record);
+    return record;
+}
+export async function dispatchNotificationBatch(items, options) {
+    hydrateLedgerCache();
+    const reportEvents = [];
+    let sentCount = 0;
+    let failedCount = 0;
+    let skippedDuplicateCount = 0;
+    for (const item of items) {
+        const normalizedRecipient = normalizeEmailAddress(item.recipient);
+        const dedupKey = `${item.idempotencyKey}|${item.recipientRole}|${normalizedRecipient}`;
+        if (item.idempotencyKey && normalizedRecipient && dedupIndex.has(dedupKey)) {
+            const existingId = dedupIndex.get(dedupKey);
+            const existing = memoryLedger.get(existingId);
+            if (existing && existing.state === 'sent_to_smtp') {
+                skippedDuplicateCount += 1;
+                reportEvents.push({
+                    eventId: existing.eventId,
+                    templateId: existing.templateId,
+                    recipient: existing.recipient,
+                    recipientRole: existing.recipientRole,
+                    state: existing.state,
+                    wasRetried: existing.wasRetried,
+                    attempts: existing.attempts,
+                    smtpAccepted: existing.smtpAccepted,
+                    skippedDuplicate: true,
+                });
+                continue;
+            }
+        }
+        const now = new Date().toISOString();
+        const eventId = `ntf_${Date.now()}_${crypto.randomBytes(5).toString('hex')}`;
+        const record = {
+            eventId,
+            idempotencyKey: item.idempotencyKey || eventId,
+            templateId: item.templateId,
+            recipient: normalizedRecipient,
+            recipientRole: item.recipientRole,
+            subject: String(item.subject || '').slice(0, 200),
+            html: item.html,
+            ...(item.text ? { text: item.text } : {}),
+            fromName: item.fromName || 'India Cyber Cafe',
+            state: 'queued',
+            stateHistory: ['queued'],
+            attempts: 0,
+            maxAttempts: options?.maxAttempts ?? 3,
+            wasRetried: false,
+            smtpAccepted: false,
+            context: item.context,
+            createdAt: now,
+            updatedAt: now,
+        };
+        await persistNotificationEvent(record);
+        const finalRecord = await deliverSingleEvent(record, options);
+        if (finalRecord.state === 'sent_to_smtp') {
+            sentCount += 1;
+        }
+        else {
+            failedCount += 1;
+        }
+        reportEvents.push({
+            eventId: finalRecord.eventId,
+            templateId: finalRecord.templateId,
+            recipient: finalRecord.recipient,
+            recipientRole: finalRecord.recipientRole,
+            state: finalRecord.state,
+            wasRetried: finalRecord.wasRetried,
+            attempts: finalRecord.attempts,
+            smtpAccepted: finalRecord.smtpAccepted,
+            ...(finalRecord.error ? { error: finalRecord.error } : {}),
+        });
+    }
+    return {
+        success: failedCount === 0,
+        hasFailures: failedCount > 0,
+        totalCount: reportEvents.length,
+        sentCount,
+        failedCount,
+        skippedDuplicateCount,
+        events: reportEvents,
+    };
+}
 export async function retryNotificationEvent(eventId) {
-  hydrateLedgerCache();
-  const existing = memoryLedger.get(eventId);
-  if (!existing) {
-    return { found: false };
-  }
-  if (existing.state === 'sent_to_smtp') {
-    return { found: true, event: existing };
-  }
-
-  existing.state = 'retried';
-  existing.stateHistory.push('retried');
-  existing.wasRetried = true;
-  existing.updatedAt = new Date().toISOString();
-  await persistNotificationEvent(existing);
-
-  const updated = await deliverSingleEvent(existing, { maxAttempts: 2 });
-  return { found: true, event: updated };
+    hydrateLedgerCache();
+    const existing = memoryLedger.get(eventId);
+    if (!existing) {
+        return { found: false };
+    }
+    if (existing.state === 'sent_to_smtp') {
+        return { found: true, event: existing };
+    }
+    existing.state = 'retried';
+    existing.stateHistory.push('retried');
+    existing.wasRetried = true;
+    existing.updatedAt = new Date().toISOString();
+    await persistNotificationEvent(existing);
+    const updated = await deliverSingleEvent(existing, { maxAttempts: 2 });
+    return { found: true, event: updated };
 }
-
+// =============================================================================
+// GMAIL-MOBILE-SAFE RESPONSIVE HTML LAYOUT & ROLE-SEPARATED TEMPLATES
+// =============================================================================
 function wrapEmailHtml(title, contentHtml, badgeLabel = 'Digital Seva Simplified') {
-  return `<!DOCTYPE html>
+    return `<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
@@ -475,9 +451,8 @@ function wrapEmailHtml(title, contentHtml, badgeLabel = 'Digital Seva Simplified
 </body>
 </html>`;
 }
-
 function renderButton(label, url, bgColor = '#FF9933') {
-  return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:18px 0;">
+    return `<table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin:18px 0;">
     <tr>
       <td style="border-radius:6px;background-color:${bgColor};">
         <a href="${escapeHtml(safePortalUrl(url))}" style="display:inline-block;padding:11px 22px;font-size:14px;font-weight:700;color:#ffffff;text-decoration:none;border-radius:6px;">${escapeHtml(label)}</a>
@@ -485,22 +460,20 @@ function renderButton(label, url, bgColor = '#FF9933') {
     </tr>
   </table>`;
 }
-
 function renderItemsTable(items) {
-  const rows = (items || []).map(item => {
-    const name = item.productName || item.name || 'Product';
-    const qty = Number(item.quantity) || 1;
-    const unitPrice = Number(item.discountedPrice) > 0 ? Number(item.discountedPrice) : Number(item.price) || 0;
-    const lineTotal = qty * unitPrice;
-    return `<tr>
+    const rows = (items || []).map(item => {
+        const name = item.productName || item.name || 'Product';
+        const qty = Number(item.quantity) || 1;
+        const unitPrice = Number(item.discountedPrice) > 0 ? Number(item.discountedPrice) : Number(item.price) || 0;
+        const lineTotal = qty * unitPrice;
+        return `<tr>
       <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:left;">${escapeHtml(name)}</td>
       <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">${qty}</td>
       <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:right;">&#8377;${unitPrice.toFixed(2)}</td>
       <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:right;">&#8377;${lineTotal.toFixed(2)}</td>
     </tr>`;
-  }).join('');
-
-  return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;margin:14px 0;font-size:13px;">
+    }).join('');
+    return `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;margin:14px 0;font-size:13px;">
     <thead>
       <tr style="background-color:#f1f5f9;border-bottom:2px solid #FF9933;">
         <th style="padding:8px;text-align:left;">Product</th>
@@ -512,11 +485,9 @@ function renderItemsTable(items) {
     <tbody>${rows}</tbody>
   </table>`;
 }
-
 export const serverEmailTemplates = {
-  customerStatusUpdated: (p) => wrapEmailHtml(
-    'Application Status Updated',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+    // 1. Application Status & Notes Templates (Strictly Role-Separated)
+    customerStatusUpdated: (p) => wrapEmailHtml('Application Status Updated', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>Your application status has been updated.</p>
      <div style="background-color:#f8fafc;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Service:</strong> ${escapeHtml(p.serviceName)}</p>
@@ -527,12 +498,8 @@ export const serverEmailTemplates = {
      </div>
      <p>You can view live progress and any requested actions from your tracking page.</p>
      ${renderButton('Track Your Application', `/track?id=${encodeURIComponent(p.appId)}`)}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`
-  ),
-
-  customerApplicationCompleted: (p) => wrapEmailHtml(
-    'Application Completed Successfully',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`),
+    customerApplicationCompleted: (p) => wrapEmailHtml('Application Completed Successfully', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>Your application has been marked as <strong>Completed</strong>.</p>
      <div style="background-color:#f0fdf4;padding:14px;border-left:4px solid #16a34a;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Service:</strong> ${escapeHtml(p.serviceName)}</p>
@@ -542,12 +509,8 @@ export const serverEmailTemplates = {
      </div>
      ${renderButton('View Application & Downloads', `/track?id=${encodeURIComponent(p.appId)}`, '#16a34a')}
      <p>Thank you for choosing India Cyber Cafe!</p>
-     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`
-  ),
-
-  customerApplicationRejected: (p) => wrapEmailHtml(
-    'Application Update - Attention Required',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`),
+    customerApplicationRejected: (p) => wrapEmailHtml('Application Update - Attention Required', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>Your application status has been updated to <strong>Rejected / Needs Revision</strong>.</p>
      <div style="background-color:#fef2f2;padding:14px;border-left:4px solid #dc2626;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Service:</strong> ${escapeHtml(p.serviceName)}</p>
@@ -557,12 +520,8 @@ export const serverEmailTemplates = {
      </div>
      ${renderButton('Review Application Details', `/track?id=${encodeURIComponent(p.appId)}`, '#dc2626')}
      <p>Please contact our support team if you need assistance.</p>
-     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`
-  ),
-
-  adminStatusUpdated: (p) => wrapEmailHtml(
-    'Admin Alert: Application Status Updated',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`),
+    adminStatusUpdated: (p) => wrapEmailHtml('Admin Alert: Application Status Updated', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>An application status has been updated on the portal.</p>
      <div style="background-color:#eff6ff;padding:14px;border-left:4px solid #1d4ed8;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Application ID:</strong> <code>${escapeHtml(p.appId)}</code></p>
@@ -576,13 +535,8 @@ export const serverEmailTemplates = {
        ${p.noteText ? `<p style="margin:8px 0 4px 0;"><strong>Note:</strong> ${escapeHtml(p.noteText)}</p>` : ''}
      </div>
      ${renderButton('Open Admin Dashboard', '/admin', '#1e293b')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Notification'
-  ),
-
-  operatorStatusUpdated: (p) => wrapEmailHtml(
-    'Assigned Application Status Updated',
-    `<p>Hello <strong>${escapeHtml(p.operatorName || 'Operator')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Notification'),
+    operatorStatusUpdated: (p) => wrapEmailHtml('Assigned Application Status Updated', `<p>Hello <strong>${escapeHtml(p.operatorName || 'Operator')}</strong>,</p>
      <p>An update has been recorded on an application assigned to you.</p>
      <div style="background-color:#f0f9ff;padding:14px;border-left:4px solid #0284c7;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Application ID:</strong> <code>${escapeHtml(p.appId)}</code></p>
@@ -594,13 +548,8 @@ export const serverEmailTemplates = {
        ${p.noteText ? `<p style="margin:8px 0 4px 0;"><strong>Note:</strong> ${escapeHtml(p.noteText)}</p>` : ''}
      </div>
      ${renderButton('View in Operator Panel', '/operator', '#0284c7')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Operations</strong></p>`,
-    'Operator Notification'
-  ),
-
-  customerNoteAdded: (p) => wrapEmailHtml(
-    'New Update on Your Application',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Operations</strong></p>`, 'Operator Notification'),
+    customerNoteAdded: (p) => wrapEmailHtml('New Update on Your Application', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>A new update has been posted on your application for <strong>${escapeHtml(p.serviceName)}</strong>.</p>
      <div style="background-color:#fffbeb;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Application ID:</strong> <code>${escapeHtml(p.appId)}</code></p>
@@ -608,12 +557,8 @@ export const serverEmailTemplates = {
        ${p.attachmentName ? `<p style="margin:4px 0;"><strong>Attachment Added:</strong> ${escapeHtml(p.attachmentName)}</p>` : ''}
      </div>
      ${renderButton('Check Your Application', `/track?id=${encodeURIComponent(p.appId)}`)}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`
-  ),
-
-  adminNoteAdded: (p) => wrapEmailHtml(
-    'Admin Alert: New Note Added to Application',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`),
+    adminNoteAdded: (p) => wrapEmailHtml('Admin Alert: New Note Added to Application', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>A new processing note has been added to an application.</p>
      <div style="background-color:#eff6ff;padding:14px;border-left:4px solid #1d4ed8;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Application ID:</strong> <code>${escapeHtml(p.appId)}</code></p>
@@ -625,13 +570,9 @@ export const serverEmailTemplates = {
        ${p.attachmentName ? `<p style="margin:4px 0;"><strong>Attachment:</strong> ${escapeHtml(p.attachmentName)}</p>` : ''}
      </div>
      ${renderButton('Review in Admin Dashboard', '/admin', '#1e293b')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Notification'
-  ),
-
-  customerOperatorAssigned: (p) => wrapEmailHtml(
-    'Operator Assigned to Your Application',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Notification'),
+    // 2. Assignment & Reassignment Templates
+    customerOperatorAssigned: (p) => wrapEmailHtml('Operator Assigned to Your Application', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>An operator has been assigned to process your application.</p>
      <div style="background-color:#f8fafc;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Service:</strong> ${escapeHtml(p.serviceName)}</p>
@@ -639,12 +580,8 @@ export const serverEmailTemplates = {
        ${p.operatorName ? `<p style="margin:4px 0;"><strong>Assigned Operator:</strong> ${escapeHtml(p.operatorName)}</p>` : ''}
      </div>
      ${renderButton('Track Application', `/track?id=${encodeURIComponent(p.appId)}`)}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`
-  ),
-
-  operatorAssigned: (p) => wrapEmailHtml(
-    'New Application Assignment',
-    `<p>Hello <strong>${escapeHtml(p.operatorName || 'Operator')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`),
+    operatorAssigned: (p) => wrapEmailHtml('New Application Assignment', `<p>Hello <strong>${escapeHtml(p.operatorName || 'Operator')}</strong>,</p>
      <p>You have been assigned a new application to process.</p>
      <div style="background-color:#f0f9ff;padding:14px;border-left:4px solid #0284c7;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Application ID:</strong> <code>${escapeHtml(p.appId)}</code></p>
@@ -654,13 +591,8 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Assigned On:</strong> ${escapeHtml(p.timestamp)}</p>
      </div>
      ${renderButton('Open Operator Panel', '/operator', '#0284c7')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Operations</strong></p>`,
-    'Operator Assignment'
-  ),
-
-  operatorReassigned: (p) => wrapEmailHtml(
-    'Application Reassigned to You',
-    `<p>Hello <strong>${escapeHtml(p.operatorName || 'Operator')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Operations</strong></p>`, 'Operator Assignment'),
+    operatorReassigned: (p) => wrapEmailHtml('Application Reassigned to You', `<p>Hello <strong>${escapeHtml(p.operatorName || 'Operator')}</strong>,</p>
      <p>An application has been reassigned to your queue for processing.</p>
      <div style="background-color:#f0f9ff;padding:14px;border-left:4px solid #0284c7;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Application ID:</strong> <code>${escapeHtml(p.appId)}</code></p>
@@ -670,13 +602,8 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Timestamp:</strong> ${escapeHtml(p.timestamp)}</p>
      </div>
      ${renderButton('View in Operator Panel', '/operator', '#0284c7')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Operations</strong></p>`,
-    'Operator Reassignment'
-  ),
-
-  previousOperatorUnassigned: (p) => wrapEmailHtml(
-    'Application Assignment Removed',
-    `<p>Hello <strong>${escapeHtml(p.previousOperatorName || 'Operator')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Operations</strong></p>`, 'Operator Reassignment'),
+    previousOperatorUnassigned: (p) => wrapEmailHtml('Application Assignment Removed', `<p>Hello <strong>${escapeHtml(p.previousOperatorName || 'Operator')}</strong>,</p>
      <p>The following application is no longer assigned to your account and has been reassigned.</p>
      <div style="background-color:#f8fafc;padding:14px;border-left:4px solid #64748b;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Application ID:</strong> <code>${escapeHtml(p.appId)}</code></p>
@@ -686,13 +613,8 @@ export const serverEmailTemplates = {
      </div>
      <p>Please discontinue work on this reference ID. Check your Operator Panel for your current active queue.</p>
      ${renderButton('Open Operator Panel', '/operator', '#475569')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Operations</strong></p>`,
-    'Assignment Notice'
-  ),
-
-  adminOperatorAssigned: (p) => wrapEmailHtml(
-    'Admin Alert: Operator Assignment Updated',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Operations</strong></p>`, 'Assignment Notice'),
+    adminOperatorAssigned: (p) => wrapEmailHtml('Admin Alert: Operator Assignment Updated', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>Application operator assignment has been updated.</p>
      <div style="background-color:#eff6ff;padding:14px;border-left:4px solid #1d4ed8;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Application ID:</strong> <code>${escapeHtml(p.appId)}</code></p>
@@ -704,13 +626,9 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Timestamp:</strong> ${escapeHtml(p.timestamp)}</p>
      </div>
      ${renderButton('Open Admin Dashboard', '/admin', '#1e293b')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Notification'
-  ),
-
-  customerApplicationSubmitted: (p) => wrapEmailHtml(
-    'Application Submitted Successfully',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Notification'),
+    // 3. Application Submission & Payment Templates
+    customerApplicationSubmitted: (p) => wrapEmailHtml('Application Submitted Successfully', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>Your service application has been successfully received.</p>
      <div style="background-color:#f8fafc;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Service:</strong> ${escapeHtml(p.serviceName)}</p>
@@ -719,12 +637,8 @@ export const serverEmailTemplates = {
        ${p.paymentStatus ? `<p style="margin:4px 0;"><strong>Payment Status:</strong> ${escapeHtml(p.paymentStatus.toUpperCase())}</p>` : ''}
      </div>
      ${renderButton('Track Your Application', `/track?id=${encodeURIComponent(p.appId)}`)}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`
-  ),
-
-  adminNewApplication: (p) => wrapEmailHtml(
-    'Admin Alert: New Application Received',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`),
+    adminNewApplication: (p) => wrapEmailHtml('Admin Alert: New Application Received', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>A new service application has been submitted and awaits review.</p>
      <div style="background-color:#eff6ff;padding:14px;border-left:4px solid #1d4ed8;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Application ID:</strong> <code>${escapeHtml(p.appId)}</code></p>
@@ -736,13 +650,8 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Submitted At:</strong> ${escapeHtml(p.timestamp)}</p>
      </div>
      ${renderButton('Review in Admin Panel', '/admin', '#1e293b')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Notification'
-  ),
-
-  customerPaymentConfirmed: (p) => wrapEmailHtml(
-    'Payment Confirmed',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Notification'),
+    customerPaymentConfirmed: (p) => wrapEmailHtml('Payment Confirmed', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>Thank you! Your payment has been confirmed.</p>
      <div style="background-color:#f0fdf4;padding:14px;border-left:4px solid #16a34a;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Amount Paid:</strong> &#8377;${escapeHtml(String(p.amount))}</p>
@@ -752,12 +661,8 @@ export const serverEmailTemplates = {
        ${p.paymentMethod ? `<p style="margin:4px 0;"><strong>Payment Method:</strong> ${escapeHtml(p.paymentMethod.toUpperCase())}</p>` : ''}
      </div>
      ${renderButton('View Applications', p.appId ? `/track?id=${encodeURIComponent(p.appId)}` : '/track', '#16a34a')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`
-  ),
-
-  adminPaymentReceived: (p) => wrapEmailHtml(
-    'Admin Alert: Payment Received',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`),
+    adminPaymentReceived: (p) => wrapEmailHtml('Admin Alert: Payment Received', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>A payment transaction has been recorded as completed.</p>
      <div style="background-color:#f0fdf4;padding:14px;border-left:4px solid #16a34a;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Customer:</strong> ${escapeHtml(p.customerName || 'Guest')}${p.customerEmail ? ` (${escapeHtml(p.customerEmail)})` : ''}</p>
@@ -770,13 +675,9 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Timestamp:</strong> ${escapeHtml(p.timestamp)}</p>
      </div>
      ${renderButton('View in Admin Panel', '/admin', '#1e293b')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Payment Alert'
-  ),
-
-  customerOrderConfirmed: (p) => wrapEmailHtml(
-    'Order Confirmed - India Cyber Cafe Store',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Payment Alert'),
+    // 4. Store Order Templates
+    customerOrderConfirmed: (p) => wrapEmailHtml('Order Confirmed - India Cyber Cafe Store', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>Thank you for your order! Your order has been confirmed.</p>
      <div style="background-color:#f8fafc;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Order ID:</strong> <code>${escapeHtml(p.orderId)}</code></p>
@@ -787,12 +688,8 @@ export const serverEmailTemplates = {
      ${renderItemsTable(p.items)}
      ${p.address ? `<p><strong>Delivery Address:</strong> ${escapeHtml(p.address.addressLine1 || '')}, ${escapeHtml(p.address.city || '')}, ${escapeHtml(p.address.state || '')} - ${escapeHtml(p.address.pincode || '')}</p>` : ''}
      ${renderButton('Track Your Order', p.isGuest ? `/track-order?orderId=${encodeURIComponent(p.orderId)}` : '/track')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`
-  ),
-
-  adminOrderCreated: (p) => wrapEmailHtml(
-    'Admin Alert: New Store Order Received',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`),
+    adminOrderCreated: (p) => wrapEmailHtml('Admin Alert: New Store Order Received', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>A new store order has been placed.</p>
      <div style="background-color:#eff6ff;padding:14px;border-left:4px solid #1d4ed8;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Order ID:</strong> <code>${escapeHtml(p.orderId)}</code></p>
@@ -807,13 +704,8 @@ export const serverEmailTemplates = {
      ${renderItemsTable(p.items)}
      ${p.address ? `<p><strong>Shipping Address:</strong> ${escapeHtml(p.address.addressLine1 || '')}, ${escapeHtml(p.address.city || '')}, ${escapeHtml(p.address.state || '')} - ${escapeHtml(p.address.pincode || '')}</p>` : ''}
      ${renderButton('Manage Order in Admin Panel', '/admin', '#1e293b')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Order Alert'
-  ),
-
-  customerOrderStatusUpdated: (p) => wrapEmailHtml(
-    'Store Order Status Updated',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Order Alert'),
+    customerOrderStatusUpdated: (p) => wrapEmailHtml('Store Order Status Updated', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>Your store order status has been updated.</p>
      <div style="background-color:#f8fafc;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Order ID:</strong> <code>${escapeHtml(p.orderId)}</code></p>
@@ -822,12 +714,8 @@ export const serverEmailTemplates = {
        ${p.estimatedDelivery ? `<p style="margin:4px 0;"><strong>Estimated Delivery:</strong> ${escapeHtml(p.estimatedDelivery)}</p>` : ''}
      </div>
      ${renderButton('Track Your Order', p.isGuest ? `/track-order?orderId=${encodeURIComponent(p.orderId)}` : '/track')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`
-  ),
-
-  customerOrderCancelled: (p) => wrapEmailHtml(
-    'Store Order Cancelled',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`),
+    customerOrderCancelled: (p) => wrapEmailHtml('Store Order Cancelled', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>Your store order has been cancelled.</p>
      <div style="background-color:#fef2f2;padding:14px;border-left:4px solid #dc2626;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Order ID:</strong> <code>${escapeHtml(p.orderId)}</code></p>
@@ -836,12 +724,8 @@ export const serverEmailTemplates = {
        ${p.reason ? `<p style="margin:4px 0;"><strong>Reason:</strong> ${escapeHtml(p.reason)}</p>` : ''}
      </div>
      <p>If payment was already completed online, eligible refunds are initiated within 5-7 business days to the original payment method.</p>
-     <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`
-  ),
-
-  adminOrderCancelled: (p) => wrapEmailHtml(
-    'Admin Alert: Store Order Cancelled',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`),
+    adminOrderCancelled: (p) => wrapEmailHtml('Admin Alert: Store Order Cancelled', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>A store order has been marked as cancelled.</p>
      <div style="background-color:#fef2f2;padding:14px;border-left:4px solid #dc2626;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Order ID:</strong> <code>${escapeHtml(p.orderId)}</code></p>
@@ -854,13 +738,8 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Timestamp:</strong> ${escapeHtml(p.timestamp)}</p>
      </div>
      ${renderButton('View in Admin Panel', '/admin', '#1e293b')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Order Alert'
-  ),
-
-  customerRefundInitiated: (p) => wrapEmailHtml(
-    'Refund Initiated',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Order Alert'),
+    customerRefundInitiated: (p) => wrapEmailHtml('Refund Initiated', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>Your refund has been initiated and is being processed.</p>
      <div style="background-color:#f0fdf4;padding:14px;border-left:4px solid #16a34a;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Order ID:</strong> <code>${escapeHtml(p.orderId)}</code></p>
@@ -869,12 +748,8 @@ export const serverEmailTemplates = {
        ${p.reason ? `<p style="margin:4px 0;"><strong>Note:</strong> ${escapeHtml(p.reason)}</p>` : ''}
      </div>
      <p>The refund will be credited back to your original payment method.</p>
-     <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`
-  ),
-
-  adminRefundInitiated: (p) => wrapEmailHtml(
-    'Admin Alert: Refund Initiated',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`),
+    adminRefundInitiated: (p) => wrapEmailHtml('Admin Alert: Refund Initiated', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>A refund has been initiated for a store order.</p>
      <div style="background-color:#f0fdf4;padding:14px;border-left:4px solid #16a34a;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Order ID:</strong> <code>${escapeHtml(p.orderId)}</code></p>
@@ -885,25 +760,17 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Timestamp:</strong> ${escapeHtml(p.timestamp)}</p>
      </div>
      ${renderButton('View in Admin Panel', '/admin', '#1e293b')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Refund Alert'
-  ),
-
-  customerRegistration: (p) => wrapEmailHtml(
-    'Welcome to India Cyber Cafe!',
-    `<p>Hello <strong>${escapeHtml(p.userName || 'User')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Refund Alert'),
+    // 5. Account, Profile, Review, Callback & Privacy Templates
+    customerRegistration: (p) => wrapEmailHtml('Welcome to India Cyber Cafe!', `<p>Hello <strong>${escapeHtml(p.userName || 'User')}</strong>,</p>
      <p>Welcome to India Cyber Cafe! Your account has been created successfully.</p>
      <div style="background-color:#f8fafc;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Sign-In Method:</strong> ${escapeHtml(p.authProvider === 'google' ? 'Google Sign-In' : 'Registered Email & Password')}</p>
        <p style="margin:4px 0;">For your security, passwords are never emailed. You can manage your password anytime using the Forgot Password flow or Profile Settings.</p>
      </div>
      ${renderButton(p.isGuestCheckout ? 'Set or Manage Your Password' : 'Explore Services', p.isGuestCheckout ? '/forgot-password' : '/services')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`
-  ),
-
-  adminUserRegistered: (p) => wrapEmailHtml(
-    'Admin Alert: New User Registered',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`),
+    adminUserRegistered: (p) => wrapEmailHtml('Admin Alert: New User Registered', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>A new user has registered on the India Cyber Cafe portal.</p>
      <div style="background-color:#eff6ff;padding:14px;border-left:4px solid #1d4ed8;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Name:</strong> ${escapeHtml(p.userName)}</p>
@@ -913,13 +780,8 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Registered On:</strong> ${escapeHtml(p.timestamp)}</p>
      </div>
      ${renderButton('View Users in Admin Panel', '/admin', '#1e293b')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Registration Alert'
-  ),
-
-  customerProfileUpdated: (p) => wrapEmailHtml(
-    'Profile Updated Successfully',
-    `<p>Hello <strong>${escapeHtml(p.userName || 'User')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Registration Alert'),
+    customerProfileUpdated: (p) => wrapEmailHtml('Profile Updated Successfully', `<p>Hello <strong>${escapeHtml(p.userName || 'User')}</strong>,</p>
      <p>Your India Cyber Cafe profile details have been updated.</p>
      <div style="background-color:#f8fafc;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Updated Section:</strong> ${escapeHtml(p.updateType)}</p>
@@ -927,24 +789,16 @@ export const serverEmailTemplates = {
      </div>
      <p>If you did not perform this change, please contact our support team or reset your password immediately.</p>
      ${renderButton('View Your Profile', '/profile')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`
-  ),
-
-  customerCallbackReceived: (p) => wrapEmailHtml(
-    'Call Back Request Received',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`),
+    customerCallbackReceived: (p) => wrapEmailHtml('Call Back Request Received', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>Thank you for requesting instant service assistance from India Cyber Cafe.</p>
      <div style="background-color:#f8fafc;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Callback Number:</strong> ${escapeHtml(p.mobileNumber)}</p>
        <p style="margin:4px 0;"><strong>Requested At:</strong> ${escapeHtml(p.timestamp)}</p>
      </div>
      <p>Our team will reach out to you shortly.</p>
-     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`
-  ),
-
-  adminCallbackReceived: (p) => wrapEmailHtml(
-    'Admin Alert: New Call Back Request',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`),
+    adminCallbackReceived: (p) => wrapEmailHtml('Admin Alert: New Call Back Request', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>A new instant call back request has been submitted from the website.</p>
      <div style="background-color:#fffbeb;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Mobile Number:</strong> ${escapeHtml(p.mobileNumber)}</p>
@@ -953,24 +807,15 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Requested At:</strong> ${escapeHtml(p.timestamp)}</p>
        <p style="margin:4px 0;"><strong>Source:</strong> Website Callback Popup</p>
      </div>
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Callback Alert'
-  ),
-
-  customerReviewSubmitted: (p) => wrapEmailHtml(
-    'Review Submitted - Thank You',
-    `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Callback Alert'),
+    customerReviewSubmitted: (p) => wrapEmailHtml('Review Submitted - Thank You', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
      <p>Thank you for submitting your review for <strong>${escapeHtml(p.productName)}</strong>!</p>
      <div style="background-color:#f8fafc;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:0;">We appreciate your feedback. Your review helps other customers make informed decisions.</p>
      </div>
      ${renderButton('Visit Store', '/store')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`
-  ),
-
-  adminReviewReceived: (p) => wrapEmailHtml(
-    'Admin Alert: New Product Review Received',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Team</strong></p>`),
+    adminReviewReceived: (p) => wrapEmailHtml('Admin Alert: New Product Review Received', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>A new product review has been submitted on the store.</p>
      <div style="background-color:#fffbeb;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Product:</strong> ${escapeHtml(p.productName)}</p>
@@ -980,13 +825,8 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Submitted At:</strong> ${escapeHtml(p.timestamp)}</p>
      </div>
      ${renderButton('Review in Admin Panel', '/admin', '#1e293b')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Review Alert'
-  ),
-
-  customerPrivacyRequestReceived: (p) => wrapEmailHtml(
-    'Privacy & Grievance Request Acknowledgment',
-    `<p>Hello <strong>${escapeHtml(p.name || 'User')}</strong>,</p>
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Review Alert'),
+    customerPrivacyRequestReceived: (p) => wrapEmailHtml('Privacy & Grievance Request Acknowledgment', `<p>Hello <strong>${escapeHtml(p.name || 'User')}</strong>,</p>
      <p>We have received your privacy / grievance request.</p>
      <div style="background-color:#f8fafc;padding:14px;border-left:4px solid #FF9933;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Ticket ID:</strong> <code>${escapeHtml(p.ticketId)}</code></p>
@@ -994,12 +834,8 @@ export const serverEmailTemplates = {
      </div>
      <p>Our Grievance Redressal Officer will review your request and respond within 48 hours, with resolution within 15 to 30 days as applicable.</p>
      ${renderButton('Track Your Request', '/privacy-request/track')}
-     <p>Regards,<br/><strong>Grievance Officer, India Cyber Cafe</strong></p>`
-  ),
-
-  adminPrivacyRequestReceived: (p) => wrapEmailHtml(
-    'Admin Alert: New Privacy / Grievance Request',
-    `<p>Hello <strong>Admin Team</strong>,</p>
+     <p>Regards,<br/><strong>Grievance Officer, India Cyber Cafe</strong></p>`),
+    adminPrivacyRequestReceived: (p) => wrapEmailHtml('Admin Alert: New Privacy / Grievance Request', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>A new privacy or grievance request has been filed.</p>
      <div style="background-color:#eff6ff;padding:14px;border-left:4px solid #1d4ed8;border-radius:6px;margin:14px 0;">
        <p style="margin:4px 0;"><strong>Ticket ID:</strong> <code>${escapeHtml(p.ticketId)}</code></p>
@@ -1012,1223 +848,1408 @@ export const serverEmailTemplates = {
        <p style="margin:8px 0 4px 0;"><strong>Description:</strong> ${escapeHtml(p.description)}</p>
      </div>
      ${renderButton('Review in Admin Portal', '/admin/privacy-requests', '#1e293b')}
-     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
-    'Admin Grievance Alert'
-  ),
+     <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`, 'Admin Grievance Alert'),
 };
-
+// =============================================================================
+// HIGH-LEVEL DOMAIN NOTIFICATION DISPATCHERS
+// =============================================================================
 export async function notifyApplicationUpdate(params) {
-  const { appId, app, previousStatus, newStatus, noteText, attachmentName, performedBy, assignedOperator } = params;
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const customerName = String(app?.name || 'Customer').trim();
-  const customerEmail = normalizeEmailAddress(app?.email);
-  const serviceName = String(app?.serviceName || 'Service').trim();
-  const adminEmails = getAdminEmails();
-  const baseKey = params.idempotencyKey || `app_update:${appId}:${newStatus || 'note'}:${Date.now()}`;
-
-  const queue = [];
-
-  if (newStatus) {
-    let customerTemplateId = 'customerStatusUpdated';
-    let customerHtml = '';
-    let customerSubject = `Status Update: ${serviceName} (${appId})`;
-
-    if (newStatus === 'completed') {
-      customerTemplateId = 'customerApplicationCompleted';
-      customerSubject = `Application Completed: ${serviceName} (${appId})`;
-      customerHtml = serverEmailTemplates.customerApplicationCompleted({
-        customerName,
-        serviceName,
-        appId,
-        noteText,
-      });
-    } else if (newStatus === 'rejected') {
-      customerTemplateId = 'customerApplicationRejected';
-      customerSubject = `Application Update: ${serviceName} (${appId})`;
-      customerHtml = serverEmailTemplates.customerApplicationRejected({
-        customerName,
-        serviceName,
-        appId,
-        noteText,
-      });
-    } else {
-      customerHtml = serverEmailTemplates.customerStatusUpdated({
-        customerName,
-        serviceName,
-        appId,
-        newStatus,
-        noteText,
-        attachmentName,
-      });
+    const { appId, app, previousStatus, newStatus, noteText, attachmentName, performedBy, assignedOperator } = params;
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const customerName = String(app?.name || 'Customer').trim();
+    const customerEmail = normalizeEmailAddress(app?.email);
+    const serviceName = String(app?.serviceName || 'Service').trim();
+    const adminEmails = getAdminEmails();
+    const baseKey = params.idempotencyKey || `app_update:${appId}:${newStatus || 'note'}:${Date.now()}`;
+    const queue = [];
+    if (newStatus) {
+        let customerTemplateId = 'customerStatusUpdated';
+        let customerHtml = '';
+        let customerSubject = `Status Update: ${serviceName} (${appId})`;
+        if (newStatus === 'completed') {
+            customerTemplateId = 'customerApplicationCompleted';
+            customerSubject = `Application Completed: ${serviceName} (${appId})`;
+            customerHtml = serverEmailTemplates.customerApplicationCompleted({
+                customerName,
+                serviceName,
+                appId,
+                noteText,
+            });
+        }
+        else if (newStatus === 'rejected') {
+            customerTemplateId = 'customerApplicationRejected';
+            customerSubject = `Application Update: ${serviceName} (${appId})`;
+            customerHtml = serverEmailTemplates.customerApplicationRejected({
+                customerName,
+                serviceName,
+                appId,
+                noteText,
+            });
+        }
+        else {
+            customerHtml = serverEmailTemplates.customerStatusUpdated({
+                customerName,
+                serviceName,
+                appId,
+                newStatus,
+                noteText,
+                attachmentName,
+            });
+        }
+        // Always queue customer notification (even if missing/invalid email so failure is recorded honestly)
+        queue.push({
+            templateId: customerTemplateId,
+            recipient: customerEmail,
+            recipientRole: 'customer',
+            subject: customerSubject,
+            html: customerHtml,
+            idempotencyKey: baseKey,
+            required: true,
+            context: { appId, uid: app?.uid || app?.userId, actorUid: performedBy.uid, actorRole: performedBy.role },
+        });
+        const adminHtml = serverEmailTemplates.adminStatusUpdated({
+            customerName,
+            customerEmail: customerEmail || 'Missing',
+            appId,
+            serviceName,
+            previousStatus,
+            newStatus,
+            performedByName: performedBy.name || performedBy.email,
+            performedByRole: performedBy.role,
+            noteText,
+            timestamp,
+        });
+        for (const adminEmail of adminEmails) {
+            queue.push({
+                templateId: 'adminStatusUpdated',
+                recipient: adminEmail,
+                recipientRole: 'admin',
+                subject: `[Admin Alert] Application ${appId} Status: ${newStatus.toUpperCase()}`,
+                html: adminHtml,
+                idempotencyKey: baseKey,
+                context: { appId, actorUid: performedBy.uid, actorRole: performedBy.role },
+            });
+        }
+        // Notify currently assigned Operator when relevant (e.g. Admin/system updated an assigned app)
+        const opTarget = resolveOperatorRecipient(app, assignedOperator);
+        if (opTarget && opTarget.email && opTarget.uid !== performedBy.uid && opTarget.email !== normalizeEmailAddress(performedBy.email)) {
+            queue.push({
+                templateId: 'operatorStatusUpdated',
+                recipient: opTarget.email,
+                recipientRole: 'operator',
+                subject: `[Operator Update] ${serviceName} (${appId}) - ${newStatus.toUpperCase()}`,
+                html: serverEmailTemplates.operatorStatusUpdated({
+                    operatorName: opTarget.name,
+                    customerName,
+                    appId,
+                    serviceName,
+                    previousStatus,
+                    newStatus,
+                    performedByName: performedBy.name || performedBy.email,
+                    noteText,
+                }),
+                idempotencyKey: baseKey,
+                context: { appId, uid: opTarget.uid, actorUid: performedBy.uid, actorRole: performedBy.role },
+            });
+        }
     }
-
-    queue.push({
-      templateId: customerTemplateId,
-      recipient: customerEmail,
-      recipientRole: 'customer',
-      subject: customerSubject,
-      html: customerHtml,
-      idempotencyKey: baseKey,
-      required: true,
-      context: { appId, uid: app?.uid || app?.userId, actorUid: performedBy.uid, actorRole: performedBy.role },
-    });
-
-    const adminHtml = serverEmailTemplates.adminStatusUpdated({
-      customerName,
-      customerEmail: customerEmail || 'Missing',
-      appId,
-      serviceName,
-      previousStatus,
-      newStatus,
-      performedByName: performedBy.name || performedBy.email,
-      performedByRole: performedBy.role,
-      noteText,
-      timestamp,
-    });
-    for (const adminEmail of adminEmails) {
-      queue.push({
-        templateId: 'adminStatusUpdated',
-        recipient: adminEmail,
-        recipientRole: 'admin',
-        subject: `[Admin Alert] Application ${appId} Status: ${newStatus.toUpperCase()}`,
-        html: adminHtml,
-        idempotencyKey: baseKey,
-        context: { appId, actorUid: performedBy.uid, actorRole: performedBy.role },
-      });
+    else if (noteText || attachmentName) {
+        const cleanNoteText = noteText || `Attachment uploaded: ${attachmentName}`;
+        queue.push({
+            templateId: 'customerNoteAdded',
+            recipient: customerEmail,
+            recipientRole: 'customer',
+            subject: `New Update on Your Application: ${serviceName} (${appId})`,
+            html: serverEmailTemplates.customerNoteAdded({
+                customerName,
+                serviceName,
+                appId,
+                noteText: cleanNoteText,
+                attachmentName,
+            }),
+            idempotencyKey: baseKey,
+            required: true,
+            context: { appId, uid: app?.uid || app?.userId, actorUid: performedBy.uid, actorRole: performedBy.role },
+        });
+        const adminNoteHtml = serverEmailTemplates.adminNoteAdded({
+            customerName,
+            customerEmail: customerEmail || 'Missing',
+            appId,
+            serviceName,
+            noteText: cleanNoteText,
+            performedByName: performedBy.name || performedBy.email,
+            performedByRole: performedBy.role,
+            attachmentName,
+            timestamp,
+        });
+        for (const adminEmail of adminEmails) {
+            queue.push({
+                templateId: 'adminNoteAdded',
+                recipient: adminEmail,
+                recipientRole: 'admin',
+                subject: `[Admin Alert] New Note Added: ${serviceName} (${appId})`,
+                html: adminNoteHtml,
+                idempotencyKey: baseKey,
+                context: { appId, actorUid: performedBy.uid, actorRole: performedBy.role },
+            });
+        }
+        const opTarget = resolveOperatorRecipient(app, assignedOperator);
+        if (opTarget && opTarget.email && opTarget.uid !== performedBy.uid && opTarget.email !== normalizeEmailAddress(performedBy.email)) {
+            queue.push({
+                templateId: 'operatorStatusUpdated',
+                recipient: opTarget.email,
+                recipientRole: 'operator',
+                subject: `[Operator Update] New Note on ${serviceName} (${appId})`,
+                html: serverEmailTemplates.operatorStatusUpdated({
+                    operatorName: opTarget.name,
+                    customerName,
+                    appId,
+                    serviceName,
+                    previousStatus,
+                    newStatus: String(app?.status || previousStatus || 'processing'),
+                    performedByName: performedBy.name || performedBy.email,
+                    noteText: cleanNoteText,
+                }),
+                idempotencyKey: baseKey,
+                context: { appId, uid: opTarget.uid, actorUid: performedBy.uid, actorRole: performedBy.role },
+            });
+        }
     }
-
-    const opTarget = resolveOperatorRecipient(app, assignedOperator);
-    if (opTarget && opTarget.email && opTarget.uid !== performedBy.uid && opTarget.email !== normalizeEmailAddress(performedBy.email)) {
-      queue.push({
-        templateId: 'operatorStatusUpdated',
-        recipient: opTarget.email,
-        recipientRole: 'operator',
-        subject: `[Operator Update] ${serviceName} (${appId}) - ${newStatus.toUpperCase()}`,
-        html: serverEmailTemplates.operatorStatusUpdated({
-          operatorName: opTarget.name,
-          customerName,
-          appId,
-          serviceName,
-          previousStatus,
-          newStatus,
-          performedByName: performedBy.name || performedBy.email,
-          noteText,
-        }),
-        idempotencyKey: baseKey,
-        context: { appId, uid: opTarget.uid, actorUid: performedBy.uid, actorRole: performedBy.role },
-      });
-    }
-  } else if (noteText || attachmentName) {
-    const cleanNoteText = noteText || `Attachment uploaded: ${attachmentName}`;
-    queue.push({
-      templateId: 'customerNoteAdded',
-      recipient: customerEmail,
-      recipientRole: 'customer',
-      subject: `New Update on Your Application: ${serviceName} (${appId})`,
-      html: serverEmailTemplates.customerNoteAdded({
-        customerName,
-        serviceName,
-        appId,
-        noteText: cleanNoteText,
-        attachmentName,
-      }),
-      idempotencyKey: baseKey,
-      required: true,
-      context: { appId, uid: app?.uid || app?.userId, actorUid: performedBy.uid, actorRole: performedBy.role },
-    });
-
-    const adminNoteHtml = serverEmailTemplates.adminNoteAdded({
-      customerName,
-      customerEmail: customerEmail || 'Missing',
-      appId,
-      serviceName,
-      noteText: cleanNoteText,
-      performedByName: performedBy.name || performedBy.email,
-      performedByRole: performedBy.role,
-      attachmentName,
-      timestamp,
-    });
-    for (const adminEmail of adminEmails) {
-      queue.push({
-        templateId: 'adminNoteAdded',
-        recipient: adminEmail,
-        recipientRole: 'admin',
-        subject: `[Admin Alert] New Note Added: ${serviceName} (${appId})`,
-        html: adminNoteHtml,
-        idempotencyKey: baseKey,
-        context: { appId, actorUid: performedBy.uid, actorRole: performedBy.role },
-      });
-    }
-
-    const opTarget = resolveOperatorRecipient(app, assignedOperator);
-    if (opTarget && opTarget.email && opTarget.uid !== performedBy.uid && opTarget.email !== normalizeEmailAddress(performedBy.email)) {
-      queue.push({
-        templateId: 'operatorStatusUpdated',
-        recipient: opTarget.email,
-        recipientRole: 'operator',
-        subject: `[Operator Update] New Note on ${serviceName} (${appId})`,
-        html: serverEmailTemplates.operatorStatusUpdated({
-          operatorName: opTarget.name,
-          customerName,
-          appId,
-          serviceName,
-          previousStatus,
-          newStatus: String(app?.status || previousStatus || 'processing'),
-          performedByName: performedBy.name || performedBy.email,
-          noteText: cleanNoteText,
-        }),
-        idempotencyKey: baseKey,
-        context: { appId, uid: opTarget.uid, actorUid: performedBy.uid, actorRole: performedBy.role },
-      });
-    }
-  }
-
-  return dispatchNotificationBatch(queue);
+    return dispatchNotificationBatch(queue);
 }
-
 export async function notifyUserApplicationReply(params) {
-  const { appId, app, noteText, attachmentNames = [], performedBy, assignedOperator } = params;
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const customerName = String(app?.name || performedBy.name || 'Customer').trim();
-  const customerEmail = normalizeEmailAddress(app?.email || performedBy.email);
-  const serviceName = String(app?.serviceName || 'Service').trim();
-  const adminEmails = getAdminEmails();
-  const baseKey = params.idempotencyKey || `app_user_reply:${appId}:${Date.now()}`;
-  const attachmentSummary = attachmentNames.length > 0 ? attachmentNames.join(', ') : undefined;
-  const cleanNoteText = noteText || (attachmentSummary ? `Customer uploaded attachments: ${attachmentSummary}` : 'Customer reply');
-
-  const queue = [];
-
-  const adminNoteHtml = serverEmailTemplates.adminNoteAdded({
-    customerName,
-    customerEmail: customerEmail || 'Missing',
-    appId,
-    serviceName,
-    noteText: cleanNoteText,
-    performedByName: performedBy.name || performedBy.email,
-    performedByRole: 'user',
-    attachmentName: attachmentSummary,
-    timestamp,
-  });
-  for (const adminEmail of adminEmails) {
-    queue.push({
-      templateId: 'adminNoteAdded',
-      recipient: adminEmail,
-      recipientRole: 'admin',
-      subject: `[Customer Reply] ${serviceName} (${appId})`,
-      html: adminNoteHtml,
-      idempotencyKey: baseKey,
-      context: { appId, actorUid: performedBy.uid, actorRole: 'user' },
-    });
-  }
-
-  const opTarget = resolveOperatorRecipient(app, assignedOperator);
-  if (opTarget && opTarget.email && opTarget.uid !== performedBy.uid && opTarget.email !== normalizeEmailAddress(performedBy.email)) {
-    queue.push({
-      templateId: 'operatorStatusUpdated',
-      recipient: opTarget.email,
-      recipientRole: 'operator',
-      subject: `[Customer Reply] ${serviceName} (${appId})`,
-      html: serverEmailTemplates.operatorStatusUpdated({
-        operatorName: opTarget.name,
+    const { appId, app, noteText, attachmentNames = [], performedBy, assignedOperator } = params;
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const customerName = String(app?.name || performedBy.name || 'Customer').trim();
+    const customerEmail = normalizeEmailAddress(app?.email || performedBy.email);
+    const serviceName = String(app?.serviceName || 'Service').trim();
+    const adminEmails = getAdminEmails();
+    const baseKey = params.idempotencyKey || `app_user_reply:${appId}:${Date.now()}`;
+    const attachmentSummary = attachmentNames.length > 0 ? attachmentNames.join(', ') : undefined;
+    const cleanNoteText = noteText || (attachmentSummary ? `Customer uploaded attachments: ${attachmentSummary}` : 'Customer reply');
+    const queue = [];
+    const adminNoteHtml = serverEmailTemplates.adminNoteAdded({
         customerName,
+        customerEmail: customerEmail || 'Missing',
         appId,
         serviceName,
-        previousStatus: String(app?.status || 'processing'),
-        newStatus: String(app?.status || 'processing'),
-        performedByName: `${performedBy.name || performedBy.email} (Customer)`,
         noteText: cleanNoteText,
-      }),
-      idempotencyKey: baseKey,
-      context: { appId, uid: opTarget.uid, actorUid: performedBy.uid, actorRole: 'user' },
-    });
-  }
-
-  return dispatchNotificationBatch(queue);
-}
-
-export async function notifyApplicationAssignment(params) {
-  const { appId, app, newOperator, previousOperator, assignedBy } = params;
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const customerName = String(app?.name || 'Customer').trim();
-  const customerEmail = normalizeEmailAddress(app?.email);
-  const serviceName = String(app?.serviceName || 'Service').trim();
-  const adminEmails = getAdminEmails();
-  const baseKey = params.idempotencyKey || `app_assign:${appId}:${newOperator?.uid || 'unassigned'}:${Date.now()}`;
-
-  const prevEmail = normalizeEmailAddress(previousOperator?.email);
-  const nextEmail = normalizeEmailAddress(newOperator?.email);
-  const isReassignment = Boolean(prevEmail && nextEmail && (prevEmail !== nextEmail || previousOperator?.uid !== newOperator?.uid));
-  const isUnassignmentOnly = Boolean(prevEmail && !nextEmail);
-
-  const queue = [];
-
-  if (newOperator && nextEmail) {
-    queue.push({
-      templateId: isReassignment ? 'operatorReassigned' : 'operatorAssigned',
-      recipient: nextEmail,
-      recipientRole: 'operator',
-      subject: isReassignment
-        ? `Application Reassigned to You: ${serviceName} (${appId})`
-        : `New Assignment: ${serviceName} (${appId})`,
-      html: isReassignment
-        ? serverEmailTemplates.operatorReassigned({
-            operatorName: newOperator.name,
-            customerName,
-            serviceName,
-            appId,
-            assignedByName: assignedBy.name || assignedBy.email,
-            timestamp,
-          })
-        : serverEmailTemplates.operatorAssigned({
-            operatorName: newOperator.name,
-            customerName,
-            serviceName,
-            appId,
-            assignedByName: assignedBy.name || assignedBy.email,
-            timestamp,
-          }),
-      idempotencyKey: baseKey,
-      context: { appId, uid: newOperator.uid, actorUid: assignedBy.uid, actorRole: assignedBy.role },
-    });
-
-    queue.push({
-      templateId: 'customerOperatorAssigned',
-      recipient: customerEmail,
-      recipientRole: 'customer',
-      subject: `Operator Assigned: ${serviceName} (${appId})`,
-      html: serverEmailTemplates.customerOperatorAssigned({
-        customerName,
-        serviceName,
-        appId,
-        operatorName: newOperator.name,
-      }),
-      idempotencyKey: baseKey,
-      required: true,
-      context: { appId, uid: app?.uid || app?.userId, actorUid: assignedBy.uid, actorRole: assignedBy.role },
-    });
-  }
-
-  if ((isReassignment || isUnassignmentOnly) && prevEmail) {
-    queue.push({
-      templateId: 'previousOperatorUnassigned',
-      recipient: prevEmail,
-      recipientRole: 'previous_operator',
-      subject: `Application Assignment Removed: ${serviceName} (${appId})`,
-      html: serverEmailTemplates.previousOperatorUnassigned({
-        previousOperatorName: previousOperator?.name || prevEmail.split('@')[0] || 'Operator',
-        serviceName,
-        appId,
-        unassignedByName: assignedBy.name || assignedBy.email,
+        performedByName: performedBy.name || performedBy.email,
+        performedByRole: 'user',
+        attachmentName: attachmentSummary,
         timestamp,
-      }),
-      idempotencyKey: baseKey,
-      context: { appId, uid: previousOperator?.uid, actorUid: assignedBy.uid, actorRole: assignedBy.role },
     });
-  }
-
-  const adminHtml = serverEmailTemplates.adminOperatorAssigned({
-    operatorName: newOperator?.name || 'Unassigned',
-    operatorEmail: nextEmail,
-    previousOperatorEmail: prevEmail || undefined,
-    customerName,
-    customerEmail: customerEmail || 'Missing',
-    serviceName,
-    appId,
-    assignedByName: assignedBy.name || assignedBy.email,
-    timestamp,
-  });
-
-  for (const adminEmail of adminEmails) {
-    queue.push({
-      templateId: 'adminOperatorAssigned',
-      recipient: adminEmail,
-      recipientRole: 'admin',
-      subject: `[Admin Alert] Operator ${newOperator ? 'Assigned' : 'Unassigned'}: ${serviceName} (${appId})`,
-      html: adminHtml,
-      idempotencyKey: baseKey,
-      context: { appId, actorUid: assignedBy.uid, actorRole: assignedBy.role },
-    });
-  }
-
-  return dispatchNotificationBatch(queue);
+    for (const adminEmail of adminEmails) {
+        queue.push({
+            templateId: 'adminNoteAdded',
+            recipient: adminEmail,
+            recipientRole: 'admin',
+            subject: `[Customer Reply] ${serviceName} (${appId})`,
+            html: adminNoteHtml,
+            idempotencyKey: baseKey,
+            context: { appId, actorUid: performedBy.uid, actorRole: 'user' },
+        });
+    }
+    const opTarget = resolveOperatorRecipient(app, assignedOperator);
+    if (opTarget && opTarget.email && opTarget.uid !== performedBy.uid && opTarget.email !== normalizeEmailAddress(performedBy.email)) {
+        queue.push({
+            templateId: 'operatorStatusUpdated',
+            recipient: opTarget.email,
+            recipientRole: 'operator',
+            subject: `[Customer Reply] ${serviceName} (${appId})`,
+            html: serverEmailTemplates.operatorStatusUpdated({
+                operatorName: opTarget.name,
+                customerName,
+                appId,
+                serviceName,
+                previousStatus: String(app?.status || 'processing'),
+                newStatus: String(app?.status || 'processing'),
+                performedByName: `${performedBy.name || performedBy.email} (Customer)`,
+                noteText: cleanNoteText,
+            }),
+            idempotencyKey: baseKey,
+            context: { appId, uid: opTarget.uid, actorUid: performedBy.uid, actorRole: 'user' },
+        });
+    }
+    return dispatchNotificationBatch(queue);
 }
-
-export async function notifyApplicationSubmitted(params) {
-  const { appId, app } = params;
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const customerName = String(app?.name || 'Customer').trim();
-  const customerEmail = normalizeEmailAddress(app?.email);
-  const serviceName = String(app?.serviceName || 'Service').trim();
-  const charge = typeof app?.charge === 'number' ? app.charge : Number(app?.charge) || 0;
-  const paymentStatus = String(app?.paymentStatus || 'pending');
-  const baseKey = `app_submitted:${appId}`;
-
-  const queue = [
-    {
-      templateId: 'customerApplicationSubmitted',
-      recipient: customerEmail,
-      recipientRole: 'customer',
-      subject: `Application Received: ${serviceName} (${appId})`,
-      html: serverEmailTemplates.customerApplicationSubmitted({
-        customerName,
-        serviceName,
-        appId,
-        charge,
-        paymentStatus,
-      }),
-      idempotencyKey: baseKey,
-      required: true,
-      context: { appId, uid: app?.uid },
-    },
-    ...getAdminEmails().map(adminEmail => ({
-      templateId: 'adminNewApplication',
-      recipient: adminEmail,
-      recipientRole: 'admin',
-      subject: `[Admin Alert] New Application Received: ${serviceName} (${appId})`,
-      html: serverEmailTemplates.adminNewApplication({
+export async function notifyApplicationAssignment(params) {
+    const { appId, app, newOperator, previousOperator, assignedBy } = params;
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const customerName = String(app?.name || 'Customer').trim();
+    const customerEmail = normalizeEmailAddress(app?.email);
+    const serviceName = String(app?.serviceName || 'Service').trim();
+    const adminEmails = getAdminEmails();
+    const baseKey = params.idempotencyKey || `app_assign:${appId}:${newOperator?.uid || 'unassigned'}:${Date.now()}`;
+    const prevEmail = normalizeEmailAddress(previousOperator?.email);
+    const nextEmail = normalizeEmailAddress(newOperator?.email);
+    const isReassignment = Boolean(prevEmail && nextEmail && (prevEmail !== nextEmail || previousOperator?.uid !== newOperator?.uid));
+    const isUnassignmentOnly = Boolean(prevEmail && !nextEmail);
+    const queue = [];
+    if (newOperator && nextEmail) {
+        queue.push({
+            templateId: isReassignment ? 'operatorReassigned' : 'operatorAssigned',
+            recipient: nextEmail,
+            recipientRole: 'operator',
+            subject: isReassignment
+                ? `Application Reassigned to You: ${serviceName} (${appId})`
+                : `New Assignment: ${serviceName} (${appId})`,
+            html: isReassignment
+                ? serverEmailTemplates.operatorReassigned({
+                    operatorName: newOperator.name,
+                    customerName,
+                    serviceName,
+                    appId,
+                    assignedByName: assignedBy.name || assignedBy.email,
+                    timestamp,
+                })
+                : serverEmailTemplates.operatorAssigned({
+                    operatorName: newOperator.name,
+                    customerName,
+                    serviceName,
+                    appId,
+                    assignedByName: assignedBy.name || assignedBy.email,
+                    timestamp,
+                }),
+            idempotencyKey: baseKey,
+            context: { appId, uid: newOperator.uid, actorUid: assignedBy.uid, actorRole: assignedBy.role },
+        });
+        queue.push({
+            templateId: 'customerOperatorAssigned',
+            recipient: customerEmail,
+            recipientRole: 'customer',
+            subject: `Operator Assigned: ${serviceName} (${appId})`,
+            html: serverEmailTemplates.customerOperatorAssigned({
+                customerName,
+                serviceName,
+                appId,
+                operatorName: newOperator.name,
+            }),
+            idempotencyKey: baseKey,
+            required: true,
+            context: { appId, uid: app?.uid || app?.userId, actorUid: assignedBy.uid, actorRole: assignedBy.role },
+        });
+    }
+    if ((isReassignment || isUnassignmentOnly) && prevEmail) {
+        queue.push({
+            templateId: 'previousOperatorUnassigned',
+            recipient: prevEmail,
+            recipientRole: 'previous_operator',
+            subject: `Application Assignment Removed: ${serviceName} (${appId})`,
+            html: serverEmailTemplates.previousOperatorUnassigned({
+                previousOperatorName: previousOperator?.name || prevEmail.split('@')[0] || 'Operator',
+                serviceName,
+                appId,
+                unassignedByName: assignedBy.name || assignedBy.email,
+                timestamp,
+            }),
+            idempotencyKey: baseKey,
+            context: { appId, uid: previousOperator?.uid, actorUid: assignedBy.uid, actorRole: assignedBy.role },
+        });
+    }
+    const adminHtml = serverEmailTemplates.adminOperatorAssigned({
+        operatorName: newOperator?.name || 'Unassigned',
+        operatorEmail: nextEmail,
+        previousOperatorEmail: prevEmail || undefined,
         customerName,
         customerEmail: customerEmail || 'Missing',
         serviceName,
         appId,
-        charge,
-        paymentStatus,
+        assignedByName: assignedBy.name || assignedBy.email,
         timestamp,
-      }),
-      idempotencyKey: baseKey,
-      context: { appId },
-    })),
-  ];
-
-  if (paymentStatus === 'completed' && charge > 0) {
-    const payKey = `app_payment:${appId}`;
-    const txId = app?.razorpayPaymentId || `APP-${appId}`;
-    queue.push({
-      templateId: 'customerPaymentConfirmed',
-      recipient: customerEmail,
-      recipientRole: 'customer',
-      subject: `Payment Confirmed: ${serviceName} (${appId})`,
-      html: serverEmailTemplates.customerPaymentConfirmed({
-        customerName,
-        amount: charge.toFixed(2),
-        serviceName,
-        appId,
-        transactionId: txId,
-        paymentMethod: app?.paymentMethod || 'online',
-      }),
-      idempotencyKey: payKey,
-      required: true,
-      context: { appId, uid: app?.uid },
     });
-    for (const adminEmail of getAdminEmails()) {
-      queue.push({
+    for (const adminEmail of adminEmails) {
+        queue.push({
+            templateId: 'adminOperatorAssigned',
+            recipient: adminEmail,
+            recipientRole: 'admin',
+            subject: `[Admin Alert] Operator ${newOperator ? 'Assigned' : 'Unassigned'}: ${serviceName} (${appId})`,
+            html: adminHtml,
+            idempotencyKey: baseKey,
+            context: { appId, actorUid: assignedBy.uid, actorRole: assignedBy.role },
+        });
+    }
+    return dispatchNotificationBatch(queue);
+}
+export async function notifyApplicationSubmitted(params) {
+    const { appId, app } = params;
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const customerName = String(app?.name || 'Customer').trim();
+    const customerEmail = normalizeEmailAddress(app?.email);
+    const serviceName = String(app?.serviceName || 'Service').trim();
+    const charge = typeof app?.charge === 'number' ? app.charge : Number(app?.charge) || 0;
+    const paymentStatus = String(app?.paymentStatus || 'pending');
+    const baseKey = `app_submitted:${appId}`;
+    const queue = [
+        {
+            templateId: 'customerApplicationSubmitted',
+            recipient: customerEmail,
+            recipientRole: 'customer',
+            subject: `Application Received: ${serviceName} (${appId})`,
+            html: serverEmailTemplates.customerApplicationSubmitted({
+                customerName,
+                serviceName,
+                appId,
+                charge,
+                paymentStatus,
+            }),
+            idempotencyKey: baseKey,
+            required: true,
+            context: { appId, uid: app?.uid },
+        },
+        ...getAdminEmails().map(adminEmail => ({
+            templateId: 'adminNewApplication',
+            recipient: adminEmail,
+            recipientRole: 'admin',
+            subject: `[Admin Alert] New Application Received: ${serviceName} (${appId})`,
+            html: serverEmailTemplates.adminNewApplication({
+                customerName,
+                customerEmail: customerEmail || 'Missing',
+                serviceName,
+                appId,
+                charge,
+                paymentStatus,
+                timestamp,
+            }),
+            idempotencyKey: baseKey,
+            context: { appId },
+        })),
+    ];
+    if (paymentStatus === 'completed' && charge > 0) {
+        const payKey = `app_payment:${appId}`;
+        const txId = app?.razorpayPaymentId || `APP-${appId}`;
+        queue.push({
+            templateId: 'customerPaymentConfirmed',
+            recipient: customerEmail,
+            recipientRole: 'customer',
+            subject: `Payment Confirmed: ${serviceName} (${appId})`,
+            html: serverEmailTemplates.customerPaymentConfirmed({
+                customerName,
+                amount: charge.toFixed(2),
+                serviceName,
+                appId,
+                transactionId: txId,
+                paymentMethod: app?.paymentMethod || 'online',
+            }),
+            idempotencyKey: payKey,
+            required: true,
+            context: { appId, uid: app?.uid },
+        });
+        for (const adminEmail of getAdminEmails()) {
+            queue.push({
+                templateId: 'adminPaymentReceived',
+                recipient: adminEmail,
+                recipientRole: 'admin',
+                subject: `[Admin Alert] Payment Received: ${serviceName} (${appId})`,
+                html: serverEmailTemplates.adminPaymentReceived({
+                    customerName,
+                    customerEmail: customerEmail || 'Missing',
+                    amount: charge.toFixed(2),
+                    serviceName,
+                    appId,
+                    transactionId: txId,
+                    paymentMethod: app?.paymentMethod || 'online',
+                    timestamp,
+                }),
+                idempotencyKey: payKey,
+                context: { appId },
+            });
+        }
+    }
+    return dispatchNotificationBatch(queue);
+}
+export async function notifyApplicationPaymentConfirmed(params) {
+    const { appId, app, transactionId, paymentMethod, razorpayOrderId } = params;
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const customerName = String(app?.name || 'Customer').trim();
+    const customerEmail = normalizeEmailAddress(app?.email);
+    const serviceName = String(app?.serviceName || 'Service').trim();
+    const amount = (typeof app?.charge === 'number' ? app.charge : Number(app?.charge) || 0).toFixed(2);
+    const baseKey = `app_payment:${appId}:${transactionId}`;
+    const queue = [
+        {
+            templateId: 'customerPaymentConfirmed',
+            recipient: customerEmail,
+            recipientRole: 'customer',
+            subject: `Payment Confirmed: ${serviceName} (${appId})`,
+            html: serverEmailTemplates.customerPaymentConfirmed({
+                customerName,
+                amount,
+                serviceName,
+                appId,
+                transactionId,
+                paymentMethod: paymentMethod || app?.paymentMethod,
+            }),
+            idempotencyKey: baseKey,
+            required: true,
+            context: { appId, uid: app?.uid },
+        },
+        ...getAdminEmails().map(adminEmail => ({
+            templateId: 'adminPaymentReceived',
+            recipient: adminEmail,
+            recipientRole: 'admin',
+            subject: `[Admin Alert] Payment Received: ${serviceName} (${appId})`,
+            html: serverEmailTemplates.adminPaymentReceived({
+                customerName,
+                customerEmail: customerEmail || 'Missing',
+                amount,
+                serviceName,
+                appId,
+                transactionId,
+                paymentMethod: paymentMethod || app?.paymentMethod,
+                razorpayOrderId,
+                timestamp,
+            }),
+            idempotencyKey: baseKey,
+            context: { appId },
+        })),
+    ];
+    return dispatchNotificationBatch(queue);
+}
+export async function notifyDirectPayLinkPayment(params) {
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const baseKey = `paylink:${params.razorpayPaymentId}`;
+    const queue = getAdminEmails().map(adminEmail => ({
         templateId: 'adminPaymentReceived',
         recipient: adminEmail,
         recipientRole: 'admin',
-        subject: `[Admin Alert] Payment Received: ${serviceName} (${appId})`,
+        subject: `[Admin Alert] Direct Payment Received - ₹${params.amount.toFixed(2)} (${params.receiptId})`,
         html: serverEmailTemplates.adminPaymentReceived({
-          customerName,
-          customerEmail: customerEmail || 'Missing',
-          amount: charge.toFixed(2),
-          serviceName,
-          appId,
-          transactionId: txId,
-          paymentMethod: app?.paymentMethod || 'online',
-          timestamp,
-        }),
-        idempotencyKey: payKey,
-        context: { appId },
-      });
-    }
-  }
-
-  return dispatchNotificationBatch(queue);
-}
-
-export async function notifyApplicationPaymentConfirmed(params) {
-  const { appId, app, transactionId, paymentMethod, razorpayOrderId } = params;
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const customerName = String(app?.name || 'Customer').trim();
-  const customerEmail = normalizeEmailAddress(app?.email);
-  const serviceName = String(app?.serviceName || 'Service').trim();
-  const amount = (typeof app?.charge === 'number' ? app.charge : Number(app?.charge) || 0).toFixed(2);
-  const baseKey = `app_payment:${appId}:${transactionId}`;
-
-  const queue = [
-    {
-      templateId: 'customerPaymentConfirmed',
-      recipient: customerEmail,
-      recipientRole: 'customer',
-      subject: `Payment Confirmed: ${serviceName} (${appId})`,
-      html: serverEmailTemplates.customerPaymentConfirmed({
-        customerName,
-        amount,
-        serviceName,
-        appId,
-        transactionId,
-        paymentMethod: paymentMethod || app?.paymentMethod,
-      }),
-      idempotencyKey: baseKey,
-      required: true,
-      context: { appId, uid: app?.uid },
-    },
-    ...getAdminEmails().map(adminEmail => ({
-      templateId: 'adminPaymentReceived',
-      recipient: adminEmail,
-      recipientRole: 'admin',
-      subject: `[Admin Alert] Payment Received: ${serviceName} (${appId})`,
-      html: serverEmailTemplates.adminPaymentReceived({
-        customerName,
-        customerEmail: customerEmail || 'Missing',
-        amount,
-        serviceName,
-        appId,
-        transactionId,
-        paymentMethod: paymentMethod || app?.paymentMethod,
-        razorpayOrderId,
-        timestamp,
-      }),
-      idempotencyKey: baseKey,
-      context: { appId },
-    })),
-  ];
-
-  return dispatchNotificationBatch(queue);
-}
-
-export async function notifyDirectPayLinkPayment(params) {
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const baseKey = `paylink:${params.razorpayPaymentId}`;
-
-  const queue = getAdminEmails().map(adminEmail => ({
-    templateId: 'adminPaymentReceived',
-    recipient: adminEmail,
-    recipientRole: 'admin',
-    subject: `[Admin Alert] Direct Payment Received - ₹${params.amount.toFixed(2)} (${params.receiptId})`,
-    html: serverEmailTemplates.adminPaymentReceived({
-      customerName: params.reference ? `Pay Link (${params.reference})` : 'Direct Pay Link Customer',
-      amount: params.amount.toFixed(2),
-      serviceName: 'Public /pay Payment Link',
-      transactionId: params.razorpayPaymentId,
-      paymentMethod: 'razorpay',
-      razorpayOrderId: params.razorpayOrderId,
-      timestamp,
-    }),
-    idempotencyKey: baseKey,
-  }));
-
-  return dispatchNotificationBatch(queue);
-}
-
-export async function notifyOrderConfirmed(params) {
-  const { order, type } = params;
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const orderId = String(order?.id || '').trim();
-  const customerName = String(order?.deliveryAddress?.name || 'Customer').trim();
-  const customerEmail = normalizeEmailAddress(order?.deliveryAddress?.email || order?.email);
-  const customerPhone = String(order?.deliveryAddress?.phone || 'N/A').trim();
-  const items = Array.isArray(order?.items) ? order.items : Object.values(order?.items || {});
-  const totalAmount = Number(order?.total) || 0;
-  const baseKey = `order_confirmed:${orderId}`;
-
-  const queue = [
-    {
-      templateId: 'customerOrderConfirmed',
-      recipient: customerEmail,
-      recipientRole: 'customer',
-      subject: `Order Confirmed: ${orderId} - India Cyber Cafe`,
-      html: serverEmailTemplates.customerOrderConfirmed({
-        customerName,
-        orderId,
-        items,
-        totalAmount,
-        paymentMethod: type,
-        paymentStatus: order?.paymentStatus || (type === 'cod' ? 'pending' : 'completed'),
-        address: order?.deliveryAddress,
-        isGuest: Boolean(order?.isGuest),
-      }),
-      idempotencyKey: baseKey,
-      required: true,
-      context: { orderId, uid: order?.uid },
-    },
-    ...getAdminEmails().map(adminEmail => ({
-      templateId: 'adminOrderCreated',
-      recipient: adminEmail,
-      recipientRole: 'admin',
-      subject: `[Admin Alert] New ${type.toUpperCase()} Store Order [${orderId}] - ₹${totalAmount.toFixed(2)}`,
-      html: serverEmailTemplates.adminOrderCreated({
-        orderId,
-        customerName,
-        customerEmail: customerEmail || 'Missing',
-        customerPhone,
-        isGuest: Boolean(order?.isGuest),
-        items,
-        totalAmount,
-        paymentMethod: order?.paymentMethod || type,
-        paymentStatus: order?.paymentStatus || 'pending',
-        address: order?.deliveryAddress,
-        timestamp,
-      }),
-      idempotencyKey: baseKey,
-      context: { orderId },
-    })),
-  ];
-
-  return dispatchNotificationBatch(queue);
-}
-
-export async function notifyOrderStatusUpdated(params) {
-  const { order, newStatus, reason, estimatedDelivery, performedBy } = params;
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const orderId = String(order?.id || '').trim();
-  const customerName = String(order?.deliveryAddress?.name || 'Customer').trim();
-  const customerEmail = normalizeEmailAddress(order?.deliveryAddress?.email || order?.email);
-  const items = Array.isArray(order?.items) ? order.items : Object.values(order?.items || {});
-  const productName = String(items[0]?.productName || items[0]?.name || 'Store Order Item');
-  const totalAmount = Number(order?.total) || 0;
-  const baseKey = `order_status:${orderId}:${newStatus}:${Date.now()}`;
-
-  const queue = [];
-
-  if (newStatus === 'cancelled') {
-    queue.push({
-      templateId: 'customerOrderCancelled',
-      recipient: customerEmail,
-      recipientRole: 'customer',
-      subject: `Order Cancelled: ${orderId} - India Cyber Cafe`,
-      html: serverEmailTemplates.customerOrderCancelled({
-        customerName,
-        orderId,
-        productName,
-        totalAmount,
-        reason,
-      }),
-      idempotencyKey: baseKey,
-      required: true,
-      context: { orderId, uid: order?.uid, actorUid: performedBy.uid },
-    });
-
-    for (const adminEmail of getAdminEmails()) {
-      queue.push({
-        templateId: 'adminOrderCancelled',
-        recipient: adminEmail,
-        recipientRole: 'admin',
-        subject: `[Admin Alert] Order Cancelled: ${orderId}`,
-        html: serverEmailTemplates.adminOrderCancelled({
-          orderId,
-          customerName,
-          customerEmail: customerEmail || 'Missing',
-          productName,
-          totalAmount,
-          paymentMethod: order?.paymentMethod,
-          reason,
-          performedByName: performedBy.name || performedBy.email,
-          timestamp,
+            customerName: params.reference ? `Pay Link (${params.reference})` : 'Direct Pay Link Customer',
+            amount: params.amount.toFixed(2),
+            serviceName: 'Public /pay Payment Link',
+            transactionId: params.razorpayPaymentId,
+            paymentMethod: 'razorpay',
+            razorpayOrderId: params.razorpayOrderId,
+            timestamp,
         }),
         idempotencyKey: baseKey,
-        context: { orderId, actorUid: performedBy.uid },
-      });
+    }));
+    return dispatchNotificationBatch(queue);
+}
+export async function notifyOrderConfirmed(params) {
+    const { order, type } = params;
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const orderId = String(order?.id || '').trim();
+    const customerName = String(order?.deliveryAddress?.name || 'Customer').trim();
+    const customerEmail = normalizeEmailAddress(order?.deliveryAddress?.email || order?.email);
+    const customerPhone = String(order?.deliveryAddress?.phone || 'N/A').trim();
+    const items = Array.isArray(order?.items) ? order.items : Object.values(order?.items || {});
+    const totalAmount = Number(order?.total) || 0;
+    const baseKey = `order_confirmed:${orderId}`;
+    const queue = [
+        {
+            templateId: 'customerOrderConfirmed',
+            recipient: customerEmail,
+            recipientRole: 'customer',
+            subject: `Order Confirmed: ${orderId} - India Cyber Cafe`,
+            html: serverEmailTemplates.customerOrderConfirmed({
+                customerName,
+                orderId,
+                items,
+                totalAmount,
+                paymentMethod: type,
+                paymentStatus: order?.paymentStatus || (type === 'cod' ? 'pending' : 'completed'),
+                address: order?.deliveryAddress,
+                isGuest: Boolean(order?.isGuest),
+            }),
+            idempotencyKey: baseKey,
+            required: true,
+            context: { orderId, uid: order?.uid },
+        },
+        ...getAdminEmails().map(adminEmail => ({
+            templateId: 'adminOrderCreated',
+            recipient: adminEmail,
+            recipientRole: 'admin',
+            subject: `[Admin Alert] New ${type.toUpperCase()} Store Order [${orderId}] - ₹${totalAmount.toFixed(2)}`,
+            html: serverEmailTemplates.adminOrderCreated({
+                orderId,
+                customerName,
+                customerEmail: customerEmail || 'Missing',
+                customerPhone,
+                isGuest: Boolean(order?.isGuest),
+                items,
+                totalAmount,
+                paymentMethod: order?.paymentMethod || type,
+                paymentStatus: order?.paymentStatus || 'pending',
+                address: order?.deliveryAddress,
+                timestamp,
+            }),
+            idempotencyKey: baseKey,
+            context: { orderId },
+        })),
+    ];
+    return dispatchNotificationBatch(queue);
+}
+export async function notifyOrderStatusUpdated(params) {
+    const { order, newStatus, reason, estimatedDelivery, performedBy } = params;
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const orderId = String(order?.id || '').trim();
+    const customerName = String(order?.deliveryAddress?.name || 'Customer').trim();
+    const customerEmail = normalizeEmailAddress(order?.deliveryAddress?.email || order?.email);
+    const items = Array.isArray(order?.items) ? order.items : Object.values(order?.items || {});
+    const productName = String(items[0]?.productName || items[0]?.name || 'Store Order Item');
+    const totalAmount = Number(order?.total) || 0;
+    const baseKey = `order_status:${orderId}:${newStatus}:${Date.now()}`;
+    const queue = [];
+    if (newStatus === 'cancelled') {
+        queue.push({
+            templateId: 'customerOrderCancelled',
+            recipient: customerEmail,
+            recipientRole: 'customer',
+            subject: `Order Cancelled: ${orderId} - India Cyber Cafe`,
+            html: serverEmailTemplates.customerOrderCancelled({
+                customerName,
+                orderId,
+                productName,
+                totalAmount,
+                reason,
+            }),
+            idempotencyKey: baseKey,
+            required: true,
+            context: { orderId, uid: order?.uid, actorUid: performedBy.uid },
+        });
+        for (const adminEmail of getAdminEmails()) {
+            queue.push({
+                templateId: 'adminOrderCancelled',
+                recipient: adminEmail,
+                recipientRole: 'admin',
+                subject: `[Admin Alert] Order Cancelled: ${orderId}`,
+                html: serverEmailTemplates.adminOrderCancelled({
+                    orderId,
+                    customerName,
+                    customerEmail: customerEmail || 'Missing',
+                    productName,
+                    totalAmount,
+                    paymentMethod: order?.paymentMethod,
+                    reason,
+                    performedByName: performedBy.name || performedBy.email,
+                    timestamp,
+                }),
+                idempotencyKey: baseKey,
+                context: { orderId, actorUid: performedBy.uid },
+            });
+        }
     }
-  } else {
-    queue.push({
-      templateId: 'customerOrderStatusUpdated',
-      recipient: customerEmail,
-      recipientRole: 'customer',
-      subject: `Order Status Updated (${newStatus.toUpperCase()}): ${orderId}`,
-      html: serverEmailTemplates.customerOrderStatusUpdated({
-        customerName,
-        orderId,
-        newStatus,
-        productName,
-        estimatedDelivery,
-        isGuest: Boolean(order?.isGuest),
-      }),
-      idempotencyKey: baseKey,
-      required: true,
-      context: { orderId, uid: order?.uid, actorUid: performedBy.uid },
-    });
-  }
-
-  return dispatchNotificationBatch(queue);
+    else {
+        queue.push({
+            templateId: 'customerOrderStatusUpdated',
+            recipient: customerEmail,
+            recipientRole: 'customer',
+            subject: `Order Status Updated (${newStatus.toUpperCase()}): ${orderId}`,
+            html: serverEmailTemplates.customerOrderStatusUpdated({
+                customerName,
+                orderId,
+                newStatus,
+                productName,
+                estimatedDelivery,
+                isGuest: Boolean(order?.isGuest),
+            }),
+            idempotencyKey: baseKey,
+            required: true,
+            context: { orderId, uid: order?.uid, actorUid: performedBy.uid },
+        });
+    }
+    return dispatchNotificationBatch(queue);
 }
-
 export async function notifyOrderRefundInitiated(params) {
-  const { order, refundAmount, expectedDays, reason, performedBy } = params;
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const orderId = String(order?.id || '').trim();
-  const customerName = String(order?.deliveryAddress?.name || 'Customer').trim();
-  const customerEmail = normalizeEmailAddress(order?.deliveryAddress?.email || order?.email);
-  const baseKey = `order_refund:${orderId}:${refundAmount.toFixed(2)}`;
-
-  const queue = [
-    {
-      templateId: 'customerRefundInitiated',
-      recipient: customerEmail,
-      recipientRole: 'customer',
-      subject: `Refund Initiated: ${orderId} - India Cyber Cafe`,
-      html: serverEmailTemplates.customerRefundInitiated({
-        customerName,
-        orderId,
-        refundAmount,
-        expectedDays,
-        reason,
-      }),
-      idempotencyKey: baseKey,
-      required: true,
-      context: { orderId, uid: order?.uid, actorUid: performedBy.uid },
-    },
-    ...getAdminEmails().map(adminEmail => ({
-      templateId: 'adminRefundInitiated',
-      recipient: adminEmail,
-      recipientRole: 'admin',
-      subject: `[Admin Alert] Refund Initiated: ${orderId}`,
-      html: serverEmailTemplates.adminRefundInitiated({
-        orderId,
-        customerName,
-        customerEmail: customerEmail || 'Missing',
-        refundAmount,
-        reason,
-        performedByName: performedBy.name || performedBy.email,
-        timestamp,
-      }),
-      idempotencyKey: baseKey,
-      context: { orderId, actorUid: performedBy.uid },
-    })),
-  ];
-
-  return dispatchNotificationBatch(queue);
+    const { order, refundAmount, expectedDays, reason, performedBy } = params;
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const orderId = String(order?.id || '').trim();
+    const customerName = String(order?.deliveryAddress?.name || 'Customer').trim();
+    const customerEmail = normalizeEmailAddress(order?.deliveryAddress?.email || order?.email);
+    const baseKey = `order_refund:${orderId}:${refundAmount.toFixed(2)}`;
+    const queue = [
+        {
+            templateId: 'customerRefundInitiated',
+            recipient: customerEmail,
+            recipientRole: 'customer',
+            subject: `Refund Initiated: ${orderId} - India Cyber Cafe`,
+            html: serverEmailTemplates.customerRefundInitiated({
+                customerName,
+                orderId,
+                refundAmount,
+                expectedDays,
+                reason,
+            }),
+            idempotencyKey: baseKey,
+            required: true,
+            context: { orderId, uid: order?.uid, actorUid: performedBy.uid },
+        },
+        ...getAdminEmails().map(adminEmail => ({
+            templateId: 'adminRefundInitiated',
+            recipient: adminEmail,
+            recipientRole: 'admin',
+            subject: `[Admin Alert] Refund Initiated: ${orderId}`,
+            html: serverEmailTemplates.adminRefundInitiated({
+                orderId,
+                customerName,
+                customerEmail: customerEmail || 'Missing',
+                refundAmount,
+                reason,
+                performedByName: performedBy.name || performedBy.email,
+                timestamp,
+            }),
+            idempotencyKey: baseKey,
+            context: { orderId, actorUid: performedBy.uid },
+        })),
+    ];
+    return dispatchNotificationBatch(queue);
 }
-
 export async function notifyUserRegistration(params) {
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const email = normalizeEmailAddress(params.userEmail);
-  const baseKey = `registration:${params.uid}`;
-
-  const queue = [
-    {
-      templateId: 'customerRegistration',
-      recipient: email,
-      recipientRole: 'customer',
-      subject: 'Welcome to India Cyber Cafe!',
-      html: serverEmailTemplates.customerRegistration({
-        userName: params.userName,
-        authProvider: params.authProvider,
-        isGuestCheckout: params.isGuestCheckout,
-      }),
-      idempotencyKey: baseKey,
-      required: true,
-      context: { uid: params.uid },
-    },
-    ...getAdminEmails().map(adminEmail => ({
-      templateId: 'adminUserRegistered',
-      recipient: adminEmail,
-      recipientRole: 'admin',
-      subject: params.authProvider === 'google'
-        ? '[Admin Alert] New Google User Registered - India Cyber Cafe'
-        : '[Admin Alert] New User Registered - India Cyber Cafe',
-      html: serverEmailTemplates.adminUserRegistered({
-        userName: params.userName,
-        userEmail: email || 'Missing',
-        phone: params.phone,
-        authProvider: params.authProvider,
-        timestamp,
-      }),
-      idempotencyKey: baseKey,
-      context: { uid: params.uid },
-    })),
-  ];
-
-  return dispatchNotificationBatch(queue);
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const email = normalizeEmailAddress(params.userEmail);
+    const baseKey = `registration:${params.uid}`;
+    const queue = [
+        {
+            templateId: 'customerRegistration',
+            recipient: email,
+            recipientRole: 'customer',
+            subject: 'Welcome to India Cyber Cafe!',
+            html: serverEmailTemplates.customerRegistration({
+                userName: params.userName,
+                authProvider: params.authProvider,
+                isGuestCheckout: params.isGuestCheckout,
+            }),
+            idempotencyKey: baseKey,
+            required: true,
+            context: { uid: params.uid },
+        },
+        ...getAdminEmails().map(adminEmail => ({
+            templateId: 'adminUserRegistered',
+            recipient: adminEmail,
+            recipientRole: 'admin',
+            subject: params.authProvider === 'google'
+                ? '[Admin Alert] New Google User Registered - India Cyber Cafe'
+                : '[Admin Alert] New User Registered - India Cyber Cafe',
+            html: serverEmailTemplates.adminUserRegistered({
+                userName: params.userName,
+                userEmail: email || 'Missing',
+                phone: params.phone,
+                authProvider: params.authProvider,
+                timestamp,
+            }),
+            idempotencyKey: baseKey,
+            context: { uid: params.uid },
+        })),
+    ];
+    return dispatchNotificationBatch(queue);
 }
-
 export async function notifyProfileUpdated(params) {
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const email = normalizeEmailAddress(params.userEmail);
-  return dispatchNotificationBatch([
-    {
-      templateId: 'customerProfileUpdated',
-      recipient: email,
-      recipientRole: 'customer',
-      subject: 'Profile Updated Successfully - India Cyber Cafe',
-      html: serverEmailTemplates.customerProfileUpdated({
-        userName: params.userName,
-        updateType: params.updateType,
-        timestamp,
-      }),
-      idempotencyKey: `profile_update:${params.uid}:${params.updateType}:${Date.now()}`,
-      required: true,
-      context: { uid: params.uid },
-    },
-  ]);
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const email = normalizeEmailAddress(params.userEmail);
+    return dispatchNotificationBatch([
+        {
+            templateId: 'customerProfileUpdated',
+            recipient: email,
+            recipientRole: 'customer',
+            subject: 'Profile Updated Successfully - India Cyber Cafe',
+            html: serverEmailTemplates.customerProfileUpdated({
+                userName: params.userName,
+                updateType: params.updateType,
+                timestamp,
+            }),
+            idempotencyKey: `profile_update:${params.uid}:${params.updateType}:${Date.now()}`,
+            required: true,
+            context: { uid: params.uid },
+        },
+    ]);
 }
-
 export async function notifyCallbackRequest(params) {
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const baseKey = `callback:${params.mobileNumber}:${Math.floor(Date.now() / 60000)}`;
-
-  const queue = getAdminEmails().map(adminEmail => ({
-    templateId: 'adminCallbackReceived',
-    recipient: adminEmail,
-    recipientRole: 'admin',
-    subject: `[Admin Alert] New Call Back Request - ${params.mobileNumber}`,
-    html: serverEmailTemplates.adminCallbackReceived({
-      mobileNumber: params.mobileNumber,
-      customerName: params.customerName,
-      customerEmail: params.customerEmail,
-      timestamp,
-    }),
-    idempotencyKey: baseKey,
-  }));
-
-  if (params.customerEmail && isValidEmailAddress(params.customerEmail)) {
-    queue.push({
-      templateId: 'customerCallbackReceived',
-      recipient: normalizeEmailAddress(params.customerEmail),
-      recipientRole: 'customer',
-      subject: 'Call Back Request Received - India Cyber Cafe',
-      html: serverEmailTemplates.customerCallbackReceived({
-        customerName: params.customerName,
-        mobileNumber: params.mobileNumber,
-        timestamp,
-      }),
-      idempotencyKey: baseKey,
-    });
-  }
-
-  return dispatchNotificationBatch(queue);
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const baseKey = `callback:${params.mobileNumber}:${Math.floor(Date.now() / 60000)}`;
+    const queue = getAdminEmails().map(adminEmail => ({
+        templateId: 'adminCallbackReceived',
+        recipient: adminEmail,
+        recipientRole: 'admin',
+        subject: `[Admin Alert] New Call Back Request - ${params.mobileNumber}`,
+        html: serverEmailTemplates.adminCallbackReceived({
+            mobileNumber: params.mobileNumber,
+            customerName: params.customerName,
+            customerEmail: params.customerEmail,
+            timestamp,
+        }),
+        idempotencyKey: baseKey,
+    }));
+    if (params.customerEmail && isValidEmailAddress(params.customerEmail)) {
+        queue.push({
+            templateId: 'customerCallbackReceived',
+            recipient: normalizeEmailAddress(params.customerEmail),
+            recipientRole: 'customer',
+            subject: 'Call Back Request Received - India Cyber Cafe',
+            html: serverEmailTemplates.customerCallbackReceived({
+                customerName: params.customerName,
+                mobileNumber: params.mobileNumber,
+                timestamp,
+            }),
+            idempotencyKey: baseKey,
+        });
+    }
+    return dispatchNotificationBatch(queue);
 }
-
 export async function notifyReviewSubmitted(params) {
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const email = normalizeEmailAddress(params.customerEmail);
-  const baseKey = `review:${params.uid}:${params.productId}:${Date.now()}`;
-
-  const queue = [
-    {
-      templateId: 'customerReviewSubmitted',
-      recipient: email,
-      recipientRole: 'customer',
-      subject: `Review Submitted: ${params.productName} - India Cyber Cafe`,
-      html: serverEmailTemplates.customerReviewSubmitted({
-        customerName: params.customerName,
-        productName: params.productName,
-      }),
-      idempotencyKey: baseKey,
-      required: true,
-      context: { uid: params.uid, productId: params.productId },
-    },
-    ...getAdminEmails().map(adminEmail => ({
-      templateId: 'adminReviewReceived',
-      recipient: adminEmail,
-      recipientRole: 'admin',
-      subject: `[Admin Alert] New Review Received: ${params.productName}`,
-      html: serverEmailTemplates.adminReviewReceived({
-        productName: params.productName,
-        customerName: params.customerName,
-        customerEmail: email,
-        rating: params.rating,
-        reviewText: params.reviewText,
-        timestamp,
-      }),
-      idempotencyKey: baseKey,
-      context: { uid: params.uid, productId: params.productId },
-    })),
-  ];
-
-  return dispatchNotificationBatch(queue);
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const email = normalizeEmailAddress(params.customerEmail);
+    const baseKey = `review:${params.uid}:${params.productId}:${Date.now()}`;
+    const queue = [
+        {
+            templateId: 'customerReviewSubmitted',
+            recipient: email,
+            recipientRole: 'customer',
+            subject: `Review Submitted: ${params.productName} - India Cyber Cafe`,
+            html: serverEmailTemplates.customerReviewSubmitted({
+                customerName: params.customerName,
+                productName: params.productName,
+            }),
+            idempotencyKey: baseKey,
+            required: true,
+            context: { uid: params.uid, productId: params.productId },
+        },
+        ...getAdminEmails().map(adminEmail => ({
+            templateId: 'adminReviewReceived',
+            recipient: adminEmail,
+            recipientRole: 'admin',
+            subject: `[Admin Alert] New Review Received: ${params.productName}`,
+            html: serverEmailTemplates.adminReviewReceived({
+                productName: params.productName,
+                customerName: params.customerName,
+                customerEmail: email,
+                rating: params.rating,
+                reviewText: params.reviewText,
+                timestamp,
+            }),
+            idempotencyKey: baseKey,
+            context: { uid: params.uid, productId: params.productId },
+        })),
+    ];
+    return dispatchNotificationBatch(queue);
 }
-
 export async function notifyPrivacyRequestSubmitted(params) {
-  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
-  const email = normalizeEmailAddress(params.email);
-  const baseKey = `privacy:${params.ticketId}`;
-
-  const queue = [
-    {
-      templateId: 'customerPrivacyRequestReceived',
-      recipient: email,
-      recipientRole: 'customer',
-      subject: `[${params.ticketId}] Acknowledgment: Privacy & Grievance Request`,
-      html: serverEmailTemplates.customerPrivacyRequestReceived({
-        name: params.name,
-        ticketId: params.ticketId,
-        category: params.category,
-      }),
-      fromName: 'India Cyber Cafe Grievance Cell',
-      idempotencyKey: baseKey,
-      required: true,
-      context: { ticketId: params.ticketId },
-    },
-    ...getAdminEmails().map(adminEmail => ({
-      templateId: 'adminPrivacyRequestReceived',
-      recipient: adminEmail,
-      recipientRole: 'admin',
-      subject: `[Admin Alert] New Privacy Request [${params.ticketId}] - ${params.name}`,
-      html: serverEmailTemplates.adminPrivacyRequestReceived({
-        ticketId: params.ticketId,
-        category: params.category,
-        name: params.name,
-        email,
-        phone: params.phone,
-        referenceId: params.referenceId,
-        description: params.description,
-        timestamp,
-      }),
-      fromName: 'India Cyber Cafe Portal',
-      idempotencyKey: baseKey,
-      context: { ticketId: params.ticketId },
-    })),
-  ];
-
-  return dispatchNotificationBatch(queue);
+    const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+    const email = normalizeEmailAddress(params.email);
+    const baseKey = `privacy:${params.ticketId}`;
+    const queue = [
+        {
+            templateId: 'customerPrivacyRequestReceived',
+            recipient: email,
+            recipientRole: 'customer',
+            subject: `[${params.ticketId}] Acknowledgment: Privacy & Grievance Request`,
+            html: serverEmailTemplates.customerPrivacyRequestReceived({
+                name: params.name,
+                ticketId: params.ticketId,
+                category: params.category,
+            }),
+            fromName: 'India Cyber Cafe Grievance Cell',
+            idempotencyKey: baseKey,
+            required: true,
+            context: { ticketId: params.ticketId },
+        },
+        ...getAdminEmails().map(adminEmail => ({
+            templateId: 'adminPrivacyRequestReceived',
+            recipient: adminEmail,
+            recipientRole: 'admin',
+            subject: `[Admin Alert] New Privacy Request [${params.ticketId}] - ${params.name}`,
+            html: serverEmailTemplates.adminPrivacyRequestReceived({
+                ticketId: params.ticketId,
+                category: params.category,
+                name: params.name,
+                email,
+                phone: params.phone,
+                referenceId: params.referenceId,
+                description: params.description,
+                timestamp,
+            }),
+            fromName: 'India Cyber Cafe Portal',
+            idempotencyKey: baseKey,
+            context: { ticketId: params.ticketId },
+        })),
+    ];
+    return dispatchNotificationBatch(queue);
 }
-
-// =============================================================================
-// DURABLE BACKGROUND NOTIFICATION OUTBOX (NON-BLOCKING QUEUE + RETRY + RECOVERY)
-// =============================================================================
-
 const outboxJobs = new Map();
 const outboxIdempotencyIndex = new Map();
+const outboxDlqJobs = new Map();
 let outboxHydrated = false;
 let outboxWorkerTimer = null;
 let outboxWorkerPromise = null;
 let outboxOperatorResolver = null;
-
+const OUTBOX_WORKER_CONCURRENCY = Math.max(1, Math.min(24, Number(process.env.WORKER_CONCURRENCY || '6') || 6));
+const OUTBOX_LEASE_MS = 30000;
 export function registerOutboxOperatorProfileResolver(resolver) {
-  outboxOperatorResolver = resolver;
+    outboxOperatorResolver = resolver;
 }
-
 function readDiskOutbox() {
-  try {
-    if (fs.existsSync(NOTIFICATION_OUTBOX_PATH)) {
-      return JSON.parse(fs.readFileSync(NOTIFICATION_OUTBOX_PATH, 'utf-8'));
+    try {
+        if (fs.existsSync(NOTIFICATION_OUTBOX_PATH)) {
+            return JSON.parse(fs.readFileSync(NOTIFICATION_OUTBOX_PATH, 'utf-8'));
+        }
     }
-  } catch {}
-  return {};
+    catch { }
+    return {};
 }
-
 function writeDiskOutbox() {
-  try {
-    fs.mkdirSync(path.dirname(NOTIFICATION_OUTBOX_PATH), { recursive: true });
-    const all = Array.from(outboxJobs.values());
-    const activeOrFailed = all.filter(j => j.state !== 'completed');
-    const completed = all
-      .filter(j => j.state === 'completed')
-      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-      .slice(0, 200);
-    const bounded = [...activeOrFailed, ...completed];
-    const obj = {};
-    for (const j of bounded) {
-      obj[j.jobId] = j;
+    try {
+        // Keep all active/failed jobs plus the most recent 200 completed jobs
+        const all = Array.from(outboxJobs.values());
+        const activeOrFailed = all.filter(j => j.state !== 'completed');
+        const completed = all
+            .filter(j => j.state === 'completed')
+            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+            .slice(0, 200);
+        const bounded = [...activeOrFailed, ...completed];
+        const obj = {};
+        for (const j of bounded) {
+            obj[j.jobId] = j;
+        }
+        writeJsonAtomicSync(NOTIFICATION_OUTBOX_PATH, obj);
     }
-    fs.writeFileSync(NOTIFICATION_OUTBOX_PATH, JSON.stringify(obj, null, 2), 'utf-8');
-  } catch (err) {
-    console.warn('[emailOutbox] Could not persist outbox to disk:', err?.message || err);
-  }
+    catch (err) {
+        console.warn('[emailOutbox] Could not persist outbox to disk:', err?.message || err);
+    }
 }
-
 function hydrateOutboxCache(resetInFlightOnStartup = false) {
-  if (outboxHydrated && !resetInFlightOnStartup) return;
-  const disk = readDiskOutbox();
-  if (!outboxHydrated) {
+    if (outboxHydrated && !resetInFlightOnStartup)
+        return;
+    const disk = readDiskOutbox();
+    if (!outboxHydrated) {
+        outboxJobs.clear();
+        outboxIdempotencyIndex.clear();
+        outboxDlqJobs.clear();
+        for (const [jobId, rec] of Object.entries(disk)) {
+            if (!rec || typeof rec !== 'object')
+                continue;
+            if (resetInFlightOnStartup && rec.state === 'processing') {
+                rec.state = 'queued';
+                rec.leaseOwner = null;
+                rec.leaseExpiresAt = null;
+                rec.nextAttemptAt = Date.now();
+                rec.updatedAt = new Date().toISOString();
+            }
+            outboxJobs.set(jobId, rec);
+            if (rec.state === 'failed') {
+                outboxDlqJobs.set(jobId, rec);
+            }
+            if (rec.idempotencyKey) {
+                outboxIdempotencyIndex.set(rec.idempotencyKey, jobId);
+            }
+        }
+        outboxHydrated = true;
+        if (resetInFlightOnStartup) {
+            writeDiskOutbox();
+        }
+    }
+    else if (resetInFlightOnStartup) {
+        let changed = false;
+        const now = Date.now();
+        for (const job of outboxJobs.values()) {
+            if (job.state === 'processing' && (!job.leaseExpiresAt || job.leaseExpiresAt <= now)) {
+                job.state = 'queued';
+                job.leaseOwner = null;
+                job.leaseExpiresAt = null;
+                job.nextAttemptAt = now;
+                job.updatedAt = new Date().toISOString();
+                changed = true;
+            }
+        }
+        if (changed)
+            writeDiskOutbox();
+    }
+}
+export function resetNotificationOutboxForTesting() {
+    if (outboxWorkerTimer) {
+        clearTimeout(outboxWorkerTimer);
+        outboxWorkerTimer = null;
+    }
     outboxJobs.clear();
     outboxIdempotencyIndex.clear();
-    for (const [jobId, rec] of Object.entries(disk)) {
-      if (!rec || typeof rec !== 'object') continue;
-      if (resetInFlightOnStartup && rec.state === 'processing') {
-        rec.state = 'queued';
-        rec.nextAttemptAt = Date.now();
-        rec.updatedAt = new Date().toISOString();
-      }
-      outboxJobs.set(jobId, rec);
-      if (rec.idempotencyKey) {
-        outboxIdempotencyIndex.set(rec.idempotencyKey, jobId);
-      }
-    }
+    outboxDlqJobs.clear();
     outboxHydrated = true;
-    if (resetInFlightOnStartup) {
-      writeDiskOutbox();
+    resetAsyncQueueForTesting();
+    if (isTestMode()) {
+        try {
+            if (fs.existsSync(NOTIFICATION_OUTBOX_PATH)) {
+                fs.unlinkSync(NOTIFICATION_OUTBOX_PATH);
+            }
+        }
+        catch { }
     }
-  } else if (resetInFlightOnStartup) {
-    let changed = false;
+}
+export function getOutboxJobsForTesting(filters) {
+    hydrateOutboxCache();
+    let list = Array.from(outboxJobs.values());
+    if (filters?.state)
+        list = list.filter(j => j.state === filters.state);
+    if (filters?.appId)
+        list = list.filter(j => j.appId === filters.appId);
+    return list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+}
+export function getNotificationOutboxStats() {
+    hydrateOutboxCache();
+    let queued = 0;
+    let processing = 0;
+    let completed = 0;
+    let failed = 0;
     for (const job of outboxJobs.values()) {
-      if (job.state === 'processing') {
-        job.state = 'queued';
-        job.nextAttemptAt = Date.now();
-        job.updatedAt = new Date().toISOString();
-        changed = true;
-      }
+        if (job.state === 'queued')
+            queued++;
+        else if (job.state === 'processing')
+            processing++;
+        else if (job.state === 'completed')
+            completed++;
+        else
+            failed++;
     }
-    if (changed) writeDiskOutbox();
-  }
+    return { queued, processing, completed, failed, dlqCount: outboxDlqJobs.size };
 }
-
-export function resetNotificationOutboxForTesting() {
-  if (outboxWorkerTimer) {
-    clearTimeout(outboxWorkerTimer);
-    outboxWorkerTimer = null;
-  }
-  outboxJobs.clear();
-  outboxIdempotencyIndex.clear();
-  outboxHydrated = true;
-  if (isTestMode()) {
-    try {
-      if (fs.existsSync(NOTIFICATION_OUTBOX_PATH)) {
-        fs.unlinkSync(NOTIFICATION_OUTBOX_PATH);
-      }
-    } catch {}
-  }
+export function getOutboxDlqJobs(limit = 50) {
+    hydrateOutboxCache();
+    return Array.from(outboxJobs.values())
+        .filter(j => j.state === 'failed')
+        .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
+        .slice(0, Math.max(1, limit));
 }
-
-export function getOutboxJobsForTesting(filters = {}) {
-  hydrateOutboxCache();
-  let list = Array.from(outboxJobs.values());
-  if (filters?.state) list = list.filter(j => j.state === filters.state);
-  if (filters?.appId) list = list.filter(j => j.appId === filters.appId);
-  return list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+export async function replayOutboxJob(jobId) {
+    hydrateOutboxCache();
+    const job = outboxJobs.get(jobId);
+    if (!job)
+        return { found: false };
+    job.state = 'queued';
+    job.attempts = 0;
+    job.nextAttemptAt = Date.now();
+    job.leaseOwner = null;
+    job.leaseExpiresAt = null;
+    job.lastError = undefined;
+    job.updatedAt = new Date().toISOString();
+    outboxDlqJobs.delete(jobId);
+    writeDiskOutbox();
+    await runOutboxWorkerLoop();
+    return { found: true, job: outboxJobs.get(jobId) || job };
 }
-
 function mirrorOutboxFailureAsync(job) {
-  if (isTestMode() || getApps().length === 0) return;
-  try {
-    const db = getDatabase(getApps()[0]);
-    Promise.race([
-      db.ref(`notificationOutbox/${job.jobId}`).set({
-        jobId: job.jobId,
-        idempotencyKey: job.idempotencyKey,
-        kind: job.kind,
-        appId: job.appId,
-        state: job.state,
-        attempts: job.attempts,
-        maxAttempts: job.maxAttempts,
-        lastError: job.lastError || null,
-        createdAt: job.createdAt,
-        updatedAt: job.updatedAt,
-      }),
-      new Promise(resolve => setTimeout(resolve, 2500)),
-    ]).catch(() => {});
-  } catch {}
+    if (isTestMode() || getApps().length === 0)
+        return;
+    try {
+        const db = getDatabase(getApps()[0]);
+        Promise.race([
+            db.ref(`notificationOutbox/${job.jobId}`).set({
+                jobId: job.jobId,
+                idempotencyKey: job.idempotencyKey,
+                kind: job.kind,
+                appId: job.appId || null,
+                orderId: job.orderId || null,
+                ticketId: job.ticketId || null,
+                state: job.state,
+                attempts: job.attempts,
+                maxAttempts: job.maxAttempts,
+                lastError: job.lastError || null,
+                createdAt: job.createdAt,
+                updatedAt: job.updatedAt,
+            }),
+            new Promise(resolve => setTimeout(resolve, 2500)),
+        ]).catch(() => { });
+    }
+    catch { }
 }
-
 function scheduleOutboxWorker(delayMs = 0) {
-  if (outboxWorkerTimer) {
-    clearTimeout(outboxWorkerTimer);
-    outboxWorkerTimer = null;
-  }
-  const safeDelay = Math.max(0, delayMs);
-  outboxWorkerTimer = setTimeout(() => {
-    outboxWorkerTimer = null;
-    void runOutboxWorkerLoop();
-  }, safeDelay);
-  if (typeof outboxWorkerTimer.unref === 'function') {
-    outboxWorkerTimer.unref();
-  }
+    if (process.env.DISABLE_EMBEDDED_WORKER === '1')
+        return;
+    if (outboxWorkerTimer) {
+        clearTimeout(outboxWorkerTimer);
+        outboxWorkerTimer = null;
+    }
+    const safeDelay = Math.max(0, delayMs);
+    outboxWorkerTimer = setTimeout(() => {
+        outboxWorkerTimer = null;
+        void runOutboxWorkerLoop();
+    }, safeDelay);
+    if (typeof outboxWorkerTimer.unref === 'function') {
+        outboxWorkerTimer.unref();
+    }
 }
-
+async function executeOutboxDispatch(job) {
+    const p = job.payload || {};
+    switch (job.kind) {
+        case 'application_update': {
+            let assignedOperator = p.assignedOperator ?? null;
+            const assignedUid = p.appSnapshot?.assignedToUid;
+            if (!assignedOperator && assignedUid && outboxOperatorResolver) {
+                assignedOperator = await outboxOperatorResolver(String(assignedUid)).catch(() => null);
+            }
+            return notifyApplicationUpdate({
+                appId: job.appId,
+                app: p.appSnapshot,
+                previousStatus: p.previousStatus || 'processing',
+                newStatus: p.newStatus,
+                noteText: p.noteText,
+                attachmentName: p.attachmentName,
+                performedBy: {
+                    uid: p.performedBy.uid,
+                    name: p.performedBy.name,
+                    email: p.performedBy.email,
+                    role: p.performedBy.role || 'operator',
+                },
+                assignedOperator,
+                timestamp: p.timestamp,
+                idempotencyKey: job.idempotencyKey,
+            });
+        }
+        case 'user_reply': {
+            let assignedOperator = p.assignedOperator ?? null;
+            const assignedUid = p.appSnapshot?.assignedToUid;
+            if (!assignedOperator && assignedUid && outboxOperatorResolver) {
+                assignedOperator = await outboxOperatorResolver(String(assignedUid)).catch(() => null);
+            }
+            return notifyUserApplicationReply({
+                appId: job.appId,
+                app: p.appSnapshot,
+                noteText: p.noteText || '',
+                attachmentNames: p.attachmentNames || [],
+                performedBy: {
+                    uid: p.performedBy.uid,
+                    name: p.performedBy.name,
+                    email: p.performedBy.email,
+                },
+                assignedOperator,
+                timestamp: p.timestamp,
+                idempotencyKey: job.idempotencyKey,
+            });
+        }
+        case 'application_submitted':
+            return notifyApplicationSubmitted({
+                appId: job.appId,
+                app: p.app,
+                timestamp: p.timestamp,
+            });
+        case 'application_assigned':
+            return notifyApplicationAssignment({
+                appId: job.appId,
+                app: p.app,
+                newOperator: p.newOperator,
+                previousOperator: p.previousOperator,
+                assignedBy: p.assignedBy,
+                timestamp: p.timestamp,
+            });
+        case 'application_payment':
+            return notifyApplicationPaymentConfirmed({
+                appId: job.appId,
+                app: p.app,
+                transactionId: p.transactionId || p.paymentId || `APP-${job.appId}`,
+                paymentMethod: p.paymentMethod,
+                razorpayOrderId: p.razorpayOrderId,
+                timestamp: p.timestamp,
+            });
+        case 'order_confirmed': {
+            const orderType = p.type === 'cod' || p.order?.paymentMethod === 'cash' ? 'cod' : 'online';
+            return notifyOrderConfirmed({
+                order: p.order,
+                type: orderType,
+                timestamp: p.timestamp,
+            });
+        }
+        case 'order_status':
+            return notifyOrderStatusUpdated({
+                order: p.order,
+                newStatus: p.newStatus,
+                reason: p.reason,
+                estimatedDelivery: p.estimatedDelivery,
+                performedBy: p.performedBy || { uid: 'system', name: 'Admin', email: 'icc@indiacybercafe.com' },
+                timestamp: p.timestamp,
+            });
+        case 'order_refund':
+            return notifyOrderRefundInitiated({
+                order: p.order,
+                refundAmount: p.refundAmount,
+                expectedDays: p.expectedDays,
+                reason: p.reason,
+                performedBy: p.performedBy || { uid: 'system', name: 'Admin', email: 'icc@indiacybercafe.com' },
+                timestamp: p.timestamp,
+            });
+        case 'pay_link_payment':
+            return notifyDirectPayLinkPayment({
+                receiptId: p.receiptId,
+                amount: p.amount,
+                razorpayPaymentId: p.razorpayPaymentId,
+                razorpayOrderId: p.razorpayOrderId,
+                reference: p.reference,
+                timestamp: p.timestamp,
+            });
+        case 'privacy_request':
+            return notifyPrivacyRequestSubmitted({
+                ticketId: p.ticketId || job.ticketId || '',
+                category: p.category,
+                name: p.name,
+                email: p.email,
+                phone: p.phone,
+                referenceId: p.referenceId,
+                description: p.description,
+                timestamp: p.timestamp,
+            });
+        case 'user_registration':
+            return notifyUserRegistration({
+                uid: p.uid,
+                userName: p.userName || p.name || 'Customer',
+                userEmail: p.userEmail || p.email || '',
+                phone: p.phone,
+                authProvider: p.authProvider || (p.isGoogle ? 'google' : 'password'),
+                isGuestCheckout: p.isGuestCheckout,
+                timestamp: p.timestamp,
+            });
+        case 'profile_updated':
+            return notifyProfileUpdated({
+                uid: p.uid,
+                userName: p.userName || p.name || 'Customer',
+                userEmail: p.userEmail || p.email || '',
+                updateType: p.updateType,
+                timestamp: p.timestamp,
+            });
+        case 'review_submitted':
+            return notifyReviewSubmitted({
+                uid: p.uid || '',
+                productId: p.productId,
+                productName: p.productName,
+                customerName: p.customerName,
+                customerEmail: p.customerEmail,
+                rating: p.rating,
+                reviewText: p.reviewText,
+                timestamp: p.timestamp,
+            });
+        case 'callback_request':
+            return notifyCallbackRequest({
+                mobileNumber: p.mobileNumber,
+                customerName: p.customerName || p.name,
+                customerEmail: p.customerEmail || p.email,
+                timestamp: p.timestamp,
+            });
+        default:
+            throw new Error(`Unsupported outbox notification kind: ${String(job.kind)}`);
+    }
+}
 async function processSingleOutboxJob(job) {
-  job.state = 'processing';
-  job.attempts += 1;
-  job.updatedAt = new Date().toISOString();
-  writeDiskOutbox();
-
-  try {
-    let assignedOperator = job.payload.assignedOperator ?? null;
-    const assignedUid = job.payload.appSnapshot?.assignedToUid;
-    if (!assignedOperator && assignedUid && outboxOperatorResolver) {
-      assignedOperator = await outboxOperatorResolver(String(assignedUid)).catch(() => null);
-    }
-
-    let report;
-    if (job.kind === 'application_update') {
-      report = await notifyApplicationUpdate({
-        appId: job.appId,
-        app: job.payload.appSnapshot,
-        previousStatus: job.payload.previousStatus || 'processing',
-        newStatus: job.payload.newStatus,
-        noteText: job.payload.noteText,
-        attachmentName: job.payload.attachmentName,
-        performedBy: {
-          uid: job.payload.performedBy.uid,
-          name: job.payload.performedBy.name,
-          email: job.payload.performedBy.email,
-          role: job.payload.performedBy.role || 'operator',
-        },
-        assignedOperator,
-        timestamp: job.payload.timestamp,
-        idempotencyKey: job.idempotencyKey,
-      });
-    } else {
-      report = await notifyUserApplicationReply({
-        appId: job.appId,
-        app: job.payload.appSnapshot,
-        noteText: job.payload.noteText || '',
-        attachmentNames: job.payload.attachmentNames || [],
-        performedBy: {
-          uid: job.payload.performedBy.uid,
-          name: job.payload.performedBy.name,
-          email: job.payload.performedBy.email,
-        },
-        assignedOperator,
-        timestamp: job.payload.timestamp,
-        idempotencyKey: job.idempotencyKey,
-      });
-    }
-
-    job.report = report;
-    if (!report.hasFailures) {
-      const doneAt = new Date().toISOString();
-      job.state = 'completed';
-      job.lastError = undefined;
-      job.completedAt = doneAt;
-      job.updatedAt = doneAt;
-      writeDiskOutbox();
-      return;
-    }
-
-    const failedEvents = report.events.filter(e => e.state === 'failed');
-    const summaryErr = failedEvents.map(e => `${e.recipientRole}:${e.error || 'failed'}`).join('; ').slice(0, 300);
-    const hasRetryableError = failedEvents.some(
-      e => e.error !== 'MISSING_OR_INVALID_CUSTOMER_EMAIL' && e.error !== 'MISSING_OR_INVALID_RECIPIENT_EMAIL'
-    );
-
-    if (hasRetryableError && job.attempts < job.maxAttempts) {
-      const backoffMs = (isTestMode() || testingTransport)
-        ? 15 * job.attempts
-        : 2000 * Math.pow(2, job.attempts - 1);
-      job.state = 'queued';
-      job.nextAttemptAt = Date.now() + backoffMs;
-      job.lastError = summaryErr || 'Partial email failure scheduled for outbox retry';
-      job.updatedAt = new Date().toISOString();
-      writeDiskOutbox();
-      return;
-    }
-
-    job.state = 'failed';
-    job.lastError = summaryErr || 'Email notification delivery failed';
+    job.state = 'processing';
+    job.attempts += 1;
+    job.leaseOwner = `outbox-${process.pid}`;
+    job.leaseExpiresAt = Date.now() + OUTBOX_LEASE_MS;
     job.updatedAt = new Date().toISOString();
     writeDiskOutbox();
-    console.error(`[EMAIL OUTBOX] Job permanently failed (jobId=${job.jobId}, kind=${job.kind}, appId=${job.appId}, attempts=${job.attempts}): ${job.lastError}`);
-    mirrorOutboxFailureAsync(job);
-  } catch (err) {
-    const errMsg = String(err?.message || err || 'Outbox worker error').slice(0, 300);
-    if (job.attempts < job.maxAttempts) {
-      const backoffMs = (isTestMode() || testingTransport)
-        ? 15 * job.attempts
-        : 2000 * Math.pow(2, job.attempts - 1);
-      job.state = 'queued';
-      job.nextAttemptAt = Date.now() + backoffMs;
-      job.lastError = errMsg;
-      job.updatedAt = new Date().toISOString();
-      writeDiskOutbox();
-    } else {
-      job.state = 'failed';
-      job.lastError = errMsg;
-      job.updatedAt = new Date().toISOString();
-      writeDiskOutbox();
-      console.error(`[EMAIL OUTBOX] Job threw permanent error (jobId=${job.jobId}, kind=${job.kind}, appId=${job.appId}): ${errMsg}`);
-      mirrorOutboxFailureAsync(job);
-    }
-  }
-}
-
-async function runOutboxWorkerLoop() {
-  if (outboxWorkerPromise) {
-    return outboxWorkerPromise;
-  }
-
-  outboxWorkerPromise = (async () => {
     try {
-      hydrateOutboxCache();
-      while (true) {
-        const now = Date.now();
-        const dueJobs = Array.from(outboxJobs.values())
-          .filter(j => j.state === 'queued' && j.nextAttemptAt <= now)
-          .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt);
-
-        if (dueJobs.length === 0) break;
-
-        for (const job of dueJobs) {
-          await processSingleOutboxJob(job);
+        const report = await executeOutboxDispatch(job);
+        job.report = report;
+        if (!report.hasFailures) {
+            const doneAt = new Date().toISOString();
+            job.state = 'completed';
+            job.leaseOwner = null;
+            job.leaseExpiresAt = null;
+            job.lastError = undefined;
+            job.completedAt = doneAt;
+            job.updatedAt = doneAt;
+            outboxDlqJobs.delete(job.jobId);
+            writeDiskOutbox();
+            return;
         }
-      }
-
-      const pendingFuture = Array.from(outboxJobs.values())
-        .filter(j => j.state === 'queued' && j.nextAttemptAt > Date.now())
-        .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt);
-
-      if (pendingFuture.length > 0) {
-        const delayMs = Math.max(5, pendingFuture[0].nextAttemptAt - Date.now());
-        scheduleOutboxWorker(delayMs);
-      }
-    } finally {
-      outboxWorkerPromise = null;
+        const failedEvents = report.events.filter(e => e.state === 'failed');
+        const summaryErr = failedEvents.map(e => `${e.recipientRole}:${e.error || 'failed'}`).join('; ').slice(0, 300);
+        const hasRetryableError = failedEvents.some(e => e.error !== 'MISSING_OR_INVALID_CUSTOMER_EMAIL' && e.error !== 'MISSING_OR_INVALID_RECIPIENT_EMAIL');
+        if (hasRetryableError && job.attempts < job.maxAttempts) {
+            const backoffMs = (isTestMode() || testingTransport)
+                ? 15 * job.attempts
+                : 2000 * Math.pow(2, job.attempts - 1);
+            job.state = 'queued';
+            job.leaseOwner = null;
+            job.leaseExpiresAt = null;
+            job.nextAttemptAt = Date.now() + backoffMs;
+            job.lastError = summaryErr || 'Partial email failure scheduled for outbox retry';
+            job.updatedAt = new Date().toISOString();
+            writeDiskOutbox();
+            return;
+        }
+        job.state = 'failed';
+        job.leaseOwner = null;
+        job.leaseExpiresAt = null;
+        job.lastError = summaryErr || 'Email notification delivery failed';
+        job.updatedAt = new Date().toISOString();
+        outboxDlqJobs.set(job.jobId, job);
+        writeDiskOutbox();
+        console.error(`[EMAIL OUTBOX] Job permanently failed (jobId=${job.jobId}, kind=${job.kind}, appId=${job.appId || job.orderId || job.ticketId || '-'}, attempts=${job.attempts}): ${job.lastError}`);
+        mirrorOutboxFailureAsync(job);
     }
-  })();
-
-  return outboxWorkerPromise;
+    catch (err) {
+        const errMsg = String(err?.message || err || 'Outbox worker error').slice(0, 300);
+        job.leaseOwner = null;
+        job.leaseExpiresAt = null;
+        if (job.attempts < job.maxAttempts) {
+            const backoffMs = (isTestMode() || testingTransport)
+                ? 15 * job.attempts
+                : 2000 * Math.pow(2, job.attempts - 1);
+            job.state = 'queued';
+            job.nextAttemptAt = Date.now() + backoffMs;
+            job.lastError = errMsg;
+            job.updatedAt = new Date().toISOString();
+            writeDiskOutbox();
+        }
+        else {
+            job.state = 'failed';
+            job.lastError = errMsg;
+            job.updatedAt = new Date().toISOString();
+            outboxDlqJobs.set(job.jobId, job);
+            writeDiskOutbox();
+            console.error(`[EMAIL OUTBOX] Job threw permanent error (jobId=${job.jobId}, kind=${job.kind}, appId=${job.appId || job.orderId || job.ticketId || '-'}): ${errMsg}`);
+            mirrorOutboxFailureAsync(job);
+        }
+    }
 }
-
+async function runOutboxWorkerLoop() {
+    if (outboxWorkerPromise) {
+        return outboxWorkerPromise;
+    }
+    outboxWorkerPromise = (async () => {
+        try {
+            hydrateOutboxCache();
+            while (true) {
+                const now = Date.now();
+                const dueJobs = Array.from(outboxJobs.values())
+                    .filter(j => (j.state === 'queued' && j.nextAttemptAt <= now) ||
+                    (j.state === 'processing' && typeof j.leaseExpiresAt === 'number' && j.leaseExpiresAt <= now))
+                    .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt);
+                if (dueJobs.length === 0)
+                    break;
+                for (let i = 0; i < dueJobs.length; i += OUTBOX_WORKER_CONCURRENCY) {
+                    const chunk = dueJobs.slice(i, i + OUTBOX_WORKER_CONCURRENCY);
+                    await Promise.allSettled(chunk.map(job => processSingleOutboxJob(job)));
+                }
+            }
+            const pendingFuture = Array.from(outboxJobs.values())
+                .filter(j => j.state === 'queued' && j.nextAttemptAt > Date.now())
+                .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt);
+            if (pendingFuture.length > 0) {
+                const delayMs = Math.max(5, pendingFuture[0].nextAttemptAt - Date.now());
+                scheduleOutboxWorker(delayMs);
+            }
+        }
+        finally {
+            outboxWorkerPromise = null;
+        }
+    })();
+    return outboxWorkerPromise;
+}
+// Register unified notification processor on asyncQueueService so standalone/Cloud Tasks workers can process notification payloads too
+registerQueueProcessor('notification_dispatch', async (queueJob) => {
+    const rec = {
+        jobId: queueJob.jobId,
+        idempotencyKey: queueJob.idempotencyKey,
+        kind: queueJob.payload?.kind,
+        appId: queueJob.appId || queueJob.payload?.appId || '',
+        orderId: queueJob.orderId || queueJob.payload?.orderId,
+        ticketId: queueJob.ticketId || queueJob.payload?.ticketId,
+        payload: queueJob.payload?.data || queueJob.payload,
+        state: 'processing',
+        attempts: queueJob.attempts,
+        maxAttempts: queueJob.maxAttempts,
+        nextAttemptAt: queueJob.nextAttemptAt,
+        createdAt: queueJob.createdAt,
+        updatedAt: new Date().toISOString(),
+    };
+    const report = await executeOutboxDispatch(rec);
+    const failedEvents = report.events.filter(e => e.state === 'failed');
+    const retryable = failedEvents.some(e => e.error !== 'MISSING_OR_INVALID_CUSTOMER_EMAIL' && e.error !== 'MISSING_OR_INVALID_RECIPIENT_EMAIL');
+    return {
+        ok: !report.hasFailures,
+        retryable,
+        report,
+        error: failedEvents.map(e => `${e.recipientRole}:${e.error || 'failed'}`).join('; ') || undefined,
+    };
+});
+export function buildQueuedEmailDeliverySummary(jobId) {
+    return {
+        queued: true,
+        ...(jobId ? { jobId } : {}),
+        success: true,
+        hasFailures: false,
+        totalCount: 0,
+        sentCount: 0,
+        failedCount: 0,
+        skippedDuplicateCount: 0,
+        events: [],
+    };
+}
 export function enqueueOutboxNotification(params) {
-  hydrateOutboxCache();
-
-  const existingId = params.idempotencyKey ? outboxIdempotencyIndex.get(params.idempotencyKey) : undefined;
-  if (existingId) {
-    const existing = outboxJobs.get(existingId);
-    if (existing && (existing.state === 'queued' || existing.state === 'processing' || existing.state === 'completed')) {
-      return { queued: false, duplicate: true, job: existing };
+    hydrateOutboxCache();
+    const existingId = params.idempotencyKey ? outboxIdempotencyIndex.get(params.idempotencyKey) : undefined;
+    if (existingId) {
+        const existing = outboxJobs.get(existingId);
+        if (existing && (existing.state === 'queued' || existing.state === 'processing' || existing.state === 'completed')) {
+            return { queued: false, duplicate: true, job: existing };
+        }
     }
-  }
-
-  const nowIso = new Date().toISOString();
-  const jobId = `obx_${Date.now()}_${crypto.randomBytes(5).toString('hex')}`;
-  const job = {
-    jobId,
-    idempotencyKey: params.idempotencyKey || jobId,
-    kind: params.kind,
-    appId: params.appId,
-    payload: params.payload,
-    state: 'queued',
-    attempts: 0,
-    maxAttempts: params.maxAttempts ?? 3,
-    nextAttemptAt: Date.now(),
-    createdAt: nowIso,
-    updatedAt: nowIso,
-  };
-
-  outboxJobs.set(jobId, job);
-  outboxIdempotencyIndex.set(job.idempotencyKey, jobId);
-  writeDiskOutbox();
-  scheduleOutboxWorker(0);
-
-  return { queued: true, duplicate: false, job };
-}
-
-export function recoverNotificationOutbox() {
-  hydrateOutboxCache(true);
-  const pendingCount = Array.from(outboxJobs.values()).filter(j => j.state === 'queued').length;
-  if (pendingCount > 0) {
+    const nowIso = new Date().toISOString();
+    const jobId = `obx_${Date.now()}_${crypto.randomBytes(5).toString('hex')}`;
+    const job = {
+        jobId,
+        idempotencyKey: params.idempotencyKey || jobId,
+        kind: params.kind,
+        appId: params.appId || '',
+        ...(params.orderId ? { orderId: params.orderId } : {}),
+        ...(params.ticketId ? { ticketId: params.ticketId } : {}),
+        payload: params.payload,
+        state: 'queued',
+        attempts: 0,
+        maxAttempts: params.maxAttempts ?? 3,
+        nextAttemptAt: Date.now(),
+        leaseOwner: null,
+        leaseExpiresAt: null,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+    };
+    // When external distributed queue (Cloud Tasks / PubSub) is explicitly configured, route via distributed push broker
+    const queueDriver = getQueueDriver();
+    if (!isTestMode() && (queueDriver === 'cloud_tasks' || queueDriver === 'pubsub')) {
+        enqueueAsyncJob({
+            kind: 'notification_dispatch',
+            idempotencyKey: job.idempotencyKey,
+            appId: job.appId || undefined,
+            orderId: job.orderId,
+            ticketId: job.ticketId,
+            maxAttempts: job.maxAttempts,
+            payload: {
+                kind: job.kind,
+                appId: job.appId,
+                orderId: job.orderId,
+                ticketId: job.ticketId,
+                data: job.payload,
+            },
+        });
+        return { queued: true, duplicate: false, job };
+    }
+    outboxJobs.set(jobId, job);
+    outboxIdempotencyIndex.set(job.idempotencyKey, jobId);
+    writeDiskOutbox();
     scheduleOutboxWorker(0);
-  }
-  return pendingCount;
+    return { queued: true, duplicate: false, job };
 }
-
-export async function flushNotificationOutboxForTesting() {
-  hydrateOutboxCache();
-  if (outboxWorkerTimer) {
-    clearTimeout(outboxWorkerTimer);
-    outboxWorkerTimer = null;
-  }
-  if (outboxWorkerPromise) {
-    await outboxWorkerPromise;
-  }
-  while (true) {
-    const queued = Array.from(outboxJobs.values()).filter(j => j.state === 'queued');
-    if (queued.length === 0) break;
-    for (const j of queued) {
-      j.nextAttemptAt = 0;
+export function recoverNotificationOutbox() {
+    hydrateOutboxCache(true);
+    const pendingCount = Array.from(outboxJobs.values()).filter(j => j.state === 'queued').length;
+    if (pendingCount > 0) {
+        scheduleOutboxWorker(0);
     }
-    await runOutboxWorkerLoop();
-  }
-  return getOutboxJobsForTesting();
+    return pendingCount;
 }
-
+export async function flushNotificationOutboxForTesting() {
+    hydrateOutboxCache();
+    if (outboxWorkerTimer) {
+        clearTimeout(outboxWorkerTimer);
+        outboxWorkerTimer = null;
+    }
+    if (outboxWorkerPromise) {
+        await outboxWorkerPromise;
+    }
+    while (true) {
+        const queued = Array.from(outboxJobs.values()).filter(j => j.state === 'queued');
+        if (queued.length === 0)
+            break;
+        for (const j of queued) {
+            j.nextAttemptAt = 0;
+        }
+        await runOutboxWorkerLoop();
+    }
+    return getOutboxJobsForTesting();
+}

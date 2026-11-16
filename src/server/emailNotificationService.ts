@@ -4,6 +4,12 @@ import path from 'path';
 import nodemailer from 'nodemailer';
 import { getApps } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
+import {
+  enqueueAsyncJob,
+  getQueueDriver,
+  registerQueueProcessor,
+  resetAsyncQueueForTesting,
+} from './asyncQueueService.js';
 
 const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
   ? process.cwd()
@@ -224,15 +230,21 @@ function readDiskLedger(): Record<string, NotificationEventRecord> {
   return {};
 }
 
+function writeJsonAtomicSync(filePath: string, data: any) {
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmpPath = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+  fs.renameSync(tmpPath, filePath);
+}
+
 function writeDiskLedger(records: Record<string, NotificationEventRecord>) {
   try {
-    fs.mkdirSync(path.dirname(NOTIFICATION_LEDGER_PATH), { recursive: true });
     // Keep last 500 events so disk file remains bounded
     const entries = Object.entries(records)
       .sort((a, b) => new Date(b[1].createdAt || 0).getTime() - new Date(a[1].createdAt || 0).getTime())
       .slice(0, 500);
     const trimmed = Object.fromEntries(entries);
-    fs.writeFileSync(NOTIFICATION_LEDGER_PATH, JSON.stringify(trimmed, null, 2), 'utf-8');
+    writeJsonAtomicSync(NOTIFICATION_LEDGER_PATH, trimmed);
   } catch (err: any) {
     console.warn('[emailNotificationService] Could not persist ledger:', err?.message || err);
   }
@@ -2282,7 +2294,22 @@ export async function notifyPrivacyRequestSubmitted(params: {
 // DURABLE BACKGROUND NOTIFICATION OUTBOX (NON-BLOCKING QUEUE + RETRY + RECOVERY)
 // =============================================================================
 
-export type OutboxJobKind = 'application_update' | 'user_reply';
+export type OutboxJobKind =
+  | 'application_update'
+  | 'user_reply'
+  | 'application_submitted'
+  | 'application_assigned'
+  | 'application_payment'
+  | 'order_confirmed'
+  | 'order_status'
+  | 'order_refund'
+  | 'pay_link_payment'
+  | 'privacy_request'
+  | 'user_registration'
+  | 'profile_updated'
+  | 'review_submitted'
+  | 'callback_request';
+
 export type OutboxJobState = 'queued' | 'processing' | 'completed' | 'failed';
 
 export interface OutboxJobRecord {
@@ -2290,21 +2317,15 @@ export interface OutboxJobRecord {
   idempotencyKey: string;
   kind: OutboxJobKind;
   appId: string;
-  payload: {
-    appSnapshot: any;
-    previousStatus?: string;
-    newStatus?: string;
-    noteText?: string;
-    attachmentName?: string;
-    attachmentNames?: string[];
-    performedBy: { uid: string; name: string; email: string; role?: string };
-    assignedOperator?: { uid?: string; email?: string; name?: string } | null;
-    timestamp: string;
-  };
+  orderId?: string;
+  ticketId?: string;
+  payload: any;
   state: OutboxJobState;
   attempts: number;
   maxAttempts: number;
   nextAttemptAt: number;
+  leaseOwner?: string | null;
+  leaseExpiresAt?: number | null;
   lastError?: string;
   report?: NotificationDispatchReport;
   createdAt: string;
@@ -2316,10 +2337,14 @@ type OutboxOperatorResolver = (uid: string) => Promise<{ uid?: string; email?: s
 
 const outboxJobs = new Map<string, OutboxJobRecord>();
 const outboxIdempotencyIndex = new Map<string, string>();
+const outboxDlqJobs = new Map<string, OutboxJobRecord>();
 let outboxHydrated = false;
 let outboxWorkerTimer: ReturnType<typeof setTimeout> | null = null;
 let outboxWorkerPromise: Promise<void> | null = null;
 let outboxOperatorResolver: OutboxOperatorResolver | null = null;
+
+const OUTBOX_WORKER_CONCURRENCY = Math.max(1, Math.min(24, Number(process.env.WORKER_CONCURRENCY || '6') || 6));
+const OUTBOX_LEASE_MS = 30000;
 
 export function registerOutboxOperatorProfileResolver(resolver: OutboxOperatorResolver | null) {
   outboxOperatorResolver = resolver;
@@ -2336,7 +2361,6 @@ function readDiskOutbox(): Record<string, OutboxJobRecord> {
 
 function writeDiskOutbox() {
   try {
-    fs.mkdirSync(path.dirname(NOTIFICATION_OUTBOX_PATH), { recursive: true });
     // Keep all active/failed jobs plus the most recent 200 completed jobs
     const all = Array.from(outboxJobs.values());
     const activeOrFailed = all.filter(j => j.state !== 'completed');
@@ -2349,7 +2373,7 @@ function writeDiskOutbox() {
     for (const j of bounded) {
       obj[j.jobId] = j;
     }
-    fs.writeFileSync(NOTIFICATION_OUTBOX_PATH, JSON.stringify(obj, null, 2), 'utf-8');
+    writeJsonAtomicSync(NOTIFICATION_OUTBOX_PATH, obj);
   } catch (err: any) {
     console.warn('[emailOutbox] Could not persist outbox to disk:', err?.message || err);
   }
@@ -2361,14 +2385,20 @@ function hydrateOutboxCache(resetInFlightOnStartup = false) {
   if (!outboxHydrated) {
     outboxJobs.clear();
     outboxIdempotencyIndex.clear();
+    outboxDlqJobs.clear();
     for (const [jobId, rec] of Object.entries(disk)) {
       if (!rec || typeof rec !== 'object') continue;
       if (resetInFlightOnStartup && rec.state === 'processing') {
         rec.state = 'queued';
+        rec.leaseOwner = null;
+        rec.leaseExpiresAt = null;
         rec.nextAttemptAt = Date.now();
         rec.updatedAt = new Date().toISOString();
       }
       outboxJobs.set(jobId, rec);
+      if (rec.state === 'failed') {
+        outboxDlqJobs.set(jobId, rec);
+      }
       if (rec.idempotencyKey) {
         outboxIdempotencyIndex.set(rec.idempotencyKey, jobId);
       }
@@ -2379,10 +2409,13 @@ function hydrateOutboxCache(resetInFlightOnStartup = false) {
     }
   } else if (resetInFlightOnStartup) {
     let changed = false;
+    const now = Date.now();
     for (const job of outboxJobs.values()) {
-      if (job.state === 'processing') {
+      if (job.state === 'processing' && (!job.leaseExpiresAt || job.leaseExpiresAt <= now)) {
         job.state = 'queued';
-        job.nextAttemptAt = Date.now();
+        job.leaseOwner = null;
+        job.leaseExpiresAt = null;
+        job.nextAttemptAt = now;
         job.updatedAt = new Date().toISOString();
         changed = true;
       }
@@ -2398,7 +2431,9 @@ export function resetNotificationOutboxForTesting() {
   }
   outboxJobs.clear();
   outboxIdempotencyIndex.clear();
+  outboxDlqJobs.clear();
   outboxHydrated = true;
+  resetAsyncQueueForTesting();
   if (isTestMode()) {
     try {
       if (fs.existsSync(NOTIFICATION_OUTBOX_PATH)) {
@@ -2416,6 +2451,46 @@ export function getOutboxJobsForTesting(filters?: { state?: OutboxJobState; appI
   return list.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
 }
 
+export function getNotificationOutboxStats() {
+  hydrateOutboxCache();
+  let queued = 0;
+  let processing = 0;
+  let completed = 0;
+  let failed = 0;
+  for (const job of outboxJobs.values()) {
+    if (job.state === 'queued') queued++;
+    else if (job.state === 'processing') processing++;
+    else if (job.state === 'completed') completed++;
+    else failed++;
+  }
+  return { queued, processing, completed, failed, dlqCount: outboxDlqJobs.size };
+}
+
+export function getOutboxDlqJobs(limit = 50): OutboxJobRecord[] {
+  hydrateOutboxCache();
+  return Array.from(outboxJobs.values())
+    .filter(j => j.state === 'failed')
+    .sort((a, b) => new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime())
+    .slice(0, Math.max(1, limit));
+}
+
+export async function replayOutboxJob(jobId: string): Promise<{ found: boolean; job?: OutboxJobRecord }> {
+  hydrateOutboxCache();
+  const job = outboxJobs.get(jobId);
+  if (!job) return { found: false };
+  job.state = 'queued';
+  job.attempts = 0;
+  job.nextAttemptAt = Date.now();
+  job.leaseOwner = null;
+  job.leaseExpiresAt = null;
+  job.lastError = undefined;
+  job.updatedAt = new Date().toISOString();
+  outboxDlqJobs.delete(jobId);
+  writeDiskOutbox();
+  await runOutboxWorkerLoop();
+  return { found: true, job: outboxJobs.get(jobId) || job };
+}
+
 function mirrorOutboxFailureAsync(job: OutboxJobRecord) {
   if (isTestMode() || getApps().length === 0) return;
   try {
@@ -2425,7 +2500,9 @@ function mirrorOutboxFailureAsync(job: OutboxJobRecord) {
         jobId: job.jobId,
         idempotencyKey: job.idempotencyKey,
         kind: job.kind,
-        appId: job.appId,
+        appId: job.appId || null,
+        orderId: job.orderId || null,
+        ticketId: job.ticketId || null,
         state: job.state,
         attempts: job.attempts,
         maxAttempts: job.maxAttempts,
@@ -2439,6 +2516,7 @@ function mirrorOutboxFailureAsync(job: OutboxJobRecord) {
 }
 
 function scheduleOutboxWorker(delayMs = 0) {
+  if (process.env.DISABLE_EMBEDDED_WORKER === '1') return;
   if (outboxWorkerTimer) {
     clearTimeout(outboxWorkerTimer);
     outboxWorkerTimer = null;
@@ -2453,62 +2531,187 @@ function scheduleOutboxWorker(delayMs = 0) {
   }
 }
 
+async function executeOutboxDispatch(job: OutboxJobRecord): Promise<NotificationDispatchReport> {
+  const p = job.payload || {};
+  switch (job.kind) {
+    case 'application_update': {
+      let assignedOperator = p.assignedOperator ?? null;
+      const assignedUid = p.appSnapshot?.assignedToUid;
+      if (!assignedOperator && assignedUid && outboxOperatorResolver) {
+        assignedOperator = await outboxOperatorResolver(String(assignedUid)).catch(() => null);
+      }
+      return notifyApplicationUpdate({
+        appId: job.appId,
+        app: p.appSnapshot,
+        previousStatus: p.previousStatus || 'processing',
+        newStatus: p.newStatus,
+        noteText: p.noteText,
+        attachmentName: p.attachmentName,
+        performedBy: {
+          uid: p.performedBy.uid,
+          name: p.performedBy.name,
+          email: p.performedBy.email,
+          role: p.performedBy.role || 'operator',
+        },
+        assignedOperator,
+        timestamp: p.timestamp,
+        idempotencyKey: job.idempotencyKey,
+      });
+    }
+    case 'user_reply': {
+      let assignedOperator = p.assignedOperator ?? null;
+      const assignedUid = p.appSnapshot?.assignedToUid;
+      if (!assignedOperator && assignedUid && outboxOperatorResolver) {
+        assignedOperator = await outboxOperatorResolver(String(assignedUid)).catch(() => null);
+      }
+      return notifyUserApplicationReply({
+        appId: job.appId,
+        app: p.appSnapshot,
+        noteText: p.noteText || '',
+        attachmentNames: p.attachmentNames || [],
+        performedBy: {
+          uid: p.performedBy.uid,
+          name: p.performedBy.name,
+          email: p.performedBy.email,
+        },
+        assignedOperator,
+        timestamp: p.timestamp,
+        idempotencyKey: job.idempotencyKey,
+      });
+    }
+    case 'application_submitted':
+      return notifyApplicationSubmitted({
+        appId: job.appId,
+        app: p.app,
+        timestamp: p.timestamp,
+      });
+    case 'application_assigned':
+      return notifyApplicationAssignment({
+        appId: job.appId,
+        app: p.app,
+        newOperator: p.newOperator,
+        previousOperator: p.previousOperator,
+        assignedBy: p.assignedBy,
+        timestamp: p.timestamp,
+      });
+    case 'application_payment':
+      return notifyApplicationPaymentConfirmed({
+        appId: job.appId,
+        app: p.app,
+        transactionId: p.transactionId || p.paymentId || `APP-${job.appId}`,
+        paymentMethod: p.paymentMethod,
+        razorpayOrderId: p.razorpayOrderId,
+        timestamp: p.timestamp,
+      });
+    case 'order_confirmed': {
+      const orderType: 'cod' | 'online' =
+        p.type === 'cod' || p.order?.paymentMethod === 'cash' ? 'cod' : 'online';
+      return notifyOrderConfirmed({
+        order: p.order,
+        type: orderType,
+        timestamp: p.timestamp,
+      });
+    }
+    case 'order_status':
+      return notifyOrderStatusUpdated({
+        order: p.order,
+        newStatus: p.newStatus,
+        reason: p.reason,
+        estimatedDelivery: p.estimatedDelivery,
+        performedBy: p.performedBy || { uid: 'system', name: 'Admin', email: 'icc@indiacybercafe.com' },
+        timestamp: p.timestamp,
+      });
+    case 'order_refund':
+      return notifyOrderRefundInitiated({
+        order: p.order,
+        refundAmount: p.refundAmount,
+        expectedDays: p.expectedDays,
+        reason: p.reason,
+        performedBy: p.performedBy || { uid: 'system', name: 'Admin', email: 'icc@indiacybercafe.com' },
+        timestamp: p.timestamp,
+      });
+    case 'pay_link_payment':
+      return notifyDirectPayLinkPayment({
+        receiptId: p.receiptId,
+        amount: p.amount,
+        razorpayPaymentId: p.razorpayPaymentId,
+        razorpayOrderId: p.razorpayOrderId,
+        reference: p.reference,
+        timestamp: p.timestamp,
+      });
+    case 'privacy_request':
+      return notifyPrivacyRequestSubmitted({
+        ticketId: p.ticketId || job.ticketId || '',
+        category: p.category,
+        name: p.name,
+        email: p.email,
+        phone: p.phone,
+        referenceId: p.referenceId,
+        description: p.description,
+        timestamp: p.timestamp,
+      });
+    case 'user_registration':
+      return notifyUserRegistration({
+        uid: p.uid,
+        userName: p.userName || p.name || 'Customer',
+        userEmail: p.userEmail || p.email || '',
+        phone: p.phone,
+        authProvider: p.authProvider || (p.isGoogle ? 'google' : 'password'),
+        isGuestCheckout: p.isGuestCheckout,
+        timestamp: p.timestamp,
+      });
+    case 'profile_updated':
+      return notifyProfileUpdated({
+        uid: p.uid,
+        userName: p.userName || p.name || 'Customer',
+        userEmail: p.userEmail || p.email || '',
+        updateType: p.updateType,
+        timestamp: p.timestamp,
+      });
+    case 'review_submitted':
+      return notifyReviewSubmitted({
+        uid: p.uid || '',
+        productId: p.productId,
+        productName: p.productName,
+        customerName: p.customerName,
+        customerEmail: p.customerEmail,
+        rating: p.rating,
+        reviewText: p.reviewText,
+        timestamp: p.timestamp,
+      });
+    case 'callback_request':
+      return notifyCallbackRequest({
+        mobileNumber: p.mobileNumber,
+        customerName: p.customerName || p.name,
+        customerEmail: p.customerEmail || p.email,
+        timestamp: p.timestamp,
+      });
+    default:
+      throw new Error(`Unsupported outbox notification kind: ${String(job.kind)}`);
+  }
+}
+
 async function processSingleOutboxJob(job: OutboxJobRecord): Promise<void> {
   job.state = 'processing';
   job.attempts += 1;
+  job.leaseOwner = `outbox-${process.pid}`;
+  job.leaseExpiresAt = Date.now() + OUTBOX_LEASE_MS;
   job.updatedAt = new Date().toISOString();
   writeDiskOutbox();
 
   try {
-    let assignedOperator = job.payload.assignedOperator ?? null;
-    const assignedUid = job.payload.appSnapshot?.assignedToUid;
-    if (!assignedOperator && assignedUid && outboxOperatorResolver) {
-      assignedOperator = await outboxOperatorResolver(String(assignedUid)).catch(() => null);
-    }
-
-    let report: NotificationDispatchReport;
-    if (job.kind === 'application_update') {
-      report = await notifyApplicationUpdate({
-        appId: job.appId,
-        app: job.payload.appSnapshot,
-        previousStatus: job.payload.previousStatus || 'processing',
-        newStatus: job.payload.newStatus,
-        noteText: job.payload.noteText,
-        attachmentName: job.payload.attachmentName,
-        performedBy: {
-          uid: job.payload.performedBy.uid,
-          name: job.payload.performedBy.name,
-          email: job.payload.performedBy.email,
-          role: job.payload.performedBy.role || 'operator',
-        },
-        assignedOperator,
-        timestamp: job.payload.timestamp,
-        idempotencyKey: job.idempotencyKey,
-      });
-    } else {
-      report = await notifyUserApplicationReply({
-        appId: job.appId,
-        app: job.payload.appSnapshot,
-        noteText: job.payload.noteText || '',
-        attachmentNames: job.payload.attachmentNames || [],
-        performedBy: {
-          uid: job.payload.performedBy.uid,
-          name: job.payload.performedBy.name,
-          email: job.payload.performedBy.email,
-        },
-        assignedOperator,
-        timestamp: job.payload.timestamp,
-        idempotencyKey: job.idempotencyKey,
-      });
-    }
+    const report = await executeOutboxDispatch(job);
 
     job.report = report;
     if (!report.hasFailures) {
       const doneAt = new Date().toISOString();
       job.state = 'completed';
+      job.leaseOwner = null;
+      job.leaseExpiresAt = null;
       job.lastError = undefined;
       job.completedAt = doneAt;
       job.updatedAt = doneAt;
+      outboxDlqJobs.delete(job.jobId);
       writeDiskOutbox();
       return;
     }
@@ -2524,6 +2727,8 @@ async function processSingleOutboxJob(job: OutboxJobRecord): Promise<void> {
         ? 15 * job.attempts
         : 2000 * Math.pow(2, job.attempts - 1);
       job.state = 'queued';
+      job.leaseOwner = null;
+      job.leaseExpiresAt = null;
       job.nextAttemptAt = Date.now() + backoffMs;
       job.lastError = summaryErr || 'Partial email failure scheduled for outbox retry';
       job.updatedAt = new Date().toISOString();
@@ -2532,13 +2737,18 @@ async function processSingleOutboxJob(job: OutboxJobRecord): Promise<void> {
     }
 
     job.state = 'failed';
+    job.leaseOwner = null;
+    job.leaseExpiresAt = null;
     job.lastError = summaryErr || 'Email notification delivery failed';
     job.updatedAt = new Date().toISOString();
+    outboxDlqJobs.set(job.jobId, job);
     writeDiskOutbox();
-    console.error(`[EMAIL OUTBOX] Job permanently failed (jobId=${job.jobId}, kind=${job.kind}, appId=${job.appId}, attempts=${job.attempts}): ${job.lastError}`);
+    console.error(`[EMAIL OUTBOX] Job permanently failed (jobId=${job.jobId}, kind=${job.kind}, appId=${job.appId || job.orderId || job.ticketId || '-'}, attempts=${job.attempts}): ${job.lastError}`);
     mirrorOutboxFailureAsync(job);
   } catch (err: any) {
     const errMsg = String(err?.message || err || 'Outbox worker error').slice(0, 300);
+    job.leaseOwner = null;
+    job.leaseExpiresAt = null;
     if (job.attempts < job.maxAttempts) {
       const backoffMs = (isTestMode() || testingTransport)
         ? 15 * job.attempts
@@ -2552,8 +2762,9 @@ async function processSingleOutboxJob(job: OutboxJobRecord): Promise<void> {
       job.state = 'failed';
       job.lastError = errMsg;
       job.updatedAt = new Date().toISOString();
+      outboxDlqJobs.set(job.jobId, job);
       writeDiskOutbox();
-      console.error(`[EMAIL OUTBOX] Job threw permanent error (jobId=${job.jobId}, kind=${job.kind}, appId=${job.appId}): ${errMsg}`);
+      console.error(`[EMAIL OUTBOX] Job threw permanent error (jobId=${job.jobId}, kind=${job.kind}, appId=${job.appId || job.orderId || job.ticketId || '-'}): ${errMsg}`);
       mirrorOutboxFailureAsync(job);
     }
   }
@@ -2570,13 +2781,17 @@ async function runOutboxWorkerLoop(): Promise<void> {
       while (true) {
         const now = Date.now();
         const dueJobs = Array.from(outboxJobs.values())
-          .filter(j => j.state === 'queued' && j.nextAttemptAt <= now)
+          .filter(j =>
+            (j.state === 'queued' && j.nextAttemptAt <= now) ||
+            (j.state === 'processing' && typeof j.leaseExpiresAt === 'number' && j.leaseExpiresAt <= now)
+          )
           .sort((a, b) => a.nextAttemptAt - b.nextAttemptAt);
 
         if (dueJobs.length === 0) break;
 
-        for (const job of dueJobs) {
-          await processSingleOutboxJob(job);
+        for (let i = 0; i < dueJobs.length; i += OUTBOX_WORKER_CONCURRENCY) {
+          const chunk = dueJobs.slice(i, i + OUTBOX_WORKER_CONCURRENCY);
+          await Promise.allSettled(chunk.map(job => processSingleOutboxJob(job)));
         }
       }
 
@@ -2596,11 +2811,57 @@ async function runOutboxWorkerLoop(): Promise<void> {
   return outboxWorkerPromise;
 }
 
+// Register unified notification processor on asyncQueueService so standalone/Cloud Tasks workers can process notification payloads too
+registerQueueProcessor('notification_dispatch', async (queueJob) => {
+  const rec: OutboxJobRecord = {
+    jobId: queueJob.jobId,
+    idempotencyKey: queueJob.idempotencyKey,
+    kind: queueJob.payload?.kind,
+    appId: queueJob.appId || queueJob.payload?.appId || '',
+    orderId: queueJob.orderId || queueJob.payload?.orderId,
+    ticketId: queueJob.ticketId || queueJob.payload?.ticketId,
+    payload: queueJob.payload?.data || queueJob.payload,
+    state: 'processing',
+    attempts: queueJob.attempts,
+    maxAttempts: queueJob.maxAttempts,
+    nextAttemptAt: queueJob.nextAttemptAt,
+    createdAt: queueJob.createdAt,
+    updatedAt: new Date().toISOString(),
+  };
+  const report = await executeOutboxDispatch(rec);
+  const failedEvents = report.events.filter(e => e.state === 'failed');
+  const retryable = failedEvents.some(
+    e => e.error !== 'MISSING_OR_INVALID_CUSTOMER_EMAIL' && e.error !== 'MISSING_OR_INVALID_RECIPIENT_EMAIL'
+  );
+  return {
+    ok: !report.hasFailures,
+    retryable,
+    report,
+    error: failedEvents.map(e => `${e.recipientRole}:${e.error || 'failed'}`).join('; ') || undefined,
+  };
+});
+
+export function buildQueuedEmailDeliverySummary(jobId?: string): NotificationDispatchReport & { queued: boolean; jobId?: string } {
+  return {
+    queued: true,
+    ...(jobId ? { jobId } : {}),
+    success: true,
+    hasFailures: false,
+    totalCount: 0,
+    sentCount: 0,
+    failedCount: 0,
+    skippedDuplicateCount: 0,
+    events: [],
+  };
+}
+
 export function enqueueOutboxNotification(params: {
   idempotencyKey: string;
   kind: OutboxJobKind;
-  appId: string;
-  payload: OutboxJobRecord['payload'];
+  appId?: string;
+  orderId?: string;
+  ticketId?: string;
+  payload: any;
   maxAttempts?: number;
 }): { queued: boolean; duplicate: boolean; job: OutboxJobRecord } {
   hydrateOutboxCache();
@@ -2619,15 +2880,40 @@ export function enqueueOutboxNotification(params: {
     jobId,
     idempotencyKey: params.idempotencyKey || jobId,
     kind: params.kind,
-    appId: params.appId,
+    appId: params.appId || '',
+    ...(params.orderId ? { orderId: params.orderId } : {}),
+    ...(params.ticketId ? { ticketId: params.ticketId } : {}),
     payload: params.payload,
     state: 'queued',
     attempts: 0,
     maxAttempts: params.maxAttempts ?? 3,
     nextAttemptAt: Date.now(),
+    leaseOwner: null,
+    leaseExpiresAt: null,
     createdAt: nowIso,
     updatedAt: nowIso,
   };
+
+  // When external distributed queue (Cloud Tasks / PubSub) is explicitly configured, route via distributed push broker
+  const queueDriver = getQueueDriver();
+  if (!isTestMode() && (queueDriver === 'cloud_tasks' || queueDriver === 'pubsub')) {
+    enqueueAsyncJob({
+      kind: 'notification_dispatch',
+      idempotencyKey: job.idempotencyKey,
+      appId: job.appId || undefined,
+      orderId: job.orderId,
+      ticketId: job.ticketId,
+      maxAttempts: job.maxAttempts,
+      payload: {
+        kind: job.kind,
+        appId: job.appId,
+        orderId: job.orderId,
+        ticketId: job.ticketId,
+        data: job.payload,
+      },
+    });
+    return { queued: true, duplicate: false, job };
+  }
 
   outboxJobs.set(jobId, job);
   outboxIdempotencyIndex.set(job.idempotencyKey, jobId);
@@ -2665,4 +2951,5 @@ export async function flushNotificationOutboxForTesting(): Promise<OutboxJobReco
   }
   return getOutboxJobsForTesting();
 }
+
 

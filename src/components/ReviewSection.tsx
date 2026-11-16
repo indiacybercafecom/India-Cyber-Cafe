@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { uploadBytes, getDownloadURL, ref } from 'firebase/storage';
-import { storage } from '../firebase';
 import { IconRenderer } from './Icons';
 import { ProductReview, UserProfile } from '../types';
 import { showToast } from './Toast';
-import { notifyReviewSubmittedApi } from '../services/emailService';
+import { submitStoreReviewApi } from '../services/emailService';
+import { uploadFilesBounded, uploadFileWithRetry } from '../services/uploadService';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
 import { trimWhitespace } from '../utils/sanitizer';
 
 interface ReviewSectionProps {
@@ -12,16 +12,16 @@ interface ReviewSectionProps {
   productId: string;
   productName?: string;
   user: UserProfile | null;
-  onAddReview: (review: Omit<ProductReview, 'id'>) => Promise<void>;
+  onAddReview?: (review: Omit<ProductReview, 'id'>) => Promise<void>;
 }
 
-export function ReviewSection({ reviews, productId, productName = 'Product', user, onAddReview }: ReviewSectionProps) {
+export function ReviewSection({ reviews, productId, productName = 'Product', user }: ReviewSectionProps) {
   const [showForm, setShowForm] = useState(false);
   const [rating, setRating] = useState(5);
   const [text, setText] = useState('');
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
-  const [submitting, setSubmitting] = useState(false);
+  const { isSubmitting: submitting, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -57,87 +57,64 @@ export function ReviewSection({ reviews, productId, productName = 'Product', use
 
   const handleSubmitReview = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
 
     if (!user) {
       showToast('Please login to leave a review', 'error');
       return;
     }
 
-    if (!text.trim()) {
+    const cleanComment = trimWhitespace(text);
+    if (!cleanComment) {
       showToast('Please write a review', 'error');
       return;
     }
 
     try {
-      setSubmitting(true);
-
-      // Upload images to Firebase Storage and get download URLs
-      const imageUrls: string[] = [];
-      
-      if (imageFiles.length > 0) {
-        for (let i = 0; i < imageFiles.length; i++) {
-          try {
-            const file = imageFiles[i];
-            const timestamp = Date.now();
-            const fileExt = file.name.split('.').pop();
-            const fileName = `review_${user.uid}_${timestamp}_${i}.${fileExt}`;
-            
-            // Create storage reference for the review image
-            const storageRef = ref(storage, `reviews/${productId}/${fileName}`);
-            
-            // Upload file to Firebase Storage
-            await uploadBytes(storageRef, file);
-            
-            // Get download URL
-            const downloadUrl = await getDownloadURL(storageRef);
-            imageUrls.push(downloadUrl);
-            
-            console.log(`✅ Image ${i + 1} uploaded successfully`);
-          } catch (error) {
-            console.error(`Error uploading image ${i + 1}:`, error);
-            showToast(`Failed to upload image ${i + 1}`, 'error');
-            setSubmitting(false);
-            return;
-          }
+      await runSubmission(async ({ signal, idempotencyKey, setPhase }) => {
+        let imageUrls: string[] = [];
+        if (imageFiles.length > 0) {
+          setPhase('uploading');
+          imageUrls = await uploadFilesBounded(
+            imageFiles,
+            (file, _idx, reportItemProgress) =>
+              uploadFileWithRetry(file, {
+                category: `reviews/${productId}`,
+                maxSizeBytes: 2 * 1024 * 1024,
+                signal,
+                onProgress: reportItemProgress,
+              }),
+            { concurrency: 3, signal }
+          );
         }
+
+        setPhase('submitting');
+        await submitStoreReviewApi(
+          {
+            productId,
+            productName,
+            rating,
+            comment: cleanComment,
+            images: imageUrls,
+            userName: trimWhitespace(user.name),
+            userAvatar: user.avatar,
+            idempotencyKey,
+          },
+          { signal }
+        );
+
+        showToast('Review submitted successfully!', 'success');
+        setRating(5);
+        setText('');
+        setImageFiles([]);
+        setImagePreviews([]);
+        setShowForm(false);
+      });
+    } catch (error: any) {
+      if (error?.name !== 'AbortError') {
+        console.error('Review submission error:', error);
+        showToast(error, 'error', 'Failed to submit review');
       }
-
-      const review: Omit<ProductReview, 'id'> = {
-        productId,
-        uid: user.uid,
-        userName: trimWhitespace(user.name),
-        userEmail: user.email, // Store reviewer email
-        rating,
-        text: trimWhitespace(text),
-        images: imageUrls, // Upload to Firebase Storage
-        date: new Date().toISOString(),
-        helpful: 0,
-        helpfulBy: []
-      };
-
-      await onAddReview(review);
-
-      // Dispatch role-separated customer confirmation + admin alert via server endpoint
-      await notifyReviewSubmittedApi({
-        productId,
-        productName,
-        rating,
-        reviewText: trimWhitespace(text)
-      }).catch(err => console.error('Review notification error:', err));
-
-      showToast('Review submitted successfully!', 'success');
-
-      // Reset form
-      setRating(5);
-      setText('');
-      setImageFiles([]);
-      setImagePreviews([]);
-      setShowForm(false);
-    } catch (error) {
-      console.error('Review submission error:', error);
-      showToast('Failed to submit review', 'error');
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -311,7 +288,7 @@ export function ReviewSection({ reviews, productId, productName = 'Product', use
                     <div>
                       <p className="font-semibold text-slate-700">{review.userName}</p>
                       <p className="text-xs text-slate-500">
-                        {new Date(review.date).toLocaleDateString()}
+                        {new Date(review.date || (review as any).createdAt || Date.now()).toLocaleDateString()}
                       </p>
                     </div>
                     <div className="text-yellow-400 flex">
@@ -324,7 +301,7 @@ export function ReviewSection({ reviews, productId, productName = 'Product', use
                   </div>
 
                   {/* Review Text */}
-                  <p className="text-sm text-slate-600">{review.text}</p>
+                  <p className="text-sm text-slate-600">{review.text || (review as any).comment}</p>
 
                   {/* Images */}
                   {review.images && review.images.length > 0 && (

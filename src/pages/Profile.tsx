@@ -1,15 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { UserProfile, OrderAddress } from '../types';
-import { auth, rtdb } from '../firebase';
-import { ref as dbRef, update } from 'firebase/database';
+import { auth } from '../firebase';
 import { updatePassword } from 'firebase/auth';
 import { showToast } from '../components/Toast';
 import { SEO } from '../components/SEO';
 import { IconRenderer } from '../components/Icons';
-import { notifyProfileUpdatedApi } from '../services/emailService';
-import { uploadFile } from '../services/uploadService';
+import { updateProfileApi } from '../services/emailService';
+import { uploadFileWithRetry } from '../services/uploadService';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
 import { sanitizeAddress, trimWhitespace } from '../utils/sanitizer';
-import { normalizeIndianMobile, checkPhoneRegistered, mapAuthError } from '../services/authService';
+import { normalizeIndianMobile, mapAuthError } from '../services/authService';
 import { UserAvatar } from '../components/UserAvatar';
 import { resolveAvatarUrl } from '../utils/avatar';
 
@@ -21,7 +21,6 @@ export function Profile({ user }: ProfileProps) {
   const [name, setName] = useState(user.name);
   const [phone, setPhone] = useState(user.phone || '');
   const [newPass, setNewPass] = useState('');
-  const [loading, setLoading] = useState(false);
   const [avatar, setAvatar] = useState(() => resolveAvatarUrl(user, auth.currentUser));
   const [address, setAddress] = useState<OrderAddress>(
     user.address || {
@@ -36,6 +35,7 @@ export function Profile({ user }: ProfileProps) {
       country: 'India',
     }
   );
+  const { isSubmitting: loading, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   // Sync phone and avatar state with user prop if it changes externally via useAuth listener
   useEffect(() => {
@@ -46,7 +46,7 @@ export function Profile({ user }: ProfileProps) {
 
   const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file || submittingRef.current) return;
 
     if (!file.type.startsWith('image/')) {
       showToast('Please select an image file', 'error');
@@ -58,76 +58,77 @@ export function Profile({ user }: ProfileProps) {
       return;
     }
 
-    setLoading(true);
     try {
-      const url = await uploadFile(file, 'avatars');
-      await update(dbRef(rtdb, `users/${user.uid}`), {
-        avatar: url,
-        customAvatar: true,
-        updatedAt: Date.now(),
+      await runSubmission(async ({ signal, setPhase }) => {
+        setPhase('uploading');
+        const url = await uploadFileWithRetry(file, {
+          category: 'avatars',
+          maxSizeBytes: 2 * 1024 * 1024,
+          signal,
+        });
+        setPhase('submitting');
+        await updateProfileApi(
+          {
+            avatar: url,
+            avatarOnly: true,
+            updateType: 'Profile Picture',
+          },
+          { signal }
+        );
+        setAvatar(url);
+        showToast('Profile picture updated!');
       });
-      setAvatar(url);
-      showToast('Profile picture updated!');
-
-      notifyProfileUpdatedApi('Profile Picture').catch(() => {});
     } catch (error: any) {
-      console.error('Upload error:', error);
-      showToast(error, 'error', 'Unable to upload file. Please try again.');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        console.error('Upload error:', error);
+        showToast(error, 'error', 'Unable to upload file. Please try again.');
+      }
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    try {
-      const sanitizedName = trimWhitespace(name);
-      const sanitizedAddress = sanitizeAddress(address);
-      const sanitizedNewPass = trimWhitespace(newPass);
+    if (submittingRef.current) return;
 
-      let normalizedPhone = '';
-      if (phone && phone.trim()) {
+    try {
+      await runSubmission(async ({ signal }) => {
+        const sanitizedName = trimWhitespace(name);
+        const sanitizedAddress = sanitizeAddress(address);
+        const sanitizedNewPass = trimWhitespace(newPass);
+
+        if (!phone || !phone.trim()) {
+          throw new Error('Please enter a valid 10-digit Indian mobile number.');
+        }
         const { valid, normalized, error: phoneErr } = normalizeIndianMobile(phone);
         if (!valid) {
           throw new Error(phoneErr || 'Please enter a valid 10-digit Indian mobile number.');
         }
-        normalizedPhone = normalized;
 
-        // Check uniqueness if phone was modified
-        if (normalizedPhone !== user.phone) {
-          const phoneCheck = await checkPhoneRegistered(normalizedPhone, user.uid);
-          if (phoneCheck.inUse) {
-            throw new Error('This mobile number is already registered with another account.');
+        await updateProfileApi(
+          {
+            name: sanitizedName,
+            phone: normalized,
+            address: sanitizedAddress as any,
+            updateType: 'Name, Phone & Address',
+          },
+          { signal }
+        );
+
+        if (sanitizedNewPass) {
+          const currentUser = auth.currentUser;
+          if (currentUser) {
+            await updatePassword(currentUser, sanitizedNewPass);
+            setNewPass('');
+            showToast('Password updated successfully!');
           }
         }
-      }
 
-      const updates: Partial<UserProfile> = {
-        name: sanitizedName,
-        phone: normalizedPhone,
-        address: sanitizedAddress,
-        profileCompleted: Boolean(normalizedPhone),
-        updatedAt: Date.now(),
-      };
-
-      await update(dbRef(rtdb, `users/${user.uid}`), updates);
-
-      if (sanitizedNewPass) {
-        const currentUser = auth.currentUser;
-        if (currentUser) {
-          await updatePassword(currentUser, sanitizedNewPass);
-          showToast('Password updated successfully!');
-        }
-      }
-
-      showToast('Profile updated successfully!');
-
-      notifyProfileUpdatedApi('Name, Phone & Address').catch(() => {});
+        showToast('Profile updated successfully!');
+      });
     } catch (error: any) {
-      showToast(mapAuthError(error), 'error');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        showToast(mapAuthError(error), 'error');
+      }
     }
   };
 

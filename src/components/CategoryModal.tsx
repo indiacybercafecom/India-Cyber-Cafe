@@ -4,6 +4,8 @@ import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
 import { generateSlug } from '../utils/slugGenerator';
 import { trimWhitespace } from '../utils/sanitizer';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
+import { withClientTimeout } from '../utils/fetchWithTimeout';
 
 interface CategoryModalProps {
   category?: ProductCategory;
@@ -37,10 +39,11 @@ export function CategoryModal({ category, onClose, onSave }: CategoryModalProps)
     }
   );
 
-  const [loading, setLoading] = useState(false);
+  const { isSubmitting: loading, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
 
     if (!formData.name.trim()) {
       showToast('Category name is required', 'error');
@@ -52,25 +55,25 @@ export function CategoryModal({ category, onClose, onSave }: CategoryModalProps)
       return;
     }
 
-    setLoading(true);
     try {
-      // Sanitize category data before saving
-      const sanitizedData = {
-        ...formData,
-        name: trimWhitespace(formData.name),
-        description: trimWhitespace(formData.description)
-      };
+      await runSubmission(async () => {
+        const sanitizedData = {
+          ...formData,
+          name: trimWhitespace(formData.name),
+          description: trimWhitespace(formData.description)
+        };
 
-      if (!sanitizedData.id) {
-        sanitizedData.id = generateSlug(sanitizedData.name);
-      }
-      await onSave(sanitizedData);
-      showToast(category ? 'Category updated successfully!' : 'Category added successfully!', 'success');
-      onClose();
+        if (!sanitizedData.id) {
+          sanitizedData.id = generateSlug(sanitizedData.name);
+        }
+        await withClientTimeout(onSave(sanitizedData), 15000, 'Saving category timed out.');
+        showToast(category ? 'Category updated successfully!' : 'Category added successfully!', 'success');
+        onClose();
+      });
     } catch (error: any) {
-      showToast(error, 'error', 'Failed to save category. Please try again.');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Failed to save category. Please try again.');
+      }
     }
   };
 

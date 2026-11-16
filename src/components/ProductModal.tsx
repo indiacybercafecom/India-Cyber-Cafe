@@ -1,11 +1,13 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Product, ProductCategory } from '../types';
 import { IconRenderer } from './Icons';
 import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
-import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { generateSlug } from '../utils/slugGenerator';
-import { trimWhitespace, deepSanitize } from '../utils/sanitizer';
+import { trimWhitespace } from '../utils/sanitizer';
+import { uploadFilesBounded, uploadFileWithRetry, MAX_SERVICE_FILE_SIZE } from '../services/uploadService';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
+import { withClientTimeout } from '../utils/fetchWithTimeout';
 
 interface ProductModalProps {
   product?: Product;
@@ -39,49 +41,62 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
   );
 
   const [uploadingImages, setUploadingImages] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [uploadPercent, setUploadPercent] = useState(0);
+  const uploadingRef = useRef(false);
+  const { isSubmitting: loading, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0 || uploadingRef.current) return;
 
-    setUploadingImages(true);
-    try {
-      const storage = getStorage();
-      const uploadedUrls: string[] = [];
-
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-          showToast('Please select valid image files', 'error');
-          continue;
-        }
-
-        // Validate file size (5MB max)
-        if (file.size > 5 * 1024 * 1024) {
-          showToast(`Image ${file.name} is too large (max 5MB)`, 'error');
-          continue;
-        }
-
-        const timestamp = Date.now();
-        const storageRef = ref(storage, `products/${timestamp}-${file.name}`);
-        
-        const snapshot = await uploadBytes(storageRef, file);
-        const url = await getDownloadURL(snapshot.ref);
-        uploadedUrls.push(url);
+    const validFiles: File[] = [];
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i];
+      if (!file.type.startsWith('image/')) {
+        showToast(`Skipped "${file.name}": please select valid image files`, 'error');
+        continue;
       }
+      if (file.size > MAX_SERVICE_FILE_SIZE) {
+        showToast(`Image ${file.name} is too large (max 5MB)`, 'error');
+        continue;
+      }
+      validFiles.push(file);
+    }
+
+    if (validFiles.length === 0) {
+      e.target.value = '';
+      return;
+    }
+
+    uploadingRef.current = true;
+    setUploadingImages(true);
+    setUploadPercent(0);
+    try {
+      const uploadedUrls = await uploadFilesBounded(
+        validFiles,
+        (file, _idx, onItemProgress) =>
+          uploadFileWithRetry(file, {
+            category: 'products',
+            maxSizeBytes: MAX_SERVICE_FILE_SIZE,
+            onProgress: onItemProgress,
+          }),
+        {
+          concurrency: 3,
+          onProgress: (_done, _total, pct) => setUploadPercent(pct),
+        }
+      );
 
       setFormData(prev => ({
         ...prev,
         images: [...(prev.images || []), ...uploadedUrls]
       }));
-      showToast(`${uploadedUrls.length} images uploaded successfully!`, 'success');
+      showToast(`${uploadedUrls.length} image${uploadedUrls.length > 1 ? 's' : ''} uploaded successfully!`, 'success');
     } catch (error: any) {
       showToast(error, 'error', 'Unable to upload file. Please try again.');
     } finally {
+      uploadingRef.current = false;
       setUploadingImages(false);
+      setUploadPercent(0);
       e.target.value = '';
     }
   };
@@ -95,6 +110,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current || uploadingRef.current) return;
 
     if (!formData.name.trim()) {
       showToast('Product name is required', 'error');
@@ -121,36 +137,34 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       return;
     }
 
-    setLoading(true);
     try {
-      // Sanitize all product data before saving
-      const sanitizedData = {
-        ...formData,
-        name: trimWhitespace(formData.name),
-        shortDescription: trimWhitespace(formData.shortDescription),
-        longDescription: trimWhitespace(formData.longDescription),
-        customImageInstructions: trimWhitespace(formData.customImageInstructions),
-        turnaroundTime: trimWhitespace(formData.turnaroundTime),
-        seoTitle: trimWhitespace(formData.seoTitle),
-        seoDescription: trimWhitespace(formData.seoDescription),
-        seoKeywords: trimWhitespace(formData.seoKeywords)
-      };
+      await runSubmission(async () => {
+        const sanitizedData = {
+          ...formData,
+          name: trimWhitespace(formData.name),
+          shortDescription: trimWhitespace(formData.shortDescription),
+          longDescription: trimWhitespace(formData.longDescription),
+          customImageInstructions: trimWhitespace(formData.customImageInstructions),
+          turnaroundTime: trimWhitespace(formData.turnaroundTime),
+          seoTitle: trimWhitespace(formData.seoTitle),
+          seoDescription: trimWhitespace(formData.seoDescription),
+          seoKeywords: trimWhitespace(formData.seoKeywords)
+        };
 
-      // Generate ID as slug from product name (only for new products)
-      if (!product) {
-        sanitizedData.id = generateSlug(sanitizedData.name);
-      }
-      
-      // Generate permalink from product name
-      sanitizedData.permalink = generateSlug(sanitizedData.name);
-      
-      await onSave(sanitizedData);
-      showToast(product ? 'Product updated successfully!' : 'Product added successfully!', 'success');
-      onClose();
+        if (!product) {
+          sanitizedData.id = generateSlug(sanitizedData.name);
+        }
+
+        sanitizedData.permalink = generateSlug(sanitizedData.name);
+
+        await withClientTimeout(onSave(sanitizedData), 15000, 'Saving product timed out. Please try again.');
+        showToast(product ? 'Product updated successfully!' : 'Product added successfully!', 'success');
+        onClose();
+      });
     } catch (error: any) {
-      showToast(error, 'error', 'Failed to save product. Please try again.');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Failed to save product. Please try again.');
+      }
     }
   };
 
@@ -333,7 +347,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                 <div className="flex justify-center mb-2">
                   <IconRenderer name="image" className="w-8 h-8 text-slate-400" />
                 </div>
-                <p className="font-bold text-navy">{uploadingImages ? 'Uploading...' : 'Click to upload images'}</p>
+                <p className="font-bold text-navy">{uploadingImages ? `Uploading (${uploadPercent}%)...` : 'Click to upload images'}</p>
                 <p className="text-xs text-slate-400 mt-1">PNG, JPG up to 5MB each</p>
               </label>
             </div>

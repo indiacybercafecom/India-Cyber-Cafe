@@ -1,22 +1,34 @@
-import { useState, useEffect } from 'react';
-import { ref, onValue, update, remove, push, set } from 'firebase/database';
+import { useState, useEffect, useCallback } from 'react';
+import { ref, onValue, update, remove, push, set, query, orderByChild, equalTo, limitToLast } from 'firebase/database';
 import { rtdb } from '../firebase';
 import { ProductReview } from '../types';
 
-const PAGINATION_LIMIT = 100;
+const INITIAL_LIMIT = 100;
+const PAGE_STEP = 100;
 
 /**
  * Hook for loading product reviews
- * On-demand loading - loads only when needed (StoreProduct page)
- * Optionally filter by productId
+ * Uses indexed server-side productId filtering and limitToLast pagination.
  */
 export function useProductReviews(productId?: string, loadAll = false) {
   const [productReviews, setProductReviews] = useState<ProductReview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [limitCount, setLimitCount] = useState(INITIAL_LIMIT);
+  const [hasMore, setHasMore] = useState(false);
+
+  const loadMore = useCallback(() => {
+    setLimitCount((prev) => prev + PAGE_STEP);
+  }, []);
+
+  useEffect(() => {
+    setLimitCount(INITIAL_LIMIT);
+  }, [productId, loadAll]);
 
   useEffect(() => {
     if (!productId && !loadAll) {
+      setProductReviews([]);
+      setHasMore(false);
       setLoading(false);
       return;
     }
@@ -27,7 +39,10 @@ export function useProductReviews(productId?: string, loadAll = false) {
       try {
         setLoading(true);
 
-        const reviewsRef = ref(rtdb, 'productReviews');
+        const reviewsRef = !loadAll && productId
+          ? query(ref(rtdb, 'productReviews'), orderByChild('productId'), equalTo(productId), limitToLast(limitCount))
+          : query(ref(rtdb, 'productReviews'), orderByChild('productId'), limitToLast(limitCount));
+
         unsubscribe = onValue(
           reviewsRef,
           (snapshot) => {
@@ -36,13 +51,17 @@ export function useProductReviews(productId?: string, loadAll = false) {
               let reviews: ProductReview[] = [];
 
               if (data) {
-                reviews = Object.entries(data)
+                const entries = Object.entries(data);
+                setHasMore(entries.length >= limitCount);
+                reviews = entries
                   .map(([id, val]: [string, any]) => ({
                     id,
                     ...val,
                   } as ProductReview))
                   .filter((r) => loadAll || r.productId === productId)
-                  .slice(0, PAGINATION_LIMIT);
+                  .sort((a: any, b: any) => new Date(b.createdAt || b.date || 0).getTime() - new Date(a.createdAt || a.date || 0).getTime());
+              } else {
+                setHasMore(false);
               }
 
               setProductReviews(reviews);
@@ -74,7 +93,7 @@ export function useProductReviews(productId?: string, loadAll = false) {
     return () => {
       if (unsubscribe) unsubscribe();
     };
-  }, [productId, loadAll]);
+  }, [productId, loadAll, limitCount]);
 
   const addProductReview = async (review: Omit<ProductReview, 'id'>) => {
     const newRef = push(ref(rtdb, 'productReviews'));
@@ -96,6 +115,8 @@ export function useProductReviews(productId?: string, loadAll = false) {
     productReviews,
     loading,
     error,
+    hasMore,
+    loadMore,
     addProductReview,
     updateProductReview,
     deleteProductReview,

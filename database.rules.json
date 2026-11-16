@@ -4,7 +4,7 @@
     ".write": false,
 
     "users": {
-      ".indexOn": ["phone", "email"],
+      ".indexOn": ["phone", "email", "createdAt", "role", "disabled"],
       ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
 
       "$uid": {
@@ -32,7 +32,7 @@
     },
 
     "applications": {
-      ".indexOn": ["userId", "uid", "email", "phone", "status", "assignedTo", "assignedToUid"],
+      ".indexOn": ["userId", "uid", "email", "phone", "status", "assignedTo", "assignedToUid", "date"],
       ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'uid' && query.equalTo === auth.uid) || (query.orderByChild === 'userId' && query.equalTo === auth.uid) || (root.child('users').child(auth.uid).child('role').val() === 'operator' && root.child('users').child(auth.uid).child('disabled').val() !== true && query.orderByChild === 'assignedToUid' && query.equalTo === auth.uid))",
 
       "$appId": {
@@ -109,7 +109,7 @@
     },
 
     "orders": {
-      ".indexOn": ["userId", "uid", "email", "phone", "orderStatus", "paymentStatus", "razorpayOrderId", "razorpayPaymentId", "assignedTo", "assignedToUid"],
+      ".indexOn": ["userId", "uid", "email", "phone", "orderStatus", "paymentStatus", "razorpayOrderId", "razorpayPaymentId", "assignedTo", "assignedToUid", "createdAt"],
       ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'uid' && query.equalTo === auth.uid) || (query.orderByChild === 'userId' && query.equalTo === auth.uid) || (root.child('users').child(auth.uid).child('role').val() === 'operator' && root.child('users').child(auth.uid).child('disabled').val() !== true && query.orderByChild === 'assignedToUid' && query.equalTo === auth.uid))",
 
       "$orderId": {
@@ -164,6 +164,26 @@
       ".indexOn": ["ticketId", "email", "status", "category"],
       ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
       ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')"
+    },
+
+    "pendingApplications": {
+      ".indexOn": ["razorpayOrderId", "uid", "date"],
+      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (query.orderByChild === 'uid' && query.equalTo === auth.uid))",
+      ".write": false,
+      "$appId": {
+        ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || data.child('uid').val() === auth.uid)"
+      }
+    },
+
+    "callbackRequests": {
+      ".indexOn": ["createdAt", "mobileNumber"],
+      ".read": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin')",
+      ".write": false
+    },
+
+    "phoneIndex": {
+      ".read": false,
+      ".write": false
     }
   }
 }

@@ -1,12 +1,12 @@
 import { useState } from 'react';
-import { Order, UserProfile, ApplicationNote } from '../types';
+import { Order, UserProfile } from '../types';
 import { IconRenderer } from './Icons';
 import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
-import { rtdb } from '../firebase';
-import { ref as dbRef, update } from 'firebase/database';
 import { motion } from 'motion/react';
 import { isAdminUser, normalizeApplicationNotes } from '../utils/permissions';
+import { addOrderNoteApi, updateAdminOrderStatusApi } from '../services/emailService';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
 
 interface OrderDetailModalProps {
   order: Order | null;
@@ -21,27 +21,14 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
   const [noteText, setNoteText] = useState('');
   const [newStatus, setNewStatus] = useState('');
   const [newPaymentStatus, setNewPaymentStatus] = useState('');
-  const [loading, setLoading] = useState(false);
+  const { isSubmitting: loading, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   if (!order) return null;
 
   const isAdmin = isAdminUser(currentUser);
 
-  const resolveOrderPath = async (orderId: string) => {
-    const flatKey = String(orderId || '').trim().replace(/[/.#$[\]]/g, '-');
-    const { get } = await import('firebase/database');
-    try {
-      const flatSnap = await get(dbRef(rtdb, `orders/${flatKey}`));
-      if (flatSnap.exists()) return `orders/${flatKey}`;
-      if (flatKey !== orderId) {
-        const legacySnap = await get(dbRef(rtdb, `orders/${orderId}`));
-        if (legacySnap.exists()) return `orders/${orderId}`;
-      }
-    } catch {}
-    return `orders/${flatKey}`;
-  };
-
   const handleAddNote = async () => {
+    if (submittingRef.current) return;
     if (!noteText.trim()) {
       showToast('Please enter a note', 'error');
       return;
@@ -52,75 +39,60 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
       return;
     }
 
-    setLoading(true);
     try {
-      const newNote: ApplicationNote = {
-        type: 'note',
-        by: currentUser.name,
-        email: currentUser.email,
-        text: noteText,
-        time: new Date().toLocaleString()
-      };
-
-      const updatedNotes = [...normalizeApplicationNotes(order.notes), newNote];
-      const orderPath = await resolveOrderPath(order.id);
-      await update(dbRef(rtdb, orderPath), {
-        notes: updatedNotes,
-        updatedAt: new Date().toISOString()
+      await runSubmission(async ({ idempotencyKey, signal }) => {
+        await addOrderNoteApi(
+          order.id,
+          { text: noteText.trim(), clientRequestId: idempotencyKey },
+          { signal }
+        );
+        showToast('Note added successfully');
+        setNoteText('');
       });
-
-      showToast('Note added successfully');
-      setNoteText('');
     } catch (error: any) {
-      showToast(error, 'error', 'Failed to add note. Please try again.');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Failed to add note. Please try again.');
+      }
     }
   };
 
   const handleUpdateStatus = async () => {
+    if (submittingRef.current) return;
     if (!newStatus) {
       showToast('Please select a status', 'error');
       return;
     }
 
-    setLoading(true);
     try {
-      const orderPath = await resolveOrderPath(order.id);
-      await update(dbRef(rtdb, orderPath), {
-        orderStatus: newStatus,
-        updatedAt: new Date().toISOString()
+      await runSubmission(async () => {
+        await updateAdminOrderStatusApi(order.id, { orderStatus: newStatus });
+        showToast(`Order status updated to ${newStatus}`);
+        setNewStatus('');
       });
-
-      showToast(`Order status updated to ${newStatus}`);
-      setNewStatus('');
     } catch (error: any) {
-      showToast(error, 'error', 'Failed to update order status. Please try again.');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Failed to update order status. Please try again.');
+      }
     }
   };
 
   const handleUpdatePaymentStatus = async () => {
+    if (submittingRef.current) return;
     if (!newPaymentStatus) {
       showToast('Please select a payment status', 'error');
       return;
     }
 
-    setLoading(true);
     try {
-      const orderPath = await resolveOrderPath(order.id);
-      await update(dbRef(rtdb, orderPath), {
-        paymentStatus: newPaymentStatus,
-        updatedAt: new Date().toISOString()
+      await runSubmission(async () => {
+        await updateAdminOrderStatusApi(order.id, { paymentStatus: newPaymentStatus });
+        showToast(`Payment status updated to ${newPaymentStatus}`);
+        setNewPaymentStatus('');
       });
-
-      showToast(`Payment status updated to ${newPaymentStatus}`);
-      setNewPaymentStatus('');
     } catch (error: any) {
-      showToast(error, 'error', 'Failed to update payment status. Please try again.');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        showToast(error, 'error', 'Failed to update payment status. Please try again.');
+      }
     }
   };
 

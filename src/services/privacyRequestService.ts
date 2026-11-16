@@ -1,5 +1,6 @@
 import { PrivacyRequest, PrivacyRequestCategory, PrivacyRequestStatus } from '../types';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
+import { fetchWithTimeout } from '../utils/fetchWithTimeout';
 import { auth } from '../firebase';
 
 export const PRIVACY_REQUEST_CATEGORIES: { value: PrivacyRequestCategory; label: string; description: string }[] = [
@@ -40,19 +41,25 @@ export const PRIVACY_REQUEST_CATEGORIES: { value: PrivacyRequestCategory; label:
   },
 ];
 
-export async function submitPrivacyRequest(data: {
-  category: PrivacyRequestCategory;
-  name: string;
-  email: string;
-  phone?: string;
-  referenceId?: string;
-  description: string;
-}): Promise<{ success: boolean; ticketId?: string; message?: string; error?: string }> {
+export async function submitPrivacyRequest(
+  data: {
+    category: PrivacyRequestCategory;
+    name: string;
+    email: string;
+    phone?: string;
+    referenceId?: string;
+    description: string;
+    idempotencyKey?: string;
+  },
+  opts?: { signal?: AbortSignal; timeoutMs?: number }
+): Promise<{ success: boolean; ticketId?: string; message?: string; error?: string }> {
   try {
-    const response = await fetch('/api/privacy-requests', {
+    const response = await fetchWithTimeout('/api/privacy-requests', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data),
+      timeoutMs: opts?.timeoutMs ?? 15000,
+      signal: opts?.signal,
     });
 
     const result = await response.json();
@@ -66,6 +73,7 @@ export async function submitPrivacyRequest(data: {
       message: result.message,
     };
   } catch (error: any) {
+    if (error?.name === 'AbortError') throw error;
     return { success: false, error: getFriendlyErrorMessage(error, 'Please check your internet connection.') };
   }
 }
@@ -75,10 +83,11 @@ export async function trackPrivacyRequest(
   email: string
 ): Promise<{ success: boolean; request?: PrivacyRequest; error?: string }> {
   try {
-    const response = await fetch('/api/privacy-requests/track', {
+    const response = await fetchWithTimeout('/api/privacy-requests/track', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ticketId, email }),
+      timeoutMs: 12000,
     });
 
     const result = await response.json();
@@ -95,8 +104,9 @@ export async function trackPrivacyRequest(
 export async function fetchAdminPrivacyRequests(): Promise<PrivacyRequest[]> {
   try {
     const idToken = await auth.currentUser?.getIdToken();
-    const response = await fetch('/api/admin/privacy-requests', {
+    const response = await fetchWithTimeout('/api/admin/privacy-requests', {
       headers: idToken ? { Authorization: `Bearer ${idToken}` } : undefined,
+      timeoutMs: 12000,
     });
     if (!response.ok) return [];
     const result = await response.json();
@@ -115,10 +125,11 @@ export async function updatePrivacyRequestStatus(
     const idToken = await auth.currentUser?.getIdToken();
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (idToken) headers.Authorization = `Bearer ${idToken}`;
-    const response = await fetch(`/api/admin/privacy-requests/${encodeURIComponent(id)}`, {
+    const response = await fetchWithTimeout(`/api/admin/privacy-requests/${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers,
       body: JSON.stringify({ status, adminNotes }),
+      timeoutMs: 12000,
     });
     const result = await response.json();
     return { success: Boolean(result.success), error: result.error ? getFriendlyErrorMessage(result.error, 'Failed to update request') : undefined };

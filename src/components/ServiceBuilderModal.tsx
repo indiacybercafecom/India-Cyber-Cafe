@@ -4,11 +4,13 @@ import { IconRenderer } from './Icons';
 import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { motion } from 'motion/react';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
+import { withClientTimeout } from '../utils/fetchWithTimeout';
 
 interface ServiceBuilderModalProps {
   service: Service | null;
   onClose: () => void;
-  onSave: (service: Service) => void;
+  onSave: (service: Service) => void | Promise<void>;
 }
 
 export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilderModalProps) {
@@ -33,6 +35,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
   const [expandedSubServices, setExpandedSubServices] = useState<Record<number, boolean>>(
     subservices.length <= 3 ? Object.fromEntries(subservices.map((_, i) => [i, true])) : { 0: true }
   );
+  const { isSubmitting: saving, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   const handleAddField = () => {
     setFields([...fields, { label: '', type: 'text' }]);
@@ -114,7 +117,8 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
     });
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (submittingRef.current) return;
     if (!name || !name.trim()) return showToast('Service name is required', 'error');
     if (!description || !description.trim()) return showToast('Service description is required', 'error');
 
@@ -144,7 +148,15 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
       subservices: subservicesToSave,
       css
     };
-    onSave(newService);
+    try {
+      await runSubmission(async () => {
+        await withClientTimeout(Promise.resolve(onSave(newService)), 15000, 'Saving service timed out.');
+      });
+    } catch (err: any) {
+      if (err?.name !== 'AbortError') {
+        showToast(err, 'error', 'Failed to save service.');
+      }
+    }
   };
 
   return (
@@ -670,7 +682,7 @@ export function ServiceBuilderModal({ service, onClose, onSave }: ServiceBuilder
 
         </div>
 
-        <button onClick={handleSave} className="btn-primary w-full py-3 sm:py-4 text-base sm:text-lg font-bold flex-shrink-0 rounded-b-2xl sm:rounded-b-3xl">Save Service</button>
+        <button onClick={handleSave} disabled={saving} className="btn-primary w-full py-3 sm:py-4 text-base sm:text-lg font-bold flex-shrink-0 rounded-b-2xl sm:rounded-b-3xl disabled:opacity-50">{saving ? 'Saving...' : 'Save Service'}</button>
       </motion.div>
     </div>
   );

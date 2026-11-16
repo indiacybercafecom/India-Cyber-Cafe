@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { auth, rtdb } from '../firebase';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from 'firebase/auth';
-import { ref, set, get, query, orderByChild, equalTo } from 'firebase/database';
+import { ref, set } from 'firebase/database';
 import { showToast } from './Toast';
 import { IconRenderer } from './Icons';
 import { GoogleSignInButton } from './GoogleSignInButton';
@@ -17,6 +17,7 @@ import {
 } from '../services/authService';
 import { UserProfile } from '../types';
 import { DEFAULT_AVATAR } from '../utils/avatar';
+import { fetchWithTimeout, withClientTimeout } from '../utils/fetchWithTimeout';
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -32,9 +33,12 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [showPass, setShowPass] = useState(false);
+  const submittingRef = useRef(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     try {
       const sanitizedEmail = sanitizeEmail(email);
@@ -47,10 +51,11 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         const { valid, normalized } = normalizeIndianMobile(sanitizedEmail);
         const searchPhone = valid ? normalized : sanitizedEmail;
 
-        const response = await fetch('/api/auth/lookup-phone', {
+        const response = await fetchWithTimeout('/api/auth/lookup-phone', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: searchPhone }),
+          timeoutMs: 12000,
         });
 
         if (response.ok) {
@@ -68,22 +73,33 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         }
       }
 
-      await signInWithEmailAndPassword(auth, loginEmail, sanitizedPassword);
+      await withClientTimeout(
+        signInWithEmailAndPassword(auth, loginEmail, sanitizedPassword),
+        15000,
+        'Login timed out. Please try again.'
+      );
       showToast('Login Successful!');
       onClose();
     } catch (error: any) {
       showToast(mapAuthError(error), 'error');
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
     if (!email) return showToast('Please enter your email or mobile number', 'error');
+    submittingRef.current = true;
     setLoading(true);
     try {
-      const res = await initiatePasswordReset(email);
+      const res = await withClientTimeout(
+        initiatePasswordReset(email),
+        15000,
+        'Password reset timed out. Please try again.'
+      );
       if (res.success) {
         showToast(res.message);
         setView('login');
@@ -93,12 +109,15 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     } catch (error: any) {
       showToast(mapAuthError(error), 'error');
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     try {
       const sanitizedEmail = sanitizeEmail(email);
@@ -110,12 +129,20 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
         throw new Error(phoneErr || 'Please enter a valid 10-digit Indian mobile number.');
       }
 
-      const phoneCheck = await checkPhoneRegistered(normalized);
+      const phoneCheck = await withClientTimeout(
+        checkPhoneRegistered(normalized),
+        10000,
+        'Phone verification timed out. Please try again.'
+      );
       if (phoneCheck.inUse) {
         throw new Error('This mobile number is already registered with another account.');
       }
 
-      const { user: firebaseUser } = await createUserWithEmailAndPassword(auth, sanitizedEmail, sanitizedPassword);
+      const { user: firebaseUser } = await withClientTimeout(
+        createUserWithEmailAndPassword(auth, sanitizedEmail, sanitizedPassword),
+        15000,
+        'Registration timed out. Please try again.'
+      );
       const role = sanitizedEmail === 'indiacybercafe.com@gmail.com' ? 'admin' : 'user';
 
       const userProfile: UserProfile = {
@@ -133,11 +160,14 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
       };
 
       const sanitizedProfile = sanitizeUserProfile(userProfile);
-      await set(ref(rtdb, `users/${firebaseUser.uid}`), sanitizedProfile);
+      await withClientTimeout(
+        set(ref(rtdb, `users/${firebaseUser.uid}`), sanitizedProfile),
+        12000,
+        'Saving profile timed out. Please refresh and check your account.'
+      );
 
-      // Securely index phone number for mobile login
       firebaseUser.getIdToken().then(idToken => {
-        fetch('/api/auth/sync-phone', {
+        fetchWithTimeout('/api/auth/sync-phone', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -148,7 +178,8 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
             phone: normalized,
             email: sanitizedEmail,
             isGoogleOnly: false
-          })
+          }),
+          timeoutMs: 10000,
         }).catch(err => console.warn('Phone index sync notice:', err));
       }).catch(() => {});
 
@@ -159,11 +190,14 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     } catch (error: any) {
       showToast(mapAuthError(error), 'error');
     } finally {
+      submittingRef.current = false;
       setLoading(false);
     }
   };
 
   const handleGoogleAuth = async () => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setGoogleLoading(true);
     try {
       const res = await signInWithGoogle({ avoidRedirect: true });
@@ -176,6 +210,7 @@ export function AuthModal({ isOpen, onClose }: AuthModalProps) {
     } catch (err: any) {
       showToast(mapAuthError(err), 'error');
     } finally {
+      submittingRef.current = false;
       setGoogleLoading(false);
     }
   };

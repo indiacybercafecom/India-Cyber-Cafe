@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { IconRenderer } from './Icons';
 import { showToast } from './Toast';
 import { notifyCallbackApi } from '../services/emailService';
+import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
 import { sanitizePhone } from '../utils/sanitizer';
 
 interface CallbackModalProps {
@@ -12,8 +13,8 @@ interface CallbackModalProps {
 
 export function CallbackModal({ isOpen, onClose }: CallbackModalProps) {
   const [mobile, setMobile] = useState('');
-  const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const { isSubmitting: loading, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   // Check localStorage on mount
   useEffect(() => {
@@ -30,32 +31,28 @@ export function CallbackModal({ isOpen, onClose }: CallbackModalProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
 
-    // Sanitize phone input
     const sanitizedMobile = sanitizePhone(mobile);
-
-    // Validate
     if (!validateMobile(sanitizedMobile)) {
       showToast('कृपया वैध 10 अंकों का मोबाइल नंबर डालें', 'error');
       return;
     }
 
-    setLoading(true);
-
     try {
-      // Send callback notification via server-authoritative endpoint
-      await notifyCallbackApi({ mobileNumber: sanitizedMobile });
-
-      showToast('आपकी रिक्वेस्ट भेज दी गई है। हम कुछ ही मिनटों में संपर्क करेंगे।', 'success');
-      localStorage.setItem('icc_callback_submitted', 'yes');
-      setSubmitted(true);
-      setMobile('');
-      setTimeout(onClose, 800);
+      await runSubmission(async ({ signal }) => {
+        await notifyCallbackApi({ mobileNumber: sanitizedMobile }, { signal });
+        showToast('आपकी रिक्वेस्ट भेज दी गई है। हम कुछ ही मिनटों में संपर्क करेंगे।', 'success');
+        localStorage.setItem('icc_callback_submitted', 'yes');
+        setSubmitted(true);
+        setMobile('');
+        setTimeout(onClose, 800);
+      });
     } catch (error: any) {
-      console.error('Callback error:', error);
-      showToast('माफ़ करें, अभी कोशिश नहीं कर सके। कुछ समय बाद दोबारा कोशिश करें।', 'error');
-    } finally {
-      setLoading(false);
+      if (error?.name !== 'AbortError') {
+        console.error('Callback error:', error);
+        showToast('माफ़ करें, अभी कोशिश नहीं कर सके। कुछ समय बाद दोबारा कोशिश करें।', 'error');
+      }
     }
   };
 

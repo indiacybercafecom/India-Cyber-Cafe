@@ -90,6 +90,7 @@ export function Pay() {
   } | null>(null);
 
   const isVerifyingRef = useRef(false);
+  const isSubmittingRef = useRef(false);
 
   // Determine active amount to pay based on mode:
   // 1. Link mode: rawUrlAmount
@@ -101,6 +102,7 @@ export function Pay() {
   const formattedAmount = activeParsedPaise !== null ? formatCurrency(activeParsedPaise) : '';
 
   const handlePayment = async () => {
+    if (isSubmittingRef.current || isVerifyingRef.current) return;
     if (activeParsedPaise === null) {
       if (!activeAmountToPay.trim()) {
         setError('Please enter an amount to proceed.');
@@ -110,6 +112,7 @@ export function Pay() {
       return;
     }
 
+    isSubmittingRef.current = true;
     setError('');
     setPaymentState('processing');
 
@@ -158,7 +161,7 @@ export function Pay() {
               throw new Error(verification.error || 'Server payment verification failed.');
             }
 
-            // 4. Payment record and admin email alert are verified & dispatched server-side via /api/pay-link/verify
+            // 4. Payment record and admin email alert are verified & queued server-side via /api/pay-link/verify
 
             setPaymentResult({
               paymentId: response.razorpay_payment_id,
@@ -174,18 +177,34 @@ export function Pay() {
             setPaymentState('error');
           } finally {
             isVerifyingRef.current = false;
+            isSubmittingRef.current = false;
           }
         },
         modal: {
           ondismiss: () => {
+            isSubmittingRef.current = false;
             setPaymentState('idle');
           }
         },
         theme: { color: '#FA6C00' }
       });
 
+      if (typeof razorpay?.on === 'function') {
+        razorpay.on('payment.failed', (failureResp: any) => {
+          isSubmittingRef.current = false;
+          setPaymentState('error');
+          setError(
+            failureResp?.error?.description ||
+            failureResp?.error?.reason ||
+            'Payment failed. Please try again.'
+          );
+        });
+      }
+
       razorpay.open();
+      isSubmittingRef.current = false;
     } catch (paymentError) {
+      isSubmittingRef.current = false;
       console.error('Payment initialization error:', paymentError);
       setError(getFriendlyErrorMessage(paymentError, 'Unable to start payment. Please try again.'));
       setPaymentState('error');
