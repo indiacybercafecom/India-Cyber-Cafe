@@ -1,5 +1,5 @@
-import { useState, useRef } from 'react';
-import { Application, UserProfile } from '../types';
+import { useState, useRef, useEffect } from 'react';
+import { Application, ApplicationNote, UserProfile } from '../types';
 import { IconRenderer } from './Icons';
 import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
@@ -14,8 +14,12 @@ import { trimWhitespace } from '../utils/sanitizer';
 import {
   ALLOWED_OPERATOR_STATUSES,
   MAX_NOTE_LENGTH,
+  MAX_REPLY_ATTACHMENTS,
+  MAX_REPLY_ATTACHMENT_BYTES,
   getApplicationPermissions,
+  getOrdinalLabel,
   normalizeApplicationNotes,
+  normalizeNoteAttachments,
 } from '../utils/permissions';
 
 interface ApplicationDetailsModalProps {
@@ -32,20 +36,7 @@ const ALLOWED_ATTACHMENT_MIME_TYPES = new Set([
   'image/webp',
 ]);
 const ALLOWED_ATTACHMENT_EXTENSIONS = /\.(pdf|jpe?g|png|webp)$/i;
-const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
-
-const ORDINAL_WORDS = [
-  'First',
-  'Second',
-  'Third',
-  'Fourth',
-  'Fifth',
-  'Sixth',
-  'Seventh',
-  'Eighth',
-  'Ninth',
-  'Tenth',
-] as const;
+const MAX_ATTACHMENT_BYTES = MAX_REPLY_ATTACHMENT_BYTES;
 
 function isFileUrl(value: unknown): value is string {
   if (typeof value !== 'string') return false;
@@ -86,25 +77,6 @@ function extractFileUrls(value: unknown): string[] | null {
   return nonEmpty.map((item) => item.trim());
 }
 
-function getOrdinalLabel(index: number): string {
-  if (index < ORDINAL_WORDS.length) {
-    return ORDINAL_WORDS[index];
-  }
-  const num = index + 1;
-  const mod100 = num % 100;
-  if (mod100 >= 11 && mod100 <= 13) return `${num}th`;
-  switch (num % 10) {
-    case 1:
-      return `${num}st`;
-    case 2:
-      return `${num}nd`;
-    case 3:
-      return `${num}rd`;
-    default:
-      return `${num}th`;
-  }
-}
-
 export function ApplicationDetailsModal({ app, onClose, currentUser, operators }: ApplicationDetailsModalProps) {
   const [noteText, setNoteText] = useState('');
   const [newStatus, setNewStatus] = useState('');
@@ -112,6 +84,24 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
   const [loading, setLoading] = useState(false);
   const [downloadingAttachment, setDownloadingAttachment] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // User two-way reply state
+  const [replyText, setReplyText] = useState('');
+  const [replyFiles, setReplyFiles] = useState<File[]>([]);
+  const [replyLoading, setReplyLoading] = useState(false);
+  const [localAppendedNotes, setLocalAppendedNotes] = useState<ApplicationNote[]>([]);
+  const replyFileInputRef = useRef<HTMLInputElement>(null);
+  const replySubmittingRef = useRef(false);
+  const replyClientKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setLocalAppendedNotes([]);
+    setReplyText('');
+    setReplyFiles([]);
+    setReplyLoading(false);
+    replySubmittingRef.current = false;
+    replyClientKeyRef.current = null;
+  }, [app?.id]);
 
   if (!app) return null;
 
@@ -133,7 +123,10 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
     );
   }
 
-  const normalizedNotes = normalizeApplicationNotes(app.notes);
+  const baseNormalizedNotes = normalizeApplicationNotes(app.notes);
+  const existingNoteIds = new Set(baseNormalizedNotes.map(n => n.id).filter(Boolean));
+  const pendingLocalNotes = localAppendedNotes.filter(n => !n.id || !existingNoteIds.has(n.id));
+  const normalizedNotes = normalizeApplicationNotes([...baseNormalizedNotes, ...pendingLocalNotes]);
 
   const handleOpenAttachment = async (url: string, filename?: string) => {
     if (!url) return;
@@ -194,6 +187,164 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       return;
     }
     setNoteFile(file);
+  };
+
+  const handleReplyFilesChange = (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+
+    const incoming = Array.from(fileList);
+    const rejectedErrors: string[] = [];
+    const validFiles: File[] = [];
+
+    for (const file of incoming) {
+      if (file.size <= 0) {
+        rejectedErrors.push(`"${file.name}" is empty.`);
+        continue;
+      }
+      if (file.size > MAX_REPLY_ATTACHMENT_BYTES) {
+        rejectedErrors.push(`"${file.name}" exceeds the 5MB limit.`);
+        continue;
+      }
+      if (!ALLOWED_ATTACHMENT_MIME_TYPES.has(file.type) && !ALLOWED_ATTACHMENT_EXTENSIONS.test(file.name)) {
+        rejectedErrors.push(`"${file.name}" has an unsupported format (only PDF, JPG, PNG, WEBP allowed).`);
+        continue;
+      }
+      validFiles.push(file);
+    }
+
+    if (rejectedErrors.length > 0) {
+      showToast(rejectedErrors[0], 'error');
+    }
+
+    if (validFiles.length > 0) {
+      const existingKeys = new Set(replyFiles.map(f => `${f.name}:${f.size}:${f.lastModified}`));
+      const uniqueNew = validFiles.filter(f => !existingKeys.has(`${f.name}:${f.size}:${f.lastModified}`));
+      if (replyFiles.length + uniqueNew.length > MAX_REPLY_ATTACHMENTS) {
+        showToast(`You can attach up to ${MAX_REPLY_ATTACHMENTS} files per reply.`, 'error');
+        const allowedSlots = Math.max(0, MAX_REPLY_ATTACHMENTS - replyFiles.length);
+        if (allowedSlots > 0) {
+          setReplyFiles(prev => [...prev, ...uniqueNew.slice(0, allowedSlots)]);
+          replyClientKeyRef.current = null;
+        }
+      } else if (uniqueNew.length > 0) {
+        setReplyFiles(prev => [...prev, ...uniqueNew]);
+        replyClientKeyRef.current = null;
+      }
+    }
+
+    if (replyFileInputRef.current) {
+      replyFileInputRef.current.value = '';
+    }
+  };
+
+  const removeReplyFile = (index: number) => {
+    setReplyFiles(prev => prev.filter((_, i) => i !== index));
+    replyClientKeyRef.current = null;
+  };
+
+  const handleSendReply = async () => {
+    if (replySubmittingRef.current || replyLoading) return;
+
+    if (!perms.canReplyToApplication) {
+      showToast('Only the application owner can send replies.', 'error');
+      return;
+    }
+
+    const sanitizedReply = trimWhitespace(replyText);
+    if (sanitizedReply.length > MAX_NOTE_LENGTH) {
+      showToast(`Reply must be ${MAX_NOTE_LENGTH} characters or less.`, 'error');
+      return;
+    }
+    if (!sanitizedReply && replyFiles.length === 0) {
+      showToast('Please enter a message or attach at least one file.', 'error');
+      return;
+    }
+    if (replyFiles.length > MAX_REPLY_ATTACHMENTS) {
+      showToast(`You can attach up to ${MAX_REPLY_ATTACHMENTS} files per reply.`, 'error');
+      return;
+    }
+    for (const file of replyFiles) {
+      if (file.size <= 0 || file.size > MAX_REPLY_ATTACHMENT_BYTES) {
+        showToast(`"${file.name}" exceeds the 5MB limit or is empty.`, 'error');
+        return;
+      }
+      if (!ALLOWED_ATTACHMENT_MIME_TYPES.has(file.type) && !ALLOWED_ATTACHMENT_EXTENSIONS.test(file.name)) {
+        showToast('Only PDF, JPG, PNG, and WEBP files are allowed.', 'error');
+        return;
+      }
+    }
+
+    replySubmittingRef.current = true;
+    setReplyLoading(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      if (!idToken) {
+        throw new Error('Authentication session expired. Please sign in again.');
+      }
+
+      if (!replyClientKeyRef.current) {
+        replyClientKeyRef.current = `reply_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+      }
+
+      let uploadedAttachments: Array<{ url: string; name: string }> = [];
+      if (replyFiles.length > 0) {
+        const formData = new FormData();
+        replyFiles.forEach(file => {
+          formData.append('files', file);
+        });
+        const uploadResp = await fetch(
+          `/api/applications/${encodeURIComponent(app.id)}/reply-attachments`,
+          {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${idToken}`,
+            },
+            body: formData,
+          }
+        );
+        const uploadData = await uploadResp.json().catch(() => ({}));
+        if (!uploadResp.ok || !uploadData.success || !Array.isArray(uploadData.attachments)) {
+          throw new Error(uploadData.error || 'Failed to upload reply attachments.');
+        }
+        uploadedAttachments = uploadData.attachments;
+      }
+
+      const resp = await fetch(`/api/applications/${encodeURIComponent(app.id)}/reply`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          note: sanitizedReply || undefined,
+          attachments: uploadedAttachments.length > 0 ? uploadedAttachments : undefined,
+          clientReplyId: replyClientKeyRef.current,
+        }),
+      });
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok || !data.success) {
+        throw new Error(data.error || 'Failed to send reply.');
+      }
+
+      if (data.note && typeof data.note === 'object') {
+        setLocalAppendedNotes(prev =>
+          prev.some(n => n.id && n.id === data.note.id) ? prev : [...prev, data.note]
+        );
+      }
+
+      setReplyText('');
+      setReplyFiles([]);
+      replyClientKeyRef.current = null;
+      if (replyFileInputRef.current) {
+        replyFileInputRef.current.value = '';
+      }
+      showToast('Reply sent successfully!');
+    } catch (error: any) {
+      showToast(error?.message || 'Failed to send reply.', 'error');
+    } finally {
+      replySubmittingRef.current = false;
+      setReplyLoading(false);
+    }
   };
 
   const handleUpdatePaymentStatus = async (status: 'pending' | 'completed') => {
@@ -391,10 +542,17 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
     }
   };
 
-  const getRoleBadge = (role?: string) => {
-    if (role === 'admin') return { label: 'Admin', classes: 'bg-red-100 text-red-700' };
-    if (role === 'operator') return { label: 'Operator', classes: 'bg-blue-100 text-blue-700' };
-    if (role === 'user') return { label: 'Customer', classes: 'bg-slate-100 text-slate-700' };
+  const getRoleBadge = (note: ApplicationNote) => {
+    const role = note.authorRole;
+    if (role === 'admin') {
+      return { label: 'Admin', classes: 'bg-red-100 text-red-700', accentClass: 'border-l-4 border-l-red-500' };
+    }
+    if (role === 'operator') {
+      return { label: 'Operator', classes: 'bg-blue-100 text-blue-700', accentClass: 'border-l-4 border-l-blue-500' };
+    }
+    if (role === 'user' || note.type === 'reply') {
+      return { label: 'User', classes: 'bg-orange-100 text-orange-700', accentClass: 'border-l-4 border-l-orange-500' };
+    }
     return null;
   };
 
@@ -502,13 +660,18 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
           {/* Notes & History */}
           <div className="space-y-2 sm:space-y-4">
             <h4 className="text-base sm:text-lg font-bold text-navy">Notes & History</h4>
-            <div className="bg-slate-50 rounded-xl sm:rounded-2xl p-4 sm:p-6 min-h-[80px] sm:min-h-[100px] border border-slate-100">
+            <div className="bg-slate-50 rounded-xl sm:rounded-2xl p-4 sm:p-6 min-h-[80px] sm:min-h-[100px] border border-slate-100 space-y-4">
               {normalizedNotes.length > 0 ? (
-                <div className="space-y-3 sm:space-y-4">
+                <div className="space-y-3 sm:space-y-4" data-testid="notes-history-list">
                   {normalizedNotes.map((note, i) => {
-                    const roleBadge = getRoleBadge(note.authorRole);
+                    const roleBadge = getRoleBadge(note);
+                    const noteAttachments = normalizeNoteAttachments(note);
                     return (
-                      <div key={note.id || i} className="bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-slate-100">
+                      <div
+                        key={note.id || i}
+                        data-testid={`note-item-${note.authorRole || (note.type === 'reply' ? 'user' : 'staff')}`}
+                        className={`bg-white p-3 sm:p-4 rounded-xl shadow-sm border border-slate-100 ${roleBadge ? roleBadge.accentClass : ''}`}
+                      >
                         <div className="flex justify-between items-start gap-2 mb-1">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="text-[10px] sm:text-xs font-bold text-navy">{note.by}</span>
@@ -517,28 +680,149 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                                 {roleBadge.label}
                               </span>
                             )}
+                            {note.status && (
+                              <span className="px-1.5 py-0.5 rounded text-[9px] font-bold uppercase bg-slate-100 text-slate-700">
+                                {note.status}
+                              </span>
+                            )}
                           </div>
                           <span className="text-[8px] sm:text-[10px] text-slate-400 shrink-0">{note.time}</span>
                         </div>
-                        <p className="text-xs sm:text-sm text-slate-600">{note.text}</p>
-                        {note.attachment && (
+                        <p className="text-xs sm:text-sm text-slate-600 whitespace-pre-wrap break-words">{note.text}</p>
+                        {noteAttachments.length === 1 && (
                           <button
                             type="button"
-                            disabled={downloadingAttachment === note.attachment}
-                            onClick={() => handleOpenAttachment(note.attachment!, note.attachmentName)}
+                            disabled={downloadingAttachment === noteAttachments[0].url}
+                            onClick={() => handleOpenAttachment(noteAttachments[0].url, noteAttachments[0].name)}
                             className="mt-1.5 sm:mt-2 inline-flex items-center gap-1 text-[9px] sm:text-[10px] font-bold text-primary hover:underline disabled:opacity-50"
                           >
                             <IconRenderer name="download" className="w-3 h-3" />
-                            {downloadingAttachment === note.attachment ? 'Downloading...' : (note.attachmentName || 'Attachment')}
+                            {downloadingAttachment === noteAttachments[0].url
+                              ? 'Downloading...'
+                              : (noteAttachments[0].name || 'Attachment')}
                           </button>
+                        )}
+                        {noteAttachments.length > 1 && (
+                          <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                            {noteAttachments.map((att, attIdx) => (
+                              <button
+                                key={`${note.id || i}-att-${attIdx}`}
+                                type="button"
+                                title={att.name}
+                                disabled={downloadingAttachment === att.url}
+                                onClick={() => handleOpenAttachment(att.url, att.name)}
+                                className="inline-flex items-center gap-1 text-[10px] sm:text-xs font-bold text-primary hover:underline disabled:opacity-50"
+                              >
+                                <IconRenderer name="external-link" className="w-3 h-3" />
+                                {downloadingAttachment === att.url
+                                  ? 'Opening...'
+                                  : `View ${getOrdinalLabel(attIdx)}`}
+                              </button>
+                            ))}
+                          </div>
                         )}
                       </div>
                     );
                   })}
                 </div>
               ) : (
-                <div className="flex items-center justify-center h-full text-slate-400 text-xs sm:text-sm italic">
+                <div className="flex items-center justify-center py-4 text-slate-400 text-xs sm:text-sm italic">
                   No notes yet
+                </div>
+              )}
+
+              {/* User Reply / Clarification Box (Application Owner Only) */}
+              {perms.canReplyToApplication && (
+                <div
+                  data-testid="user-reply-section"
+                  className="pt-4 border-t border-slate-200 space-y-3"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <h5 className="text-xs sm:text-sm font-bold text-navy flex items-center gap-1.5">
+                      <IconRenderer name="paper-plane" className="w-3.5 h-3.5 text-primary" />
+                      Reply / Clarification
+                    </h5>
+                    <span className="text-[10px] text-slate-400">
+                      Max {MAX_REPLY_ATTACHMENTS} files · 5MB each
+                    </span>
+                  </div>
+
+                  <div>
+                    <textarea
+                      data-testid="user-reply-textarea"
+                      placeholder="Write your reply or clarification..."
+                      maxLength={MAX_NOTE_LENGTH}
+                      disabled={replyLoading}
+                      className="w-full p-3 rounded-xl border border-slate-200 bg-white focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all min-h-[80px] text-xs sm:text-sm disabled:bg-slate-100"
+                      value={replyText}
+                      onChange={e => {
+                        setReplyText(e.target.value);
+                        replyClientKeyRef.current = null;
+                      }}
+                    />
+                    <div className="text-[10px] text-slate-400 text-right mt-1">
+                      {replyText.length}/{MAX_NOTE_LENGTH}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <button
+                      type="button"
+                      disabled={replyLoading || replyFiles.length >= MAX_REPLY_ATTACHMENTS}
+                      onClick={() => replyFileInputRef.current?.click()}
+                      className="w-full p-3 border-2 border-dashed border-orange-200 rounded-xl bg-white hover:bg-orange-50/40 flex items-center justify-center gap-2 cursor-pointer transition-all text-xs font-medium text-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <IconRenderer name="file-up" className="w-4 h-4 text-navy shrink-0" />
+                      <span>
+                        {replyFiles.length >= MAX_REPLY_ATTACHMENTS
+                          ? `Maximum ${MAX_REPLY_ATTACHMENTS} files attached`
+                          : 'Attach supporting files (PDF, JPG, PNG, WEBP · max 5MB each)'}
+                      </span>
+                    </button>
+                    <input
+                      type="file"
+                      multiple
+                      data-testid="user-reply-file-input"
+                      ref={replyFileInputRef}
+                      accept=".pdf,.jpg,.jpeg,.png,.webp,application/pdf,image/jpeg,image/png,image/webp"
+                      className="hidden"
+                      onChange={e => handleReplyFilesChange(e.target.files)}
+                    />
+
+                    {replyFiles.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {replyFiles.map((file, idx) => (
+                          <div
+                            key={`${file.name}-${file.size}-${idx}`}
+                            data-testid="reply-file-chip"
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] text-slate-700 max-w-full"
+                          >
+                            <span className="truncate max-w-[180px] font-medium">{file.name}</span>
+                            <button
+                              type="button"
+                              disabled={replyLoading}
+                              aria-label={`Remove ${file.name}`}
+                              onClick={() => removeReplyFile(idx)}
+                              className="text-slate-400 hover:text-red-500 transition-colors p-0.5 disabled:opacity-50"
+                            >
+                              <IconRenderer name="x" className="w-3 h-3" />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <button
+                    type="button"
+                    data-testid="send-reply-btn"
+                    onClick={handleSendReply}
+                    disabled={replyLoading}
+                    className="w-full py-2.5 sm:py-3 bg-navy text-white font-bold rounded-xl hover:bg-navy/90 transition-all shadow-sm flex items-center justify-center gap-2 text-xs sm:text-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <IconRenderer name="paper-plane" className="w-4 h-4" />
+                    {replyLoading ? 'Sending...' : 'Send Reply'}
+                  </button>
                 </div>
               )}
             </div>

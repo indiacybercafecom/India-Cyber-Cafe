@@ -53,9 +53,14 @@ export interface Service {
   css?: string;
 }
 
+export interface ApplicationNoteAttachment {
+  url: string;
+  name: string;
+}
+
 export interface ApplicationNote {
   id?: string;
-  type: 'note' | 'status';
+  type: 'note' | 'status' | 'reply';
   by: string;
   email: string;
   authorUid?: string;
@@ -66,6 +71,8 @@ export interface ApplicationNote {
   status?: string;
   attachment?: string;
   attachmentName?: string;
+  attachments?: Array<ApplicationNoteAttachment | string>;
+  clientReplyId?: string;
 }
 
 export interface Application {

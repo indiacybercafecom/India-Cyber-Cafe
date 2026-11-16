@@ -8,6 +8,7 @@ import { getDatabase } from 'firebase-admin/database';
 import { getAuth } from 'firebase-admin/auth';
 import {
   notifyApplicationUpdate,
+  notifyUserApplicationReply,
   notifyApplicationAssignment,
   notifyApplicationSubmitted,
   notifyApplicationPaymentConfirmed,
@@ -27,13 +28,21 @@ const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
 
 const SUPER_ADMIN_UID = 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2';
 const SUPER_ADMIN_EMAIL = 'indiacybercafe.com@gmail.com';
+const MAX_NOTE_LENGTH = 2000;
+const MAX_REPLY_ATTACHMENTS = 5;
+const MAX_ATTACHMENT_BYTES = 5 * 1024 * 1024;
 const ALLOWED_STATUSES = new Set(['processing', 'clarification', 'completed', 'rejected']);
-const ALLOWED_UPDATE_BODY_FIELDS = new Set(['status', 'note', 'attachmentUrl', 'attachmentName']);
+const ALLOWED_UPDATE_BODY_FIELDS = new Set(['status', 'note', 'attachmentUrl', 'attachmentName', 'attachments']);
+const ALLOWED_REPLY_BODY_FIELDS = new Set(['note', 'attachments', 'clientReplyId']);
 const PROTECTED_UPDATE_FIELDS = new Set([
   'paymentStatus', 'paymentMethod', 'charge', 'uid', 'userId', 'email',
   'name', 'serviceName', 'serviceId', 'assignedTo', 'assignedToUid',
   'details', 'razorpayPaymentId', 'razorpayOrderId', 'notes', 'fileUrl',
   'date', 'id', 'createdAt', 'updatedAt'
+]);
+const PROTECTED_REPLY_FIELDS = new Set([
+  ...PROTECTED_UPDATE_FIELDS,
+  'status', 'authorUid', 'authorRole', 'type', 'by', 'email'
 ]);
 const ATTACHMENTS_DIR = path.join(APP_ROOT, 'data/uploads/attachments');
 const TEST_STORE_PATH = path.join(APP_ROOT, 'data/operator_test_store.json');
@@ -350,7 +359,7 @@ function isCallerAssignedToApp(app, caller) {
   return Boolean(app.assignedToUid && app.assignedToUid === caller.uid);
 }
 
-function validateInternalAttachmentReference(attachmentUrl, expectedAppId) {
+function validateInternalAttachmentReference(attachmentUrl, expectedAppId, expectedUploaderUid) {
   if (!attachmentUrl.startsWith('/api/operator/attachments/')) {
     return { ok: true };
   }
@@ -376,10 +385,71 @@ function validateInternalAttachmentReference(attachmentUrl, expectedAppId) {
     if (meta.appId !== expectedAppId || meta.attachmentId !== safeAttId) {
       return { ok: false, error: 'Attachment metadata mismatch for target application' };
     }
+    if (expectedUploaderUid && meta.uploadedByUid && meta.uploadedByUid !== expectedUploaderUid) {
+      return { ok: false, error: 'Attachment was not uploaded by the authenticated reply author' };
+    }
     return { ok: true };
   } catch {
     return { ok: false, error: 'Invalid attachment URL' };
   }
+}
+
+function detectAttachmentFileType(buf) {
+  if (!buf || buf.length === 0) return { ok: false };
+  const isPdf = buf.length >= 4 && buf.subarray(0, 4).toString('ascii') === '%PDF';
+  const isJpeg = buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff;
+  const isPng = buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47;
+  const isWebp = buf.length >= 12 && buf.subarray(0, 4).toString('ascii') === 'RIFF' && buf.subarray(8, 12).toString('ascii') === 'WEBP';
+  if (isPdf) return { ok: true, ext: 'pdf', contentType: 'application/pdf' };
+  if (isJpeg) return { ok: true, ext: 'jpg', contentType: 'image/jpeg' };
+  if (isPng) return { ok: true, ext: 'png', contentType: 'image/png' };
+  if (isWebp) return { ok: true, ext: 'webp', contentType: 'image/webp' };
+  return { ok: false };
+}
+
+function normalizeValidatedAttachmentsList(rawAttachments, appId, expectedUploaderUid) {
+  if (rawAttachments === undefined || rawAttachments === null) {
+    return { ok: true, attachments: [] };
+  }
+  if (!Array.isArray(rawAttachments)) {
+    return { ok: false, attachments: [], error: 'Attachments must be an array.' };
+  }
+  if (rawAttachments.length > MAX_REPLY_ATTACHMENTS) {
+    return { ok: false, attachments: [], error: `You can attach at most ${MAX_REPLY_ATTACHMENTS} files per message.` };
+  }
+  const result = [];
+  const seenUrls = new Set();
+  for (let i = 0; i < rawAttachments.length; i++) {
+    const item = rawAttachments[i];
+    let url = '';
+    let name = '';
+    if (typeof item === 'string') {
+      url = item.trim();
+      name = `Attachment ${i + 1}`;
+    } else if (item && typeof item === 'object' && !Array.isArray(item)) {
+      url = typeof item.url === 'string' ? item.url.trim() : '';
+      name = cleanText(item.name, 150) || `Attachment ${i + 1}`;
+    } else {
+      return { ok: false, attachments: [], error: 'Each attachment must be a valid { url, name } object or URL string.' };
+    }
+    if (!url || url.length > 2048) {
+      return { ok: false, attachments: [], error: 'Attachment URL is missing or too long.' };
+    }
+    if (!url.startsWith('https://') && !url.startsWith('/api/operator/attachments/')) {
+      return { ok: false, attachments: [], error: 'Invalid attachment URL.' };
+    }
+    if (url.startsWith('/api/operator/attachments/')) {
+      const refCheck = validateInternalAttachmentReference(url, appId, expectedUploaderUid);
+      if (!refCheck.ok) {
+        return { ok: false, attachments: [], error: refCheck.error || 'Invalid attachment reference.' };
+      }
+    }
+    if (!seenUrls.has(url)) {
+      seenUrls.add(url);
+      result.push({ url, name: name.slice(0, 150) });
+    }
+  }
+  return { ok: true, attachments: result };
 }
 
 function isCallerOwnerOfApp(app, caller) {
@@ -551,9 +621,15 @@ export async function handleOperatorUpdateApplication(req, res) {
     }
 
     const rawStatus = typeof body.status === 'string' ? body.status.trim() : '';
-    const noteText = cleanText(body.note, 2000);
+    const noteText = cleanText(body.note, MAX_NOTE_LENGTH);
     const attachmentUrl = typeof body.attachmentUrl === 'string' ? body.attachmentUrl.trim() : '';
     const attachmentName = cleanText(body.attachmentName, 150);
+    const attachmentsCheck = normalizeValidatedAttachmentsList(body.attachments, appId);
+
+    if (!attachmentsCheck.ok) {
+      return res.status(400).json({ success: false, error: attachmentsCheck.error || 'Invalid attachments payload' });
+    }
+    const normalizedAttachments = [...attachmentsCheck.attachments];
 
     if (rawStatus && !ALLOWED_STATUSES.has(rawStatus)) {
       return res.status(400).json({ success: false, error: 'Invalid status value. Allowed: processing, clarification, completed, rejected.' });
@@ -567,7 +643,13 @@ export async function handleOperatorUpdateApplication(req, res) {
         return res.status(400).json({ success: false, error: attCheck.error || 'Invalid attachment reference' });
       }
     }
-    if (!rawStatus && !noteText && !attachmentUrl) {
+    if (attachmentUrl && !normalizedAttachments.some(a => a.url === attachmentUrl)) {
+      normalizedAttachments.unshift({ url: attachmentUrl, name: attachmentName || 'Attachment' });
+    }
+    if (normalizedAttachments.length > MAX_REPLY_ATTACHMENTS) {
+      return res.status(400).json({ success: false, error: `You can attach at most ${MAX_REPLY_ATTACHMENTS} files per update.` });
+    }
+    if (!rawStatus && !noteText && !attachmentUrl && normalizedAttachments.length === 0) {
       return res.status(400).json({ success: false, error: 'Please provide a status update, note, or attachment.' });
     }
 
@@ -581,7 +663,7 @@ export async function handleOperatorUpdateApplication(req, res) {
       email: caller.email,
       authorUid: caller.uid,
       authorRole: caller.role,
-      text: noteText || (rawStatus ? `Status updated to ${rawStatus}` : `Uploaded attachment: ${attachmentName || 'Attachment'}`),
+      text: noteText || (rawStatus ? `Status updated to ${rawStatus}` : `Uploaded attachment: ${attachmentName || normalizedAttachments[0]?.name || 'Attachment'}`),
       time: new Date(nowMs).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
       createdAt: nowMs,
     };
@@ -589,6 +671,13 @@ export async function handleOperatorUpdateApplication(req, res) {
     if (attachmentUrl) {
       newNote.attachment = attachmentUrl;
       if (attachmentName) newNote.attachmentName = attachmentName;
+    }
+    if (normalizedAttachments.length > 0) {
+      newNote.attachments = normalizedAttachments;
+      if (!newNote.attachment) {
+        newNote.attachment = normalizedAttachments[0].url;
+        newNote.attachmentName = normalizedAttachments[0].name;
+      }
     }
 
     let appSnapshotAfter = null;
@@ -792,6 +881,330 @@ export async function handleOperatorUploadAttachment(req, res) {
     }
     console.error('[operatorService] handleOperatorUploadAttachment error:', err);
     return res.status(500).json({ success: false, error: 'Failed to upload attachment' });
+  }
+}
+
+export async function handleUserReplyAttachmentUpload(req, res) {
+  try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
+    const appId = cleanText(req.params.appId, 120);
+    if (!appId || /[/.#$[\]]/.test(appId)) {
+      return res.status(400).json({ success: false, error: 'Invalid application ID' });
+    }
+
+    const app = await readApplication(appId);
+    if (!app) {
+      return res.status(404).json({ success: false, error: 'Application not found' });
+    }
+    if (!isCallerOwnerOfApp(app, caller)) {
+      return res.status(403).json({ success: false, error: 'Access denied: only the application owner can upload reply attachments.' });
+    }
+
+    const reqFiles = req.files;
+    const rawFiles = [];
+    if (Array.isArray(reqFiles)) {
+      rawFiles.push(...reqFiles);
+    } else if (reqFiles && typeof reqFiles === 'object') {
+      if (Array.isArray(reqFiles.files)) rawFiles.push(...reqFiles.files);
+      if (Array.isArray(reqFiles.file)) rawFiles.push(...reqFiles.file);
+    } else if (req.file) {
+      rawFiles.push(req.file);
+    }
+
+    if (rawFiles.length === 0) {
+      return res.status(400).json({ success: false, error: 'At least one attachment file is required.' });
+    }
+    if (rawFiles.length > MAX_REPLY_ATTACHMENTS) {
+      return res.status(400).json({ success: false, error: `You can upload at most ${MAX_REPLY_ATTACHMENTS} files per reply.` });
+    }
+
+    const validatedFiles = [];
+    for (const f of rawFiles) {
+      if (!f || !f.buffer || f.size <= 0) {
+        return res.status(400).json({ success: false, error: 'Attachment file is empty or unreadable.' });
+      }
+      if (f.size > MAX_ATTACHMENT_BYTES) {
+        return res.status(400).json({ success: false, error: `File "${sanitizeFilename(f.originalname || 'attachment')}" exceeds the 5 MB limit.` });
+      }
+      const detected = detectAttachmentFileType(f.buffer);
+      if (!detected.ok || !detected.ext || !detected.contentType) {
+        return res.status(400).json({
+          success: false,
+          error: 'Unsupported or unsafe file format. Only valid PDF, JPG, PNG, and WEBP files are allowed.',
+        });
+      }
+      validatedFiles.push({
+        buf: f.buffer,
+        ext: detected.ext,
+        contentType: detected.contentType,
+        safeOriginal: sanitizeFilename(f.originalname || `attachment.${detected.ext}`),
+      });
+    }
+
+    const appDir = path.join(ATTACHMENTS_DIR, appId);
+    fs.mkdirSync(appDir, { recursive: true });
+    const uploadedAttachments = [];
+
+    for (const item of validatedFiles) {
+      const attachmentId = `reply_att_${Date.now()}_${crypto.randomBytes(8).toString('hex')}.${item.ext}`;
+      const filePath = path.join(appDir, attachmentId);
+      const metaPath = path.join(appDir, `${attachmentId}.meta.json`);
+      fs.writeFileSync(filePath, item.buf);
+      fs.writeFileSync(
+        metaPath,
+        JSON.stringify({
+          attachmentId,
+          appId,
+          uploadedByUid: caller.uid,
+          uploadedByRole: 'user',
+          originalName: item.safeOriginal,
+          contentType: item.contentType,
+          size: item.buf.length,
+          createdAt: new Date().toISOString(),
+        }),
+        'utf-8'
+      );
+      if (!fs.existsSync(filePath) || fs.statSync(filePath).size !== item.buf.length || !fs.existsSync(metaPath)) {
+        throw new Error('Failed to verify persisted reply attachment files on disk');
+      }
+      uploadedAttachments.push({
+        url: `/api/operator/attachments/${encodeURIComponent(attachmentId)}?appId=${encodeURIComponent(appId)}`,
+        name: item.safeOriginal,
+      });
+    }
+
+    return res.json({
+      success: true,
+      attachments: uploadedAttachments,
+    });
+  } catch (err) {
+    if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
+      return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
+    }
+    console.error('[operatorService] handleUserReplyAttachmentUpload error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to upload reply attachments' });
+  }
+}
+
+export async function handleUserReplyApplication(req, res) {
+  try {
+    const caller = await requireAuthenticatedCaller(req, res);
+    if (!caller) return;
+
+    const appId = cleanText(req.params.appId, 120);
+    if (!appId || /[/.#$[\]]/.test(appId)) {
+      return res.status(400).json({ success: false, error: 'Invalid application ID' });
+    }
+
+    const body = req.body;
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ success: false, error: 'Invalid JSON request payload' });
+    }
+
+    for (const field of Object.keys(body)) {
+      if (PROTECTED_REPLY_FIELDS.has(field)) {
+        return res.status(403).json({ success: false, error: `Modification of protected field "${field}" is forbidden` });
+      }
+      if (!ALLOWED_REPLY_BODY_FIELDS.has(field)) {
+        return res.status(400).json({ success: false, error: `Unknown or unsupported field "${field}" is not allowed` });
+      }
+    }
+
+    if (body.note !== undefined && body.note !== null && typeof body.note !== 'string') {
+      return res.status(400).json({ success: false, error: 'Reply text must be a string.' });
+    }
+    const rawNote = typeof body.note === 'string' ? body.note.trim() : '';
+    if (rawNote.length > MAX_NOTE_LENGTH) {
+      return res.status(400).json({ success: false, error: `Reply text must be ${MAX_NOTE_LENGTH} characters or less.` });
+    }
+    const noteText = cleanText(rawNote, MAX_NOTE_LENGTH);
+
+    let clientReplyId = '';
+    if (body.clientReplyId !== undefined && body.clientReplyId !== null) {
+      if (typeof body.clientReplyId !== 'string') {
+        return res.status(400).json({ success: false, error: 'clientReplyId must be a string.' });
+      }
+      const trimmedId = body.clientReplyId.trim();
+      if (trimmedId && (trimmedId.length > 128 || !/^[a-zA-Z0-9_-]+$/.test(trimmedId))) {
+        return res.status(400).json({ success: false, error: 'Invalid clientReplyId format.' });
+      }
+      clientReplyId = trimmedId;
+    }
+
+    const attachmentsCheck = normalizeValidatedAttachmentsList(body.attachments, appId, caller.uid);
+    if (!attachmentsCheck.ok) {
+      return res.status(400).json({ success: false, error: attachmentsCheck.error || 'Invalid attachments payload' });
+    }
+    const normalizedAttachments = attachmentsCheck.attachments;
+
+    if (!noteText && normalizedAttachments.length === 0) {
+      return res.status(400).json({ success: false, error: 'Please enter a reply message or attach at least one file.' });
+    }
+
+    const nowMs = Date.now();
+    const nowIso = new Date(nowMs).toISOString();
+    const noteId = `reply_${nowMs}_${crypto.randomBytes(4).toString('hex')}`;
+    const newNote = {
+      id: noteId,
+      type: 'reply',
+      by: caller.name || caller.email || 'User',
+      email: caller.email || '',
+      authorUid: caller.uid,
+      authorRole: 'user',
+      text: noteText || `Uploaded ${normalizedAttachments.length} attachment${normalizedAttachments.length > 1 ? 's' : ''}`,
+      time: new Date(nowMs).toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+      createdAt: nowMs,
+    };
+    if (clientReplyId) {
+      newNote.clientReplyId = clientReplyId;
+    }
+    if (normalizedAttachments.length > 0) {
+      newNote.attachments = normalizedAttachments;
+      if (normalizedAttachments.length === 1) {
+        newNote.attachment = normalizedAttachments[0].url;
+        newNote.attachmentName = normalizedAttachments[0].name;
+      }
+    }
+
+    let appSnapshotAfter = null;
+
+    if (isTestMode()) {
+      const store = readTestStore();
+      const target = store.applications?.[appId];
+      if (!target) {
+        return res.status(404).json({ success: false, error: 'Application not found' });
+      }
+      if (!isCallerOwnerOfApp(target, caller)) {
+        return res.status(403).json({ success: false, error: 'Access denied: you can only reply to your own applications.' });
+      }
+      if (!target.notes || Array.isArray(target.notes)) {
+        const mapped = {};
+        if (Array.isArray(target.notes)) {
+          target.notes.forEach((n, idx) => {
+            if (n && typeof n === 'object') mapped[n.id || `legacy_${idx}`] = n;
+          });
+        }
+        target.notes = mapped;
+      }
+      if (clientReplyId) {
+        const existingDup = Object.values(target.notes).find(
+          (n) => n && typeof n === 'object' && n.clientReplyId === clientReplyId && n.authorUid === caller.uid
+        );
+        if (existingDup) {
+          return res.json({
+            success: true,
+            duplicate: true,
+            note: existingDup,
+            updatedAt: target.updatedAt || nowIso,
+          });
+        }
+      }
+      target.notes[noteId] = newNote;
+      target.updatedAt = nowIso;
+      writeTestStore(store);
+      appSnapshotAfter = { id: appId, ...target };
+    } else if (ensureAdminInit() && rtdbAdmin) {
+      const initialApp = await readApplication(appId);
+      if (!initialApp) {
+        return res.status(404).json({ success: false, error: 'Application not found' });
+      }
+      if (!isCallerOwnerOfApp(initialApp, caller)) {
+        return res.status(403).json({ success: false, error: 'Access denied: you can only reply to your own applications.' });
+      }
+
+      let txAbortReason = 'NONE';
+      let txDuplicateNote = null;
+      const txResult = await withTimeout(
+        rtdbAdmin.ref(`applications/${appId}`).transaction((currentApp) => {
+          txAbortReason = 'NONE';
+          txDuplicateNote = null;
+          if (currentApp === null) {
+            return null;
+          }
+          if (!isCallerOwnerOfApp(currentApp, caller)) {
+            txAbortReason = 'FORBIDDEN';
+            return undefined;
+          }
+          const nextNotes = {};
+          if (Array.isArray(currentApp.notes)) {
+            currentApp.notes.forEach((n, idx) => {
+              if (n && typeof n === 'object') nextNotes[n.id || `legacy_${idx}`] = n;
+            });
+          } else if (currentApp.notes && typeof currentApp.notes === 'object') {
+            Object.assign(nextNotes, currentApp.notes);
+          }
+          if (clientReplyId) {
+            const existingDup = Object.values(nextNotes).find(
+              (n) => n && typeof n === 'object' && n.clientReplyId === clientReplyId && n.authorUid === caller.uid
+            );
+            if (existingDup) {
+              txAbortReason = 'DUPLICATE';
+              txDuplicateNote = existingDup;
+              return undefined;
+            }
+          }
+          nextNotes[noteId] = newNote;
+          return {
+            ...currentApp,
+            updatedAt: nowIso,
+            notes: nextNotes,
+          };
+        }),
+        8000,
+        'Atomic user application reply'
+      );
+
+      if (txAbortReason === 'FORBIDDEN') {
+        return res.status(403).json({ success: false, error: 'Access denied: application ownership could not be verified.' });
+      }
+      if (txAbortReason === 'DUPLICATE' && txDuplicateNote) {
+        return res.json({
+          success: true,
+          duplicate: true,
+          note: txDuplicateNote,
+          updatedAt: initialApp.updatedAt || nowIso,
+        });
+      }
+      const valAfter = txResult.snapshot?.val();
+      if (!valAfter) {
+        return res.status(404).json({ success: false, error: 'Application not found' });
+      }
+      if (!txResult.committed) {
+        return res.status(409).json({ success: false, error: 'Reply submission conflicted with another change. Please retry.' });
+      }
+      appSnapshotAfter = { id: appId, ...valAfter };
+    } else {
+      return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: 'Firebase Admin credentials not configured on server' });
+    }
+
+    const assignedOperatorProfile = appSnapshotAfter.assignedToUid
+      ? await readUserProfile(String(appSnapshotAfter.assignedToUid)).catch(() => null)
+      : null;
+
+    const emailDelivery = await notifyUserApplicationReply({
+      appId,
+      app: appSnapshotAfter,
+      noteText: newNote.text,
+      attachmentNames: normalizedAttachments.map(a => a.name),
+      performedBy: { uid: caller.uid, name: caller.name, email: caller.email },
+      assignedOperator: assignedOperatorProfile,
+      idempotencyKey: `app_user_reply:${appId}:${noteId}`,
+    }).catch(() => null);
+
+    return res.json({
+      success: true,
+      note: newNote,
+      updatedAt: nowIso,
+      ...(emailDelivery ? { emailDelivery } : {}),
+    });
+  } catch (err) {
+    if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
+      return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
+    }
+    console.error('[operatorService] handleUserReplyApplication error:', err);
+    return res.status(500).json({ success: false, error: 'Failed to submit reply' });
   }
 }
 

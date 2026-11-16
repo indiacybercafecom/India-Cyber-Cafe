@@ -1489,6 +1489,76 @@ export async function notifyApplicationUpdate(params: {
   return dispatchNotificationBatch(queue);
 }
 
+export async function notifyUserApplicationReply(params: {
+  appId: string;
+  app: any;
+  noteText: string;
+  attachmentNames?: string[];
+  performedBy: { uid: string; name: string; email: string };
+  assignedOperator?: { uid?: string; email?: string; name?: string } | null;
+  timestamp?: string;
+  idempotencyKey?: string;
+}): Promise<NotificationDispatchReport> {
+  const { appId, app, noteText, attachmentNames = [], performedBy, assignedOperator } = params;
+  const timestamp = params.timestamp || new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' });
+  const customerName = String(app?.name || performedBy.name || 'Customer').trim();
+  const customerEmail = normalizeEmailAddress(app?.email || performedBy.email);
+  const serviceName = String(app?.serviceName || 'Service').trim();
+  const adminEmails = getAdminEmails();
+  const baseKey = params.idempotencyKey || `app_user_reply:${appId}:${Date.now()}`;
+  const attachmentSummary = attachmentNames.length > 0 ? attachmentNames.join(', ') : undefined;
+  const cleanNoteText = noteText || (attachmentSummary ? `Customer uploaded attachments: ${attachmentSummary}` : 'Customer reply');
+
+  const queue: NotificationDispatchItem[] = [];
+
+  const adminNoteHtml = serverEmailTemplates.adminNoteAdded({
+    customerName,
+    customerEmail: customerEmail || 'Missing',
+    appId,
+    serviceName,
+    noteText: cleanNoteText,
+    performedByName: performedBy.name || performedBy.email,
+    performedByRole: 'user',
+    attachmentName: attachmentSummary,
+    timestamp,
+  });
+  for (const adminEmail of adminEmails) {
+    queue.push({
+      templateId: 'adminNoteAdded',
+      recipient: adminEmail,
+      recipientRole: 'admin',
+      subject: `[Customer Reply] ${serviceName} (${appId})`,
+      html: adminNoteHtml,
+      idempotencyKey: baseKey,
+      context: { appId, actorUid: performedBy.uid, actorRole: 'user' },
+    });
+  }
+
+  const opTarget = resolveOperatorRecipient(app, assignedOperator);
+  if (opTarget && opTarget.email && opTarget.uid !== performedBy.uid && opTarget.email !== normalizeEmailAddress(performedBy.email)) {
+    queue.push({
+      templateId: 'operatorStatusUpdated',
+      recipient: opTarget.email,
+      recipientRole: 'operator',
+      subject: `[Customer Reply] ${serviceName} (${appId})`,
+      html: serverEmailTemplates.operatorStatusUpdated({
+        operatorName: opTarget.name,
+        customerName,
+        appId,
+        serviceName,
+        previousStatus: String(app?.status || 'processing'),
+        newStatus: String(app?.status || 'processing'),
+        performedByName: `${performedBy.name || performedBy.email} (Customer)`,
+        noteText: cleanNoteText,
+      }),
+      idempotencyKey: baseKey,
+      context: { appId, uid: opTarget.uid, actorUid: performedBy.uid, actorRole: 'user' },
+    });
+  }
+
+  return dispatchNotificationBatch(queue);
+}
+
 export async function notifyApplicationAssignment(params: {
   appId: string;
   app: any;

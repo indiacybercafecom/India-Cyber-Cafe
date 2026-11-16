@@ -9,9 +9,12 @@ import {
   handleGetOperatorApplication,
   handleOperatorUpdateApplication,
   handleOperatorUploadAttachment,
+  handleUserReplyAttachmentUpload,
+  handleUserReplyApplication,
   handleGetOperatorAttachment,
   handleVerifyApplicationPayment,
 } from '../src/server/operatorService';
+import { normalizeApplicationNotes, normalizeNoteAttachments } from '../src/utils/permissions';
 import {
   planOperatorSecurityMigration,
   createAndVerifyBackup,
@@ -456,6 +459,8 @@ const OPERATOR_SAME_EMAIL_OTHER_UID: AuthContext = { uid: 'op_uid_reused_999', t
 const OPERATOR_2: AuthContext = { uid: 'op_uid_456', token: { email: 'operator2@indiacybercafe.com', email_verified: true } };
 const DISABLED_OPERATOR: AuthContext = { uid: 'op_uid_disabled', token: { email: 'disabledop@indiacybercafe.com', email_verified: true } };
 const CUSTOMER_A: AuthContext = { uid: 'cust_uid_A', token: { email: 'customerA@gmail.com', email_verified: true } };
+const CUSTOMER_B: AuthContext = { uid: 'cust_uid_B', token: { email: 'customerB@gmail.com', email_verified: true } };
+const DISABLED_CUSTOMER: AuthContext = { uid: 'cust_uid_disabled', token: { email: 'disabledcust@gmail.com', email_verified: true } };
 
 const mockDb: DatabaseState = {
   users: {
@@ -466,6 +471,7 @@ const mockDb: DatabaseState = {
     'op_uid_disabled': { uid: 'op_uid_disabled', email: 'disabledop@indiacybercafe.com', role: 'operator', name: 'Disabled Operator', disabled: true },
     'cust_uid_A': { uid: 'cust_uid_A', email: 'customerA@gmail.com', role: 'user', name: 'Customer A', phone: '9876543210' },
     'cust_uid_B': { uid: 'cust_uid_B', email: 'customerB@gmail.com', role: 'user', name: 'Customer B', phone: '9123456789' },
+    'cust_uid_disabled': { uid: 'cust_uid_disabled', email: 'disabledcust@gmail.com', role: 'user', name: 'Disabled Customer', disabled: true },
   },
   services: {
     'srv_1': { id: 'srv_1', name: 'PAN Card Application', active: true },
@@ -563,6 +569,12 @@ const mockDb: DatabaseState = {
       status: 'processing',
       assignedTo: 'disabledop@indiacybercafe.com',
       assignedToUid: 'op_uid_disabled',
+    },
+    'app_disabled_cust': {
+      id: 'app_disabled_cust',
+      uid: 'cust_uid_disabled',
+      serviceId: 'srv_1',
+      status: 'processing',
     },
   },
   orders: {
@@ -799,6 +811,127 @@ const tests: TestCase[] = [
       !engine.canRead('privacy_requests/PRV-10001', OPERATOR_USER, mockDb),
     expected: true,
   },
+  {
+    id: 17,
+    description: '[RulesEngine] Application owner can append valid reply note with up to 5 attachments (0..4)',
+    run: () =>
+      engine.canWrite('applications/app_op1_uid/notes/reply_1', CUSTOMER_B, mockDb, {
+        id: 'reply_1',
+        type: 'reply',
+        by: 'Customer B',
+        email: 'customerB@gmail.com',
+        authorUid: 'cust_uid_B',
+        authorRole: 'user',
+        text: 'Attached requested documents.',
+        time: '16/11/2026, 10:00 am',
+        createdAt: 1794803400000,
+        attachments: {
+          '0': { url: '/api/operator/attachments/r1.pdf?appId=app_op1_uid', name: 'id.pdf' },
+          '1': { url: '/api/operator/attachments/r2.png?appId=app_op1_uid', name: 'addr.png' },
+        },
+      }),
+    expected: true,
+  },
+  {
+    id: 18,
+    description: '[RulesEngine] User reply rejects status injection, role/uid spoofing, editing existing notes, empty reply, or >5 attachments',
+    run: () =>
+      engine.canWrite('applications/app_op1_uid/notes/reply_bad_status', CUSTOMER_B, mockDb, {
+        type: 'reply',
+        by: 'Customer B',
+        email: 'customerB@gmail.com',
+        authorUid: 'cust_uid_B',
+        authorRole: 'user',
+        text: 'Trying to complete my own app',
+        status: 'completed',
+        time: '16/11/2026',
+      }) ||
+      engine.canWrite('applications/app_op1_uid/notes/reply_bad_role', CUSTOMER_B, mockDb, {
+        type: 'reply',
+        by: 'Customer B',
+        email: 'customerB@gmail.com',
+        authorUid: 'cust_uid_B',
+        authorRole: 'admin',
+        text: 'Spoofed role',
+        time: '16/11/2026',
+      }) ||
+      engine.canWrite('applications/app_op1_uid/notes/reply_bad_empty', CUSTOMER_B, mockDb, {
+        type: 'reply',
+        by: 'Customer B',
+        email: 'customerB@gmail.com',
+        authorUid: 'cust_uid_B',
+        authorRole: 'user',
+        text: '',
+        time: '16/11/2026',
+      }) ||
+      engine.canWrite('applications/app_op1_uid/notes/reply_bad_count', CUSTOMER_B, mockDb, {
+        type: 'reply',
+        by: 'Customer B',
+        email: 'customerB@gmail.com',
+        authorUid: 'cust_uid_B',
+        authorRole: 'user',
+        text: 'Too many files',
+        time: '16/11/2026',
+        attachments: {
+          '0': 'https://example.com/1.pdf',
+          '1': 'https://example.com/2.pdf',
+          '2': 'https://example.com/3.pdf',
+          '3': 'https://example.com/4.pdf',
+          '4': 'https://example.com/5.pdf',
+          '5': 'https://example.com/6.pdf',
+        },
+      }) ||
+      engine.canWrite('applications/app_op1_uid/notes/note_existing', CUSTOMER_B, mockDb, {
+        type: 'reply',
+        by: 'Customer B',
+        email: 'customerB@gmail.com',
+        authorUid: 'cust_uid_B',
+        authorRole: 'user',
+        text: 'Overwrite attempt',
+        time: '16/11/2026',
+      }) ||
+      engine.canWrite('applications/app_op1_uid/notes/note_existing', CUSTOMER_B, mockDb, null),
+    expected: false,
+  },
+  {
+    id: 19,
+    description: '[RulesEngine] Non-owner Customer A and unassigned Operator denied appending reply to Customer B app',
+    run: () =>
+      engine.canWrite('applications/app_op1_uid/notes/reply_non_owner', CUSTOMER_A, mockDb, {
+        type: 'reply',
+        by: 'Customer A',
+        email: 'customerA@gmail.com',
+        authorUid: 'cust_uid_A',
+        authorRole: 'user',
+        text: 'Unauthorized reply',
+        time: '16/11/2026',
+      }) ||
+      engine.canWrite('applications/app_op1_uid/notes/reply_unassigned_op', OPERATOR_2, mockDb, {
+        type: 'reply',
+        by: 'Operator Two',
+        email: 'operator2@indiacybercafe.com',
+        authorUid: 'op_uid_456',
+        authorRole: 'user',
+        text: 'Unauthorized operator',
+        time: '16/11/2026',
+      }),
+    expected: false,
+  },
+  {
+    id: 20,
+    description: '[RulesEngine] Disabled application owner denied appending reply',
+    run: () =>
+      engine.canWrite('applications/app_disabled_cust/notes/reply_disabled', DISABLED_CUSTOMER, mockDb, {
+        type: 'reply',
+        by: 'Disabled Customer',
+        email: 'disabledcust@gmail.com',
+        authorUid: 'cust_uid_disabled',
+        authorRole: 'user',
+        text: 'Disabled user reply',
+        time: '16/11/2026',
+      }),
+    expected: false,
+  },
 ];
 
 // ==========================================
@@ -826,6 +959,8 @@ async function runApiIntegrationTests(): Promise<Array<{ name: string; ok: boole
             'op_uid_456': { uid: 'op_uid_456', email: 'operator2@indiacybercafe.com', role: 'operator', name: 'Operator Two', disabled: false },
             'op_uid_disabled': { uid: 'op_uid_disabled', email: 'disabledop@indiacybercafe.com', role: 'operator', name: 'Disabled Operator', disabled: true },
             'cust_uid_A': { uid: 'cust_uid_A', email: 'customerA@gmail.com', role: 'user', name: 'Customer A' },
+            'cust_uid_B': { uid: 'cust_uid_B', email: 'customerB@gmail.com', role: 'user', name: 'Customer B' },
+            'cust_uid_disabled': { uid: 'cust_uid_disabled', email: 'disabledcust@gmail.com', role: 'user', name: 'Disabled Customer', disabled: true },
           },
           applications: overrideApps ?? {
             'app_op1_test': {
@@ -879,10 +1014,21 @@ async function runApiIntegrationTests(): Promise<Array<{ name: string; ok: boole
       return res.status(400).json({ success: false, error: err?.message || 'Upload failed' });
     });
   };
+  const replyUploadMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    upload.fields([{ name: 'files', maxCount: 5 }, { name: 'file', maxCount: 5 }])(req, res, (err: any) => {
+      if (!err) return next();
+      if (err instanceof multer.MulterError) {
+        return res.status(400).json({ success: false, error: err.message });
+      }
+      return res.status(400).json({ success: false, error: err?.message || 'Upload failed' });
+    });
+  };
 
   testApp.get('/api/operator/applications/:appId', handleGetOperatorApplication);
   testApp.post('/api/operator/applications/:appId/update', handleOperatorUpdateApplication);
   testApp.post('/api/operator/applications/:appId/upload-attachment', uploadMiddleware, handleOperatorUploadAttachment);
+  testApp.post('/api/applications/:appId/reply-attachments', replyUploadMiddleware, handleUserReplyAttachmentUpload);
+  testApp.post('/api/applications/:appId/reply', handleUserReplyApplication);
   testApp.get('/api/operator/attachments/:attachmentId', handleGetOperatorAttachment);
   testApp.post('/api/applications/:appId/verify-payment', handleVerifyApplicationPayment);
   testApp.post('/api/admin-protected-test', requireAdminMiddleware, (_req, res) => res.json({ success: true }));
@@ -901,6 +1047,8 @@ async function runApiIntegrationTests(): Promise<Array<{ name: string; ok: boole
   const tokenOp2 = 'test-token:op_uid_456:operator2@indiacybercafe.com:verified';
   const tokenDisabled = 'test-token:op_uid_disabled:disabledop@indiacybercafe.com:verified';
   const tokenCustA = 'test-token:cust_uid_A:customerA@gmail.com:verified';
+  const tokenCustB = 'test-token:cust_uid_B:customerB@gmail.com:verified';
+  const tokenCustDisabled = 'test-token:cust_uid_disabled:disabledcust@gmail.com:verified';
   const tokenAdmin = `test-token:${SUPER_ADMIN_UID}:indiacybercafe.com@gmail.com:verified`;
 
   const results: Array<{ name: string; ok: boolean; detail?: string }> = [];
@@ -1116,6 +1264,194 @@ async function runApiIntegrationTests(): Promise<Array<{ name: string; ok: boole
       ok: rAdmOp.status === 403 && rAdmOk.status === 200,
       detail: `op=${rAdmOp.status}, admin=${rAdmOk.status}`,
     });
+
+    // 10. Two-Way Reply System: User owner upload multiple attachments + submit replies + idempotency + authorization + validation
+    // (Note: app_op1_test is currently assigned to op_uid_456 after test #7)
+    const replyFormMulti = new FormData();
+    replyFormMulti.append('files', new Blob([pdfBytes], { type: 'application/pdf' }), 'aadhaar.pdf');
+    replyFormMulti.append('files', new Blob([jpgBytes], { type: 'image/jpeg' }), 'pan.jpg');
+    replyFormMulti.append('files', new Blob([pngBytes], { type: 'image/png' }), 'photo.png');
+
+    const upReplyMulti = await fetch(`${baseUrl}/api/applications/app_op1_test/reply-attachments`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenCustA}` },
+      body: replyFormMulti,
+    });
+    const upReplyMultiJson = await upReplyMulti.json();
+
+    const replyMultiResp = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({
+        note: 'Clarification <script>x</script> files attached.',
+        attachments: upReplyMultiJson.attachments,
+        clientReplyId: 'client_reply_multi_1',
+      }),
+    });
+    const replyMultiJson = await replyMultiResp.json();
+
+    // Duplicate retry with identical clientReplyId must be idempotent
+    const replyDupResp = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({
+        note: 'Clarification <script>x</script> files attached.',
+        attachments: upReplyMultiJson.attachments,
+        clientReplyId: 'client_reply_multi_1',
+      }),
+    });
+    const replyDupJson = await replyDupResp.json();
+
+    // Single-file user reply preserves attachments[] AND legacy attachment/attachmentName
+    const replyFormSingle = new FormData();
+    replyFormSingle.append('files', new Blob([webpBytes], { type: 'image/webp' }), 'single.webp');
+    const upReplySingle = await fetch(`${baseUrl}/api/applications/app_op1_test/reply-attachments`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenCustA}` },
+      body: replyFormSingle,
+    });
+    const upReplySingleJson = await upReplySingle.json();
+    const replySingleResp = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({
+        attachments: upReplySingleJson.attachments,
+        clientReplyId: 'client_reply_single_1',
+      }),
+    });
+    const replySingleJson = await replySingleResp.json();
+
+    // Admin adds follow-up note on same thread (chronological User <-> Admin <-> Operator)
+    const adminFollowUp = await fetch(`${baseUrl}/api/operator/applications/app_op1_test/update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenAdmin}` },
+      body: JSON.stringify({ status: 'processing', note: 'Thanks, received all 3 documents.' }),
+    });
+
+    const storeAfterReplies = JSON.parse(fs.readFileSync(testStorePath, 'utf-8'));
+    const notesAfterReplies = storeAfterReplies.applications['app_op1_test']?.notes || {};
+    const savedMultiNote = notesAfterReplies[replyMultiJson.note?.id];
+    const savedSingleNote = notesAfterReplies[replySingleJson.note?.id];
+    const dupCount = Object.values(notesAfterReplies).filter((n: any) => n?.clientReplyId === 'client_reply_multi_1').length;
+
+    // Download authorization checks on user reply attachment
+    const firstReplyAttUrl = upReplyMultiJson.attachments?.[0]?.url || '';
+    const dlReplyOwner = await fetch(`${baseUrl}${firstReplyAttUrl}`, { headers: { Authorization: `Bearer ${tokenCustA}` } });
+    const dlReplyAssignedOp = await fetch(`${baseUrl}${firstReplyAttUrl}`, { headers: { Authorization: `Bearer ${tokenOp2}` } });
+    const dlReplyAdmin = await fetch(`${baseUrl}${firstReplyAttUrl}`, { headers: { Authorization: `Bearer ${tokenAdmin}` } });
+    const dlReplyOtherCust = await fetch(`${baseUrl}${firstReplyAttUrl}`, { headers: { Authorization: `Bearer ${tokenCustB}` } });
+    const dlReplyUnassignedOp = await fetch(`${baseUrl}${firstReplyAttUrl}`, { headers: { Authorization: `Bearer ${tokenOp1}` } });
+
+    results.push({
+      name: 'API: User reply supports multi-file (3) & single-file uploads, clientReplyId idempotency, DB persistence, and Owner/Op/Admin attachment auth',
+      ok:
+        upReplyMulti.status === 200 &&
+        upReplyMultiJson.attachments?.length === 3 &&
+        replyMultiResp.status === 200 &&
+        replyDupResp.status === 200 &&
+        replyDupJson.duplicate === true &&
+        dupCount === 1 &&
+        savedMultiNote?.type === 'reply' &&
+        savedMultiNote?.authorRole === 'user' &&
+        savedMultiNote?.authorUid === 'cust_uid_A' &&
+        !String(savedMultiNote?.text || '').includes('<script>') &&
+        savedMultiNote?.attachments?.length === 3 &&
+        replySingleResp.status === 200 &&
+        savedSingleNote?.attachments?.length === 1 &&
+        savedSingleNote?.attachment === upReplySingleJson.attachments?.[0]?.url &&
+        adminFollowUp.status === 200 &&
+        dlReplyOwner.status === 200 &&
+        dlReplyAssignedOp.status === 200 &&
+        dlReplyAdmin.status === 200 &&
+        dlReplyOtherCust.status === 403 &&
+        dlReplyUnassignedOp.status === 403,
+      detail: `multiUp=${upReplyMulti.status}, dup=${replyDupJson.duplicate}(count=${dupCount}), singleLegacyOk=${Boolean(savedSingleNote?.attachment)}, dl=${dlReplyOwner.status}/${dlReplyAssignedOp.status}/${dlReplyAdmin.status}/${dlReplyOtherCust.status}/${dlReplyUnassignedOp.status}`,
+    });
+
+    // 11. User reply authorization & validation rejections
+    const rUnauthCustB = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustB}` },
+      body: JSON.stringify({ note: 'Hijack reply' }),
+    });
+    const rDisabledCust = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustDisabled}` },
+      body: JSON.stringify({ note: 'Disabled reply' }),
+    });
+    const rUnauthOp = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenOp2}` },
+      body: JSON.stringify({ note: 'Operator using user reply endpoint' }),
+    });
+    const rReplyProtectedStatus = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({ note: 'Status override', status: 'completed' }),
+    });
+    const rReplyUnknown = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({ note: 'Unknown key', extraField: true }),
+    });
+    const rReplyEmpty = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({ note: '   ', attachments: [] }),
+    });
+    const rReplyTooLong = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({ note: 'x'.repeat(2005) }),
+    });
+    const formTooMany = new FormData();
+    for (let k = 0; k < 6; k++) {
+      formTooMany.append('files', new Blob([pdfBytes], { type: 'application/pdf' }), `f${k}.pdf`);
+    }
+    const rUpTooMany = await fetch(`${baseUrl}/api/applications/app_op1_test/reply-attachments`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenCustA}` },
+      body: formTooMany,
+    });
+    const formTooBig = new FormData();
+    formTooBig.append('files', new Blob([Buffer.alloc(5 * 1024 * 1024 + 512, 0x41)], { type: 'application/pdf' }), 'huge.pdf');
+    const rUpTooBig = await fetch(`${baseUrl}/api/applications/app_op1_test/reply-attachments`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenCustA}` },
+      body: formTooBig,
+    });
+    const formBadMagic = new FormData();
+    formBadMagic.append('files', new Blob([Buffer.from('<html>evil</html>')], { type: 'application/pdf' }), 'evil.pdf');
+    const rUpBadMagic = await fetch(`${baseUrl}/api/applications/app_op1_test/reply-attachments`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenCustA}` },
+      body: formBadMagic,
+    });
+    const rCrossUserAtt = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({
+        note: 'Trying to reference operator uploaded attachment',
+        attachments: [{ url: uploadedPdfUrl, name: 'stolen.pdf' }],
+      }),
+    });
+
+    results.push({
+      name: 'API: User reply rejects non-owner (403), disabled user (403), protected/unknown fields (403/400), empty/too-long (400), >5 files/>5MB/bad format (400), and unowned internal attachment ref (400)',
+      ok:
+        rUnauthCustB.status === 403 &&
+        rDisabledCust.status === 403 &&
+        rUnauthOp.status === 403 &&
+        rReplyProtectedStatus.status === 403 &&
+        rReplyUnknown.status === 400 &&
+        rReplyEmpty.status === 400 &&
+        rReplyTooLong.status === 400 &&
+        rUpTooMany.status === 400 &&
+        rUpTooBig.status === 400 &&
+        rUpBadMagic.status === 400 &&
+        rCrossUserAtt.status === 400,
+      detail: `custB=${rUnauthCustB.status}, disabled=${rDisabledCust.status}, op=${rUnauthOp.status}, prot=${rReplyProtectedStatus.status}, unk=${rReplyUnknown.status}, empty=${rReplyEmpty.status}, long=${rReplyTooLong.status}, >5=${rUpTooMany.status}, >5MB=${rUpTooBig.status}, bad=${rUpBadMagic.status}, unownedAtt=${rCrossUserAtt.status}`,
+    });
   } finally {
     await new Promise<void>(resolve => server.close(() => resolve()));
     const testUploadSubdir = path.join(APP_ROOT_ATTACHMENTS_DIR(), 'app_op1_test');
@@ -1241,6 +1577,43 @@ function runMigrationAndContractTests(): Array<{ name: string; ok: boolean; deta
     name: 'Frontend Contract: ApplicationDetailsModal has NO Firebase Storage fallback, uploads via "file" field, sends canonical update keys, and useApplications removes assignedTo email query',
     ok: hasNoStorageFallback && usesFileFormField && sendsCanonicalKeys && noBroadEmailQuery,
     detail: `noStorageFallback=${hasNoStorageFallback}, fileField=${usesFileFormField}, canonicalKeys=${sendsCanonicalKeys}, noEmailQuery=${noBroadEmailQuery}`,
+  });
+
+  // 3. Note & Attachment Normalization Backward Compatibility
+  const legacySingle = normalizeNoteAttachments({
+    attachment: '/api/operator/attachments/legacy.pdf?appId=a1',
+    attachmentName: 'legacy.pdf',
+  });
+  const multiMap = normalizeNoteAttachments({
+    attachments: {
+      '0': { url: 'https://example.com/one.pdf', name: 'one.pdf' },
+      '1': 'https://example.com/two.png',
+    } as any,
+    attachment: 'https://example.com/one.pdf',
+  });
+  const chronological = normalizeApplicationNotes({
+    n2: { type: 'reply', by: 'Customer', email: 'c@x.com', text: 'Second', time: 't2', createdAt: 2000 },
+    n1: { type: 'note', by: 'Admin', email: 'a@x.com', text: 'First', time: 't1', createdAt: 1000 },
+  });
+  const replyContractOk =
+    modalSrc.includes('/reply-attachments') &&
+    modalSrc.includes('/reply') &&
+    modalSrc.includes('Send Reply') &&
+    modalSrc.includes('canReplyToApplication');
+
+  results.push({
+    name: 'Notes & Attachments: Chronological sort, legacy single attachment, RTDB numeric map attachments[], deduplication & User Reply UI contract',
+    ok:
+      legacySingle.length === 1 &&
+      legacySingle[0].name === 'legacy.pdf' &&
+      multiMap.length === 2 &&
+      multiMap[0].url === 'https://example.com/one.pdf' &&
+      multiMap[1].url === 'https://example.com/two.png' &&
+      chronological.length === 2 &&
+      chronological[0].text === 'First' &&
+      chronological[1].text === 'Second' &&
+      replyContractOk,
+    detail: `legacy=${legacySingle.length}, multiMap=${multiMap.length}, sorted=${chronological.map(n => n.text).join('->')}, ui=${replyContractOk}`,
   });
 
   return results;

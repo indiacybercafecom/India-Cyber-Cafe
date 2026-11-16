@@ -51,8 +51,29 @@
 
         "notes": {
           "$noteId": {
-            ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && newData.exists() && data.parent().parent().exists() && root.child('users').child(auth.uid).child('role').val() === 'operator' && root.child('users').child(auth.uid).child('disabled').val() !== true && data.parent().parent().child('assignedToUid').val() === auth.uid))",
-            ".validate": "newData.hasChildren(['type', 'by', 'email', 'text', 'time']) && (newData.child('type').val() === 'note' || newData.child('type').val() === 'status') && newData.child('by').isString() && newData.child('by').val().length >= 1 && newData.child('by').val().length <= 120 && newData.child('email').isString() && newData.child('text').isString() && newData.child('text').val().length <= 2000 && newData.child('time').isString() && (!newData.hasChild('attachment') || (newData.child('attachment').isString() && (newData.child('attachment').val().matches(/^https:\\/\\/.+/) || newData.child('attachment').val().matches(/^\\/api\\/operator\\/attachments\\/.+/)))) && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (newData.child('authorUid').val() === auth.uid && newData.child('authorRole').val() === 'operator'))"
+            ".write": "auth != null && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && newData.exists() && data.parent().parent().exists() && root.child('users').child(auth.uid).child('role').val() === 'operator' && root.child('users').child(auth.uid).child('disabled').val() !== true && data.parent().parent().child('assignedToUid').val() === auth.uid) || (!data.exists() && newData.exists() && data.parent().parent().exists() && root.child('users').child(auth.uid).child('disabled').val() !== true && (data.parent().parent().child('uid').val() === auth.uid || data.parent().parent().child('userId').val() === auth.uid)))",
+            ".validate": "newData.hasChildren(['type', 'by', 'email', 'text', 'time']) && (newData.child('type').val() === 'note' || newData.child('type').val() === 'status' || newData.child('type').val() === 'reply') && newData.child('by').isString() && newData.child('by').val().length >= 1 && newData.child('by').val().length <= 120 && newData.child('email').isString() && newData.child('email').val().length <= 254 && newData.child('text').isString() && newData.child('text').val().length <= 2000 && newData.child('time').isString() && newData.child('time').val().length >= 1 && newData.child('time').val().length <= 64 && (!newData.hasChild('createdAt') || newData.child('createdAt').isNumber() || newData.child('createdAt').isString()) && (!newData.hasChild('attachment') || (newData.child('attachment').isString() && newData.child('attachment').val().length <= 2048 && (newData.child('attachment').val().matches(/^https:\\/\\/.+/) || newData.child('attachment').val().matches(/^\\/api\\/operator\\/attachments\\/.+/)))) && (!newData.hasChild('attachmentName') || (newData.child('attachmentName').isString() && newData.child('attachmentName').val().length <= 150)) && (auth.uid === 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' || root.child('users').child(auth.uid).child('role').val() === 'admin' || (root.child('users').child(auth.uid).child('role').val() === 'operator' && data.parent().parent().child('assignedToUid').val() === auth.uid && newData.child('authorUid').val() === auth.uid && newData.child('authorRole').val() === 'operator' && (newData.child('type').val() === 'note' || newData.child('type').val() === 'status')) || ((data.parent().parent().child('uid').val() === auth.uid || data.parent().parent().child('userId').val() === auth.uid) && newData.child('authorUid').val() === auth.uid && newData.child('authorRole').val() === 'user' && newData.child('type').val() === 'reply' && !newData.hasChild('status') && (newData.child('text').val().length >= 1 || newData.hasChild('attachments') || newData.hasChild('attachment'))))",
+            "id": { ".validate": "newData.isString() && newData.val().length <= 128" },
+            "type": { ".validate": "newData.isString()" },
+            "by": { ".validate": "newData.isString()" },
+            "email": { ".validate": "newData.isString()" },
+            "authorUid": { ".validate": "newData.isString() && newData.val().length <= 128" },
+            "authorRole": { ".validate": "newData.val() === 'user' || newData.val() === 'operator' || newData.val() === 'admin' || newData.val() === 'system'" },
+            "text": { ".validate": "newData.isString()" },
+            "time": { ".validate": "newData.isString()" },
+            "createdAt": { ".validate": "newData.isNumber() || newData.isString()" },
+            "status": { ".validate": "newData.val() === 'processing' || newData.val() === 'clarification' || newData.val() === 'completed' || newData.val() === 'rejected'" },
+            "attachment": { ".validate": "newData.isString()" },
+            "attachmentName": { ".validate": "newData.isString()" },
+            "clientReplyId": { ".validate": "newData.isString() && newData.val().length <= 128" },
+            "attachments": {
+              "$attIndex": {
+                ".validate": "($attIndex === '0' || $attIndex === '1' || $attIndex === '2' || $attIndex === '3' || $attIndex === '4') && ((newData.isString() && newData.val().length <= 2048 && (newData.val().matches(/^https:\\/\\/.+/) || newData.val().matches(/^\\/api\\/operator\\/attachments\\/.+/))) || (newData.hasChildren(['url', 'name']) && newData.child('url').isString() && newData.child('url').val().length <= 2048 && (newData.child('url').val().matches(/^https:\\/\\/.+/) || newData.child('url').val().matches(/^\\/api\\/operator\\/attachments\\/.+/)) && newData.child('name').isString() && newData.child('name').val().length >= 1 && newData.child('name').val().length <= 150))"
+              }
+            },
+            "$other": {
+              ".validate": false
+            }
           }
         }
       }

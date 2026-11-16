@@ -1,0 +1,82 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.uid == 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2';
+    }
+
+    function isUnder5MB() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024;
+    }
+
+    function isAllowedAttachmentType() {
+      return request.resource != null && (
+        request.resource.contentType == 'application/pdf' ||
+        request.resource.contentType.matches('image/(jpeg|jpg|png|webp)')
+      );
+    }
+
+    function isImageType() {
+      return request.resource != null &&
+        request.resource.contentType.matches('image/(jpeg|jpg|png|webp|gif)');
+    }
+
+    // Owner-scoped application reply attachments (up to 5MB PDF/JPG/PNG/WEBP)
+    match /application-replies/{userId}/{appId}/{fileName} {
+      allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+      allow create, update: if isSignedIn()
+        && request.auth.uid == userId
+        && isUnder5MB()
+        && isAllowedAttachmentType();
+      allow delete: if isSignedIn() && (request.auth.uid == userId || isAdmin());
+    }
+
+    // Service application initial uploads
+    match /applications/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isUnder5MB() && isAllowedAttachmentType();
+    }
+
+    // User profile avatars
+    match /avatars/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() && isUnder5MB() && isImageType();
+    }
+
+    // Store order note attachments
+    match /order-notes/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && isUnder5MB() && isAllowedAttachmentType();
+    }
+
+    // Store custom print uploads
+    match /custom-images/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() && isUnder5MB() && isImageType();
+    }
+
+    // Product catalog images (Admin only)
+    match /products/{allPaths=**} {
+      allow read: if true;
+      allow write: if isAdmin() && isUnder5MB() && isImageType();
+    }
+
+    // Product review images
+    match /reviews/{allPaths=**} {
+      allow read: if true;
+      allow write: if isSignedIn() && isUnder5MB() && isImageType();
+    }
+
+    // Default deny catch-all
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

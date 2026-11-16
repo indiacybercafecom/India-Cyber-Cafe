@@ -34,6 +34,8 @@ import {
   handleGetOperatorApplication,
   handleOperatorUpdateApplication,
   handleOperatorUploadAttachment,
+  handleUserReplyAttachmentUpload,
+  handleUserReplyApplication,
   handleGetOperatorAttachment,
   handleVerifyApplicationPayment,
   handleAssignApplicationOperator,
@@ -95,6 +97,24 @@ async function startServer() {
         return res.status(400).json({ success: false, error: `Invalid attachment upload: ${err.message}` });
       }
       return res.status(400).json({ success: false, error: err?.message || 'Failed to parse attachment upload.' });
+    });
+  };
+  const userReplyAttachmentsUploadMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    customImageUpload.fields([
+      { name: "files", maxCount: 5 },
+      { name: "file", maxCount: 5 },
+    ])(req, res, (err: any) => {
+      if (!err) return next();
+      if (err instanceof multer.MulterError) {
+        if (err.code === 'LIMIT_FILE_SIZE') {
+          return res.status(400).json({ success: false, error: 'Each file must be 5 MB or smaller.' });
+        }
+        if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+          return res.status(400).json({ success: false, error: 'You can upload at most 5 files per reply.' });
+        }
+        return res.status(400).json({ success: false, error: `Invalid attachment upload: ${err.message}` });
+      }
+      return res.status(400).json({ success: false, error: err?.message || 'Failed to parse reply attachments.' });
     });
   };
   app.use('/uploads/custom-images', express.static(path.join(APP_ROOT, 'data/uploads/custom-images')));
@@ -339,6 +359,8 @@ async function startServer() {
   app.post("/api/operator/applications/:appId/update", handleOperatorUpdateApplication);
   app.post("/api/operator/applications/:appId/upload-attachment", operatorAttachmentUploadMiddleware, handleOperatorUploadAttachment);
   app.get("/api/operator/attachments/:attachmentId", handleGetOperatorAttachment);
+  app.post("/api/applications/:appId/reply-attachments", userReplyAttachmentsUploadMiddleware, handleUserReplyAttachmentUpload);
+  app.post("/api/applications/:appId/reply", handleUserReplyApplication);
   app.post("/api/applications/:appId/verify-payment", handleVerifyApplicationPayment);
   app.post("/api/applications/:appId/assign", handleAssignApplicationOperator);
   app.post("/api/applications/:appId/payment-status", handleAdminUpdateApplicationPaymentStatus);
