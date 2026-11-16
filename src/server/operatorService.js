@@ -3,6 +3,7 @@ import dotenv from 'dotenv';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { initializeApp, getApps, cert } from 'firebase-admin/app';
 import { getDatabase } from 'firebase-admin/database';
 import { getAuth } from 'firebase-admin/auth';
@@ -24,9 +25,50 @@ import {
   isValidEmailAddress,
 } from './emailNotificationService.js';
 
-const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
-  ? process.cwd()
-  : path.resolve(process.cwd(), '..');
+const __filename_op = fileURLToPath(import.meta.url);
+const __dirname_op = path.dirname(__filename_op);
+
+function resolveAppRoot() {
+  const startDirs = [__dirname_op, process.cwd()];
+  for (const startDir of startDirs) {
+    let dir = path.resolve(startDir);
+    for (let i = 0; i < 6; i++) {
+      if (fs.existsSync(path.join(dir, 'package.json'))) {
+        return dir;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return fs.existsSync(path.join(process.cwd(), 'package.json'))
+    ? process.cwd()
+    : path.resolve(process.cwd(), '..');
+}
+
+const APP_ROOT = resolveAppRoot();
+
+function getAttachmentsDir() {
+  if (process.env.ATTACHMENTS_DIR && process.env.ATTACHMENTS_DIR.trim()) {
+    return path.resolve(process.env.ATTACHMENTS_DIR.trim());
+  }
+  if (process.env.UPLOAD_DIR && process.env.UPLOAD_DIR.trim()) {
+    return path.resolve(process.env.UPLOAD_DIR.trim(), 'attachments');
+  }
+  if (process.env.DATA_DIR && process.env.DATA_DIR.trim()) {
+    return path.resolve(process.env.DATA_DIR.trim(), 'uploads/attachments');
+  }
+  return path.join(APP_ROOT, 'data/uploads/attachments');
+}
+
+function getCandidateAttachmentsDirs() {
+  const candidates = [
+    getAttachmentsDir(),
+    path.join(APP_ROOT, 'data/uploads/attachments'),
+    path.resolve(process.cwd(), 'data/uploads/attachments'),
+  ];
+  return Array.from(new Set(candidates.map(d => path.resolve(d))));
+}
 
 const SUPER_ADMIN_UID = 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2';
 const SUPER_ADMIN_EMAIL = 'indiacybercafe.com@gmail.com';
@@ -46,7 +88,6 @@ const PROTECTED_REPLY_FIELDS = new Set([
   ...PROTECTED_UPDATE_FIELDS,
   'status', 'authorUid', 'authorRole', 'type', 'by', 'email'
 ]);
-const ATTACHMENTS_DIR = path.join(APP_ROOT, 'data/uploads/attachments');
 const TEST_STORE_PATH = path.join(APP_ROOT, 'data/operator_test_store.json');
 
 const DEFAULT_PROJECT_ID = 'india-cyber-cafe';
@@ -182,6 +223,46 @@ function withTimeout(promise, ms, label) {
 function cleanText(val, maxLen = 2000) {
   if (typeof val !== 'string') return '';
   return val.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F<>]/g, '').trim().slice(0, maxLen);
+}
+
+function extractQueryString(val, maxLen = 120) {
+  if (typeof val === 'string') return cleanText(val, maxLen);
+  if (Array.isArray(val)) {
+    for (const item of val) {
+      const cleaned = cleanText(item, maxLen);
+      if (cleaned) return cleaned;
+    }
+  }
+  return '';
+}
+
+function safeDecodeURIComponent(value) {
+  let current = value;
+  for (let i = 0; i < 2; i++) {
+    if (!/%[0-9A-Fa-f]{2}/.test(current)) break;
+    try {
+      const decoded = decodeURIComponent(current);
+      if (decoded === current) break;
+      current = decoded;
+    } catch {
+      break;
+    }
+  }
+  return current;
+}
+
+function isValidAppId(appId) {
+  if (!appId || appId.length > 120) return false;
+  if (/[/.#$[\]\\\u0000-\u001f\u007f]/.test(appId)) return false;
+  if (appId.includes('..')) return false;
+  return true;
+}
+
+function isSafeAttachmentId(attachmentId) {
+  if (!attachmentId || attachmentId.length > 255) return false;
+  if (/[/\\\u0000-\u001f\u007f]/.test(attachmentId)) return false;
+  if (attachmentId === '.' || attachmentId === '..' || attachmentId.includes('..')) return false;
+  return path.basename(attachmentId) === attachmentId;
 }
 
 function sanitizeFilename(name) {
@@ -390,36 +471,176 @@ function isCallerAssignedToApp(app, caller) {
   return Boolean(app.assignedToUid && app.assignedToUid === caller.uid);
 }
 
+const ATTACHMENT_ROUTE_PREFIX = '/api/operator/attachments/';
+
+function parseInternalAttachmentUrl(rawUrl) {
+  let trimmed = String(rawUrl || '').trim().replace(/&amp;/g, '&');
+  if (trimmed.startsWith('api/operator/attachments/')) {
+    trimmed = `/${trimmed}`;
+  }
+  const hasInternalPrefix = trimmed.startsWith(ATTACHMENT_ROUTE_PREFIX);
+  let parsed = null;
+  try {
+    parsed = new URL(trimmed, 'http://localhost');
+  } catch {
+    return { isInternal: hasInternalPrefix, rawAttachmentId: '', appId: '', normalizedUrl: trimmed };
+  }
+  const pathname = parsed.pathname || '';
+  if (!pathname.startsWith(ATTACHMENT_ROUTE_PREFIX)) {
+    return { isInternal: false, rawAttachmentId: '', appId: '', normalizedUrl: trimmed };
+  }
+  let attSegment = safeDecodeURIComponent(pathname.slice(ATTACHMENT_ROUTE_PREFIX.length));
+  let embeddedQueryAppId = '';
+  const qIdx = attSegment.indexOf('?');
+  if (qIdx >= 0) {
+    const embeddedQs = attSegment.slice(qIdx + 1);
+    attSegment = attSegment.slice(0, qIdx);
+    const embeddedParams = new URLSearchParams(embeddedQs.replace(/&amp;/g, '&'));
+    embeddedQueryAppId = cleanText(embeddedParams.get('appId') || '', 120);
+  }
+  const queryAppId = extractQueryString(
+    parsed.searchParams.get('appId') || parsed.searchParams.get('amp;appId') || embeddedQueryAppId,
+    120
+  );
+  const canonicalUrl = `${ATTACHMENT_ROUTE_PREFIX}${encodeURIComponent(attSegment)}${queryAppId ? `?appId=${encodeURIComponent(queryAppId)}` : ''}`;
+  return {
+    isInternal: true,
+    rawAttachmentId: attSegment,
+    appId: queryAppId,
+    normalizedUrl: canonicalUrl,
+  };
+}
+
+function findStoredAttachment(appId, attachmentId) {
+  if (!isValidAppId(appId) || !isSafeAttachmentId(attachmentId)) return null;
+  const sanitizedFallback = sanitizeFilename(attachmentId);
+  const candidateNames = sanitizedFallback && sanitizedFallback !== attachmentId
+    ? [attachmentId, sanitizedFallback]
+    : [attachmentId];
+
+  for (const rootDir of getCandidateAttachmentsDirs()) {
+    const appDir = path.resolve(rootDir, appId);
+    for (const candidateName of candidateNames) {
+      if (!isSafeAttachmentId(candidateName)) continue;
+      const filePath = path.resolve(appDir, candidateName);
+      if (!filePath.startsWith(appDir + path.sep)) continue;
+      try {
+        if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+          const metaPath = `${filePath}.meta.json`;
+          if (candidateName !== attachmentId && fs.existsSync(metaPath)) {
+            const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+            if (meta.appId && meta.appId !== appId) continue;
+          }
+          return {
+            filePath,
+            metaPath,
+            appDir,
+            resolvedAttachmentId: candidateName,
+          };
+        }
+      } catch {}
+    }
+  }
+  return null;
+}
+
+function resolveAppIdForAttachment(attachmentId) {
+  if (!isSafeAttachmentId(attachmentId)) return null;
+  const matchedAppIds = new Set();
+  const sanitizedFallback = sanitizeFilename(attachmentId);
+  const candidateNames = sanitizedFallback && sanitizedFallback !== attachmentId
+    ? [attachmentId, sanitizedFallback]
+    : [attachmentId];
+
+  for (const rootDir of getCandidateAttachmentsDirs()) {
+    try {
+      if (!fs.existsSync(rootDir)) continue;
+      const entries = fs.readdirSync(rootDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        const dirAppId = entry.name;
+        if (!isValidAppId(dirAppId)) continue;
+        const appDir = path.resolve(rootDir, dirAppId);
+        for (const candidateName of candidateNames) {
+          if (!isSafeAttachmentId(candidateName)) continue;
+          const filePath = path.resolve(appDir, candidateName);
+          if (!filePath.startsWith(appDir + path.sep)) continue;
+          if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
+            const metaPath = `${filePath}.meta.json`;
+            let metaAppId = dirAppId;
+            if (fs.existsSync(metaPath)) {
+              try {
+                const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+                if (meta.appId) metaAppId = String(meta.appId);
+              } catch {}
+            }
+            if (metaAppId === dirAppId) {
+              matchedAppIds.add(dirAppId);
+            }
+          }
+        }
+      }
+    } catch {}
+  }
+
+  if (matchedAppIds.size === 1) {
+    return Array.from(matchedAppIds)[0];
+  }
+  return null;
+}
+
+function writeAttachmentAtomically(appDir, attachmentId, buf, meta) {
+  fs.mkdirSync(appDir, { recursive: true });
+  const filePath = path.join(appDir, attachmentId);
+  const metaPath = path.join(appDir, `${attachmentId}.meta.json`);
+  const nonce = crypto.randomBytes(4).toString('hex');
+  const tmpFilePath = `${filePath}.tmp-${nonce}`;
+  const tmpMetaPath = `${metaPath}.tmp-${nonce}`;
+  try {
+    fs.writeFileSync(tmpFilePath, buf);
+    fs.renameSync(tmpFilePath, filePath);
+    fs.writeFileSync(tmpMetaPath, JSON.stringify(meta), 'utf-8');
+    fs.renameSync(tmpMetaPath, metaPath);
+    if (!fs.existsSync(filePath) || fs.statSync(filePath).size !== buf.length || !fs.existsSync(metaPath)) {
+      throw new Error('Failed to verify persisted attachment files on disk');
+    }
+    return { filePath, metaPath };
+  } catch (err) {
+    for (const p of [tmpFilePath, tmpMetaPath]) {
+      try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch {}
+    }
+    throw err;
+  }
+}
+
 function validateInternalAttachmentReference(attachmentUrl, expectedAppId, expectedUploaderUid) {
-  if (!attachmentUrl.startsWith('/api/operator/attachments/')) {
-    return { ok: true };
+  const parsed = parseInternalAttachmentUrl(attachmentUrl);
+  if (!parsed.isInternal) {
+    return { ok: true, normalizedUrl: attachmentUrl };
   }
   try {
-    const parsed = new URL(attachmentUrl, 'http://localhost');
-    const pathPrefix = '/api/operator/attachments/';
-    if (!parsed.pathname.startsWith(pathPrefix)) {
-      return { ok: false, error: 'Invalid attachment URL path' };
+    const rawAttId = parsed.rawAttachmentId;
+    if (!rawAttId || !isSafeAttachmentId(rawAttId)) {
+      return { ok: false, error: 'Invalid attachment reference' };
     }
-    const rawAttId = decodeURIComponent(parsed.pathname.slice(pathPrefix.length));
-    const safeAttId = sanitizeFilename(rawAttId);
-    const queryAppId = cleanText(parsed.searchParams.get('appId') || '', 120);
-    if (!safeAttId || safeAttId !== rawAttId || safeAttId.includes('..') || !queryAppId || queryAppId !== expectedAppId) {
+    if (!isValidAppId(expectedAppId) || !parsed.appId || parsed.appId !== expectedAppId) {
       return { ok: false, error: 'Attachment URL does not match target application' };
     }
-    const appDir = path.resolve(ATTACHMENTS_DIR, expectedAppId);
-    const filePath = path.resolve(appDir, safeAttId);
-    const metaPath = `${filePath}.meta.json`;
-    if (!filePath.startsWith(appDir) || !fs.existsSync(filePath) || !fs.existsSync(metaPath)) {
+    const found = findStoredAttachment(expectedAppId, rawAttId);
+    if (!found || !fs.existsSync(found.metaPath)) {
       return { ok: false, error: 'Referenced attachment file was not found on server' };
     }
-    const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
-    if (meta.appId !== expectedAppId || meta.attachmentId !== safeAttId) {
+    const meta = JSON.parse(fs.readFileSync(found.metaPath, 'utf-8'));
+    if (
+      meta.appId !== expectedAppId ||
+      (meta.attachmentId !== found.resolvedAttachmentId && meta.attachmentId !== rawAttId)
+    ) {
       return { ok: false, error: 'Attachment metadata mismatch for target application' };
     }
     if (expectedUploaderUid && meta.uploadedByUid && meta.uploadedByUid !== expectedUploaderUid) {
       return { ok: false, error: 'Attachment was not uploaded by the authenticated reply author' };
     }
-    return { ok: true };
+    return { ok: true, normalizedUrl: parsed.normalizedUrl };
   } catch {
     return { ok: false, error: 'Invalid attachment URL' };
   }
@@ -436,6 +657,15 @@ function detectAttachmentFileType(buf) {
   if (isPng) return { ok: true, ext: 'png', contentType: 'image/png' };
   if (isWebp) return { ok: true, ext: 'webp', contentType: 'image/webp' };
   return { ok: false };
+}
+
+function inferMimeTypeFromExtension(filename) {
+  const lower = String(filename || '').toLowerCase();
+  if (lower.endsWith('.pdf')) return 'application/pdf';
+  if (lower.endsWith('.jpg') || lower.endsWith('.jpeg')) return 'image/jpeg';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
+  return null;
 }
 
 function normalizeValidatedAttachmentsList(rawAttachments, appId, expectedUploaderUid) {
@@ -463,16 +693,24 @@ function normalizeValidatedAttachmentsList(rawAttachments, appId, expectedUpload
     } else {
       return { ok: false, attachments: [], error: 'Each attachment must be a valid { url, name } object or URL string.' };
     }
+    url = url.replace(/&amp;/g, '&');
+    if (url.startsWith('api/operator/attachments/')) {
+      url = `/${url}`;
+    }
     if (!url || url.length > 2048) {
       return { ok: false, attachments: [], error: 'Attachment URL is missing or too long.' };
     }
-    if (!url.startsWith('https://') && !url.startsWith('/api/operator/attachments/')) {
+    const parsedInternal = parseInternalAttachmentUrl(url);
+    if (!parsedInternal.isInternal && !url.startsWith('https://')) {
       return { ok: false, attachments: [], error: 'Invalid attachment URL.' };
     }
-    if (url.startsWith('/api/operator/attachments/')) {
+    if (parsedInternal.isInternal) {
       const refCheck = validateInternalAttachmentReference(url, appId, expectedUploaderUid);
       if (!refCheck.ok) {
         return { ok: false, attachments: [], error: refCheck.error || 'Invalid attachment reference.' };
+      }
+      if (refCheck.normalizedUrl) {
+        url = refCheck.normalizedUrl;
       }
     }
     if (!seenUrls.has(url)) {
@@ -655,7 +893,10 @@ export async function handleOperatorUpdateApplication(req, res) {
 
     const rawStatus = typeof body.status === 'string' ? body.status.trim() : '';
     const noteText = cleanText(body.note, MAX_NOTE_LENGTH);
-    const attachmentUrl = typeof body.attachmentUrl === 'string' ? body.attachmentUrl.trim() : '';
+    let attachmentUrl = typeof body.attachmentUrl === 'string' ? body.attachmentUrl.trim().replace(/&amp;/g, '&') : '';
+    if (attachmentUrl.startsWith('api/operator/attachments/')) {
+      attachmentUrl = `/${attachmentUrl}`;
+    }
     const attachmentName = cleanText(body.attachmentName, 150);
     const attachmentsCheck = normalizeValidatedAttachmentsList(body.attachments, appId);
 
@@ -679,13 +920,17 @@ export async function handleOperatorUpdateApplication(req, res) {
     if (rawStatus && !ALLOWED_STATUSES.has(rawStatus)) {
       return res.status(400).json({ success: false, error: 'Invalid status value. Allowed: processing, clarification, completed, rejected.' });
     }
-    if (attachmentUrl && !attachmentUrl.startsWith('https://') && !attachmentUrl.startsWith('/api/operator/attachments/')) {
+    const parsedSingleAtt = attachmentUrl ? parseInternalAttachmentUrl(attachmentUrl) : null;
+    if (attachmentUrl && !parsedSingleAtt?.isInternal && !attachmentUrl.startsWith('https://')) {
       return res.status(400).json({ success: false, error: 'Invalid attachment URL' });
     }
-    if (attachmentUrl.startsWith('/api/operator/attachments/')) {
+    if (parsedSingleAtt?.isInternal) {
       const attCheck = validateInternalAttachmentReference(attachmentUrl, appId);
       if (!attCheck.ok) {
         return res.status(400).json({ success: false, error: attCheck.error || 'Invalid attachment reference' });
+      }
+      if (attCheck.normalizedUrl) {
+        attachmentUrl = attCheck.normalizedUrl;
       }
     }
     if (attachmentUrl && !normalizedAttachments.some(a => a.url === attachmentUrl)) {
@@ -955,29 +1200,17 @@ export async function handleOperatorUploadAttachment(req, res) {
     const contentType = isPdf ? 'application/pdf' : isJpeg ? 'image/jpeg' : isPng ? 'image/png' : 'image/webp';
     const safeOriginal = sanitizeFilename(file.originalname || `attachment.${ext}`);
     const attachmentId = `att_${Date.now()}_${crypto.randomBytes(8).toString('hex')}.${ext}`;
-    const appDir = path.join(ATTACHMENTS_DIR, appId);
-    fs.mkdirSync(appDir, { recursive: true });
-    const filePath = path.join(appDir, attachmentId);
-    const metaPath = path.join(appDir, `${attachmentId}.meta.json`);
-    fs.writeFileSync(filePath, buf);
-    fs.writeFileSync(
-      metaPath,
-      JSON.stringify({
-        attachmentId,
-        appId,
-        uploadedByUid: caller.uid,
-        uploadedByRole: caller.role,
-        originalName: safeOriginal,
-        contentType,
-        size: buf.length,
-        createdAt: new Date().toISOString(),
-      }),
-      'utf-8'
-    );
-
-    if (!fs.existsSync(filePath) || fs.statSync(filePath).size !== buf.length || !fs.existsSync(metaPath)) {
-      throw new Error('Failed to verify persisted attachment files on disk');
-    }
+    const appDir = path.join(getAttachmentsDir(), appId);
+    writeAttachmentAtomically(appDir, attachmentId, buf, {
+      attachmentId,
+      appId,
+      uploadedByUid: caller.uid,
+      uploadedByRole: caller.role,
+      originalName: safeOriginal,
+      contentType,
+      size: buf.length,
+      createdAt: new Date().toISOString(),
+    });
 
     const downloadUrl = `/api/operator/attachments/${encodeURIComponent(attachmentId)}?appId=${encodeURIComponent(appId)}`;
     return res.json({
@@ -996,12 +1229,13 @@ export async function handleOperatorUploadAttachment(req, res) {
 }
 
 export async function handleUserReplyAttachmentUpload(req, res) {
+  const writtenPaths = [];
   try {
     const caller = await requireAuthenticatedCaller(req, res);
     if (!caller) return;
 
     const appId = cleanText(req.params.appId, 120);
-    if (!appId || /[/.#$[\]]/.test(appId)) {
+    if (!isValidAppId(appId)) {
       return res.status(400).json({ success: false, error: 'Invalid application ID' });
     }
 
@@ -1019,6 +1253,7 @@ export async function handleUserReplyAttachmentUpload(req, res) {
       rawFiles.push(...reqFiles);
     } else if (reqFiles && typeof reqFiles === 'object') {
       if (Array.isArray(reqFiles.files)) rawFiles.push(...reqFiles.files);
+      if (Array.isArray(reqFiles['files[]'])) rawFiles.push(...reqFiles['files[]']);
       if (Array.isArray(reqFiles.file)) rawFiles.push(...reqFiles.file);
     } else if (req.file) {
       rawFiles.push(req.file);
@@ -1054,32 +1289,24 @@ export async function handleUserReplyAttachmentUpload(req, res) {
       });
     }
 
-    const appDir = path.join(ATTACHMENTS_DIR, appId);
+    const appDir = path.join(getAttachmentsDir(), appId);
     fs.mkdirSync(appDir, { recursive: true });
     const uploadedAttachments = [];
 
-    for (const item of validatedFiles) {
-      const attachmentId = `reply_att_${Date.now()}_${crypto.randomBytes(8).toString('hex')}.${item.ext}`;
-      const filePath = path.join(appDir, attachmentId);
-      const metaPath = path.join(appDir, `${attachmentId}.meta.json`);
-      fs.writeFileSync(filePath, item.buf);
-      fs.writeFileSync(
-        metaPath,
-        JSON.stringify({
-          attachmentId,
-          appId,
-          uploadedByUid: caller.uid,
-          uploadedByRole: 'user',
-          originalName: item.safeOriginal,
-          contentType: item.contentType,
-          size: item.buf.length,
-          createdAt: new Date().toISOString(),
-        }),
-        'utf-8'
-      );
-      if (!fs.existsSync(filePath) || fs.statSync(filePath).size !== item.buf.length || !fs.existsSync(metaPath)) {
-        throw new Error('Failed to verify persisted reply attachment files on disk');
-      }
+    for (let i = 0; i < validatedFiles.length; i++) {
+      const item = validatedFiles[i];
+      const attachmentId = `reply_att_${Date.now()}_${i}_${crypto.randomBytes(8).toString('hex')}.${item.ext}`;
+      const { filePath, metaPath } = writeAttachmentAtomically(appDir, attachmentId, item.buf, {
+        attachmentId,
+        appId,
+        uploadedByUid: caller.uid,
+        uploadedByRole: 'user',
+        originalName: item.safeOriginal,
+        contentType: item.contentType,
+        size: item.buf.length,
+        createdAt: new Date().toISOString(),
+      });
+      writtenPaths.push(filePath, metaPath);
       uploadedAttachments.push({
         url: `/api/operator/attachments/${encodeURIComponent(attachmentId)}?appId=${encodeURIComponent(appId)}`,
         name: item.safeOriginal,
@@ -1091,6 +1318,9 @@ export async function handleUserReplyAttachmentUpload(req, res) {
       attachments: uploadedAttachments,
     });
   } catch (err) {
+    for (const p of writtenPaths) {
+      try { if (fs.existsSync(p)) fs.unlinkSync(p); } catch {}
+    }
     if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });
     }
@@ -1348,10 +1578,39 @@ export async function handleGetOperatorAttachment(req, res) {
     const caller = await requireAuthenticatedCaller(req, res);
     if (!caller) return;
 
-    const appId = cleanText(req.query.appId, 120);
-    const rawAttachmentParam = String(req.params.attachmentId || '');
-    const attachmentId = sanitizeFilename(rawAttachmentParam);
-    if (!appId || /[/.#$[\]]/.test(appId) || !attachmentId || attachmentId !== rawAttachmentParam || attachmentId.includes('..')) {
+    const rawParamDecoded = safeDecodeURIComponent(String(req.params.attachmentId || ''));
+    let attachmentId = rawParamDecoded;
+    let embeddedAppId = '';
+    const embeddedQIdx = rawParamDecoded.indexOf('?');
+    if (embeddedQIdx >= 0) {
+      const qs = rawParamDecoded.slice(embeddedQIdx + 1).replace(/&amp;/g, '&');
+      attachmentId = rawParamDecoded.slice(0, embeddedQIdx);
+      const params = new URLSearchParams(qs);
+      embeddedAppId = extractQueryString(params.get('appId'), 120);
+    }
+
+    const explicitQueryAppId = extractQueryString(
+      req.query.appId !== undefined ? req.query.appId : req.query['amp;appId'],
+      120
+    );
+    const hasExplicitInvalidAppId =
+      typeof req.query.appId === 'string' &&
+      req.query.appId.trim().length > 0 &&
+      !isValidAppId(req.query.appId.trim());
+
+    if (hasExplicitInvalidAppId || !isSafeAttachmentId(attachmentId)) {
+      return res.status(400).json({ success: false, error: 'Invalid attachment reference' });
+    }
+
+    let appId = explicitQueryAppId || embeddedAppId;
+    if (!appId) {
+      const inferredAppId = resolveAppIdForAttachment(attachmentId);
+      if (inferredAppId) {
+        appId = inferredAppId;
+      }
+    }
+
+    if (!isValidAppId(appId)) {
       return res.status(400).json({ success: false, error: 'Invalid attachment reference' });
     }
 
@@ -1369,30 +1628,51 @@ export async function handleGetOperatorAttachment(req, res) {
       return res.status(403).json({ success: false, error: 'Access denied to this attachment' });
     }
 
-    const filePath = path.resolve(ATTACHMENTS_DIR, appId, attachmentId);
-    if (!filePath.startsWith(path.resolve(ATTACHMENTS_DIR, appId)) || !fs.existsSync(filePath)) {
+    const found = findStoredAttachment(appId, attachmentId);
+    if (!found) {
       return res.status(404).json({ success: false, error: 'Attachment file not found' });
     }
 
-    let contentType = 'application/octet-stream';
+    let contentType = '';
     let originalName = attachmentId;
-    const metaPath = `${filePath}.meta.json`;
-    if (fs.existsSync(metaPath)) {
+    if (fs.existsSync(found.metaPath)) {
       try {
-        const meta = JSON.parse(fs.readFileSync(metaPath, 'utf-8'));
+        const meta = JSON.parse(fs.readFileSync(found.metaPath, 'utf-8'));
         if (meta.appId && meta.appId !== appId) {
           return res.status(403).json({ success: false, error: 'Attachment application mismatch' });
         }
-        contentType = meta.contentType || contentType;
-        originalName = meta.originalName || originalName;
+        if (meta.contentType && meta.contentType !== 'application/octet-stream') {
+          contentType = String(meta.contentType);
+        }
+        if (meta.originalName) {
+          originalName = String(meta.originalName);
+        }
       } catch {}
     }
+
+    const fileBuf = fs.readFileSync(found.filePath);
+    if (!contentType) {
+      const detected = detectAttachmentFileType(fileBuf);
+      contentType =
+        detected.contentType ||
+        inferMimeTypeFromExtension(originalName) ||
+        inferMimeTypeFromExtension(found.resolvedAttachmentId) ||
+        'application/octet-stream';
+    }
+
+    const safeHeaderName = String(originalName || found.resolvedAttachmentId || 'attachment')
+      .replace(/[\r\n"\\]/g, '_')
+      .trim() || 'attachment';
+    const asciiFallback = safeHeaderName.replace(/[^\x20-\x7e]/g, '_');
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Cache-Control', 'private, no-store');
-    res.setHeader('Content-Disposition', `inline; filename="${originalName.replace(/"/g, '')}"`);
-    return res.send(fs.readFileSync(filePath));
+    res.setHeader(
+      'Content-Disposition',
+      `inline; filename="${asciiFallback}"; filename*=UTF-8''${encodeURIComponent(safeHeaderName)}`
+    );
+    return res.send(fileBuf);
   } catch (err) {
     if (err?.code === 'FIREBASE_ADMIN_UNCONFIGURED') {
       return res.status(503).json({ success: false, code: 'FIREBASE_ADMIN_UNCONFIGURED', error: err.message });

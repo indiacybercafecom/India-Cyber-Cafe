@@ -192,9 +192,21 @@ export function getOrdinalLabel(index: number): string {
   }
 }
 
+export function normalizeNoteAttachmentUrl(url: unknown): string {
+  if (typeof url !== 'string') return '';
+  let trimmed = url.trim();
+  if (!trimmed) return '';
+  if (trimmed.includes('&amp;')) {
+    trimmed = trimmed.replace(/&amp;/g, '&');
+  }
+  if (/^api\/operator\/attachments\//i.test(trimmed)) {
+    trimmed = `/${trimmed}`;
+  }
+  return trimmed;
+}
+
 export function isSafeNoteAttachmentUrl(url: unknown): url is string {
-  if (typeof url !== 'string') return false;
-  const trimmed = url.trim();
+  const trimmed = normalizeNoteAttachmentUrl(url);
   if (!trimmed) return false;
   const lower = trimmed.toLowerCase();
   if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('vbscript:')) {
@@ -221,13 +233,13 @@ export function normalizeNoteAttachments(
   const seenUrls = new Set<string>();
 
   const pushAttachment = (rawUrl: unknown, rawName?: unknown, fallbackIndex?: number) => {
-    if (!isSafeNoteAttachmentUrl(rawUrl)) return;
-    const url = rawUrl.trim();
-    if (seenUrls.has(url)) return;
-    seenUrls.add(url);
+    const normalized = normalizeNoteAttachmentUrl(rawUrl);
+    if (!isSafeNoteAttachmentUrl(normalized)) return;
+    if (seenUrls.has(normalized)) return;
+    seenUrls.add(normalized);
     const cleanedName = typeof rawName === 'string' ? rawName.trim() : '';
     result.push({
-      url,
+      url: normalized,
       name: cleanedName || (fallbackIndex !== undefined ? `Attachment ${fallbackIndex + 1}` : 'Attachment'),
     });
   };
@@ -237,9 +249,10 @@ export function normalizeNoteAttachments(
     rawList = note.attachments;
   } else if (note.attachments && typeof note.attachments === 'object') {
     const record = note.attachments as Record<string, unknown>;
-    rawList = Object.keys(record)
-      .sort((a, b) => Number(a) - Number(b))
-      .map((k) => record[k]);
+    const keys = Object.keys(record);
+    const numericKeys = keys.filter(k => /^\d+$/.test(k)).sort((a, b) => Number(a) - Number(b));
+    const orderedKeys = numericKeys.length > 0 ? numericKeys : keys;
+    rawList = orderedKeys.map((k) => record[k]);
   }
 
   rawList.forEach((item, idx) => {

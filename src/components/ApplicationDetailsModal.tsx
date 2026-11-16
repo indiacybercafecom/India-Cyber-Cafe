@@ -5,12 +5,16 @@ import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { auth } from '../firebase';
 import { motion, AnimatePresence } from 'motion/react';
-import { Reply } from 'lucide-react';
+import { Reply, Download, X, ChevronLeft, ChevronRight, Minus, Plus, LoaderCircle, FileWarning } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
+import workerSrc from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import {
   assignApplicationOperatorApi,
   updateApplicationPaymentStatusApi,
   type EmailDeliverySummary,
 } from '../services/emailService';
+
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerSrc;
 import { trimWhitespace } from '../utils/sanitizer';
 import {
   ALLOWED_OPERATOR_STATUSES,
@@ -99,12 +103,288 @@ async function fetchWithTimeout(
   }
 }
 
+function resolveInternalAttachmentFetchUrl(rawUrl: string, appId?: string): string | null {
+  let cleaned = String(rawUrl || '').trim().replace(/&amp;/g, '&');
+  if (!cleaned) return null;
+  if (cleaned.startsWith('api/operator/attachments/')) {
+    cleaned = `/${cleaned}`;
+  }
+  try {
+    const parsed = new URL(cleaned, window.location.origin);
+    if (!parsed.pathname.startsWith('/api/operator/attachments/')) {
+      return null;
+    }
+    if (appId && !parsed.searchParams.get('appId')) {
+      parsed.searchParams.set('appId', appId);
+    }
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return null;
+  }
+}
+
+async function detectBlobPreviewKind(blob: Blob, contentTypeHeader: string | null, filename?: string): Promise<'image' | 'pdf' | 'other'> {
+  try {
+    const headerBuf = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+    if (
+      headerBuf.length >= 4 &&
+      headerBuf[0] === 0x25 &&
+      headerBuf[1] === 0x50 &&
+      headerBuf[2] === 0x44 &&
+      headerBuf[3] === 0x46
+    ) {
+      return 'pdf';
+    }
+    if (
+      (headerBuf.length >= 3 && headerBuf[0] === 0xff && headerBuf[1] === 0xd8 && headerBuf[2] === 0xff) ||
+      (headerBuf.length >= 8 && headerBuf[0] === 0x89 && headerBuf[1] === 0x50 && headerBuf[2] === 0x4e && headerBuf[3] === 0x47) ||
+      (headerBuf.length >= 12 &&
+        headerBuf[0] === 0x52 &&
+        headerBuf[1] === 0x49 &&
+        headerBuf[2] === 0x46 &&
+        headerBuf[3] === 0x46 &&
+        headerBuf[8] === 0x57 &&
+        headerBuf[9] === 0x45 &&
+        headerBuf[10] === 0x42 &&
+        headerBuf[11] === 0x50)
+    ) {
+      return 'image';
+    }
+  } catch {}
+  const ct = String(contentTypeHeader || blob.type || '').toLowerCase();
+  if (ct.includes('pdf')) return 'pdf';
+  if (ct.startsWith('image/')) return 'image';
+  const lowerName = String(filename || '').toLowerCase();
+  if (lowerName.endsWith('.pdf')) return 'pdf';
+  if (/\.(jpe?g|png|webp)$/.test(lowerName)) return 'image';
+  return 'other';
+}
+
+interface AttachmentPreviewState {
+  name: string;
+  blob: Blob;
+  blobUrl: string;
+  kind: 'image' | 'pdf';
+}
+
+function AttachmentPreviewOverlay({
+  preview,
+  onClose,
+  onDownload,
+}: {
+  preview: AttachmentPreviewState;
+  onClose: () => void;
+  onDownload: () => void;
+}) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const pdfDocRef = useRef<pdfjsLib.PDFDocumentProxy | null>(null);
+  const renderTaskRef = useRef<pdfjsLib.RenderTask | null>(null);
+  const [pdfPage, setPdfPage] = useState(1);
+  const [pdfPageCount, setPdfPageCount] = useState(0);
+  const [zoom, setZoom] = useState(1);
+  const [pdfLoading, setPdfLoading] = useState(preview.kind === 'pdf');
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (preview.kind !== 'pdf') return;
+    let cancelled = false;
+    let loadingTask: ReturnType<typeof pdfjsLib.getDocument> | null = null;
+    setPdfLoading(true);
+    setPdfError(null);
+    setPdfPage(1);
+    setPdfPageCount(0);
+
+    (async () => {
+      try {
+        const buffer = await preview.blob.arrayBuffer();
+        if (cancelled) return;
+        loadingTask = pdfjsLib.getDocument({
+          data: new Uint8Array(buffer),
+          cMapPacked: true,
+        });
+        const pdf = await loadingTask.promise;
+        if (cancelled) return;
+        pdfDocRef.current = pdf;
+        setPdfPageCount(pdf.numPages);
+        setPdfLoading(false);
+      } catch (err: any) {
+        if (!cancelled) {
+          setPdfError(err?.message || 'Unable to preview PDF. You can still download the file.');
+          setPdfLoading(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      renderTaskRef.current?.cancel();
+      if (loadingTask) void loadingTask.destroy();
+      if (pdfDocRef.current) {
+        pdfDocRef.current.cleanup();
+        pdfDocRef.current = null;
+      }
+    };
+  }, [preview]);
+
+  useEffect(() => {
+    if (preview.kind !== 'pdf' || !pdfDocRef.current || pdfPageCount === 0) return;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const pdf = pdfDocRef.current;
+        if (!pdf) return;
+        const page = await pdf.getPage(pdfPage);
+        if (cancelled || !canvasRef.current) return;
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+
+        renderTaskRef.current?.cancel();
+        const pixelRatio = typeof window !== 'undefined' ? Math.min(window.devicePixelRatio || 1, 2) : 1;
+        const viewport = page.getViewport({ scale: zoom * 1.25 });
+        canvas.width = Math.floor(viewport.width * pixelRatio);
+        canvas.height = Math.floor(viewport.height * pixelRatio);
+        canvas.style.width = `${Math.floor(viewport.width)}px`;
+        canvas.style.height = `${Math.floor(viewport.height)}px`;
+        ctx.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+
+        const task = page.render({ canvasContext: ctx, viewport, canvas });
+        renderTaskRef.current = task;
+        await task.promise;
+      } catch (err: any) {
+        if (!cancelled && err?.name !== 'RenderingCancelledException') {
+          setPdfError('Failed to render PDF page. Use Download to open locally.');
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      renderTaskRef.current?.cancel();
+    };
+  }, [preview, pdfPage, pdfPageCount, zoom]);
+
+  return (
+    <div
+      data-testid="attachment-preview-modal"
+      onClick={e => e.stopPropagation()}
+      className="fixed inset-0 z-[2100] bg-black/75 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4"
+    >
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden shadow-2xl">
+        <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between gap-3 bg-white">
+          <h4 className="text-xs sm:text-sm font-bold text-navy truncate">{preview.name}</h4>
+          <div className="flex items-center gap-2 shrink-0">
+            {preview.kind === 'pdf' && pdfPageCount > 0 && (
+              <div className="hidden sm:flex items-center gap-1 bg-slate-100 rounded-lg px-2 py-1 text-xs text-slate-700">
+                <button
+                  type="button"
+                  aria-label="Zoom out"
+                  onClick={() => setZoom(z => Math.max(0.5, Number((z - 0.2).toFixed(1))))}
+                  className="p-1 hover:bg-slate-200 rounded"
+                >
+                  <Minus className="w-3.5 h-3.5" />
+                </button>
+                <span className="min-w-[40px] text-center font-medium">{Math.round(zoom * 100)}%</span>
+                <button
+                  type="button"
+                  aria-label="Zoom in"
+                  onClick={() => setZoom(z => Math.min(2.4, Number((z + 0.2).toFixed(1))))}
+                  className="p-1 hover:bg-slate-200 rounded"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+            <button
+              type="button"
+              data-testid="attachment-preview-download-btn"
+              onClick={onDownload}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-navy text-white text-xs font-bold hover:bg-navy/90 transition-colors"
+            >
+              <Download className="w-3.5 h-3.5" />
+              Download
+            </button>
+            <button
+              type="button"
+              aria-label="Close attachment preview"
+              data-testid="attachment-preview-close-btn"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-auto bg-slate-100 p-3 sm:p-5 flex items-center justify-center min-h-[260px]">
+          {preview.kind === 'image' ? (
+            <img
+              data-testid="attachment-preview-image"
+              src={preview.blobUrl}
+              alt={preview.name}
+              className="max-w-full max-h-[72vh] object-contain rounded-lg shadow-sm bg-white"
+            />
+          ) : pdfLoading ? (
+            <div className="flex flex-col items-center gap-2 text-slate-600 text-xs sm:text-sm py-8">
+              <LoaderCircle className="w-6 h-6 animate-spin text-navy" />
+              <span>Loading PDF preview...</span>
+            </div>
+          ) : pdfError ? (
+            <div className="flex flex-col items-center gap-3 text-center max-w-sm py-8">
+              <FileWarning className="w-8 h-8 text-amber-500" />
+              <p className="text-xs sm:text-sm text-slate-600">{pdfError}</p>
+              <button
+                type="button"
+                onClick={onDownload}
+                className="px-4 py-2 rounded-xl bg-navy text-white text-xs font-bold"
+              >
+                Download PDF
+              </button>
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-3 w-full">
+              <canvas
+                ref={canvasRef}
+                data-testid="attachment-preview-pdf-canvas"
+                className="shadow-md bg-white rounded max-w-full"
+              />
+              {pdfPageCount > 1 && (
+                <div className="flex items-center gap-3 bg-white px-3 py-1.5 rounded-full shadow text-xs font-medium text-navy">
+                  <button
+                    type="button"
+                    disabled={pdfPage <= 1}
+                    onClick={() => setPdfPage(p => Math.max(1, p - 1))}
+                    className="p-1 rounded-full hover:bg-slate-100 disabled:opacity-40"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span>Page {pdfPage} of {pdfPageCount}</span>
+                  <button
+                    type="button"
+                    disabled={pdfPage >= pdfPageCount}
+                    onClick={() => setPdfPage(p => Math.min(pdfPageCount, p + 1))}
+                    className="p-1 rounded-full hover:bg-slate-100 disabled:opacity-40"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ApplicationDetailsModal({ app, onClose, currentUser, operators }: ApplicationDetailsModalProps) {
   const [noteText, setNoteText] = useState('');
   const [newStatus, setNewStatus] = useState('');
   const [noteFile, setNoteFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [downloadingAttachment, setDownloadingAttachment] = useState<string | null>(null);
+  const [previewAttachment, setPreviewAttachment] = useState<AttachmentPreviewState | null>(null);
   const [localStatusOverride, setLocalStatusOverride] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const staffSubmittingRef = useRef(false);
@@ -121,6 +401,15 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
   const replyClientKeyRef = useRef<string | null>(null);
 
   useEffect(() => {
+    return () => {
+      if (previewAttachment?.blobUrl) {
+        URL.revokeObjectURL(previewAttachment.blobUrl);
+      }
+    };
+  }, [previewAttachment]);
+
+  useEffect(() => {
+    setPreviewAttachment(null);
     setIsReplyExpanded(false);
     setLocalAppendedNotes([]);
     setLocalStatusOverride(null);
@@ -191,11 +480,23 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
     });
   };
 
-  const handleOpenAttachment = async (url: string, filename?: string) => {
-    if (!url) return;
-    if (!url.startsWith('/api/operator/attachments/')) {
+  const triggerBlobDownload = (blobUrl: string, filename: string) => {
+    const link = document.createElement('a');
+    link.href = blobUrl;
+    link.download = filename || 'attachment';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleOpenAttachment = async (rawUrl: string, filename?: string) => {
+    if (!rawUrl) return;
+    const normalizedExternal = rawUrl.trim().replace(/&amp;/g, '&');
+    const internalFetchUrl = resolveInternalAttachmentFetchUrl(normalizedExternal, app.id);
+
+    if (!internalFetchUrl) {
       const link = document.createElement('a');
-      link.href = url;
+      link.href = normalizedExternal;
       link.target = '_blank';
       link.rel = 'noopener noreferrer';
       if (filename) link.download = filename;
@@ -205,32 +506,43 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
       return;
     }
 
-    setDownloadingAttachment(url);
+    setDownloadingAttachment(rawUrl);
     try {
       const idToken = await auth.currentUser?.getIdToken();
       if (!idToken) {
-        throw new Error('Please sign in again to download this attachment.');
+        throw new Error('Please sign in again to view this attachment.');
       }
-      const resp = await fetch(url, {
-        headers: {
-          Authorization: `Bearer ${idToken}`,
+      const resp = await fetchWithTimeout(
+        internalFetchUrl,
+        {
+          headers: {
+            Authorization: `Bearer ${idToken}`,
+          },
         },
-      });
+        30000
+      );
       if (!resp.ok) {
         const errData = await resp.json().catch(() => ({}));
-        throw new Error(errData.error || 'Unable to download attachment.');
+        throw new Error(errData.error || 'Unable to open attachment.');
       }
       const blob = await resp.blob();
+      const displayName = filename || 'attachment';
+      const kind = await detectBlobPreviewKind(blob, resp.headers.get('Content-Type'), displayName);
       const blobUrl = URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.href = blobUrl;
-      link.download = filename || 'attachment';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+
+      if (kind === 'image' || kind === 'pdf') {
+        setPreviewAttachment({
+          name: displayName,
+          blob,
+          blobUrl,
+          kind,
+        });
+      } else {
+        triggerBlobDownload(blobUrl, displayName);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      }
     } catch (err: any) {
-      showToast(err?.message || 'Unable to download attachment.', 'error');
+      showToast(err?.message || 'Unable to open attachment.', 'error');
     } finally {
       setDownloadingAttachment(null);
     }
@@ -381,7 +693,8 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
               Authorization: `Bearer ${idToken}`,
             },
             body: formData,
-          }
+          },
+          30000
         );
         const uploadData = await uploadResp.json().catch(() => ({}));
         if (!uploadResp.ok || !uploadData.success || !Array.isArray(uploadData.attachments)) {
@@ -1181,6 +1494,14 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
           )}
         </div>
       </motion.div>
+
+      {previewAttachment && (
+        <AttachmentPreviewOverlay
+          preview={previewAttachment}
+          onClose={() => setPreviewAttachment(null)}
+          onDownload={() => triggerBlobDownload(previewAttachment.blobUrl, previewAttachment.name)}
+        />
+      )}
     </div>
   );
 }

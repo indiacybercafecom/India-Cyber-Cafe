@@ -1052,7 +1052,7 @@ async function runApiIntegrationTests(): Promise<Array<{ name: string; ok: boole
     });
   };
   const replyUploadMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    upload.fields([{ name: 'files', maxCount: 5 }, { name: 'file', maxCount: 5 }])(req, res, (err: any) => {
+    upload.fields([{ name: 'files', maxCount: 5 }, { name: 'files[]', maxCount: 5 }, { name: 'file', maxCount: 5 }])(req, res, (err: any) => {
       if (!err) return next();
       if (err instanceof multer.MulterError) {
         return res.status(400).json({ success: false, error: err.message });
@@ -1611,6 +1611,132 @@ async function runApiIntegrationTests(): Promise<Array<{ name: string; ok: boole
         leakedJobs.length === 0,
       detail: `op=${rTimeoutOp.status}/${jTimeoutOp.code}, reply=${rTimeoutReply.status}/${jTimeoutReply.code}, leakedNotes=${leakedTimeoutNotes.length}, leakedJobs=${leakedJobs.length}`,
     });
+
+    // 15. User multiple note attachments: 2-file & 5-file batch, full-origin/&amp; normalization, legacy filenames without .meta.json, missing appId fallback, and strict security guards
+    const twoAadhaarForm = new FormData();
+    twoAadhaarForm.append('files', new Blob([jpgBytes], { type: 'image/jpeg' }), 'Aadhaar Front (1).jpg');
+    twoAadhaarForm.append('files', new Blob([pdfBytes], { type: 'application/pdf' }), 'Aadhaar Back.pdf');
+    const rTwoAadhaar = await fetch(`${baseUrl}/api/applications/app_op1_test/reply-attachments`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenCustA}` },
+      body: twoAadhaarForm,
+    });
+    const jTwoAadhaar = await rTwoAadhaar.json();
+    const twoUrls = Array.isArray(jTwoAadhaar.attachments) ? jTwoAadhaar.attachments : [];
+
+    // Submit reply using full-origin + &amp; formatted URLs to verify backward-compatible normalization & cross-app security
+    const rTwoReplySave = await fetch(`${baseUrl}/api/applications/app_op1_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({
+        note: 'Uploaded both Aadhaar front and back',
+        attachments: twoUrls.map((a: any, idx: number) => ({
+          url: idx === 0
+            ? `https://b.indiacybercafe.com${String(a.url).replace('?', '?')}`.replace('&', '&amp;')
+            : String(a.url).replace('&', '&amp;'),
+          name: a.name,
+        })),
+        clientReplyId: 'reply_aadhaar_both_1',
+      }),
+    });
+    const jTwoReplySave = await rTwoReplySave.json();
+
+    // Download both Aadhaar attachments as Owner, Admin, Assigned Op (tokenOp2), and verify UnassignedOp/CustB get 403
+    const firstAttUrl = twoUrls[0]?.url || '';
+    const secondAttUrl = twoUrls[1]?.url || '';
+    const dlAadhaar1Admin = await fetch(`${baseUrl}${firstAttUrl}`, { headers: { Authorization: `Bearer ${tokenAdmin}` } });
+    const dlAadhaar2Admin = await fetch(`${baseUrl}${secondAttUrl}`, { headers: { Authorization: `Bearer ${tokenAdmin}` } });
+    const dlAadhaar1Bytes = Buffer.from(await dlAadhaar1Admin.arrayBuffer());
+    const dlAadhaar2Bytes = Buffer.from(await dlAadhaar2Admin.arrayBuffer());
+    const dlAadhaar1Op = await fetch(`${baseUrl}${firstAttUrl}`, { headers: { Authorization: `Bearer ${tokenOp2}` } });
+    const dlAadhaar1UnassignedOp = await fetch(`${baseUrl}${firstAttUrl}`, { headers: { Authorization: `Bearer ${tokenOp1}` } });
+    const dlAadhaar2Owner = await fetch(`${baseUrl}${secondAttUrl}`, { headers: { Authorization: `Bearer ${tokenCustA}` } });
+    const dlAadhaar1Forbidden = await fetch(`${baseUrl}${firstAttUrl}`, { headers: { Authorization: `Bearer ${tokenCustB}` } });
+    const dlAadhaar1Unauth = await fetch(`${baseUrl}${firstAttUrl}`);
+
+    // Test 5-file upload via 'files[]' field across all allowed formats
+    const fiveForm = new FormData();
+    fiveForm.append('files[]', new Blob([pdfBytes], { type: 'application/pdf' }), 'doc1.pdf');
+    fiveForm.append('files[]', new Blob([jpgBytes], { type: 'image/jpeg' }), 'doc2.jpg');
+    fiveForm.append('files[]', new Blob([pngBytes], { type: 'image/png' }), 'doc3.png');
+    fiveForm.append('files[]', new Blob([webpBytes], { type: 'image/webp' }), 'doc4.webp');
+    fiveForm.append('files[]', new Blob([pdfBytes], { type: 'application/pdf' }), 'doc5.pdf');
+    const rFiveUp = await fetch(`${baseUrl}/api/applications/app_op1_test/reply-attachments`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${tokenCustA}` },
+      body: fiveForm,
+    });
+    const jFiveUp = await rFiveUp.json();
+
+    // Test legacy disk filenames (spaces, parens, +, >120 chars, no .meta.json, missing ?appId=, &amp;appId=, duplicate ?appId=, double-encoded %3FappId%3D)
+    const app1AttachDir = path.join(APP_ROOT_ATTACHMENTS_DIR(), 'app_op1_test');
+    fs.mkdirSync(app1AttachDir, { recursive: true });
+    const legacyLongId = `reply_att_legacy (1)+front scan_${'x'.repeat(110)}.jpg`;
+    fs.writeFileSync(path.join(app1AttachDir, legacyLongId), jpgBytes);
+
+    const legacyNoAppIdResp = await fetch(`${baseUrl}/api/operator/attachments/${encodeURIComponent(legacyLongId)}`, {
+      headers: { Authorization: `Bearer ${tokenAdmin}` },
+    });
+    const legacyAmpResp = await fetch(`${baseUrl}/api/operator/attachments/${encodeURIComponent(legacyLongId)}?x=1&amp;appId=app_op1_test`, {
+      headers: { Authorization: `Bearer ${tokenOp2}` },
+    });
+    const legacyDupParamResp = await fetch(`${baseUrl}/api/operator/attachments/${encodeURIComponent(legacyLongId)}?appId=app_op1_test&appId=app_op1_test`, {
+      headers: { Authorization: `Bearer ${tokenCustA}` },
+    });
+    const legacyDoubleEncodedResp = await fetch(`${baseUrl}/api/operator/attachments/${encodeURIComponent(`${legacyLongId}?appId=app_op1_test`)}`, {
+      headers: { Authorization: `Bearer ${tokenAdmin}` },
+    });
+    const legacyContentType = legacyNoAppIdResp.headers.get('content-type') || '';
+
+    // Security checks: traversal, invalid appId, unauth download without appId, cross-app full-origin injection
+    const traversalResp = await fetch(`${baseUrl}/api/operator/attachments/..%2Foperator_test_store.json?appId=app_op1_test`, {
+      headers: { Authorization: `Bearer ${tokenAdmin}` },
+    });
+    const badAppIdResp = await fetch(`${baseUrl}/api/operator/attachments/${encodeURIComponent(legacyLongId)}?appId=app_op1$bad`, {
+      headers: { Authorization: `Bearer ${tokenAdmin}` },
+    });
+    const legacyOtherCustNoAppIdResp = await fetch(`${baseUrl}/api/operator/attachments/${encodeURIComponent(legacyLongId)}`, {
+      headers: { Authorization: `Bearer ${tokenCustB}` },
+    });
+    const crossAppInjectResp = await fetch(`${baseUrl}/api/applications/app_op2_test/reply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${tokenCustA}` },
+      body: JSON.stringify({
+        note: 'Cross app URL injection attempt',
+        attachments: [{ url: `https://b.indiacybercafe.com${firstAttUrl}`, name: 'cross.jpg' }],
+      }),
+    });
+
+    results.push({
+      name: 'API: Multi-attachment replies (2 & 5 files), legacy filenames (>120 chars/spaces/parens/no meta), &amp;/dup/missing appId fallback, and traversal/cross-app guards',
+      ok:
+        rTwoAadhaar.status === 200 &&
+        twoUrls.length === 2 &&
+        rTwoReplySave.status === 200 &&
+        Boolean(jTwoReplySave?.success) &&
+        dlAadhaar1Admin.status === 200 &&
+        dlAadhaar2Admin.status === 200 &&
+        Buffer.compare(dlAadhaar1Bytes, jpgBytes) === 0 &&
+        Buffer.compare(dlAadhaar2Bytes, pdfBytes) === 0 &&
+        dlAadhaar1Op.status === 200 &&
+        dlAadhaar1UnassignedOp.status === 403 &&
+        dlAadhaar2Owner.status === 200 &&
+        dlAadhaar1Forbidden.status === 403 &&
+        dlAadhaar1Unauth.status === 401 &&
+        rFiveUp.status === 200 &&
+        Array.isArray(jFiveUp.attachments) &&
+        jFiveUp.attachments.length === 5 &&
+        legacyNoAppIdResp.status === 200 &&
+        legacyAmpResp.status === 200 &&
+        legacyDupParamResp.status === 200 &&
+        legacyDoubleEncodedResp.status === 200 &&
+        legacyContentType.includes('image/jpeg') &&
+        traversalResp.status === 400 &&
+        badAppIdResp.status === 400 &&
+        legacyOtherCustNoAppIdResp.status === 403 &&
+        crossAppInjectResp.status === 400,
+      detail: `aadhaar=${dlAadhaar1Admin.status}/${dlAadhaar2Admin.status}/${dlAadhaar1Op.status}/${dlAadhaar1UnassignedOp.status}/${dlAadhaar2Owner.status}/${dlAadhaar1Forbidden.status}/${dlAadhaar1Unauth.status}, five=${rFiveUp.status}/${jFiveUp.attachments?.length}, legacy=${legacyNoAppIdResp.status}/${legacyAmpResp.status}/${legacyDupParamResp.status}/${legacyDoubleEncodedResp.status}(${legacyContentType}), sec=${traversalResp.status}/${badAppIdResp.status}/${legacyOtherCustNoAppIdResp.status}/${crossAppInjectResp.status}`,
+    });
   } finally {
     setOperatorTestDbBehaviorForTesting({ delayMs: 0, timeoutMs: 8000 });
     await flushNotificationOutboxForTesting().catch(() => {});
@@ -1770,27 +1896,38 @@ function runMigrationAndContractTests(): Array<{ name: string; ok: boolean; deta
     { id: 'n1', type: 'note', by: 'Admin', email: 'a@x.com', text: 'First', time: 't1', createdAt: 1000, clientRequestId: 'req_1' },
     { id: 'n1_dup_req', type: 'note', by: 'Admin', email: 'a@x.com', text: 'First', time: 't1', createdAt: 1000, clientRequestId: 'req_1' },
   ]);
+  const encodedAmpMap = normalizeNoteAttachments({
+    attachments: {
+      '0': { url: 'api/operator/attachments/aadhaar_front.jpg?appId=app_1&amp;v=1', name: 'Aadhaar Front' },
+      '1': 'https://b.indiacybercafe.com/api/operator/attachments/aadhaar_back.pdf?appId=app_1&amp;v=2',
+    } as any,
+  });
   const replyContractOk =
     modalSrc.includes('/reply-attachments') &&
     modalSrc.includes('/reply') &&
     modalSrc.includes('Send Reply') &&
     modalSrc.includes('canReplyToApplication') &&
     modalSrc.includes('clientRequestId') &&
-    modalSrc.includes('staffSubmittingRef');
+    modalSrc.includes('staffSubmittingRef') &&
+    modalSrc.includes('resolveInternalAttachmentFetchUrl') &&
+    modalSrc.includes('AttachmentPreviewOverlay');
 
   results.push({
-    name: 'Notes & Attachments: Chronological sort, legacy single attachment, RTDB numeric map attachments[], deduplication & User/Staff Lifecycle contract',
+    name: 'Notes & Attachments: Chronological sort, legacy single attachment, RTDB numeric map/&amp;/relative normalization, deduplication & preview contract',
     ok:
       legacySingle.length === 1 &&
       legacySingle[0].name === 'legacy.pdf' &&
       multiMap.length === 2 &&
       multiMap[0].url === 'https://example.com/one.pdf' &&
       multiMap[1].url === 'https://example.com/two.png' &&
+      encodedAmpMap.length === 2 &&
+      encodedAmpMap[0].url === '/api/operator/attachments/aadhaar_front.jpg?appId=app_1&v=1' &&
+      encodedAmpMap[1].url === 'https://b.indiacybercafe.com/api/operator/attachments/aadhaar_back.pdf?appId=app_1&v=2' &&
       chronological.length === 2 &&
       chronological[0].text === 'First' &&
       chronological[1].text === 'Second' &&
       replyContractOk,
-    detail: `legacy=${legacySingle.length}, multiMap=${multiMap.length}, sorted=${chronological.map(n => n.text).join('->')}, ui=${replyContractOk}`,
+    detail: `legacy=${legacySingle.length}, multiMap=${multiMap.length}, encodedAmp=${encodedAmpMap.length}, sorted=${chronological.map(n => n.text).join('->')}, ui=${replyContractOk}`,
   });
 
   return results;

@@ -114,6 +114,7 @@ const operatorAttachmentUploadMiddleware = (req, res, next) => {
 const userReplyAttachmentsUploadMiddleware = (req, res, next) => {
   customImageUpload.fields([
     { name: 'files', maxCount: 5 },
+    { name: 'files[]', maxCount: 5 },
     { name: 'file', maxCount: 5 },
   ])(req, res, (err) => {
     if (!err) return next();
@@ -171,6 +172,7 @@ app.use((req, res, next) => {
       "wss://*.razorpay.com " +
       "blob:; " +
     "frame-src 'self' " +
+      "blob: " +
       "https://*.razorpay.com " +
       "https://*.firebaseapp.com " +
       "https://accounts.google.com " +

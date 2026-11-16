@@ -112,6 +112,7 @@ async function startServer() {
   const userReplyAttachmentsUploadMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
     customImageUpload.fields([
       { name: "files", maxCount: 5 },
+      { name: "files[]", maxCount: 5 },
       { name: "file", maxCount: 5 },
     ])(req, res, (err: any) => {
       if (!err) return next();
@@ -174,6 +175,7 @@ async function startServer() {
           "blob: " +
           "data:; " +
         "frame-src 'self' " +
+          "blob: " +
           "https://*.razorpay.com " +
           "https://*.firebaseapp.com " +
           "https://accounts.google.com " +
