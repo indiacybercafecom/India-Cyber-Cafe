@@ -3,7 +3,7 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 import { recoverNotificationOutbox, getNotificationOutboxStats } from './src/server/emailNotificationService.js';
-import { startAsyncWorkerLoop, shutdownAsyncWorkerLoop, getQueueStats, } from './src/server/asyncQueueService.js';
+import { startAsyncWorkerLoop, shutdownAsyncWorkerLoop, recoverExpiredQueueLeases, getQueueStats, } from './src/server/asyncQueueService.js';
 import './src/server/operatorService.js';
 const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
     ? process.cwd()
@@ -12,9 +12,10 @@ dotenv.config({ path: path.join(APP_ROOT, '.env'), quiet: true });
 const SWEEP_INTERVAL_MS = Math.max(500, Number(process.env.WORKER_SWEEP_INTERVAL_MS || '1500') || 1500);
 console.log(`[WORKER] Starting standalone background worker (pid=${process.pid})...`);
 try {
-    const recovered = recoverNotificationOutbox();
-    if (recovered > 0) {
-        console.log(`[WORKER] Recovered ${recovered} pending outbox notification(s).`);
+    const recoveredOutbox = recoverNotificationOutbox();
+    const recoveredLeases = recoverExpiredQueueLeases();
+    if (recoveredOutbox > 0 || recoveredLeases > 0) {
+        console.log(`[WORKER] Startup recovery: outbox=${recoveredOutbox}, expiredQueueLeases=${recoveredLeases}`);
     }
 }
 catch (err) {
@@ -24,11 +25,14 @@ startAsyncWorkerLoop();
 const outboxSweepTimer = setInterval(() => {
     try {
         recoverNotificationOutbox();
+        recoverExpiredQueueLeases();
     }
     catch (err) {
-        console.warn('[WORKER] Outbox sweep notice:', err?.message || err);
+        console.warn('[WORKER] Sweep notice:', err?.message || err);
     }
 }, SWEEP_INTERVAL_MS);
+if (typeof outboxSweepTimer.unref === 'function')
+    outboxSweepTimer.unref();
 console.log(`[WORKER] Active. Queue stats:`, JSON.stringify({
     queue: getQueueStats(),
     outbox: getNotificationOutboxStats(),

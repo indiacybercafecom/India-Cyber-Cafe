@@ -1,1 +1,215 @@
-{}
+{
+  "ICC/STORE-17112026-022352-13953": {
+    "id": "ICC/STORE-17112026-022352-13953",
+    "uid": "guest",
+    "userId": "guest",
+    "isGuest": true,
+    "guestTokenHash": "4fd01d72946797f603edd07c8b44f6130ff04aec8d5901342457613e76d74729",
+    "email": "priya.verma@example.com",
+    "items": [
+      {
+        "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+        "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
+        "price": 499,
+        "discountedPrice": 49,
+        "quantity": 1
+      }
+    ],
+    "deliveryAddress": {
+      "name": "Priya Verma",
+      "email": "priya.verma@example.com",
+      "phone": "9876543210",
+      "addressLine1": "42 Civil Lines",
+      "addressLine2": "",
+      "city": "Singrauli",
+      "state": "Madhya Pradesh",
+      "pincode": "486886",
+      "country": "India"
+    },
+    "subtotal": 49,
+    "deliveryCharges": 0,
+    "total": 49,
+    "paymentMethod": "cash",
+    "paymentStatus": "pending",
+    "orderStatus": "cancelled",
+    "notes": [
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Order placed with Cash on Delivery (COD)",
+        "time": "2026-11-17T02:23:52.192Z"
+      },
+      {
+        "type": "status",
+        "by": "Admin One",
+        "email": "admin1@indiacybercafe.com",
+        "text": "Order status changed to shipped",
+        "time": "2026-11-17T02:23:52.264Z"
+      },
+      {
+        "type": "status",
+        "by": "Admin One",
+        "email": "admin1@indiacybercafe.com",
+        "text": "Order status changed to cancelled: Customer requested cancellation",
+        "time": "2026-11-17T02:23:52.274Z"
+      }
+    ],
+    "createdAt": "2026-11-17T02:23:52.192Z",
+    "updatedAt": "2026-11-17T02:23:52.274Z",
+    "cancellationReason": "Customer requested cancellation"
+  },
+  "ICC/STORE-17112026-022352-75508": {
+    "id": "ICC/STORE-17112026-022352-75508",
+    "uid": "cust_uid_1",
+    "userId": "cust_uid_1",
+    "isGuest": false,
+    "email": "priya.verma@example.com",
+    "items": [
+      {
+        "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+        "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
+        "price": 499,
+        "discountedPrice": 49,
+        "quantity": 1
+      }
+    ],
+    "deliveryAddress": {
+      "name": "Priya Verma",
+      "email": "priya.verma@example.com",
+      "phone": "9876543210",
+      "addressLine1": "42 Civil Lines",
+      "addressLine2": "",
+      "city": "Singrauli",
+      "state": "Madhya Pradesh",
+      "pincode": "486886",
+      "country": "India"
+    },
+    "subtotal": 49,
+    "deliveryCharges": 0,
+    "total": 49,
+    "paymentMethod": "razorpay",
+    "paymentStatus": "refunded",
+    "razorpayOrderId": "order_test_f43e162c516e",
+    "orderStatus": "processing",
+    "notes": [
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment initiated via Razorpay (Ref: order_test_f43e162c516e)",
+        "time": "2026-11-17T02:23:52.238Z"
+      },
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment verified via Razorpay (pay_store_999)",
+        "time": "2026-11-17T02:23:52.246Z"
+      },
+      {
+        "type": "status",
+        "by": "Admin One",
+        "email": "admin1@indiacybercafe.com",
+        "text": "Refund of ₹49.00 initiated: Duplicate purchase",
+        "time": "2026-11-17T02:23:52.301Z"
+      }
+    ],
+    "createdAt": "2026-11-17T02:23:52.238Z",
+    "updatedAt": "2026-11-17T02:23:52.301Z",
+    "razorpayPaymentId": "pay_store_999",
+    "refundAmount": 49,
+    "refundReason": "Duplicate purchase",
+    "refundedAt": "2026-11-17T02:23:52.301Z"
+  },
+  "ICC/STORE-17112026-022352-11969": {
+    "id": "ICC/STORE-17112026-022352-11969",
+    "uid": "guest",
+    "userId": "guest",
+    "isGuest": true,
+    "guestTokenHash": "db7bfba96b49f11e0925a2720201b38df2fec1bb6b148cf574a0fa2f7a3a6729",
+    "email": "priya.verma@example.com",
+    "items": [
+      {
+        "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+        "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
+        "price": 499,
+        "discountedPrice": 49,
+        "quantity": 1
+      }
+    ],
+    "deliveryAddress": {
+      "name": "Priya Verma",
+      "email": "priya.verma@example.com",
+      "phone": "9876543210",
+      "addressLine1": "42 Civil Lines",
+      "addressLine2": "",
+      "city": "Singrauli",
+      "state": "Madhya Pradesh",
+      "pincode": "486886",
+      "country": "India"
+    },
+    "subtotal": 49,
+    "deliveryCharges": 0,
+    "total": 49,
+    "paymentMethod": "cash",
+    "paymentStatus": "pending",
+    "orderStatus": "pending",
+    "notes": [
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Order placed with Cash on Delivery (COD)",
+        "time": "2026-11-17T02:23:52.691Z"
+      }
+    ],
+    "createdAt": "2026-11-17T02:23:52.691Z",
+    "updatedAt": "2026-11-17T02:23:52.691Z"
+  },
+  "ICC/STORE-17112026-022537-63560": {
+    "id": "ICC/STORE-17112026-022537-63560",
+    "uid": "guest",
+    "userId": "guest",
+    "isGuest": true,
+    "guestTokenHash": "f64d99a9ea952dc0d0fa497f85e6f722684c11eb737babff15bcb84b7c63d375",
+    "email": "rahul@example.com",
+    "items": [
+      {
+        "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+        "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
+        "price": 499,
+        "discountedPrice": 49,
+        "quantity": 1
+      }
+    ],
+    "deliveryAddress": {
+      "name": "Rahul",
+      "email": "rahul@example.com",
+      "phone": "9876543210",
+      "addressLine1": "12 Main Rd",
+      "addressLine2": "",
+      "city": "Singrauli",
+      "state": "MP",
+      "pincode": "486886",
+      "country": "India"
+    },
+    "subtotal": 49,
+    "deliveryCharges": 0,
+    "total": 49,
+    "paymentMethod": "cash",
+    "paymentStatus": "pending",
+    "orderStatus": "pending",
+    "notes": [
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Order placed with Cash on Delivery (COD)",
+        "time": "2026-11-17T02:25:37.962Z"
+      }
+    ],
+    "createdAt": "2026-11-17T02:25:37.962Z",
+    "updatedAt": "2026-11-17T02:25:37.962Z"
+  }
+}

@@ -6,7 +6,9 @@ export const MAX_SERVICE_FILE_SIZE = 5 * 1024 * 1024;
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
+  'application/x-pdf',
   'image/jpeg',
+  'image/jpg',
   'image/png',
   'image/webp'
 ]);

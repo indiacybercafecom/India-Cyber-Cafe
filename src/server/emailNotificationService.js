@@ -93,6 +93,7 @@ export function resolveOperatorRecipient(app, operatorProfile) {
         return null;
     return { uid, email, name };
 }
+let cachedPooledTransport = null;
 function getActiveTransport() {
     const smtpUser = (process.env.SMTP_USER || '').trim();
     const smtpPass = (process.env.SMTP_PASS || '').trim();
@@ -109,17 +110,27 @@ function getActiveTransport() {
             missingReason: 'SMTP credentials (SMTP_USER / SMTP_PASS) are not configured',
         };
     }
-    const transporter = nodemailer.createTransport({
-        host: process.env.SMTP_HOST || 'smtp.hostinger.com',
-        port: parseInt(process.env.SMTP_PORT || '587', 10),
-        secure: false,
-        connectionTimeout: 5000,
-        greetingTimeout: 5000,
-        socketTimeout: 8000,
-        auth: { user: smtpUser, pass: smtpPass },
-        tls: { rejectUnauthorized: false },
-    });
-    return { transporter, fromEmail: smtpUser };
+    const host = process.env.SMTP_HOST || 'smtp.hostinger.com';
+    const port = parseInt(process.env.SMTP_PORT || '587', 10);
+    const secure = process.env.SMTP_SECURE === 'true' || port === 465;
+    const transportKey = `${host}:${port}:${secure}:${smtpUser}:${smtpPass}`;
+    if (!cachedPooledTransport || cachedPooledTransport.key !== transportKey) {
+        const transporter = nodemailer.createTransport({
+            pool: true,
+            maxConnections: 5,
+            maxMessages: 100,
+            host,
+            port,
+            secure,
+            connectionTimeout: 5000,
+            greetingTimeout: 5000,
+            socketTimeout: 8000,
+            auth: { user: smtpUser, pass: smtpPass },
+            tls: { rejectUnauthorized: false },
+        });
+        cachedPooledTransport = { key: transportKey, transporter };
+    }
+    return { transporter: cachedPooledTransport.transporter, fromEmail: smtpUser };
 }
 function readDiskLedger() {
     try {
@@ -136,22 +147,65 @@ function writeJsonAtomicSync(filePath, data) {
     fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
     fs.renameSync(tmpPath, filePath);
 }
-function writeDiskLedger(records) {
+async function writeJsonAtomicAsync(filePath, data) {
+    await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+    const tmpPath = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+    await fs.promises.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+    await fs.promises.rename(tmpPath, filePath);
+}
+let ledgerFlushTimer = null;
+let ledgerWriting = false;
+let ledgerDirty = false;
+let ledgerHydrated = false;
+function buildBoundedLedgerSnapshot() {
+    const entries = Array.from(memoryLedger.entries())
+        .sort((a, b) => new Date(b[1].createdAt || 0).getTime() - new Date(a[1].createdAt || 0).getTime())
+        .slice(0, 500);
+    return Object.fromEntries(entries);
+}
+async function flushLedgerToDiskAsync() {
+    if (ledgerWriting) {
+        ledgerDirty = true;
+        return;
+    }
+    ledgerDirty = false;
+    ledgerWriting = true;
     try {
-        // Keep last 500 events so disk file remains bounded
-        const entries = Object.entries(records)
-            .sort((a, b) => new Date(b[1].createdAt || 0).getTime() - new Date(a[1].createdAt || 0).getTime())
-            .slice(0, 500);
-        const trimmed = Object.fromEntries(entries);
-        writeJsonAtomicSync(NOTIFICATION_LEDGER_PATH, trimmed);
+        await writeJsonAtomicAsync(NOTIFICATION_LEDGER_PATH, buildBoundedLedgerSnapshot());
+    }
+    catch (err) {
+        console.warn('[emailNotificationService] Could not persist ledger:', err?.message || err);
+    }
+    finally {
+        ledgerWriting = false;
+        if (ledgerDirty) {
+            scheduleLedgerFlush();
+        }
+    }
+}
+function scheduleLedgerFlush() {
+    ledgerDirty = true;
+    if (ledgerFlushTimer)
+        return;
+    ledgerFlushTimer = setTimeout(() => {
+        ledgerFlushTimer = null;
+        void flushLedgerToDiskAsync();
+    }, 150);
+    if (typeof ledgerFlushTimer.unref === 'function')
+        ledgerFlushTimer.unref();
+}
+function writeDiskLedgerSync() {
+    try {
+        writeJsonAtomicSync(NOTIFICATION_LEDGER_PATH, buildBoundedLedgerSnapshot());
     }
     catch (err) {
         console.warn('[emailNotificationService] Could not persist ledger:', err?.message || err);
     }
 }
 function hydrateLedgerCache() {
-    if (memoryLedger.size > 0)
+    if (ledgerHydrated)
         return;
+    ledgerHydrated = true;
     const disk = readDiskLedger();
     for (const [id, rec] of Object.entries(disk)) {
         memoryLedger.set(id, rec);
@@ -168,9 +222,12 @@ async function persistNotificationEvent(record) {
         const dedupKey = `${record.idempotencyKey}|${record.recipientRole}|${normalizeEmailAddress(record.recipient)}`;
         dedupIndex.set(dedupKey, record.eventId);
     }
-    const disk = readDiskLedger();
-    disk[record.eventId] = record;
-    writeDiskLedger(disk);
+    if (isTestMode()) {
+        writeDiskLedgerSync();
+    }
+    else {
+        scheduleLedgerFlush();
+    }
     // Best-effort mirror to Firebase RTDB when Admin SDK is active outside test mode
     if (!isTestMode() && getApps().length > 0) {
         try {
@@ -295,11 +352,14 @@ async function deliverSingleEvent(record, options) {
 }
 export async function dispatchNotificationBatch(items, options) {
     hydrateLedgerCache();
-    const reportEvents = [];
+    const reportEvents = new Array(items.length);
     let sentCount = 0;
     let failedCount = 0;
     let skippedDuplicateCount = 0;
-    for (const item of items) {
+    const toDeliver = [];
+    const batchSeenDedupKeys = new Set();
+    for (let idx = 0; idx < items.length; idx++) {
+        const item = items[idx];
         const normalizedRecipient = normalizeEmailAddress(item.recipient);
         const dedupKey = `${item.idempotencyKey}|${item.recipientRole}|${normalizedRecipient}`;
         if (item.idempotencyKey && normalizedRecipient && dedupIndex.has(dedupKey)) {
@@ -307,7 +367,7 @@ export async function dispatchNotificationBatch(items, options) {
             const existing = memoryLedger.get(existingId);
             if (existing && existing.state === 'sent_to_smtp') {
                 skippedDuplicateCount += 1;
-                reportEvents.push({
+                reportEvents[idx] = {
                     eventId: existing.eventId,
                     templateId: existing.templateId,
                     recipient: existing.recipient,
@@ -317,9 +377,27 @@ export async function dispatchNotificationBatch(items, options) {
                     attempts: existing.attempts,
                     smtpAccepted: existing.smtpAccepted,
                     skippedDuplicate: true,
-                });
+                };
                 continue;
             }
+        }
+        if (item.idempotencyKey && normalizedRecipient && batchSeenDedupKeys.has(dedupKey)) {
+            skippedDuplicateCount += 1;
+            reportEvents[idx] = {
+                eventId: `dup_${idx}`,
+                templateId: item.templateId,
+                recipient: normalizedRecipient,
+                recipientRole: item.recipientRole,
+                state: 'sent_to_smtp',
+                wasRetried: false,
+                attempts: 0,
+                smtpAccepted: true,
+                skippedDuplicate: true,
+            };
+            continue;
+        }
+        if (item.idempotencyKey && normalizedRecipient) {
+            batchSeenDedupKeys.add(dedupKey);
         }
         const now = new Date().toISOString();
         const eventId = `ntf_${Date.now()}_${crypto.randomBytes(5).toString('hex')}`;
@@ -343,34 +421,41 @@ export async function dispatchNotificationBatch(items, options) {
             createdAt: now,
             updatedAt: now,
         };
-        await persistNotificationEvent(record);
-        const finalRecord = await deliverSingleEvent(record, options);
-        if (finalRecord.state === 'sent_to_smtp') {
-            sentCount += 1;
-        }
-        else {
-            failedCount += 1;
-        }
-        reportEvents.push({
-            eventId: finalRecord.eventId,
-            templateId: finalRecord.templateId,
-            recipient: finalRecord.recipient,
-            recipientRole: finalRecord.recipientRole,
-            state: finalRecord.state,
-            wasRetried: finalRecord.wasRetried,
-            attempts: finalRecord.attempts,
-            smtpAccepted: finalRecord.smtpAccepted,
-            ...(finalRecord.error ? { error: finalRecord.error } : {}),
-        });
+        memoryLedger.set(record.eventId, record);
+        toDeliver.push({ index: idx, record });
+    }
+    const BATCH_DELIVER_CONCURRENCY = 4;
+    for (let i = 0; i < toDeliver.length; i += BATCH_DELIVER_CONCURRENCY) {
+        const chunk = toDeliver.slice(i, i + BATCH_DELIVER_CONCURRENCY);
+        await Promise.allSettled(chunk.map(async ({ index, record }) => {
+            const finalRecord = await deliverSingleEvent(record, options);
+            if (finalRecord.state === 'sent_to_smtp') {
+                sentCount += 1;
+            }
+            else {
+                failedCount += 1;
+            }
+            reportEvents[index] = {
+                eventId: finalRecord.eventId,
+                templateId: finalRecord.templateId,
+                recipient: finalRecord.recipient,
+                recipientRole: finalRecord.recipientRole,
+                state: finalRecord.state,
+                wasRetried: finalRecord.wasRetried,
+                attempts: finalRecord.attempts,
+                smtpAccepted: finalRecord.smtpAccepted,
+                ...(finalRecord.error ? { error: finalRecord.error } : {}),
+            };
+        }));
     }
     return {
         success: failedCount === 0,
         hasFailures: failedCount > 0,
-        totalCount: reportEvents.length,
+        totalCount: reportEvents.filter(Boolean).length,
         sentCount,
         failedCount,
         skippedDuplicateCount,
-        events: reportEvents,
+        events: reportEvents.filter(Boolean),
     };
 }
 export async function retryNotificationEvent(eventId) {
@@ -1687,21 +1772,61 @@ function readDiskOutbox() {
     catch { }
     return {};
 }
+let outboxFlushTimer = null;
+let outboxWriting = false;
+let outboxDirty = false;
+function buildBoundedOutboxSnapshot() {
+    const all = Array.from(outboxJobs.values());
+    const activeOrFailed = all.filter(j => j.state !== 'completed');
+    const completed = all
+        .filter(j => j.state === 'completed')
+        .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+        .slice(0, 200);
+    const bounded = [...activeOrFailed, ...completed];
+    const obj = {};
+    for (const j of bounded) {
+        obj[j.jobId] = j;
+    }
+    return obj;
+}
+async function flushOutboxToDiskAsync() {
+    if (outboxWriting) {
+        outboxDirty = true;
+        return;
+    }
+    outboxDirty = false;
+    outboxWriting = true;
+    try {
+        await writeJsonAtomicAsync(NOTIFICATION_OUTBOX_PATH, buildBoundedOutboxSnapshot());
+    }
+    catch (err) {
+        console.warn('[emailOutbox] Could not persist outbox to disk:', err?.message || err);
+    }
+    finally {
+        outboxWriting = false;
+        if (outboxDirty) {
+            scheduleOutboxFlush();
+        }
+    }
+}
+function scheduleOutboxFlush() {
+    outboxDirty = true;
+    if (outboxFlushTimer)
+        return;
+    outboxFlushTimer = setTimeout(() => {
+        outboxFlushTimer = null;
+        void flushOutboxToDiskAsync();
+    }, 150);
+    if (typeof outboxFlushTimer.unref === 'function')
+        outboxFlushTimer.unref();
+}
 function writeDiskOutbox() {
     try {
-        // Keep all active/failed jobs plus the most recent 200 completed jobs
-        const all = Array.from(outboxJobs.values());
-        const activeOrFailed = all.filter(j => j.state !== 'completed');
-        const completed = all
-            .filter(j => j.state === 'completed')
-            .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
-            .slice(0, 200);
-        const bounded = [...activeOrFailed, ...completed];
-        const obj = {};
-        for (const j of bounded) {
-            obj[j.jobId] = j;
+        if (isTestMode()) {
+            writeJsonAtomicSync(NOTIFICATION_OUTBOX_PATH, buildBoundedOutboxSnapshot());
+            return;
         }
-        writeJsonAtomicSync(NOTIFICATION_OUTBOX_PATH, obj);
+        scheduleOutboxFlush();
     }
     catch (err) {
         console.warn('[emailOutbox] Could not persist outbox to disk:', err?.message || err);

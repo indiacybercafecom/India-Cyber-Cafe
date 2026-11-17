@@ -243,7 +243,7 @@ async function isRtdbAdminUsable(): Promise<boolean> {
   }
   rtdbProbeInFlight = (async () => {
     try {
-      await withTimeout(rtdbAdmin!.ref('users').limitToFirst(1).once('value'), 2000, 'RTDB admin probe');
+      await withTimeout(rtdbAdmin!.ref('users').limitToFirst(1).once('value'), 4000, 'RTDB admin probe');
       rtdbUsableCache = { usable: true, expiresAt: Date.now() + 30000 };
       return true;
     } catch {
@@ -417,6 +417,22 @@ async function loadServiceCatalog(): Promise<any[]> {
         services = Array.isArray(val)
           ? val.filter(Boolean)
           : Object.entries(val || {}).map(([id, s]: [string, any]) => ({ id, ...s }));
+      }
+    } catch {}
+  }
+  if (services.length === 0 && !isTestMode()) {
+    try {
+      const restResp = await fetch(`${getRtdbUrl()}/services.json`, {
+        signal: AbortSignal.timeout(3000),
+        headers: { Accept: 'application/json' },
+      });
+      if (restResp.ok) {
+        const val: any = await restResp.json();
+        if (val) {
+          services = Array.isArray(val)
+            ? val.filter(Boolean)
+            : Object.entries(val || {}).map(([id, s]: [string, any]) => ({ id, ...s }));
+        }
       }
     } catch {}
   }
@@ -2385,6 +2401,121 @@ function isAllowedApplicationAttachmentUrl(val: string): boolean {
   );
 }
 
+function normalizeServiceSlug(text: string): string {
+  return String(text || '')
+    .toLowerCase()
+    .trim()
+    .replace(/[^\w\s-]/g, '')
+    .replace(/[\s_-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function sanitizeRtdbFieldKey(key: string): string {
+  return cleanText(key, 120).replace(/[/.#$[\]]/g, '').trim();
+}
+
+const PENDING_DRAFTS_STORE_PATH = path.join(APP_ROOT, 'data/pending_applications_store.json');
+let pendingDraftsMap: Map<string, any> | null = null;
+let pendingDraftsFlushTimer: NodeJS.Timeout | null = null;
+let pendingDraftsDirty = false;
+let pendingDraftsWriting = false;
+
+function getPendingDraftsMap(): Map<string, any> {
+  if (pendingDraftsMap) return pendingDraftsMap;
+  const map = new Map<string, any>();
+  try {
+    if (fs.existsSync(PENDING_DRAFTS_STORE_PATH)) {
+      const parsed = JSON.parse(fs.readFileSync(PENDING_DRAFTS_STORE_PATH, 'utf-8'));
+      if (parsed && typeof parsed === 'object') {
+        const now = Date.now();
+        for (const [k, v] of Object.entries(parsed)) {
+          if (v && typeof v === 'object') {
+            const ageMs = now - new Date((v as any).date || 0).getTime();
+            if (!Number.isFinite(ageMs) || ageMs <= 7 * 24 * 60 * 60 * 1000) {
+              map.set(k, v);
+            }
+          }
+        }
+      }
+    }
+  } catch {}
+  pendingDraftsMap = map;
+  return map;
+}
+
+async function flushPendingDraftsToDisk(): Promise<void> {
+  if (pendingDraftsWriting || !pendingDraftsDirty || !pendingDraftsMap) return;
+  pendingDraftsWriting = true;
+  pendingDraftsDirty = false;
+  try {
+    const obj: Record<string, any> = {};
+    for (const [k, v] of pendingDraftsMap.entries()) {
+      obj[k] = v;
+    }
+    const snapshot = JSON.stringify(obj, null, 2);
+    await fs.promises.mkdir(path.dirname(PENDING_DRAFTS_STORE_PATH), { recursive: true });
+    const tmp = `${PENDING_DRAFTS_STORE_PATH}.${process.pid}.${crypto.randomBytes(3).toString('hex')}.tmp`;
+    await fs.promises.writeFile(tmp, snapshot, 'utf-8');
+    await fs.promises.rename(tmp, PENDING_DRAFTS_STORE_PATH);
+  } catch (err) {
+    console.warn('[operatorService] Pending drafts flush notice:', err);
+  } finally {
+    pendingDraftsWriting = false;
+    if (pendingDraftsDirty) {
+      schedulePendingDraftsFlush();
+    }
+  }
+}
+
+function schedulePendingDraftsFlush() {
+  pendingDraftsDirty = true;
+  if (pendingDraftsFlushTimer) return;
+  pendingDraftsFlushTimer = setTimeout(() => {
+    pendingDraftsFlushTimer = null;
+    void flushPendingDraftsToDisk();
+  }, 100);
+  if (typeof pendingDraftsFlushTimer.unref === 'function') pendingDraftsFlushTimer.unref();
+}
+
+async function savePendingDraftDurably(appId: string, pendingDraft: Record<string, any>): Promise<void> {
+  if (isTestMode()) {
+    const store = readTestStore();
+    if (!store.pendingApplications) store.pendingApplications = {};
+    store.pendingApplications[appId] = pendingDraft;
+    writeTestStore(store);
+    return;
+  }
+  if ((await isRtdbAdminUsable()) && rtdbAdmin) {
+    await withTimeout(rtdbAdmin.ref(`pendingApplications/${appId}`).set(pendingDraft), 8000, 'Save pending application draft');
+    return;
+  }
+  const map = getPendingDraftsMap();
+  if (map.size >= 5000) {
+    const oldest = map.keys().next().value;
+    if (oldest) map.delete(oldest);
+  }
+  map.set(appId, pendingDraft);
+  schedulePendingDraftsFlush();
+}
+
+async function loadPendingDraft(appId: string): Promise<any | null> {
+  if (isTestMode()) {
+    return readTestStore().pendingApplications?.[appId] || null;
+  }
+  if ((await isRtdbAdminUsable()) && rtdbAdmin) {
+    const snap = await withTimeout(rtdbAdmin.ref(`pendingApplications/${appId}`).once('value'), 6000, 'Read pending application draft');
+    if (snap.exists()) return snap.val();
+  }
+  return getPendingDraftsMap().get(appId) || null;
+}
+
+function removeLocalPendingDraft(appId: string) {
+  const map = getPendingDraftsMap();
+  if (map.delete(appId)) {
+    schedulePendingDraftsFlush();
+  }
+}
+
 /**
  * Sanitize service application submission payload and calculate authoritative charge
  */
@@ -2403,7 +2534,7 @@ async function buildAndValidateApplicationDraft(params: {
         ? body.formData
         : {};
   const profileName = cleanText(body?.name, 120) || caller.name || 'Customer';
-  const profilePhone = cleanText(body?.phone, 24);
+  let profilePhone = cleanText(body?.phone, 24);
 
   if (!serviceId) {
     throw Object.assign(new Error('Service ID is required.'), { statusCode: 400, code: 'MISSING_SERVICE_ID', stage: 'validate_payload' });
@@ -2425,7 +2556,12 @@ async function buildAndValidateApplicationDraft(params: {
       if (!subserviceName) {
         throw Object.assign(new Error('Please select a sub-service.'), { statusCode: 400, code: 'MISSING_SUBSERVICE', stage: 'validate_service' });
       }
-      const sub = service.subservices.find((ss: any) => String(ss?.name || '').trim() === subserviceName);
+      const lowerSub = subserviceName.toLowerCase();
+      const slugSub = normalizeServiceSlug(subserviceName);
+      const sub =
+        service.subservices.find((ss: any) => String(ss?.name || '').trim() === subserviceName) ||
+        service.subservices.find((ss: any) => String(ss?.name || '').trim().toLowerCase() === lowerSub) ||
+        service.subservices.find((ss: any) => normalizeServiceSlug(String(ss?.name || '')) === slugSub);
       if (!sub) {
         throw Object.assign(new Error('Selected service variant could not be found.'), { statusCode: 400, code: 'INVALID_SUBSERVICE', stage: 'validate_service' });
       }
@@ -2457,7 +2593,16 @@ async function buildAndValidateApplicationDraft(params: {
     });
   }
 
-  if (authoritativeCharge > 0 && !allowedMethods.includes(paymentMethod) && paymentMethod !== 'razorpay') {
+  const normalizedAllowed = new Set(allowedMethods.map((m: string) => String(m || '').toLowerCase().trim()));
+  if (normalizedAllowed.has('both')) {
+    normalizedAllowed.add('cash');
+    normalizedAllowed.add('razorpay');
+  }
+  if (normalizedAllowed.has('online')) {
+    normalizedAllowed.add('razorpay');
+  }
+
+  if (authoritativeCharge > 0 && !normalizedAllowed.has(paymentMethod) && paymentMethod !== 'razorpay') {
     throw Object.assign(new Error(`Payment method "${paymentMethod}" is not enabled for this service.`), {
       statusCode: 400,
       code: 'INVALID_PAYMENT_METHOD',
@@ -2465,30 +2610,50 @@ async function buildAndValidateApplicationDraft(params: {
     });
   }
 
-  // Sanitize details (limit field count and string size; keep safe URLs)
+  // Sanitize details (limit field count and string size; strip RTDB-forbidden key characters; keep safe URLs)
   const sanitizedDetails: Record<string, any> = {};
+  const normalizedKeyLookup = new Map<string, any>();
   const entries = Object.entries(rawDetails).slice(0, 60);
   let primaryFileUrl = '';
   for (const [k, v] of entries) {
-    const cleanKey = cleanText(k, 120);
+    const cleanKey = sanitizeRtdbFieldKey(k);
     if (!cleanKey) continue;
+    let storedVal: any;
     if (Array.isArray(v)) {
       const cleanedArr = v
         .slice(0, 10)
         .map(item => (typeof item === 'string' ? item.trim().slice(0, 1500) : ''))
         .filter(Boolean);
-      sanitizedDetails[cleanKey] = cleanedArr;
+      storedVal = cleanedArr;
       if (!primaryFileUrl && cleanedArr.length > 0 && isAllowedApplicationAttachmentUrl(cleanedArr[0])) {
         primaryFileUrl = cleanedArr[0];
       }
     } else if (typeof v === 'string') {
       const cleanedVal = v.trim().slice(0, 2000);
-      sanitizedDetails[cleanKey] = cleanedVal;
+      storedVal = cleanedVal;
       if (!primaryFileUrl && isAllowedApplicationAttachmentUrl(cleanedVal)) {
         primaryFileUrl = cleanedVal;
       }
     } else if (typeof v === 'number' || typeof v === 'boolean') {
-      sanitizedDetails[cleanKey] = v;
+      storedVal = v;
+    } else {
+      continue;
+    }
+    sanitizedDetails[cleanKey] = storedVal;
+    normalizedKeyLookup.set(cleanKey.replace(/\s+/g, '').toLowerCase(), storedVal);
+  }
+
+  if (!profilePhone) {
+    const phoneCandidate =
+      sanitizedDetails['Mobile Number'] ||
+      sanitizedDetails['mobile'] ||
+      sanitizedDetails['mobileNumber'] ||
+      sanitizedDetails['Phone'] ||
+      normalizedKeyLookup.get('mobilenumber') ||
+      normalizedKeyLookup.get('mobile') ||
+      '';
+    if (typeof phoneCandidate === 'string') {
+      profilePhone = cleanText(phoneCandidate, 24);
     }
   }
 
@@ -2496,14 +2661,19 @@ async function buildAndValidateApplicationDraft(params: {
     primaryFileUrl = body.fileUrl.trim().slice(0, 1500);
   }
 
-  // Validate required fields defined in matched service schema (supports both label & name keys)
+  // Validate required fields defined in matched service schema (supports label, RTDB-sanitized label, & name keys)
   for (const field of activeFields) {
     if (!field || field.required === false) continue;
     const labelKey = cleanText(field.label, 120);
+    const sanitizedLabelKey = sanitizeRtdbFieldKey(labelKey);
     const nameKey = cleanText(field.name, 120);
+    const sanitizedNameKey = sanitizeRtdbFieldKey(nameKey);
     const rawVal =
       (labelKey && sanitizedDetails[labelKey] !== undefined ? sanitizedDetails[labelKey] : undefined) ??
-      (nameKey && sanitizedDetails[nameKey] !== undefined ? sanitizedDetails[nameKey] : undefined);
+      (sanitizedLabelKey && sanitizedDetails[sanitizedLabelKey] !== undefined ? sanitizedDetails[sanitizedLabelKey] : undefined) ??
+      (nameKey && sanitizedDetails[nameKey] !== undefined ? sanitizedDetails[nameKey] : undefined) ??
+      (sanitizedNameKey && sanitizedDetails[sanitizedNameKey] !== undefined ? sanitizedDetails[sanitizedNameKey] : undefined) ??
+      (labelKey ? normalizedKeyLookup.get(sanitizedLabelKey.replace(/\s+/g, '').toLowerCase()) : undefined);
     const isEmpty =
       rawVal === undefined ||
       rawVal === null ||
@@ -2768,7 +2938,7 @@ export async function handleCreateApplicationPayment(req: Request, res: Response
       return res.status(400).json({ success: false, code: 'ZERO_CHARGE_SERVICE', stage: 'validate_charge', requestId, error: 'This service has ₹0 fee and does not require online payment.' });
     }
 
-    if (!isTestMode() && !(await isRtdbAdminUsable())) {
+    if (!isTestMode() && !(await isRtdbAdminUsable()) && !caller.idToken) {
       logStructuredAppError({
         req,
         stage: 'preflight_db',
@@ -2776,7 +2946,7 @@ export async function handleCreateApplicationPayment(req: Request, res: Response
         code: 'FIREBASE_ADMIN_UNCONFIGURED',
         uid: caller.uid,
         serviceId: draft.serviceId,
-        message: 'RTDB Admin unreachable before Razorpay order creation',
+        message: 'Neither RTDB Admin nor caller ID token available before payment order creation',
       });
       return res.status(503).json({
         success: false,
@@ -2797,6 +2967,15 @@ export async function handleCreateApplicationPayment(req: Request, res: Response
       razorpayOrderId = `order_test_app_${crypto.randomBytes(6).toString('hex')}`;
     } else {
       if (!keyId || !keySecret) {
+        logStructuredAppError({
+          req,
+          stage: 'preflight_payment',
+          status: 503,
+          code: 'RAZORPAY_UNCONFIGURED',
+          uid: caller.uid,
+          serviceId: draft.serviceId,
+          message: 'RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET missing',
+        });
         return res.status(503).json({ success: false, code: 'RAZORPAY_UNCONFIGURED', stage: 'preflight_payment', requestId, error: 'Payment gateway is not configured on the server.' });
       }
       const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
@@ -2832,7 +3011,7 @@ export async function handleCreateApplicationPayment(req: Request, res: Response
           code: 'RAZORPAY_ORDER_FAILED',
           stage: 'razorpay_create_order',
           requestId,
-          error: errData?.error?.description || 'Failed to create payment order. No amount was charged.',
+          error: 'Unable to start online payment right now. Your filled form details remain saved.',
         });
       }
       const rzpOrder: any = await rzpResp.json();
@@ -2852,14 +3031,7 @@ export async function handleCreateApplicationPayment(req: Request, res: Response
       ...(clientRequestId ? { clientRequestId } : {}),
     };
 
-    if (isTestMode()) {
-      const store = readTestStore();
-      if (!store.pendingApplications) store.pendingApplications = {};
-      store.pendingApplications[appId] = pendingDraft;
-      writeTestStore(store);
-    } else if (rtdbAdmin) {
-      await withTimeout(rtdbAdmin.ref(`pendingApplications/${appId}`).set(pendingDraft), 8000, 'Save pending application draft');
-    }
+    await savePendingDraftDurably(appId, pendingDraft);
 
     const result = {
       success: true,
@@ -2885,7 +3057,7 @@ export async function handleCreateApplicationPayment(req: Request, res: Response
       code,
       stage,
       requestId,
-      error: status >= 500 && !err?.statusCode ? 'Failed to initiate application payment. Please try again.' : (err?.message || 'Failed to initiate application payment.'),
+      error: status >= 500 && !err?.statusCode ? 'Unable to start online payment right now. Your filled form details remain saved.' : (err?.message || 'Unable to start online payment right now.'),
     });
   }
 }
@@ -2895,12 +3067,14 @@ async function finalizePendingApplicationRecord(params: {
   pendingDraft: any;
   razorpayOrderId: string;
   razorpayPaymentId: string;
+  callerIdToken?: string;
 }): Promise<any> {
-  const { appId, pendingDraft, razorpayOrderId, razorpayPaymentId } = params;
+  const { appId, pendingDraft, razorpayOrderId, razorpayPaymentId, callerIdToken } = params;
   const nowIso = new Date().toISOString();
 
-  const existingCommitted = await readApplication(appId).catch(() => null);
+  const existingCommitted = await readApplication(appId, callerIdToken).catch(() => null);
   if (existingCommitted && existingCommitted.paymentStatus === 'completed') {
+    removeLocalPendingDraft(appId);
     return existingCommitted;
   }
 
@@ -2965,6 +3139,35 @@ async function finalizePendingApplicationRecord(params: {
       8000,
       'Commit verified application'
     );
+    removeLocalPendingDraft(appId);
+  } else if (callerIdToken) {
+    const resp = await fetch(
+      `${getRtdbUrl()}/applications/${encodeURIComponent(appId)}.json?auth=${encodeURIComponent(callerIdToken)}`,
+      {
+        method: 'PUT',
+        signal: AbortSignal.timeout(8000),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalRecord),
+      }
+    );
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => '');
+      throw Object.assign(
+        new Error(`Database commit failed (${resp.status})${errText ? ': ' + errText.slice(0, 120) : ''}`),
+        {
+          statusCode: resp.status === 401 || resp.status === 403 ? 403 : 503,
+          code: resp.status === 401 || resp.status === 403 ? 'RTDB_PERMISSION_DENIED' : 'RTDB_WRITE_FAILED',
+          stage: 'commit_payment_rest',
+        }
+      );
+    }
+    removeLocalPendingDraft(appId);
+  } else {
+    throw Object.assign(new Error('Database service is temporarily unavailable to commit paid application.'), {
+      statusCode: 503,
+      code: 'FIREBASE_ADMIN_UNCONFIGURED',
+      stage: 'commit_payment',
+    });
   }
 
   enqueueOutboxNotification({
@@ -3006,13 +3209,7 @@ export async function handleConfirmApplicationPayment(req: Request, res: Respons
       }
     }
 
-    let pendingDraft: any = null;
-    if (isTestMode()) {
-      pendingDraft = readTestStore().pendingApplications?.[appId] || null;
-    } else if ((await isRtdbAdminUsable()) && rtdbAdmin) {
-      const snap = await withTimeout(rtdbAdmin.ref(`pendingApplications/${appId}`).once('value'), 6000, 'Read pending application draft');
-      pendingDraft = snap.exists() ? snap.val() : null;
-    }
+    const pendingDraft = await loadPendingDraft(appId);
 
     if (!pendingDraft) {
       return res.status(404).json({ success: false, verified: false, code: 'PENDING_DRAFT_NOT_FOUND', stage: 'confirm_read_draft', requestId, error: 'Pending application draft not found or expired.' });
@@ -3021,7 +3218,7 @@ export async function handleConfirmApplicationPayment(req: Request, res: Respons
       return res.status(403).json({ success: false, verified: false, code: 'ACCESS_DENIED', stage: 'confirm_authz', requestId, error: 'Access denied.' });
     }
     if (pendingDraft.razorpayOrderId && pendingDraft.razorpayOrderId !== razorpay_order_id) {
-      return res.status(400).json({ success: false, verified: false, code: 'ORDER_ID_MISMATCH', stage: 'confirm_validate', requestId, error: 'Razorpay order ID mismatch.' });
+      return res.status(400).json({ success: false, verified: false, code: 'ORDER_ID_MISMATCH', stage: 'confirm_validate', requestId, error: 'Order ID mismatch.' });
     }
 
     const keyId = (process.env.RAZORPAY_KEY_ID || '').trim();
@@ -3076,6 +3273,7 @@ export async function handleConfirmApplicationPayment(req: Request, res: Respons
       pendingDraft,
       razorpayOrderId: String(razorpay_order_id),
       razorpayPaymentId: String(razorpay_payment_id),
+      callerIdToken: caller.idToken,
     });
 
     return res.status(200).json({
@@ -3088,8 +3286,11 @@ export async function handleConfirmApplicationPayment(req: Request, res: Respons
       requestId,
     });
   } catch (err: any) {
-    logStructuredAppError({ req, stage: 'confirm_payment', status: 500, code: 'CONFIRM_PAYMENT_FAILED', uid: callerUid, err });
-    return res.status(500).json({ success: false, verified: false, code: 'CONFIRM_PAYMENT_FAILED', stage: 'confirm_payment', requestId, error: 'Failed to confirm application payment.' });
+    const status = err?.statusCode || 500;
+    const code = err?.code || 'CONFIRM_PAYMENT_FAILED';
+    const stage = err?.stage || 'confirm_payment';
+    logStructuredAppError({ req, stage, status, code, uid: callerUid, err });
+    return res.status(status).json({ success: false, verified: false, code, stage, requestId, error: status >= 500 && !err?.statusCode ? 'Failed to confirm application payment.' : (err?.message || 'Failed to confirm application payment.') });
   }
 }
 
@@ -3114,13 +3315,7 @@ export async function handleRecoverApplicationPayment(req: Request, res: Respons
       return res.json({ success: true, verified: existingApp.paymentStatus === 'completed', appId, application: existingApp, requestId });
     }
 
-    let pendingDraft: any = null;
-    if (isTestMode()) {
-      pendingDraft = readTestStore().pendingApplications?.[appId] || null;
-    } else if ((await isRtdbAdminUsable()) && rtdbAdmin) {
-      const snap = await withTimeout(rtdbAdmin.ref(`pendingApplications/${appId}`).once('value'), 6000, 'Read pending application draft');
-      pendingDraft = snap.exists() ? snap.val() : null;
-    }
+    const pendingDraft = await loadPendingDraft(appId);
 
     if (!pendingDraft || (caller.role !== 'admin' && pendingDraft.uid !== caller.uid)) {
       return res.status(404).json({ success: false, code: 'DRAFT_NOT_FOUND', stage: 'recover_read_draft', requestId, error: 'Application draft not found.' });
@@ -3138,7 +3333,7 @@ export async function handleRecoverApplicationPayment(req: Request, res: Respons
       signal: AbortSignal.timeout(8000),
     });
     if (!resp.ok) {
-      return res.status(502).json({ success: false, code: 'RAZORPAY_LOOKUP_FAILED', stage: 'recover_gateway', requestId, error: 'Failed to check payment status with Razorpay.' });
+      return res.status(502).json({ success: false, code: 'RAZORPAY_LOOKUP_FAILED', stage: 'recover_gateway', requestId, error: 'Failed to check payment status.' });
     }
     const data: any = await resp.json();
     const expectedPaise = Number(pendingDraft.amountPaise) || Math.round((Number(pendingDraft.charge) || 0) * 100);
@@ -3154,11 +3349,15 @@ export async function handleRecoverApplicationPayment(req: Request, res: Respons
       pendingDraft,
       razorpayOrderId: pendingDraft.razorpayOrderId,
       razorpayPaymentId: captured.id,
+      callerIdToken: caller.idToken,
     });
     return res.json({ success: true, verified: true, appId, application: finalApp, notificationQueued: true, requestId });
   } catch (err: any) {
-    logStructuredAppError({ req, stage: 'recover_payment', status: 500, code: 'RECOVER_PAYMENT_FAILED', uid: callerUid, err });
-    return res.status(500).json({ success: false, code: 'RECOVER_PAYMENT_FAILED', stage: 'recover_payment', requestId, error: 'Failed to recover application payment.' });
+    const status = err?.statusCode || 500;
+    const code = err?.code || 'RECOVER_PAYMENT_FAILED';
+    const stage = err?.stage || 'recover_payment';
+    logStructuredAppError({ req, stage, status, code, uid: callerUid, err });
+    return res.status(status).json({ success: false, code, stage, requestId, error: 'Failed to recover application payment.' });
   }
 }
 

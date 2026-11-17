@@ -320,8 +320,8 @@ export function Apply({
                   return await uploadFileWithRetry(task.file, {
                     category: 'applications',
                     maxSizeBytes: MAX_SERVICE_FILE_SIZE,
-                    maxRetries: 1,
-                    timeoutMs: 20000,
+                    maxRetries: 0,
+                    timeoutMs: 10000,
                     signal,
                     onProgress: reportItemProgress,
                   });
@@ -363,6 +363,15 @@ export function Apply({
 
           setPhase('submitting');
           const sanitizedDetails = sanitizeFormData({ ...formData, ...uploadedFiles });
+          const applicantPhone =
+            user.phone ||
+            String(
+              sanitizedDetails['Mobile Number'] ||
+              sanitizedDetails['mobile'] ||
+              sanitizedDetails['mobileNumber'] ||
+              sanitizedDetails['Phone'] ||
+              ''
+            ).trim();
 
           if (hasRazorpay && selectedSubService) {
           const createRes = await createApplicationPaymentApi(
@@ -370,14 +379,14 @@ export function Apply({
               serviceId: service.id,
               subserviceName: selectedSubService.name,
               details: sanitizedDetails,
-              phone: user.phone,
+              phone: applicantPhone,
               clientRequestId: idempotencyKey,
             },
             { signal }
           );
 
           if (!createRes?.razorpayOrderId || !createRes?.appId) {
-            throw new Error(createRes?.error || 'Failed to initiate application payment.');
+            throw new Error(createRes?.error || 'Unable to start online payment right now.');
           }
 
           const scriptLoaded = await loadRazorpayScript(12000);
@@ -394,6 +403,9 @@ export function Apply({
 
           const activeRazorpay = gateways.find(g => g.type === 'razorpay' && g.active);
           const key = createRes.keyId || activeRazorpay?.credentials?.keyId || getRazorpayKeyId();
+          if (!key) {
+            throw new Error('Payment gateway is not configured right now. Your filled form details remain saved.');
+          }
 
           const options = {
             key,
@@ -440,7 +452,7 @@ export function Apply({
             prefill: {
               name: user.name,
               email: user.email,
-              contact: user.phone || '',
+              contact: applicantPhone || '',
             },
             modal: {
               ondismiss: async () => {
@@ -489,7 +501,7 @@ export function Apply({
             subserviceName: selectedSubService?.name,
             paymentMethod: resolvedMethod,
             details: sanitizedDetails,
-            phone: user.phone,
+            phone: applicantPhone,
             clientRequestId: idempotencyKey,
           },
           { signal }

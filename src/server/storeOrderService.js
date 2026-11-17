@@ -228,6 +228,7 @@ let connectivityCache = {
     expiresAt: 0,
     result: { rtdbConnected: false, rtdbChecked: false, rtdbLatencyMs: null }
 };
+let connectivityProbeInFlight = null;
 export async function checkFirebaseAdminConnectivity(options = {}) {
     const { force = false, timeoutMs = 4000 } = options;
     const now = Date.now();
@@ -242,7 +243,7 @@ export async function checkFirebaseAdminConnectivity(options = {}) {
             rtdbLatencyMs: null,
             rtdbError: 'Firebase Admin credentials not configured'
         };
-        connectivityCache = { expiresAt: now + 5000, result: res };
+        connectivityCache = { expiresAt: now + 15000, result: res };
         return res;
     }
     if (isTestMode()) {
@@ -252,30 +253,42 @@ export async function checkFirebaseAdminConnectivity(options = {}) {
             rtdbLatencyMs: 0
         };
     }
-    const startedAt = Date.now();
-    try {
-        // Locked /orders read proves real Admin-privileged RTDB connectivity (anonymous clients are denied by rules)
-        await withTimeout(rtdbAdmin.ref('orders').limitToFirst(1).once('value'), timeoutMs, 'Firebase Admin RTDB connectivity check');
-        const res = {
-            rtdbConnected: true,
-            rtdbChecked: true,
-            rtdbLatencyMs: Date.now() - startedAt
-        };
-        connectivityCache = { expiresAt: Date.now() + 15000, result: res };
-        return res;
+    if (!force && connectivityProbeInFlight) {
+        return connectivityProbeInFlight;
     }
-    catch (err) {
-        const rawMsg = String(err?.message || 'RTDB connectivity check failed');
-        const safeMsg = rawMsg.replace(/https?:\/\/[^\s]+/g, '[redacted-url]').slice(0, 180);
-        const res = {
-            rtdbConnected: false,
-            rtdbChecked: true,
-            rtdbLatencyMs: Date.now() - startedAt,
-            rtdbError: safeMsg
-        };
-        connectivityCache = { expiresAt: Date.now() + 5000, result: res };
-        return res;
-    }
+    const probe = (async () => {
+        const startedAt = Date.now();
+        try {
+            // Locked /orders read proves real Admin-privileged RTDB connectivity (anonymous clients are denied by rules)
+            await withTimeout(rtdbAdmin.ref('orders').limitToFirst(1).once('value'), timeoutMs, 'Firebase Admin RTDB connectivity check');
+            const res = {
+                rtdbConnected: true,
+                rtdbChecked: true,
+                rtdbLatencyMs: Date.now() - startedAt
+            };
+            connectivityCache = { expiresAt: Date.now() + 30000, result: res };
+            return res;
+        }
+        catch (err) {
+            const rawMsg = String(err?.message || 'RTDB connectivity check failed');
+            const safeMsg = rawMsg.replace(/https?:\/\/[^\s]+/g, '[redacted-url]').slice(0, 180);
+            const res = {
+                rtdbConnected: false,
+                rtdbChecked: true,
+                rtdbLatencyMs: Date.now() - startedAt,
+                rtdbError: safeMsg
+            };
+            connectivityCache = { expiresAt: Date.now() + 15000, result: res };
+            return res;
+        }
+        finally {
+            if (connectivityProbeInFlight === probe) {
+                connectivityProbeInFlight = null;
+            }
+        }
+    })();
+    connectivityProbeInFlight = probe;
+    return probe;
 }
 export function getStoreServiceStatus() {
     ensureFirebaseAdminInitialized();
@@ -361,6 +374,42 @@ function checkIdempotency(key) {
     }
     return null;
 }
+let storeIdemFlushTimer = null;
+let storeIdemWriting = false;
+let storeIdemDirty = false;
+async function flushStoreIdempotencyAsync() {
+    if (storeIdemWriting) {
+        storeIdemDirty = true;
+        return;
+    }
+    storeIdemDirty = false;
+    storeIdemWriting = true;
+    try {
+        await fs.promises.mkdir(path.dirname(STORE_IDEMPOTENCY_PATH), { recursive: true });
+        const recent = Object.fromEntries(Array.from(idempotencyCache.entries()).slice(-500));
+        const tmp = `${STORE_IDEMPOTENCY_PATH}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+        await fs.promises.writeFile(tmp, JSON.stringify(recent), 'utf-8');
+        await fs.promises.rename(tmp, STORE_IDEMPOTENCY_PATH);
+    }
+    catch { }
+    finally {
+        storeIdemWriting = false;
+        if (storeIdemDirty) {
+            scheduleStoreIdempotencyFlush();
+        }
+    }
+}
+function scheduleStoreIdempotencyFlush() {
+    storeIdemDirty = true;
+    if (storeIdemFlushTimer)
+        return;
+    storeIdemFlushTimer = setTimeout(() => {
+        storeIdemFlushTimer = null;
+        void flushStoreIdempotencyAsync();
+    }, 150);
+    if (typeof storeIdemFlushTimer.unref === 'function')
+        storeIdemFlushTimer.unref();
+}
 function recordIdempotency(key, result) {
     if (!key || typeof key !== 'string')
         return;
@@ -371,14 +420,19 @@ function recordIdempotency(key, result) {
             idempotencyCache.delete(firstKey);
     }
     idempotencyCache.set(key, { timestamp: Date.now(), result });
-    try {
-        fs.mkdirSync(path.dirname(STORE_IDEMPOTENCY_PATH), { recursive: true });
-        const recent = Object.fromEntries(Array.from(idempotencyCache.entries()).slice(-500));
-        const tmp = `${STORE_IDEMPOTENCY_PATH}.${process.pid}.tmp`;
-        fs.writeFileSync(tmp, JSON.stringify(recent), 'utf-8');
-        fs.renameSync(tmp, STORE_IDEMPOTENCY_PATH);
+    if (isTestMode()) {
+        try {
+            fs.mkdirSync(path.dirname(STORE_IDEMPOTENCY_PATH), { recursive: true });
+            const recent = Object.fromEntries(Array.from(idempotencyCache.entries()).slice(-500));
+            const tmp = `${STORE_IDEMPOTENCY_PATH}.${process.pid}.tmp`;
+            fs.writeFileSync(tmp, JSON.stringify(recent), 'utf-8');
+            fs.renameSync(tmp, STORE_IDEMPOTENCY_PATH);
+        }
+        catch { }
     }
-    catch { }
+    else {
+        scheduleStoreIdempotencyFlush();
+    }
 }
 // Bounded processed webhook events cache (prevents duplicate webhook execution)
 const processedWebhookEvents = new Set();
@@ -461,15 +515,64 @@ function sanitizeOrderForClient(order, options = {}) {
     }
     return copy;
 }
+let localOrdersCache = null;
+let localOrdersFlushTimer = null;
+let localOrdersWriting = false;
+let localOrdersDirty = false;
+async function flushLocalOrdersAsync() {
+    if (!localOrdersCache || localOrdersWriting) {
+        if (localOrdersCache)
+            localOrdersDirty = true;
+        return;
+    }
+    localOrdersDirty = false;
+    localOrdersWriting = true;
+    try {
+        const snapshot = JSON.stringify(localOrdersCache, null, 2);
+        await fs.promises.mkdir(path.dirname(ORDERS_STORE_PATH), { recursive: true });
+        const tmp = `${ORDERS_STORE_PATH}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+        await fs.promises.writeFile(tmp, snapshot, 'utf-8');
+        await fs.promises.rename(tmp, ORDERS_STORE_PATH);
+    }
+    catch (err) {
+        console.error('Failed to flush local orders store:', err);
+    }
+    finally {
+        localOrdersWriting = false;
+        if (localOrdersDirty) {
+            scheduleLocalOrdersFlush();
+        }
+    }
+}
+function scheduleLocalOrdersFlush() {
+    localOrdersDirty = true;
+    if (localOrdersFlushTimer)
+        return;
+    localOrdersFlushTimer = setTimeout(() => {
+        localOrdersFlushTimer = null;
+        void flushLocalOrdersAsync();
+    }, 150);
+    if (typeof localOrdersFlushTimer.unref === 'function')
+        localOrdersFlushTimer.unref();
+}
 // Local orders backup / test store helpers
 function readLocalOrders() {
+    if (!isTestMode() && localOrdersCache)
+        return localOrdersCache;
     try {
         if (fs.existsSync(ORDERS_STORE_PATH)) {
-            return JSON.parse(fs.readFileSync(ORDERS_STORE_PATH, 'utf-8'));
+            const parsed = JSON.parse(fs.readFileSync(ORDERS_STORE_PATH, 'utf-8'));
+            if (!isTestMode())
+                localOrdersCache = parsed;
+            return parsed;
         }
     }
     catch (err) {
         console.warn('Could not read local orders store:', err);
+    }
+    if (!isTestMode()) {
+        localOrdersCache = {};
+        return localOrdersCache;
     }
     return {};
 }
@@ -477,8 +580,13 @@ function saveLocalOrder(order) {
     try {
         const orders = readLocalOrders();
         orders[order.id] = order;
-        fs.mkdirSync(path.dirname(ORDERS_STORE_PATH), { recursive: true });
-        fs.writeFileSync(ORDERS_STORE_PATH, JSON.stringify(orders, null, 2), 'utf-8');
+        if (isTestMode()) {
+            fs.mkdirSync(path.dirname(ORDERS_STORE_PATH), { recursive: true });
+            fs.writeFileSync(ORDERS_STORE_PATH, JSON.stringify(orders, null, 2), 'utf-8');
+        }
+        else {
+            scheduleLocalOrdersFlush();
+        }
     }
     catch (err) {
         console.error('Failed to save to local orders store:', err);
@@ -729,12 +837,12 @@ async function updateOrderInDatabase(orderId, updates, knownPath) {
             console.warn('Legacy order migration warning:', migErr);
         }
     }
-    // Keep local backup updated silently if present
+    // Keep local backup updated non-blockingly if present
     try {
         const local = readLocalOrders();
         if (local[orderId]) {
             local[orderId] = { ...local[orderId], ...cleanUpdates };
-            fs.writeFileSync(ORDERS_STORE_PATH, JSON.stringify(local, null, 2), 'utf-8');
+            scheduleLocalOrdersFlush();
         }
     }
     catch { }
@@ -1642,47 +1750,58 @@ export async function handleLinkGuestOrders(req, res) {
         const { guestOrderTokens } = req.body || {};
         const now = new Date().toISOString();
         let linkedCount = 0;
-        // 1. Link explicitly authorized guest tokens from browser session
-        if (Array.isArray(guestOrderTokens)) {
-            for (const entry of guestOrderTokens.slice(0, 20)) {
-                if (!entry || typeof entry.orderId !== 'string' || typeof entry.token !== 'string')
-                    continue;
+        // 1. Link explicitly authorized guest tokens from browser session in parallel
+        if (Array.isArray(guestOrderTokens) && guestOrderTokens.length > 0) {
+            const candidates = guestOrderTokens.slice(0, 20).filter((entry) => Boolean(entry && typeof entry.orderId === 'string' && typeof entry.token === 'string'));
+            const tokenResults = await Promise.allSettled(candidates.map(async (entry) => {
                 const record = await findOrderRecord(entry.orderId);
                 if (!record)
-                    continue;
+                    return false;
                 const { order, rtdbPath } = record;
                 if (!order.isGuest && order.uid && order.uid !== 'guest')
-                    continue;
+                    return false;
                 if (!order.guestTokenHash)
-                    continue;
+                    return false;
                 const computedHash = crypto.createHash('sha256').update(entry.token).digest('hex');
                 const a = Buffer.from(computedHash, 'utf8');
                 const b = Buffer.from(String(order.guestTokenHash), 'utf8');
                 if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
                     await updateOrderInDatabase(order.id, { uid, userId: uid, isGuest: false, linkedAt: now }, rtdbPath);
-                    linkedCount++;
+                    return true;
                 }
+                return false;
+            }));
+            for (const r of tokenResults) {
+                if (r.status === 'fulfilled' && r.value)
+                    linkedCount++;
             }
         }
-        // 2. Link guest orders matching verified account email
+        // 2. Link guest orders matching verified account email in parallel chunks
         if (email) {
             if (isTestMode()) {
                 const local = readLocalOrders();
-                for (const [id, ord] of Object.entries(local)) {
+                const matches = Object.entries(local).filter(([, ord]) => {
                     const ordEmail = (ord.email || ord.deliveryAddress?.email || '').toLowerCase().trim();
-                    if ((ord.isGuest || ord.uid === 'guest') && ordEmail === email) {
-                        await updateOrderInDatabase(id, { uid, userId: uid, isGuest: false, linkedAt: now });
-                        linkedCount++;
-                    }
+                    return Boolean((ord.isGuest || ord.uid === 'guest') && ordEmail === email);
+                });
+                for (const [id] of matches) {
+                    await updateOrderInDatabase(id, { uid, userId: uid, isGuest: false, linkedAt: now });
+                    linkedCount++;
                 }
             }
             else if (ensureFirebaseAdminInitialized() && rtdbAdmin) {
                 const snap = await withTimeout(rtdbAdmin.ref('orders').orderByChild('email').equalTo(email).once('value'), 9000, 'Linking orders by email');
                 if (snap.exists()) {
-                    for (const [key, ord] of Object.entries(snap.val() || {})) {
-                        if (ord && (ord.isGuest || ord.uid === 'guest' || !ord.uid)) {
+                    const toLink = Object.entries(snap.val() || {}).filter(([, ord]) => Boolean(ord && (ord.isGuest || ord.uid === 'guest' || !ord.uid)));
+                    const CHUNK = 6;
+                    for (let i = 0; i < toLink.length; i += CHUNK) {
+                        const results = await Promise.allSettled(toLink.slice(i, i + CHUNK).map(async ([key, ord]) => {
                             await updateOrderInDatabase(ord.id || key, { uid, userId: uid, isGuest: false, linkedAt: now }, `orders/${key}`);
-                            linkedCount++;
+                            return true;
+                        }));
+                        for (const r of results) {
+                            if (r.status === 'fulfilled' && r.value)
+                                linkedCount++;
                         }
                     }
                 }

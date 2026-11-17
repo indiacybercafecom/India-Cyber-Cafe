@@ -239,7 +239,11 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string = 'Some
     return 'Unable to start payment. Please try again.';
   }
 
-  // 6. Database / Permission / Structured Backend Codes
+  // 6. Database / Auth Session / Structured Backend Codes
+  if (lowerCode === '401' || lowerMsg.includes('authentication required')) {
+    return 'Your session has expired. Please log in again.';
+  }
+
   if (
     lowerCode === 'permission_denied' ||
     lowerCode === 'rtdb_permission_denied' ||
@@ -275,6 +279,10 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string = 'Some
 
   if (lowerCode === 'rate_limited') {
     return 'Too many attempts. Please wait a minute and try again.';
+  }
+
+  if (lowerCode === 'confirm_payment_failed' || lowerCode === 'pending_draft_not_found') {
+    return 'Payment could not be confirmed automatically. Please check Track Applications before retrying.';
   }
 
   // 7. Human Validation Messages Preservation
