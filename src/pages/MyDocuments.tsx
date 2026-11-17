@@ -462,37 +462,76 @@ export function MyDocuments() {
     }
   };
 
-  // File Upload Handling
+  // File Upload Handling (bounded parallel uploads for speed without saturating mobile/Drive quotas)
   const handleFileSelect = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    const fileList = Array.from(files);
+    const total = fileList.length;
+    const perFilePercent = new Array<number>(total).fill(0);
+    const cancelHandlers = new Set<() => void>();
+    let cancelled = false;
+    let uploadedCount = 0;
+
+    uploadCancelRef.current = () => {
+      cancelled = true;
+      for (const fn of cancelHandlers) {
+        try { fn(); } catch {}
+      }
+      cancelHandlers.clear();
+    };
+
+    const updateAggregateProgress = (activeLabel: string) => {
+      const sum = perFilePercent.reduce((acc, p) => acc + p, 0);
+      const overall = total > 0 ? Math.round(sum / total) : 0;
       setUploadProgress({
         uploading: true,
-        fileName: file.name,
-        percent: 0,
+        fileName: total > 1 ? `${uploadedCount}/${total} files (${activeLabel})` : activeLabel,
+        percent: overall,
       });
+    };
 
-      try {
-        const { promise, cancel } = driveClient.uploadFile(
-          file,
-          currentFolderId,
-          (percent) => {
-            setUploadProgress(prev => (prev ? { ...prev, percent } : null));
+    updateAggregateProgress(fileList[0].name);
+
+    let nextIndex = 0;
+    const workerCount = Math.min(3, total);
+    await Promise.all(
+      Array.from({ length: workerCount }, async () => {
+        while (!cancelled) {
+          const idx = nextIndex++;
+          if (idx >= total) return;
+          const file = fileList[idx];
+          try {
+            const { promise, cancel } = driveClient.uploadFile(
+              file,
+              currentFolderId,
+              (percent) => {
+                perFilePercent[idx] = percent;
+                updateAggregateProgress(file.name);
+              }
+            );
+            cancelHandlers.add(cancel);
+            try {
+              await promise;
+              perFilePercent[idx] = 100;
+              uploadedCount++;
+              updateAggregateProgress(file.name);
+            } finally {
+              cancelHandlers.delete(cancel);
+            }
+          } catch (err: any) {
+            if (!cancelled) {
+              showToast(err?.message || `Failed to upload ${file.name}`, 'error');
+            }
           }
-        );
-        uploadCancelRef.current = cancel;
+        }
+      })
+    );
 
-        await promise;
-        showToast('Uploaded', 'success');
-      } catch (err: any) {
-        showToast(err.message || 'Operation failed', 'error');
-      } finally {
-        uploadCancelRef.current = null;
-      }
+    uploadCancelRef.current = null;
+    if (uploadedCount > 0 && !cancelled) {
+      showToast(uploadedCount > 1 ? `Uploaded ${uploadedCount} files` : 'Uploaded', 'success');
     }
-
     setUploadProgress(null);
     loadFolderItems(currentFolderId);
     if (fileInputRef.current) fileInputRef.current.value = '';

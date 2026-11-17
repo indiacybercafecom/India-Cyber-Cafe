@@ -184,6 +184,27 @@
     "phoneIndex": {
       ".read": false,
       ".write": false
+    },
+
+    "asyncQueue": {
+      ".read": false,
+      ".write": false,
+      "jobs": {
+        ".indexOn": ["state", "nextAttemptAt", "leaseExpiresAt", "createdAt"]
+      },
+      "dlq": {
+        ".indexOn": ["updatedAt", "kind"]
+      },
+      "idempotency": {
+        ".read": false,
+        ".write": false
+      }
+    },
+
+    "notificationOutbox": {
+      ".read": false,
+      ".write": false,
+      ".indexOn": ["state", "createdAt", "updatedAt"]
     }
   }
 }

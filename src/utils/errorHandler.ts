@@ -261,8 +261,25 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string = 'Some
     return 'Submission service is temporarily unavailable. Please try again in a few minutes.';
   }
 
-  if (lowerCode === 'razorpay_unconfigured' || lowerCode === 'razorpay_order_failed') {
+  if (
+    lowerCode === 'firebase_write_failed' ||
+    lowerCode === 'firebase_write_timeout' ||
+    lowerCode === 'pending_draft_persistence_failed'
+  ) {
+    return 'Unable to confirm your payment session right now. Please keep this page open and try again.';
+  }
+
+  if (
+    lowerCode === 'razorpay_unconfigured' ||
+    lowerCode === 'razorpay_order_failed' ||
+    lowerCode === 'razorpay_network_error' ||
+    lowerCode === 'razorpay_invalid_response'
+  ) {
     return 'Online payment checkout is temporarily unavailable. Your filled form details remain saved.';
+  }
+
+  if (lowerCode === 'razorpay_timeout' || lowerCode === 'gateway_timeout') {
+    return 'Payment gateway timed out before starting checkout. Your filled form details remain saved.';
   }
 
   if (lowerCode === 'server_busy') {

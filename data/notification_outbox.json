@@ -1,18 +1,266 @@
 {
-  "obx_1794882337964_65512fd6c7": {
-    "jobId": "obx_1794882337964_65512fd6c7",
-    "idempotencyKey": "order_confirmed:cod:ICC/STORE-17112026-022537-63560",
+  "obx_1794906786847_478778e05b": {
+    "jobId": "obx_1794906786847_478778e05b",
+    "idempotencyKey": "app_update:ICC-APP-BADMAIL:note_1794906786846_f2f4377d",
+    "kind": "application_update",
+    "appId": "ICC-APP-BADMAIL",
+    "payload": {
+      "appSnapshot": {
+        "id": "ICC-APP-BADMAIL",
+        "uid": "cust_bad",
+        "name": "Missing Mail User",
+        "email": "invalid-email-address",
+        "serviceId": "pan-card",
+        "serviceName": "PAN Card New",
+        "status": "completed",
+        "paymentStatus": "pending",
+        "charge": 150,
+        "notes": {
+          "note_1794906786846_f2f4377d": {
+            "id": "note_1794906786846_f2f4377d",
+            "type": "status",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Status updated to completed",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786846,
+            "status": "completed"
+          }
+        },
+        "date": "2026-11-17T09:13:06.334Z",
+        "updatedAt": "2026-11-17T09:13:06.846Z"
+      },
+      "previousStatus": "processing",
+      "newStatus": "completed",
+      "performedBy": {
+        "uid": "admin_uid_1",
+        "name": "Admin One",
+        "email": "admin1@indiacybercafe.com",
+        "role": "admin"
+      },
+      "timestamp": "17/11/2026, 2:43:06 pm"
+    },
+    "state": "failed",
+    "attempts": 1,
+    "maxAttempts": 3,
+    "nextAttemptAt": 1794906786848,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.847Z",
+    "updatedAt": "2026-11-17T09:13:06.886Z",
+    "report": {
+      "success": false,
+      "hasFailures": true,
+      "totalCount": 3,
+      "sentCount": 2,
+      "failedCount": 1,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786850_cb01b724d7",
+          "templateId": "customerApplicationCompleted",
+          "recipient": "invalid-email-address",
+          "recipientRole": "customer",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "MISSING_OR_INVALID_CUSTOMER_EMAIL"
+        },
+        {
+          "eventId": "ntf_1794906786850_009df26859",
+          "templateId": "adminStatusUpdated",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786850_8ceaf393c0",
+          "templateId": "adminStatusUpdated",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "lastError": "customer:MISSING_OR_INVALID_CUSTOMER_EMAIL"
+  },
+  "obx_1794906786937_8679863f11": {
+    "jobId": "obx_1794906786937_8679863f11",
+    "idempotencyKey": "app_update:ICC-APP-1001:note_1794906786936_55ce31d5",
+    "kind": "application_update",
+    "appId": "ICC-APP-1001",
+    "payload": {
+      "appSnapshot": {
+        "id": "ICC-APP-1001",
+        "uid": "cust_uid_1",
+        "name": "Priya Verma",
+        "email": "priya.verma@example.com",
+        "serviceId": "pan-card",
+        "serviceName": "PAN Card Correction",
+        "status": "completed",
+        "paymentStatus": "completed",
+        "charge": 250,
+        "assignedTo": "suresh.op@example.com",
+        "assignedToUid": "op_uid_b",
+        "notes": {
+          "note_1794906786431_dc0f4feb": {
+            "id": "note_1794906786431_dc0f4feb",
+            "type": "status",
+            "by": "Ramesh Operator",
+            "email": "ramesh.op@example.com",
+            "authorUid": "op_uid_a",
+            "authorRole": "operator",
+            "text": "Please re-upload Aadhaar front side clearly.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786431,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+            "attachmentName": "sample-guide.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+                "name": "sample-guide.pdf"
+              }
+            ]
+          },
+          "note_1794906786473_ad6530ff": {
+            "id": "note_1794906786473_ad6530ff",
+            "type": "status",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Final certificate approved.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786473,
+            "status": "completed"
+          },
+          "note_1794906786514_6908819b": {
+            "id": "note_1794906786514_6908819b",
+            "type": "note",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Follow-up after reassignment",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786514
+          },
+          "note_1794906786936_55ce31d5": {
+            "id": "note_1794906786936_55ce31d5",
+            "type": "note",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Note sent during SMTP outage",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786936
+          }
+        },
+        "date": "2026-11-17T09:13:06.334Z",
+        "updatedAt": "2026-11-17T09:13:06.936Z",
+        "paymentMethod": "razorpay",
+        "razorpayPaymentId": "pay_app_test_1",
+        "razorpayOrderId": "order_app_test_1"
+      },
+      "previousStatus": "completed",
+      "noteText": "Note sent during SMTP outage",
+      "performedBy": {
+        "uid": "admin_uid_1",
+        "name": "Admin One",
+        "email": "admin1@indiacybercafe.com",
+        "role": "admin"
+      },
+      "timestamp": "17/11/2026, 2:43:06 pm"
+    },
+    "state": "failed",
+    "attempts": 3,
+    "maxAttempts": 3,
+    "nextAttemptAt": 0,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.937Z",
+    "updatedAt": "2026-11-17T09:13:07.093Z",
+    "report": {
+      "success": false,
+      "hasFailures": true,
+      "totalCount": 4,
+      "sentCount": 0,
+      "failedCount": 4,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906787043_f3fad4e001",
+          "templateId": "customerNoteAdded",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "failed",
+          "wasRetried": true,
+          "attempts": 3,
+          "smtpAccepted": false,
+          "error": "550 5.1.1 Mailbox unavailable"
+        },
+        {
+          "eventId": "ntf_1794906787043_72d1650ede",
+          "templateId": "adminNoteAdded",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "failed",
+          "wasRetried": true,
+          "attempts": 3,
+          "smtpAccepted": false,
+          "error": "550 5.1.1 Mailbox unavailable"
+        },
+        {
+          "eventId": "ntf_1794906787043_56070decdc",
+          "templateId": "adminNoteAdded",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "failed",
+          "wasRetried": true,
+          "attempts": 3,
+          "smtpAccepted": false,
+          "error": "550 5.1.1 Mailbox unavailable"
+        },
+        {
+          "eventId": "ntf_1794906787043_81c906446f",
+          "templateId": "operatorStatusUpdated",
+          "recipient": "suresh.op@example.com",
+          "recipientRole": "operator",
+          "state": "failed",
+          "wasRetried": true,
+          "attempts": 3,
+          "smtpAccepted": false,
+          "error": "550 5.1.1 Mailbox unavailable"
+        }
+      ]
+    },
+    "lastError": "customer:550 5.1.1 Mailbox unavailable; admin:550 5.1.1 Mailbox unavailable; admin:550 5.1.1 Mailbox unavailable; operator:550 5.1.1 Mailbox unavailable"
+  },
+  "obx_1794906787156_573e99fd55": {
+    "jobId": "obx_1794906787156_573e99fd55",
+    "idempotencyKey": "order_confirmed:cod:ICC/STORE-17112026-091307-17770",
     "kind": "order_confirmed",
     "appId": "",
-    "orderId": "ICC/STORE-17112026-022537-63560",
+    "orderId": "ICC/STORE-17112026-091307-17770",
     "payload": {
       "order": {
-        "id": "ICC/STORE-17112026-022537-63560",
+        "id": "ICC/STORE-17112026-091307-17770",
         "uid": "guest",
         "userId": "guest",
         "isGuest": true,
-        "guestTokenHash": "f64d99a9ea952dc0d0fa497f85e6f722684c11eb737babff15bcb84b7c63d375",
-        "email": "rahul@example.com",
+        "guestTokenHash": "6e5dc897b4cbfa920df2e83c6de3528204ac82e4d0352f184f6a452574ffedae",
+        "email": "priya.verma@example.com",
         "items": [
           {
             "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
@@ -23,13 +271,13 @@
           }
         ],
         "deliveryAddress": {
-          "name": "Rahul",
-          "email": "rahul@example.com",
+          "name": "Priya Verma",
+          "email": "priya.verma@example.com",
           "phone": "9876543210",
-          "addressLine1": "12 Main Rd",
+          "addressLine1": "42 Civil Lines",
           "addressLine2": "",
           "city": "Singrauli",
-          "state": "MP",
+          "state": "Madhya Pradesh",
           "pincode": "486886",
           "country": "India"
         },
@@ -45,301 +293,486 @@
             "by": "system",
             "email": "system@indiacybercafe.com",
             "text": "Order placed with Cash on Delivery (COD)",
-            "time": "2026-11-17T02:25:37.962Z"
+            "time": "2026-11-17T09:13:07.155Z"
           }
         ],
-        "createdAt": "2026-11-17T02:25:37.962Z",
-        "updatedAt": "2026-11-17T02:25:37.962Z"
+        "createdAt": "2026-11-17T09:13:07.155Z",
+        "updatedAt": "2026-11-17T09:13:07.155Z"
       }
     },
-    "state": "failed",
-    "attempts": 5,
+    "state": "queued",
+    "attempts": 0,
+    "maxAttempts": 5,
+    "nextAttemptAt": 1794906787156,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:07.156Z",
+    "updatedAt": "2026-11-17T09:13:07.156Z"
+  },
+  "obx_1794906786896_c298f3dd40": {
+    "jobId": "obx_1794906786896_c298f3dd40",
+    "idempotencyKey": "profile_update:cust_uid_1:Phone Number:1794906786896",
+    "kind": "profile_updated",
+    "appId": "",
+    "payload": {
+      "uid": "cust_uid_1",
+      "userName": "Priya Verma",
+      "userEmail": "priya.verma@example.com",
+      "updateType": "Phone Number"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 4,
+    "nextAttemptAt": 0,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.896Z",
+    "updatedAt": "2026-11-17T09:13:06.932Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 1,
+      "sentCount": 1,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786899_cdf992dcec",
+          "templateId": "customerProfileUpdated",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": true,
+          "attempts": 3,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.932Z"
+  },
+  "obx_1794906786827_26c5bb7401": {
+    "jobId": "obx_1794906786827_26c5bb7401",
+    "idempotencyKey": "review_notify:cust_uid_1:diseases-treatment-complete-medical-reference-pdf-125-diseases:1794906786827",
+    "kind": "review_submitted",
+    "appId": "",
+    "payload": {
+      "uid": "cust_uid_1",
+      "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+      "productName": "scriptalert(\"xss\")/scriptGuide",
+      "customerName": "Priya Verma",
+      "customerEmail": "priya.verma@example.com",
+      "rating": 4,
+      "reviewText": "Nice img src=x onerror=alert(1) guide!"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 4,
+    "nextAttemptAt": 1794906786828,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.827Z",
+    "updatedAt": "2026-11-17T09:13:06.840Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786830_e85ac564e3",
+          "templateId": "customerReviewSubmitted",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786830_f2c3048b54",
+          "templateId": "adminReviewReceived",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786830_e038babd5b",
+          "templateId": "adminReviewReceived",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.840Z"
+  },
+  "obx_1794906786813_eafd38401f": {
+    "jobId": "obx_1794906786813_eafd38401f",
+    "idempotencyKey": "callback:9876543210:29915113",
+    "kind": "callback_request",
+    "appId": "",
+    "payload": {
+      "mobileNumber": "9876543210"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 4,
+    "nextAttemptAt": 1794906786813,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.813Z",
+    "updatedAt": "2026-11-17T09:13:06.823Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 2,
+      "sentCount": 2,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786816_9e512bf501",
+          "templateId": "adminCallbackReceived",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786816_2d5389e684",
+          "templateId": "adminCallbackReceived",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.823Z"
+  },
+  "obx_1794906786793_0960afbfff": {
+    "jobId": "obx_1794906786793_0960afbfff",
+    "idempotencyKey": "review_notify:cust_uid_1:diseases-treatment-complete-medical-reference-pdf-125-diseases:1794906786793",
+    "kind": "review_submitted",
+    "appId": "",
+    "payload": {
+      "uid": "cust_uid_1",
+      "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+      "productName": "125 Diseases Guide PDF",
+      "customerName": "Priya Verma",
+      "customerEmail": "priya.verma@example.com",
+      "rating": 5,
+      "reviewText": "Very useful reference book!"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 4,
+    "nextAttemptAt": 1794906786793,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.793Z",
+    "updatedAt": "2026-11-17T09:13:06.808Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786796_028b489e1c",
+          "templateId": "customerReviewSubmitted",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786796_502c94e1e3",
+          "templateId": "adminReviewReceived",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786796_01baa84f62",
+          "templateId": "adminReviewReceived",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.808Z"
+  },
+  "obx_1794906786762_d6a2d6b46c": {
+    "jobId": "obx_1794906786762_d6a2d6b46c",
+    "idempotencyKey": "profile_update:cust_uid_1:Name, Phone & Address:1794906786762",
+    "kind": "profile_updated",
+    "appId": "",
+    "payload": {
+      "uid": "cust_uid_1",
+      "userName": "Priya Verma",
+      "userEmail": "priya.verma@example.com",
+      "updateType": "Name, Phone & Address"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 4,
+    "nextAttemptAt": 1794906786762,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.762Z",
+    "updatedAt": "2026-11-17T09:13:06.787Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 1,
+      "sentCount": 1,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786785_56c13d0846",
+          "templateId": "customerProfileUpdated",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.787Z"
+  },
+  "obx_1794906786745_ddd1c1b708": {
+    "jobId": "obx_1794906786745_ddd1c1b708",
+    "idempotencyKey": "registration:cust_uid_1",
+    "kind": "user_registration",
+    "appId": "",
+    "payload": {
+      "uid": "cust_uid_1",
+      "userName": "Priya Verma",
+      "userEmail": "priya.verma@example.com",
+      "phone": "9876543210",
+      "authProvider": "password",
+      "isGuestCheckout": true
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 5,
+    "nextAttemptAt": 1794906786745,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.745Z",
+    "updatedAt": "2026-11-17T09:13:06.757Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786748_1caf17990f",
+          "templateId": "customerRegistration",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786748_7cd9f3a8cf",
+          "templateId": "adminUserRegistered",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786748_b0dace8a9f",
+          "templateId": "adminUserRegistered",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.757Z"
+  },
+  "obx_1794906786728_295cb12d6d": {
+    "jobId": "obx_1794906786728_295cb12d6d",
+    "idempotencyKey": "order_refund:ICC/STORE-17112026-091306-96947:49:2026-11-17T09:13:06.727Z",
+    "kind": "order_refund",
+    "appId": "",
+    "orderId": "ICC/STORE-17112026-091306-96947",
+    "payload": {
+      "order": {
+        "id": "ICC/STORE-17112026-091306-96947",
+        "uid": "cust_uid_1",
+        "userId": "cust_uid_1",
+        "isGuest": false,
+        "email": "priya.verma@example.com",
+        "items": [
+          {
+            "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+            "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
+            "price": 499,
+            "discountedPrice": 49,
+            "quantity": 1
+          }
+        ],
+        "deliveryAddress": {
+          "name": "Priya Verma",
+          "email": "priya.verma@example.com",
+          "phone": "9876543210",
+          "addressLine1": "42 Civil Lines",
+          "addressLine2": "",
+          "city": "Singrauli",
+          "state": "Madhya Pradesh",
+          "pincode": "486886",
+          "country": "India"
+        },
+        "subtotal": 49,
+        "deliveryCharges": 0,
+        "total": 49,
+        "paymentMethod": "razorpay",
+        "paymentStatus": "refunded",
+        "razorpayOrderId": "order_test_aa5e247d274a",
+        "orderStatus": "processing",
+        "notes": [
+          {
+            "type": "status",
+            "by": "system",
+            "email": "system@indiacybercafe.com",
+            "text": "Payment initiated via Razorpay (Ref: order_test_aa5e247d274a)",
+            "time": "2026-11-17T09:13:06.654Z"
+          },
+          {
+            "type": "status",
+            "by": "system",
+            "email": "system@indiacybercafe.com",
+            "text": "Payment verified via Razorpay (pay_store_999)",
+            "time": "2026-11-17T09:13:06.685Z"
+          },
+          {
+            "type": "status",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "text": "Refund of ₹49.00 initiated: Duplicate purchase",
+            "time": "2026-11-17T09:13:06.727Z"
+          }
+        ],
+        "createdAt": "2026-11-17T09:13:06.654Z",
+        "updatedAt": "2026-11-17T09:13:06.727Z",
+        "razorpayPaymentId": "pay_store_999",
+        "refundAmount": 49,
+        "refundReason": "Duplicate purchase",
+        "refundedAt": "2026-11-17T09:13:06.727Z"
+      },
+      "refundAmount": 49,
+      "expectedDays": 5,
+      "reason": "Duplicate purchase",
+      "performedBy": {
+        "uid": "admin_uid_1",
+        "name": "Admin One",
+        "email": "admin1@indiacybercafe.com"
+      }
+    },
+    "state": "completed",
+    "attempts": 1,
     "maxAttempts": 5,
     "nextAttemptAt": 0,
     "leaseOwner": null,
     "leaseExpiresAt": null,
-    "createdAt": "2026-11-17T02:25:37.964Z",
-    "updatedAt": "2026-11-17T02:25:38.161Z",
+    "createdAt": "2026-11-17T09:13:06.728Z",
+    "updatedAt": "2026-11-17T09:13:06.740Z",
     "report": {
-      "success": false,
-      "hasFailures": true,
+      "success": true,
+      "hasFailures": false,
       "totalCount": 3,
-      "sentCount": 0,
-      "failedCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
       "skippedDuplicateCount": 0,
       "events": [
         {
-          "eventId": "ntf_1794882338130_27a6db878e",
-          "templateId": "customerOrderConfirmed",
-          "recipient": "rahul@example.com",
+          "eventId": "ntf_1794906786732_619cb17e9f",
+          "templateId": "customerRefundInitiated",
+          "recipient": "priya.verma@example.com",
           "recipientRole": "customer",
-          "state": "failed",
-          "wasRetried": true,
-          "attempts": 3,
-          "smtpAccepted": false,
-          "error": "550 failAll"
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
         },
         {
-          "eventId": "ntf_1794882338130_a09ac09506",
-          "templateId": "adminOrderCreated",
+          "eventId": "ntf_1794906786732_da86532316",
+          "templateId": "adminRefundInitiated",
           "recipient": "icc@indiacybercafe.com",
           "recipientRole": "admin",
-          "state": "failed",
-          "wasRetried": true,
-          "attempts": 3,
-          "smtpAccepted": false,
-          "error": "550 failAll"
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
         },
         {
-          "eventId": "ntf_1794882338130_67ad9210db",
-          "templateId": "adminOrderCreated",
+          "eventId": "ntf_1794906786732_f51e640fc4",
+          "templateId": "adminRefundInitiated",
           "recipient": "indiacybercafe.com@gmail.com",
           "recipientRole": "admin",
-          "state": "failed",
-          "wasRetried": true,
-          "attempts": 3,
-          "smtpAccepted": false,
-          "error": "550 failAll"
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
         }
       ]
     },
-    "lastError": "customer:550 failAll; admin:550 failAll; admin:550 failAll"
+    "completedAt": "2026-11-17T09:13:06.740Z"
   },
-  "obx_1794882509439_98cbd4fd72": {
-    "jobId": "obx_1794882509439_98cbd4fd72",
-    "idempotencyKey": "order_confirmed:cod:ICC/STORE-17112026-022829-20682",
-    "kind": "order_confirmed",
+  "obx_1794906786713_89236f99e7": {
+    "jobId": "obx_1794906786713_89236f99e7",
+    "idempotencyKey": "order_status:ICC/STORE-17112026-091306-53564:cancelled:2026-11-17T09:13:06.713Z",
+    "kind": "order_status",
     "appId": "",
-    "orderId": "ICC/STORE-17112026-022829-20682",
+    "orderId": "ICC/STORE-17112026-091306-53564",
     "payload": {
       "order": {
-        "id": "ICC/STORE-17112026-022829-20682",
+        "id": "ICC/STORE-17112026-091306-53564",
         "uid": "guest",
         "userId": "guest",
         "isGuest": true,
-        "guestTokenHash": "aeb0b208ec2390ad5c6543ba7b77f3d604c35ebf8571013d40d3e1d66e22175a",
-        "email": "rahul.test@example.com",
-        "items": [
-          {
-            "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
-            "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
-            "price": 499,
-            "discountedPrice": 49,
-            "quantity": 2
-          }
-        ],
-        "deliveryAddress": {
-          "name": "Rahul Sharma",
-          "email": "rahul.test@example.com",
-          "phone": "9876543210",
-          "addressLine1": "12 Main Market Road",
-          "addressLine2": "Near Bus Stand",
-          "city": "Singrauli",
-          "state": "Madhya Pradesh",
-          "pincode": "486886",
-          "country": "India"
-        },
-        "subtotal": 98,
-        "deliveryCharges": 0,
-        "total": 98,
-        "paymentMethod": "cash",
-        "paymentStatus": "pending",
-        "orderStatus": "pending",
-        "notes": [
-          {
-            "type": "status",
-            "by": "system",
-            "email": "system@indiacybercafe.com",
-            "text": "Order placed with Cash on Delivery (COD)",
-            "time": "2026-11-17T02:28:29.438Z"
-          }
-        ],
-        "createdAt": "2026-11-17T02:28:29.438Z",
-        "updatedAt": "2026-11-17T02:28:29.438Z"
-      }
-    },
-    "state": "failed",
-    "attempts": 5,
-    "maxAttempts": 5,
-    "nextAttemptAt": 1794882509654,
-    "leaseOwner": null,
-    "leaseExpiresAt": null,
-    "createdAt": "2026-11-17T02:28:29.439Z",
-    "updatedAt": "2026-11-17T02:28:29.668Z",
-    "report": {
-      "success": false,
-      "hasFailures": true,
-      "totalCount": 3,
-      "sentCount": 0,
-      "failedCount": 3,
-      "skippedDuplicateCount": 0,
-      "events": [
-        {
-          "eventId": "ntf_1794882509660_26c943f6bb",
-          "templateId": "customerOrderConfirmed",
-          "recipient": "rahul.test@example.com",
-          "recipientRole": "customer",
-          "state": "failed",
-          "wasRetried": false,
-          "attempts": 0,
-          "smtpAccepted": false,
-          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
-        },
-        {
-          "eventId": "ntf_1794882509660_a476c4f8dc",
-          "templateId": "adminOrderCreated",
-          "recipient": "icc@indiacybercafe.com",
-          "recipientRole": "admin",
-          "state": "failed",
-          "wasRetried": false,
-          "attempts": 0,
-          "smtpAccepted": false,
-          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
-        },
-        {
-          "eventId": "ntf_1794882509660_5f87ed121e",
-          "templateId": "adminOrderCreated",
-          "recipient": "indiacybercafe.com@gmail.com",
-          "recipientRole": "admin",
-          "state": "failed",
-          "wasRetried": false,
-          "attempts": 0,
-          "smtpAccepted": false,
-          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
-        }
-      ]
-    },
-    "lastError": "customer:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
-  },
-  "obx_1794882509597_debd0b6950": {
-    "jobId": "obx_1794882509597_debd0b6950",
-    "idempotencyKey": "order_confirmed:online:ICC/STORE-17112026-022829-78912:pay_test_111",
-    "kind": "order_confirmed",
-    "appId": "",
-    "orderId": "ICC/STORE-17112026-022829-78912",
-    "payload": {
-      "order": {
-        "id": "ICC/STORE-17112026-022829-78912",
-        "uid": "uid_cust_1",
-        "userId": "uid_cust_1",
-        "isGuest": false,
-        "email": "cust1@example.com",
-        "items": [
-          {
-            "productId": "-OnAp1lEhlTb3WRi_rsw",
-            "productName": "Men’s T-Shirts",
-            "price": 500,
-            "discountedPrice": 299,
-            "quantity": 1,
-            "customImageUrl": "/uploads/custom-images/custom_1794882509568_dbe27df2166a.png"
-          }
-        ],
-        "deliveryAddress": {
-          "name": "Rahul Sharma",
-          "email": "cust1@example.com",
-          "phone": "9876543210",
-          "addressLine1": "12 Main Market Road",
-          "addressLine2": "Near Bus Stand",
-          "city": "Singrauli",
-          "state": "Madhya Pradesh",
-          "pincode": "486886",
-          "country": "India"
-        },
-        "subtotal": 299,
-        "deliveryCharges": 0,
-        "total": 299,
-        "paymentMethod": "razorpay",
-        "paymentStatus": "completed",
-        "razorpayOrderId": "order_test_66011dd13898",
-        "orderStatus": "processing",
-        "notes": [
-          {
-            "type": "status",
-            "by": "system",
-            "email": "system@indiacybercafe.com",
-            "text": "Payment initiated via Razorpay (Ref: order_test_66011dd13898)",
-            "time": "2026-11-17T02:28:29.576Z"
-          },
-          {
-            "type": "status",
-            "by": "system",
-            "email": "system@indiacybercafe.com",
-            "text": "Payment verified via Razorpay (pay_test_111)",
-            "time": "2026-11-17T02:28:29.597Z"
-          }
-        ],
-        "createdAt": "2026-11-17T02:28:29.576Z",
-        "updatedAt": "2026-11-17T02:28:29.597Z",
-        "razorpayPaymentId": "pay_test_111"
-      }
-    },
-    "state": "failed",
-    "attempts": 5,
-    "maxAttempts": 5,
-    "nextAttemptAt": 1794882509819,
-    "leaseOwner": null,
-    "leaseExpiresAt": null,
-    "createdAt": "2026-11-17T02:28:29.597Z",
-    "updatedAt": "2026-11-17T02:28:32.363Z",
-    "report": {
-      "success": false,
-      "hasFailures": true,
-      "totalCount": 3,
-      "sentCount": 0,
-      "failedCount": 3,
-      "skippedDuplicateCount": 0,
-      "events": [
-        {
-          "eventId": "ntf_1794882512342_53ca86a1fa",
-          "templateId": "customerOrderConfirmed",
-          "recipient": "cust1@example.com",
-          "recipientRole": "customer",
-          "state": "failed",
-          "wasRetried": false,
-          "attempts": 0,
-          "smtpAccepted": false,
-          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
-        },
-        {
-          "eventId": "ntf_1794882512342_3f04189824",
-          "templateId": "adminOrderCreated",
-          "recipient": "icc@indiacybercafe.com",
-          "recipientRole": "admin",
-          "state": "failed",
-          "wasRetried": false,
-          "attempts": 0,
-          "smtpAccepted": false,
-          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
-        },
-        {
-          "eventId": "ntf_1794882512342_926141904a",
-          "templateId": "adminOrderCreated",
-          "recipient": "indiacybercafe.com@gmail.com",
-          "recipientRole": "admin",
-          "state": "failed",
-          "wasRetried": false,
-          "attempts": 0,
-          "smtpAccepted": false,
-          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
-        }
-      ]
-    },
-    "lastError": "customer:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
-  },
-  "obx_1794882509676_e25339ec78": {
-    "jobId": "obx_1794882509676_e25339ec78",
-    "idempotencyKey": "order_confirmed:webhook:ICC/STORE-17112026-022829-55718:pay_webhook_222",
-    "kind": "order_confirmed",
-    "appId": "",
-    "orderId": "ICC/STORE-17112026-022829-55718",
-    "payload": {
-      "order": {
-        "id": "ICC/STORE-17112026-022829-55718",
-        "uid": "guest",
-        "userId": "guest",
-        "isGuest": true,
-        "guestTokenHash": "f102efa87a3f4e68d614dd8f9c9a01b3c6c45c6caa2ff7170268a6733dd02e9e",
-        "email": "rahul.test@example.com",
+        "guestTokenHash": "9512d585f6da1e075c327d571cf66016eda7db17527d51505703df8ee57594ef",
+        "email": "priya.verma@example.com",
         "items": [
           {
             "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
@@ -350,11 +783,232 @@
           }
         ],
         "deliveryAddress": {
-          "name": "Rahul Sharma",
-          "email": "rahul.test@example.com",
+          "name": "Priya Verma",
+          "email": "priya.verma@example.com",
           "phone": "9876543210",
-          "addressLine1": "12 Main Market Road",
-          "addressLine2": "Near Bus Stand",
+          "addressLine1": "42 Civil Lines",
+          "addressLine2": "",
+          "city": "Singrauli",
+          "state": "Madhya Pradesh",
+          "pincode": "486886",
+          "country": "India"
+        },
+        "subtotal": 49,
+        "deliveryCharges": 0,
+        "total": 49,
+        "paymentMethod": "cash",
+        "paymentStatus": "pending",
+        "orderStatus": "cancelled",
+        "notes": [
+          {
+            "type": "status",
+            "by": "system",
+            "email": "system@indiacybercafe.com",
+            "text": "Order placed with Cash on Delivery (COD)",
+            "time": "2026-11-17T09:13:06.637Z"
+          },
+          {
+            "type": "status",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "text": "Order status changed to shipped",
+            "time": "2026-11-17T09:13:06.702Z"
+          },
+          {
+            "type": "status",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "text": "Order status changed to cancelled: Customer requested cancellation",
+            "time": "2026-11-17T09:13:06.713Z"
+          }
+        ],
+        "createdAt": "2026-11-17T09:13:06.637Z",
+        "updatedAt": "2026-11-17T09:13:06.713Z",
+        "cancellationReason": "Customer requested cancellation"
+      },
+      "newStatus": "cancelled",
+      "reason": "Customer requested cancellation",
+      "performedBy": {
+        "uid": "admin_uid_1",
+        "name": "Admin One",
+        "email": "admin1@indiacybercafe.com"
+      }
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 5,
+    "nextAttemptAt": 0,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.713Z",
+    "updatedAt": "2026-11-17T09:13:06.723Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786716_84d18cd02f",
+          "templateId": "customerOrderCancelled",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786716_be8483e6a4",
+          "templateId": "adminOrderCancelled",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786716_f8e5bbe920",
+          "templateId": "adminOrderCancelled",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.723Z"
+  },
+  "obx_1794906786702_4d334e94ae": {
+    "jobId": "obx_1794906786702_4d334e94ae",
+    "idempotencyKey": "order_status:ICC/STORE-17112026-091306-53564:shipped:2026-11-17T09:13:06.702Z",
+    "kind": "order_status",
+    "appId": "",
+    "orderId": "ICC/STORE-17112026-091306-53564",
+    "payload": {
+      "order": {
+        "id": "ICC/STORE-17112026-091306-53564",
+        "uid": "guest",
+        "userId": "guest",
+        "isGuest": true,
+        "guestTokenHash": "9512d585f6da1e075c327d571cf66016eda7db17527d51505703df8ee57594ef",
+        "email": "priya.verma@example.com",
+        "items": [
+          {
+            "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+            "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
+            "price": 499,
+            "discountedPrice": 49,
+            "quantity": 1
+          }
+        ],
+        "deliveryAddress": {
+          "name": "Priya Verma",
+          "email": "priya.verma@example.com",
+          "phone": "9876543210",
+          "addressLine1": "42 Civil Lines",
+          "addressLine2": "",
+          "city": "Singrauli",
+          "state": "Madhya Pradesh",
+          "pincode": "486886",
+          "country": "India"
+        },
+        "subtotal": 49,
+        "deliveryCharges": 0,
+        "total": 49,
+        "paymentMethod": "cash",
+        "paymentStatus": "pending",
+        "orderStatus": "shipped",
+        "notes": [
+          {
+            "type": "status",
+            "by": "system",
+            "email": "system@indiacybercafe.com",
+            "text": "Order placed with Cash on Delivery (COD)",
+            "time": "2026-11-17T09:13:06.637Z"
+          },
+          {
+            "type": "status",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "text": "Order status changed to shipped",
+            "time": "2026-11-17T09:13:06.702Z"
+          }
+        ],
+        "createdAt": "2026-11-17T09:13:06.637Z",
+        "updatedAt": "2026-11-17T09:13:06.702Z"
+      },
+      "newStatus": "shipped",
+      "estimatedDelivery": "20 Nov 2026",
+      "performedBy": {
+        "uid": "admin_uid_1",
+        "name": "Admin One",
+        "email": "admin1@indiacybercafe.com"
+      }
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 5,
+    "nextAttemptAt": 0,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.702Z",
+    "updatedAt": "2026-11-17T09:13:06.708Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 1,
+      "sentCount": 1,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786706_8beacdfaec",
+          "templateId": "customerOrderStatusUpdated",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.708Z"
+  },
+  "obx_1794906786686_f801b6a9dc": {
+    "jobId": "obx_1794906786686_f801b6a9dc",
+    "idempotencyKey": "order_confirmed:online:ICC/STORE-17112026-091306-96947:pay_store_999",
+    "kind": "order_confirmed",
+    "appId": "",
+    "orderId": "ICC/STORE-17112026-091306-96947",
+    "payload": {
+      "order": {
+        "id": "ICC/STORE-17112026-091306-96947",
+        "uid": "cust_uid_1",
+        "userId": "cust_uid_1",
+        "isGuest": false,
+        "email": "priya.verma@example.com",
+        "items": [
+          {
+            "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+            "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
+            "price": 499,
+            "discountedPrice": 49,
+            "quantity": 1
+          }
+        ],
+        "deliveryAddress": {
+          "name": "Priya Verma",
+          "email": "priya.verma@example.com",
+          "phone": "9876543210",
+          "addressLine1": "42 Civil Lines",
+          "addressLine2": "",
           "city": "Singrauli",
           "state": "Madhya Pradesh",
           "pincode": "486886",
@@ -365,80 +1019,1003 @@
         "total": 49,
         "paymentMethod": "razorpay",
         "paymentStatus": "completed",
-        "razorpayOrderId": "order_test_694ffa1dd3a4",
+        "razorpayOrderId": "order_test_aa5e247d274a",
         "orderStatus": "processing",
         "notes": [
           {
             "type": "status",
             "by": "system",
             "email": "system@indiacybercafe.com",
-            "text": "Payment initiated via Razorpay (Ref: order_test_694ffa1dd3a4)",
-            "time": "2026-11-17T02:28:29.645Z"
+            "text": "Payment initiated via Razorpay (Ref: order_test_aa5e247d274a)",
+            "time": "2026-11-17T09:13:06.654Z"
           },
           {
             "type": "status",
             "by": "system",
             "email": "system@indiacybercafe.com",
-            "text": "Payment confirmed via Razorpay webhook (pay_webhook_222)",
-            "time": "2026-11-17T02:28:29.676Z"
+            "text": "Payment verified via Razorpay (pay_store_999)",
+            "time": "2026-11-17T09:13:06.685Z"
           }
         ],
-        "createdAt": "2026-11-17T02:28:29.645Z",
-        "updatedAt": "2026-11-17T02:28:29.676Z",
-        "razorpayPaymentId": "pay_webhook_222"
+        "createdAt": "2026-11-17T09:13:06.654Z",
+        "updatedAt": "2026-11-17T09:13:06.685Z",
+        "razorpayPaymentId": "pay_store_999"
       }
     },
-    "state": "failed",
-    "attempts": 5,
+    "state": "completed",
+    "attempts": 1,
     "maxAttempts": 5,
-    "nextAttemptAt": 1794882512424,
+    "nextAttemptAt": 1794906786686,
     "leaseOwner": null,
     "leaseExpiresAt": null,
-    "createdAt": "2026-11-17T02:28:29.676Z",
-    "updatedAt": "2026-11-17T02:29:15.685Z",
+    "createdAt": "2026-11-17T09:13:06.686Z",
+    "updatedAt": "2026-11-17T09:13:06.695Z",
     "report": {
-      "success": false,
-      "hasFailures": true,
+      "success": true,
+      "hasFailures": false,
       "totalCount": 3,
-      "sentCount": 0,
-      "failedCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
       "skippedDuplicateCount": 0,
       "events": [
         {
-          "eventId": "ntf_1794882553172_659a15bdfc",
+          "eventId": "ntf_1794906786689_e25c134dcc",
           "templateId": "customerOrderConfirmed",
-          "recipient": "rahul.test@example.com",
+          "recipient": "priya.verma@example.com",
           "recipientRole": "customer",
-          "state": "failed",
+          "state": "sent_to_smtp",
           "wasRetried": false,
-          "attempts": 0,
-          "smtpAccepted": false,
-          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+          "attempts": 1,
+          "smtpAccepted": true
         },
         {
-          "eventId": "ntf_1794882553173_bce9389a17",
+          "eventId": "ntf_1794906786689_47df9d888c",
           "templateId": "adminOrderCreated",
           "recipient": "icc@indiacybercafe.com",
           "recipientRole": "admin",
-          "state": "failed",
+          "state": "sent_to_smtp",
           "wasRetried": false,
-          "attempts": 0,
-          "smtpAccepted": false,
-          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+          "attempts": 1,
+          "smtpAccepted": true
         },
         {
-          "eventId": "ntf_1794882553173_cb257345b6",
+          "eventId": "ntf_1794906786689_49d4d202e1",
           "templateId": "adminOrderCreated",
           "recipient": "indiacybercafe.com@gmail.com",
           "recipientRole": "admin",
-          "state": "failed",
+          "state": "sent_to_smtp",
           "wasRetried": false,
-          "attempts": 0,
-          "smtpAccepted": false,
-          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+          "attempts": 1,
+          "smtpAccepted": true
         }
       ]
     },
-    "lastError": "customer:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+    "completedAt": "2026-11-17T09:13:06.695Z"
+  },
+  "obx_1794906786638_12958ea52b": {
+    "jobId": "obx_1794906786638_12958ea52b",
+    "idempotencyKey": "order_confirmed:cod:ICC/STORE-17112026-091306-53564",
+    "kind": "order_confirmed",
+    "appId": "",
+    "orderId": "ICC/STORE-17112026-091306-53564",
+    "payload": {
+      "order": {
+        "id": "ICC/STORE-17112026-091306-53564",
+        "uid": "guest",
+        "userId": "guest",
+        "isGuest": true,
+        "guestTokenHash": "9512d585f6da1e075c327d571cf66016eda7db17527d51505703df8ee57594ef",
+        "email": "priya.verma@example.com",
+        "items": [
+          {
+            "productId": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+            "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
+            "price": 499,
+            "discountedPrice": 49,
+            "quantity": 1
+          }
+        ],
+        "deliveryAddress": {
+          "name": "Priya Verma",
+          "email": "priya.verma@example.com",
+          "phone": "9876543210",
+          "addressLine1": "42 Civil Lines",
+          "addressLine2": "",
+          "city": "Singrauli",
+          "state": "Madhya Pradesh",
+          "pincode": "486886",
+          "country": "India"
+        },
+        "subtotal": 49,
+        "deliveryCharges": 0,
+        "total": 49,
+        "paymentMethod": "cash",
+        "paymentStatus": "pending",
+        "orderStatus": "pending",
+        "notes": [
+          {
+            "type": "status",
+            "by": "system",
+            "email": "system@indiacybercafe.com",
+            "text": "Order placed with Cash on Delivery (COD)",
+            "time": "2026-11-17T09:13:06.637Z"
+          }
+        ],
+        "createdAt": "2026-11-17T09:13:06.637Z",
+        "updatedAt": "2026-11-17T09:13:06.637Z"
+      }
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 5,
+    "nextAttemptAt": 1794906786638,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.638Z",
+    "updatedAt": "2026-11-17T09:13:06.647Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786642_451506b063",
+          "templateId": "customerOrderConfirmed",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786642_aed063dc90",
+          "templateId": "adminOrderCreated",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786642_f5872f8c76",
+          "templateId": "adminOrderCreated",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.647Z"
+  },
+  "obx_1794906786601_db53664b29": {
+    "jobId": "obx_1794906786601_db53664b29",
+    "idempotencyKey": "app_payment:ICC-APP-1002:2026-11-17T09:13:06.601Z",
+    "kind": "application_payment",
+    "appId": "ICC-APP-1002",
+    "payload": {
+      "app": {
+        "id": "ICC-APP-1002",
+        "uid": "cust_uid_1",
+        "name": "Priya Verma",
+        "email": "priya.verma@example.com",
+        "serviceId": "income-cert",
+        "serviceName": "Income Certificate",
+        "status": "processing",
+        "paymentStatus": "completed",
+        "paymentMethod": "pay_after_work",
+        "charge": 180,
+        "notes": {},
+        "date": "2026-11-17T09:13:06.334Z"
+      },
+      "transactionId": "ADMIN-1794906786601",
+      "paymentMethod": "pay_after_work",
+      "timestamp": "2026-11-17T09:13:06.601Z"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 5,
+    "nextAttemptAt": 0,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.601Z",
+    "updatedAt": "2026-11-17T09:13:06.622Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786604_b1c9b83e0e",
+          "templateId": "customerPaymentConfirmed",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786604_eec67b2936",
+          "templateId": "adminPaymentReceived",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786604_8312937583",
+          "templateId": "adminPaymentReceived",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.622Z"
+  },
+  "obx_1794906786584_252aa683fb": {
+    "jobId": "obx_1794906786584_252aa683fb",
+    "idempotencyKey": "app_payment:ICC-APP-1001:pay_app_test_1",
+    "kind": "application_payment",
+    "appId": "ICC-APP-1001",
+    "payload": {
+      "app": {
+        "id": "ICC-APP-1001",
+        "uid": "cust_uid_1",
+        "name": "Priya Verma",
+        "email": "priya.verma@example.com",
+        "serviceId": "pan-card",
+        "serviceName": "PAN Card Correction",
+        "status": "completed",
+        "paymentStatus": "completed",
+        "charge": 250,
+        "assignedTo": "suresh.op@example.com",
+        "assignedToUid": "op_uid_b",
+        "notes": {
+          "note_1794906786431_dc0f4feb": {
+            "id": "note_1794906786431_dc0f4feb",
+            "type": "status",
+            "by": "Ramesh Operator",
+            "email": "ramesh.op@example.com",
+            "authorUid": "op_uid_a",
+            "authorRole": "operator",
+            "text": "Please re-upload Aadhaar front side clearly.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786431,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+            "attachmentName": "sample-guide.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+                "name": "sample-guide.pdf"
+              }
+            ]
+          },
+          "note_1794906786473_ad6530ff": {
+            "id": "note_1794906786473_ad6530ff",
+            "type": "status",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Final certificate approved.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786473,
+            "status": "completed"
+          },
+          "note_1794906786514_6908819b": {
+            "id": "note_1794906786514_6908819b",
+            "type": "note",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Follow-up after reassignment",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786514
+          }
+        },
+        "date": "2026-11-17T09:13:06.334Z",
+        "updatedAt": "2026-11-17T09:13:06.514Z",
+        "paymentMethod": "razorpay"
+      },
+      "transactionId": "pay_app_test_1",
+      "paymentMethod": "razorpay",
+      "razorpayOrderId": "order_app_test_1",
+      "timestamp": "2026-11-17T09:13:06.584Z"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 5,
+    "nextAttemptAt": 1794906786585,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.584Z",
+    "updatedAt": "2026-11-17T09:13:06.594Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786588_da93e62aa0",
+          "templateId": "customerPaymentConfirmed",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786589_8ef9b35c08",
+          "templateId": "adminPaymentReceived",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786589_63d98caa73",
+          "templateId": "adminPaymentReceived",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.594Z"
+  },
+  "obx_1794906786529_cfeb67f5fa": {
+    "jobId": "obx_1794906786529_cfeb67f5fa",
+    "idempotencyKey": "app_submitted:ICC-APP-1001",
+    "kind": "application_submitted",
+    "appId": "ICC-APP-1001",
+    "payload": {
+      "app": {
+        "id": "ICC-APP-1001",
+        "uid": "cust_uid_1",
+        "name": "Priya Verma",
+        "email": "priya.verma@example.com",
+        "serviceId": "pan-card",
+        "serviceName": "PAN Card Correction",
+        "status": "completed",
+        "paymentStatus": "pending",
+        "charge": 250,
+        "assignedTo": "suresh.op@example.com",
+        "assignedToUid": "op_uid_b",
+        "notes": {
+          "note_1794906786431_dc0f4feb": {
+            "id": "note_1794906786431_dc0f4feb",
+            "type": "status",
+            "by": "Ramesh Operator",
+            "email": "ramesh.op@example.com",
+            "authorUid": "op_uid_a",
+            "authorRole": "operator",
+            "text": "Please re-upload Aadhaar front side clearly.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786431,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+            "attachmentName": "sample-guide.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+                "name": "sample-guide.pdf"
+              }
+            ]
+          },
+          "note_1794906786473_ad6530ff": {
+            "id": "note_1794906786473_ad6530ff",
+            "type": "status",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Final certificate approved.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786473,
+            "status": "completed"
+          },
+          "note_1794906786514_6908819b": {
+            "id": "note_1794906786514_6908819b",
+            "type": "note",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Follow-up after reassignment",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786514
+          }
+        },
+        "date": "2026-11-17T09:13:06.334Z",
+        "updatedAt": "2026-11-17T09:13:06.514Z"
+      }
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 5,
+    "nextAttemptAt": 1794906786529,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.529Z",
+    "updatedAt": "2026-11-17T09:13:06.535Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786531_d2a7a67e3a",
+          "templateId": "customerApplicationSubmitted",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786531_ea6b21bda6",
+          "templateId": "adminNewApplication",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786531_27bde0a1ba",
+          "templateId": "adminNewApplication",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.535Z"
+  },
+  "obx_1794906786515_328dc2427a": {
+    "jobId": "obx_1794906786515_328dc2427a",
+    "idempotencyKey": "app_update:ICC-APP-1001:note_1794906786514_6908819b",
+    "kind": "application_update",
+    "appId": "ICC-APP-1001",
+    "payload": {
+      "appSnapshot": {
+        "id": "ICC-APP-1001",
+        "uid": "cust_uid_1",
+        "name": "Priya Verma",
+        "email": "priya.verma@example.com",
+        "serviceId": "pan-card",
+        "serviceName": "PAN Card Correction",
+        "status": "completed",
+        "paymentStatus": "pending",
+        "charge": 250,
+        "assignedTo": "suresh.op@example.com",
+        "assignedToUid": "op_uid_b",
+        "notes": {
+          "note_1794906786431_dc0f4feb": {
+            "id": "note_1794906786431_dc0f4feb",
+            "type": "status",
+            "by": "Ramesh Operator",
+            "email": "ramesh.op@example.com",
+            "authorUid": "op_uid_a",
+            "authorRole": "operator",
+            "text": "Please re-upload Aadhaar front side clearly.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786431,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+            "attachmentName": "sample-guide.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+                "name": "sample-guide.pdf"
+              }
+            ]
+          },
+          "note_1794906786473_ad6530ff": {
+            "id": "note_1794906786473_ad6530ff",
+            "type": "status",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Final certificate approved.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786473,
+            "status": "completed"
+          },
+          "note_1794906786514_6908819b": {
+            "id": "note_1794906786514_6908819b",
+            "type": "note",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Follow-up after reassignment",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786514
+          }
+        },
+        "date": "2026-11-17T09:13:06.334Z",
+        "updatedAt": "2026-11-17T09:13:06.514Z"
+      },
+      "previousStatus": "completed",
+      "noteText": "Follow-up after reassignment",
+      "performedBy": {
+        "uid": "admin_uid_1",
+        "name": "Admin One",
+        "email": "admin1@indiacybercafe.com",
+        "role": "admin"
+      },
+      "timestamp": "17/11/2026, 2:43:06 pm"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 3,
+    "nextAttemptAt": 1794906786515,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.515Z",
+    "updatedAt": "2026-11-17T09:13:06.522Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 4,
+      "sentCount": 4,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786518_32ec1bf8b5",
+          "templateId": "customerNoteAdded",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786518_3ef43be88b",
+          "templateId": "adminNoteAdded",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786518_882b06846b",
+          "templateId": "adminNoteAdded",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786518_40f7b4e775",
+          "templateId": "operatorStatusUpdated",
+          "recipient": "suresh.op@example.com",
+          "recipientRole": "operator",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.522Z"
+  },
+  "obx_1794906786499_4f4b572cef": {
+    "jobId": "obx_1794906786499_4f4b572cef",
+    "idempotencyKey": "app_assigned:ICC-APP-1001:op_uid_b:2026-11-17T09:13:06.498Z",
+    "kind": "application_assigned",
+    "appId": "ICC-APP-1001",
+    "payload": {
+      "app": {
+        "id": "ICC-APP-1001",
+        "uid": "cust_uid_1",
+        "name": "Priya Verma",
+        "email": "priya.verma@example.com",
+        "serviceId": "pan-card",
+        "serviceName": "PAN Card Correction",
+        "status": "completed",
+        "paymentStatus": "pending",
+        "charge": 250,
+        "assignedTo": "suresh.op@example.com",
+        "assignedToUid": "op_uid_b",
+        "notes": {
+          "note_1794906786431_dc0f4feb": {
+            "id": "note_1794906786431_dc0f4feb",
+            "type": "status",
+            "by": "Ramesh Operator",
+            "email": "ramesh.op@example.com",
+            "authorUid": "op_uid_a",
+            "authorRole": "operator",
+            "text": "Please re-upload Aadhaar front side clearly.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786431,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+            "attachmentName": "sample-guide.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+                "name": "sample-guide.pdf"
+              }
+            ]
+          },
+          "note_1794906786473_ad6530ff": {
+            "id": "note_1794906786473_ad6530ff",
+            "type": "status",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Final certificate approved.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786473,
+            "status": "completed"
+          }
+        },
+        "date": "2026-11-17T09:13:06.334Z",
+        "updatedAt": "2026-11-17T09:13:06.498Z"
+      },
+      "newOperator": {
+        "uid": "op_uid_b",
+        "email": "suresh.op@example.com",
+        "name": "Suresh Operator"
+      },
+      "previousOperator": {
+        "uid": "op_uid_a",
+        "email": "ramesh.op@example.com",
+        "name": "Ramesh Operator"
+      },
+      "assignedBy": {
+        "uid": "admin_uid_1",
+        "name": "Admin One",
+        "email": "admin1@indiacybercafe.com",
+        "role": "admin"
+      },
+      "timestamp": "2026-11-17T09:13:06.498Z"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 5,
+    "nextAttemptAt": 1794906786499,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.499Z",
+    "updatedAt": "2026-11-17T09:13:06.508Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 5,
+      "sentCount": 5,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786502_522f523ff1",
+          "templateId": "operatorReassigned",
+          "recipient": "suresh.op@example.com",
+          "recipientRole": "operator",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786502_b84b8bdcd9",
+          "templateId": "customerOperatorAssigned",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786502_0e71ff63cc",
+          "templateId": "previousOperatorUnassigned",
+          "recipient": "ramesh.op@example.com",
+          "recipientRole": "previous_operator",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786502_98208c09b3",
+          "templateId": "adminOperatorAssigned",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786503_3c90833c70",
+          "templateId": "adminOperatorAssigned",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.508Z"
+  },
+  "obx_1794906786474_0fe0a7e92e": {
+    "jobId": "obx_1794906786474_0fe0a7e92e",
+    "idempotencyKey": "app_update:ICC-APP-1001:note_1794906786473_ad6530ff",
+    "kind": "application_update",
+    "appId": "ICC-APP-1001",
+    "payload": {
+      "appSnapshot": {
+        "id": "ICC-APP-1001",
+        "uid": "cust_uid_1",
+        "name": "Priya Verma",
+        "email": "priya.verma@example.com",
+        "serviceId": "pan-card",
+        "serviceName": "PAN Card Correction",
+        "status": "completed",
+        "paymentStatus": "pending",
+        "charge": 250,
+        "assignedTo": "ramesh.op@example.com",
+        "assignedToUid": "op_uid_a",
+        "notes": {
+          "note_1794906786431_dc0f4feb": {
+            "id": "note_1794906786431_dc0f4feb",
+            "type": "status",
+            "by": "Ramesh Operator",
+            "email": "ramesh.op@example.com",
+            "authorUid": "op_uid_a",
+            "authorRole": "operator",
+            "text": "Please re-upload Aadhaar front side clearly.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786431,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+            "attachmentName": "sample-guide.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+                "name": "sample-guide.pdf"
+              }
+            ]
+          },
+          "note_1794906786473_ad6530ff": {
+            "id": "note_1794906786473_ad6530ff",
+            "type": "status",
+            "by": "Admin One",
+            "email": "admin1@indiacybercafe.com",
+            "authorUid": "admin_uid_1",
+            "authorRole": "admin",
+            "text": "Final certificate approved.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786473,
+            "status": "completed"
+          }
+        },
+        "date": "2026-11-17T09:13:06.334Z",
+        "updatedAt": "2026-11-17T09:13:06.473Z"
+      },
+      "previousStatus": "clarification",
+      "newStatus": "completed",
+      "noteText": "Final certificate approved.",
+      "performedBy": {
+        "uid": "admin_uid_1",
+        "name": "Admin One",
+        "email": "admin1@indiacybercafe.com",
+        "role": "admin"
+      },
+      "timestamp": "17/11/2026, 2:43:06 pm"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 3,
+    "nextAttemptAt": 1794906786474,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.474Z",
+    "updatedAt": "2026-11-17T09:13:06.479Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 4,
+      "sentCount": 4,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786477_4d4d44b64f",
+          "templateId": "customerApplicationCompleted",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786477_247436270b",
+          "templateId": "adminStatusUpdated",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786477_6034d000da",
+          "templateId": "adminStatusUpdated",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786477_08d454d06a",
+          "templateId": "operatorStatusUpdated",
+          "recipient": "ramesh.op@example.com",
+          "recipientRole": "operator",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.479Z"
+  },
+  "obx_1794906786457_3643cc617c": {
+    "jobId": "obx_1794906786457_3643cc617c",
+    "idempotencyKey": "app_update:ICC-APP-1001:note_1794906786431_dc0f4feb",
+    "kind": "application_update",
+    "appId": "ICC-APP-1001",
+    "payload": {
+      "appSnapshot": {
+        "id": "ICC-APP-1001",
+        "uid": "cust_uid_1",
+        "name": "Priya Verma",
+        "email": "priya.verma@example.com",
+        "serviceId": "pan-card",
+        "serviceName": "PAN Card Correction",
+        "status": "clarification",
+        "paymentStatus": "pending",
+        "charge": 250,
+        "assignedTo": "ramesh.op@example.com",
+        "assignedToUid": "op_uid_a",
+        "notes": {
+          "note_1794906786431_dc0f4feb": {
+            "id": "note_1794906786431_dc0f4feb",
+            "type": "status",
+            "by": "Ramesh Operator",
+            "email": "ramesh.op@example.com",
+            "authorUid": "op_uid_a",
+            "authorRole": "operator",
+            "text": "Please re-upload Aadhaar front side clearly.",
+            "time": "17/11/2026, 2:43:06 pm",
+            "createdAt": 1794906786431,
+            "status": "clarification",
+            "attachment": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+            "attachmentName": "sample-guide.pdf",
+            "attachments": [
+              {
+                "url": "/api/operator/attachments/att_1794906786395_f5c328c6b7ee271c.pdf?appId=ICC-APP-1001",
+                "name": "sample-guide.pdf"
+              }
+            ]
+          }
+        },
+        "date": "2026-11-17T09:13:06.334Z",
+        "updatedAt": "2026-11-17T09:13:06.431Z"
+      },
+      "previousStatus": "processing",
+      "newStatus": "clarification",
+      "noteText": "Please re-upload Aadhaar front side clearly.",
+      "attachmentName": "sample-guide.pdf",
+      "performedBy": {
+        "uid": "op_uid_a",
+        "name": "Ramesh Operator",
+        "email": "ramesh.op@example.com",
+        "role": "operator"
+      },
+      "timestamp": "17/11/2026, 2:43:06 pm"
+    },
+    "state": "completed",
+    "attempts": 1,
+    "maxAttempts": 3,
+    "nextAttemptAt": 1794906786457,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-17T09:13:06.457Z",
+    "updatedAt": "2026-11-17T09:13:06.465Z",
+    "report": {
+      "success": true,
+      "hasFailures": false,
+      "totalCount": 3,
+      "sentCount": 3,
+      "failedCount": 0,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1794906786462_6fe2e404f0",
+          "templateId": "customerStatusUpdated",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786462_e030696097",
+          "templateId": "adminStatusUpdated",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        },
+        {
+          "eventId": "ntf_1794906786462_f730cc4a23",
+          "templateId": "adminStatusUpdated",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "sent_to_smtp",
+          "wasRetried": false,
+          "attempts": 1,
+          "smtpAccepted": true
+        }
+      ]
+    },
+    "completedAt": "2026-11-17T09:13:06.465Z"
   }
 }

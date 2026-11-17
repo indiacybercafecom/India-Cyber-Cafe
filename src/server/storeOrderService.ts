@@ -25,7 +25,13 @@ const CUSTOM_UPLOADS_DIR = path.join(APP_ROOT, 'data/uploads/custom-images');
 const DEFAULT_PROJECT_ID = 'india-cyber-cafe';
 const DEFAULT_RTDB_URL = 'https://india-cyber-cafe-default-rtdb.firebaseio.com';
 
-const getRtdbDatabaseUrl = () => (process.env.FIREBASE_DATABASE_URL || DEFAULT_RTDB_URL).replace(/\/+$/, '');
+const normalizeEnvSecret = (raw?: string) =>
+  String(raw || '').trim().replace(/^['"]|['"]$/g, '').trim();
+const getRtdbDatabaseUrl = () => {
+  const cleaned = normalizeEnvSecret(process.env.FIREBASE_DATABASE_URL).replace(/\/+$/, '');
+  if (!cleaned) return DEFAULT_RTDB_URL;
+  return /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`;
+};
 const getConfiguredProjectId = () => (process.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID).trim() || DEFAULT_PROJECT_ID;
 
 const isTestMode = () => process.env.STORE_ORDER_TEST_MODE === '1';
@@ -226,16 +232,23 @@ function ensureFirebaseAdminInitialized(): boolean {
     activeProjectId = projectId || getConfiguredProjectId();
 
     if (source !== 'none') {
+      const dbUrl = getRtdbDatabaseUrl();
       const appConfig: any = {
         projectId: activeProjectId,
-        databaseURL: getRtdbDatabaseUrl()
+        databaseURL: dbUrl
       };
       if (credential) {
         appConfig.credential = credential;
       }
-      const app = getApps().length ? getApps()[0] : initializeApp(appConfig);
-      rtdbAdmin = getDatabase(app);
-      authAdmin = getAuth(app);
+      const apps = getApps();
+      const defaultApp = apps.find(a => a.name === '[DEFAULT]') || apps[0];
+      const authApp = defaultApp || initializeApp(appConfig);
+      let dbApp = authApp;
+      if ((authApp.options as any)?.databaseURL !== dbUrl) {
+        dbApp = apps.find(a => a.name === 'icc-rtdb') || initializeApp(appConfig, 'icc-rtdb');
+      }
+      rtdbAdmin = getDatabase(dbApp);
+      authAdmin = getAuth(authApp);
       hasAdminCredential = true;
       console.log(`✅ Firebase Admin SDK initialized (source=${source}, method=${method}, projectId=${activeProjectId})`);
       return true;

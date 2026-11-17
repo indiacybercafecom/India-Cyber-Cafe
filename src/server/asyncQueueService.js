@@ -637,11 +637,12 @@ export async function flushAsyncQueueForTesting() {
     ];
 }
 export function recoverExpiredQueueLeases() {
-    hydrateLocalQueue(true);
+    hydrateLocalQueue(false);
     let recovered = 0;
     const now = Date.now();
     for (const job of memoryJobs.values()) {
-        if (job.state === 'processing') {
+        const isExpired = typeof job.leaseExpiresAt !== 'number' || job.leaseExpiresAt <= now;
+        if (job.state === 'processing' && isExpired) {
             job.state = 'queued';
             job.leaseOwner = null;
             job.leaseExpiresAt = null;

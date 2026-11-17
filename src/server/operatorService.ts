@@ -108,7 +108,31 @@ const TEST_STORE_PATH = path.join(APP_ROOT, 'data/operator_test_store.json');
 
 const DEFAULT_PROJECT_ID = 'india-cyber-cafe';
 const DEFAULT_RTDB_URL = 'https://india-cyber-cafe-default-rtdb.firebaseio.com';
-const getRtdbUrl = () => (process.env.FIREBASE_DATABASE_URL || DEFAULT_RTDB_URL).replace(/\/+$/, '');
+const normalizeEnvSecret = (raw?: string): string =>
+  String(raw || '').trim().replace(/^['"]|['"]$/g, '').trim();
+const getRtdbUrl = () => {
+  const cleaned = normalizeEnvSecret(process.env.FIREBASE_DATABASE_URL).replace(/\/+$/, '');
+  if (!cleaned) return DEFAULT_RTDB_URL;
+  return /^https?:\/\//i.test(cleaned) ? cleaned : `https://${cleaned}`;
+};
+
+function stripUndefinedDeep<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value
+      .filter((v) => v !== undefined)
+      .map((v) => stripUndefinedDeep(v)) as unknown as T;
+  }
+  if (value && typeof value === 'object') {
+    const out: Record<string, any> = {};
+    for (const [k, v] of Object.entries(value as Record<string, any>)) {
+      if (v !== undefined) {
+        out[k] = stripUndefinedDeep(v);
+      }
+    }
+    return out as T;
+  }
+  return value;
+}
 
 const isTestMode = () => process.env.STORE_ORDER_TEST_MODE === '1' || process.env.OPERATOR_TEST_MODE === '1';
 
@@ -207,15 +231,22 @@ function ensureAdminInit(): boolean {
 
     const isGcp = Boolean(process.env.K_SERVICE || process.env.FUNCTION_TARGET || process.env.GAE_APPLICATION || process.env.GCE_METADATA_HOST);
     if (cred || isGcp) {
-      const app = getApps().length
-        ? getApps()[0]
-        : initializeApp({
-            ...(cred ? { credential: cred } : {}),
-            projectId: parsed?.project_id || process.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID,
-            databaseURL: getRtdbUrl(),
-          });
-      rtdbAdmin = getDatabase(app);
-      authAdmin = getAuth(app);
+      const rtdbUrl = getRtdbUrl();
+      const projectId = parsed?.project_id || process.env.FIREBASE_PROJECT_ID || DEFAULT_PROJECT_ID;
+      const apps = getApps();
+      const defaultApp = apps.find(a => a.name === '[DEFAULT]') || apps[0];
+      const appConfig = {
+        ...(cred ? { credential: cred } : {}),
+        projectId,
+        databaseURL: rtdbUrl,
+      };
+      const authApp = defaultApp || initializeApp(appConfig);
+      let dbApp = authApp;
+      if ((authApp.options as any)?.databaseURL !== rtdbUrl) {
+        dbApp = apps.find(a => a.name === 'icc-rtdb') || initializeApp(appConfig, 'icc-rtdb');
+      }
+      rtdbAdmin = getDatabase(dbApp);
+      authAdmin = getAuth(authApp);
       hasAdminCredential = true;
       hasExplicitServiceAccountCred = Boolean(cred);
       return true;
@@ -264,7 +295,10 @@ function redactSensitiveText(input: unknown): string {
     .replace(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g, '[redacted-email]')
     .replace(/([?&](?:auth|token|key|secret)=)[^&\s]+/gi, '$1[redacted]')
     .replace(/Bearer\s+[A-Za-z0-9._-]+/gi, 'Bearer [redacted]')
-    .slice(0, 300);
+    .replace(/Basic\s+[A-Za-z0-9+/=]+/gi, 'Basic [redacted]')
+    .replace(/rzp_(?:test|live)_[A-Za-z0-9]+/gi, 'rzp_[redacted]')
+    .replace(/-----BEGIN [A-Z ]*PRIVATE KEY-----[\s\S]*?-----END [A-Z ]*PRIVATE KEY-----/g, '[redacted-private-key]')
+    .slice(0, 350);
 }
 
 function logStructuredAppError(opts: {
@@ -274,6 +308,13 @@ function logStructuredAppError(opts: {
   code?: string;
   uid?: string;
   serviceId?: string;
+  appId?: string;
+  httpStatus?: number;
+  gatewayCode?: string;
+  gatewayDescription?: string;
+  gatewayMode?: string;
+  errorName?: string;
+  errorCode?: string;
   err?: unknown;
   message?: string;
 }) {
@@ -289,6 +330,13 @@ function logStructuredAppError(opts: {
     code: opts.code || 'APP_ERROR',
     ...(opts.uid ? { uid: opts.uid } : {}),
     ...(opts.serviceId ? { serviceId: opts.serviceId } : {}),
+    ...(opts.appId ? { appId: opts.appId } : {}),
+    ...(typeof opts.httpStatus === 'number' ? { httpStatus: opts.httpStatus } : {}),
+    ...(opts.gatewayCode ? { gatewayCode: opts.gatewayCode } : {}),
+    ...(opts.gatewayDescription ? { gatewayDescription: redactSensitiveText(opts.gatewayDescription) } : {}),
+    ...(opts.gatewayMode ? { gatewayMode: opts.gatewayMode } : {}),
+    ...(opts.errorName ? { errorName: opts.errorName } : {}),
+    ...(opts.errorCode ? { errorCode: opts.errorCode } : {}),
     message: redactSensitiveText(rawErrMsg || opts.message || 'Request failed'),
   };
   if (opts.status >= 500) {
@@ -479,11 +527,39 @@ function writeTestStore(store: { users: Record<string, any>; applications: Recor
 
 let testDbDelayMs = 0;
 let testDbTimeoutMs = 8000;
+let testPaymentInitBehavior: {
+  razorpayMode?: 'ok' | 'http_error' | 'network_error' | 'timeout' | 'invalid_json' | 'missing_order_id' | 'unconfigured';
+  razorpayStatus?: number;
+  razorpayErrorCode?: string;
+  razorpayErrorDescription?: string;
+  firebaseWriteMode?: 'ok' | 'reject' | 'permission_denied' | 'timeout';
+} = {};
 
 export function setOperatorTestDbBehaviorForTesting(opts: { delayMs?: number; timeoutMs?: number }) {
   if (!isTestMode()) return;
   if (typeof opts.delayMs === 'number') testDbDelayMs = Math.max(0, opts.delayMs);
   if (typeof opts.timeoutMs === 'number') testDbTimeoutMs = Math.max(10, opts.timeoutMs);
+}
+
+export function setPaymentInitTestBehaviorForTesting(opts: {
+  razorpayMode?: 'ok' | 'http_error' | 'network_error' | 'timeout' | 'invalid_json' | 'missing_order_id' | 'unconfigured';
+  razorpayStatus?: number;
+  razorpayErrorCode?: string;
+  razorpayErrorDescription?: string;
+  firebaseWriteMode?: 'ok' | 'reject' | 'permission_denied' | 'timeout';
+} | null) {
+  if (!isTestMode()) return;
+  testPaymentInitBehavior = opts ? { ...opts } : {};
+}
+
+export function resetPaymentInitCachesForTesting() {
+  if (!isTestMode()) return;
+  appIdempotencyCache.clear();
+  pendingDraftsMap = null;
+  inFlightPaymentCreates.clear();
+  createdGatewayOrdersByDedupKey.clear();
+  callbackRateLimitMap.clear();
+  testPaymentInitBehavior = {};
 }
 
 async function runWithTestDbTiming<T>(op: () => T, label: string): Promise<T> {
@@ -2443,28 +2519,41 @@ function getPendingDraftsMap(): Map<string, any> {
   return map;
 }
 
-async function flushPendingDraftsToDisk(): Promise<void> {
-  if (pendingDraftsWriting || !pendingDraftsDirty || !pendingDraftsMap) return;
-  pendingDraftsWriting = true;
-  pendingDraftsDirty = false;
-  try {
-    const obj: Record<string, any> = {};
-    for (const [k, v] of pendingDraftsMap.entries()) {
-      obj[k] = v;
-    }
-    const snapshot = JSON.stringify(obj, null, 2);
-    await fs.promises.mkdir(path.dirname(PENDING_DRAFTS_STORE_PATH), { recursive: true });
-    const tmp = `${PENDING_DRAFTS_STORE_PATH}.${process.pid}.${crypto.randomBytes(3).toString('hex')}.tmp`;
-    await fs.promises.writeFile(tmp, snapshot, 'utf-8');
-    await fs.promises.rename(tmp, PENDING_DRAFTS_STORE_PATH);
-  } catch (err) {
-    console.warn('[operatorService] Pending drafts flush notice:', err);
-  } finally {
-    pendingDraftsWriting = false;
-    if (pendingDraftsDirty) {
-      schedulePendingDraftsFlush();
-    }
+let pendingDraftsInFlightFlush: Promise<void> | null = null;
+
+async function flushPendingDraftsToDisk(throwOnError = false): Promise<void> {
+  if (pendingDraftsInFlightFlush) {
+    await pendingDraftsInFlightFlush;
+    if (!pendingDraftsDirty) return;
   }
+  if (!pendingDraftsDirty || !pendingDraftsMap) return;
+  pendingDraftsDirty = false;
+  const run = (async () => {
+    try {
+      const obj: Record<string, any> = {};
+      for (const [k, v] of pendingDraftsMap!.entries()) {
+        obj[k] = v;
+      }
+      const snapshot = JSON.stringify(obj, null, 2);
+      await fs.promises.mkdir(path.dirname(PENDING_DRAFTS_STORE_PATH), { recursive: true });
+      const tmp = `${PENDING_DRAFTS_STORE_PATH}.${process.pid}.${crypto.randomBytes(3).toString('hex')}.tmp`;
+      await fs.promises.writeFile(tmp, snapshot, 'utf-8');
+      await fs.promises.rename(tmp, PENDING_DRAFTS_STORE_PATH);
+    } catch (err) {
+      pendingDraftsDirty = true;
+      if (throwOnError) throw err;
+      console.warn('[operatorService] Pending drafts flush notice:', err);
+    } finally {
+      pendingDraftsWriting = false;
+      pendingDraftsInFlightFlush = null;
+      if (pendingDraftsDirty && !throwOnError) {
+        schedulePendingDraftsFlush();
+      }
+    }
+  })();
+  pendingDraftsWriting = true;
+  pendingDraftsInFlightFlush = run;
+  await run;
 }
 
 function schedulePendingDraftsFlush() {
@@ -2472,39 +2561,99 @@ function schedulePendingDraftsFlush() {
   if (pendingDraftsFlushTimer) return;
   pendingDraftsFlushTimer = setTimeout(() => {
     pendingDraftsFlushTimer = null;
-    void flushPendingDraftsToDisk();
+    void flushPendingDraftsToDisk(false);
   }, 100);
   if (typeof pendingDraftsFlushTimer.unref === 'function') pendingDraftsFlushTimer.unref();
 }
 
 async function savePendingDraftDurably(appId: string, pendingDraft: Record<string, any>): Promise<void> {
+  const sanitizedDraft = stripUndefinedDeep(pendingDraft);
+
   if (isTestMode()) {
-    const store = readTestStore();
-    if (!store.pendingApplications) store.pendingApplications = {};
-    store.pendingApplications[appId] = pendingDraft;
-    writeTestStore(store);
+    const fbMode = testPaymentInitBehavior.firebaseWriteMode || 'ok';
+    if (fbMode === 'permission_denied') {
+      throw Object.assign(new Error('PERMISSION_DENIED: Permission denied while saving pending application.'), {
+        statusCode: 403,
+        code: 'FIREBASE_PERMISSION_DENIED',
+        stage: 'save_pending_application',
+      });
+    }
+    if (fbMode === 'timeout') {
+      throw Object.assign(new Error('Save pending application draft timed out after 8000ms'), {
+        statusCode: 504,
+        code: 'FIREBASE_WRITE_TIMEOUT',
+        stage: 'save_pending_application',
+      });
+    }
+    if (fbMode === 'reject') {
+      throw Object.assign(new Error('Simulated RTDB write rejection on pendingApplications'), {
+        statusCode: 503,
+        code: 'FIREBASE_WRITE_FAILED',
+        stage: 'save_pending_application',
+      });
+    }
+    await runWithTestDbTiming(() => {
+      const store = readTestStore();
+      if (!store.pendingApplications) store.pendingApplications = {};
+      store.pendingApplications[appId] = sanitizedDraft;
+      writeTestStore(store);
+    }, 'Save pending application draft');
     return;
   }
-  if ((await isRtdbAdminUsable()) && rtdbAdmin) {
-    await withTimeout(rtdbAdmin.ref(`pendingApplications/${appId}`).set(pendingDraft), 8000, 'Save pending application draft');
-    return;
+
+  if (ensureAdminInit() && rtdbAdmin) {
+    try {
+      await withTimeout(
+        rtdbAdmin.ref(`pendingApplications/${appId}`).set(sanitizedDraft),
+        8000,
+        'Save pending application draft'
+      );
+      rtdbUsableCache = { usable: true, expiresAt: Date.now() + 30000 };
+      return;
+    } catch (err: any) {
+      const msg = String(err?.message || 'Firebase RTDB write failed');
+      const isTimeout = err?.name === 'TimeoutError' || msg.toLowerCase().includes('timed out');
+      const isPermissionDenied = /permission[_\s-]?denied/i.test(msg) || /unauthorized/i.test(msg);
+      throw Object.assign(err instanceof Error ? err : new Error(msg), {
+        statusCode: isTimeout ? 504 : isPermissionDenied ? 403 : 503,
+        code: isTimeout
+          ? 'FIREBASE_WRITE_TIMEOUT'
+          : isPermissionDenied
+            ? 'FIREBASE_PERMISSION_DENIED'
+            : 'FIREBASE_WRITE_FAILED',
+        stage: 'save_pending_application',
+      });
+    }
   }
-  const map = getPendingDraftsMap();
-  if (map.size >= 5000) {
-    const oldest = map.keys().next().value;
-    if (oldest) map.delete(oldest);
+
+  // Fallback ONLY when Firebase Admin SDK is not initialized on host: await atomic local durable persistence
+  try {
+    const map = getPendingDraftsMap();
+    if (map.size >= 5000) {
+      const oldest = map.keys().next().value;
+      if (oldest) map.delete(oldest);
+    }
+    map.set(appId, sanitizedDraft);
+    pendingDraftsDirty = true;
+    await flushPendingDraftsToDisk(true);
+  } catch (err: any) {
+    throw Object.assign(err instanceof Error ? err : new Error('Failed to durably persist pending application draft'), {
+      statusCode: 503,
+      code: 'PENDING_DRAFT_PERSISTENCE_FAILED',
+      stage: 'save_pending_application',
+    });
   }
-  map.set(appId, pendingDraft);
-  schedulePendingDraftsFlush();
 }
 
 async function loadPendingDraft(appId: string): Promise<any | null> {
   if (isTestMode()) {
     return readTestStore().pendingApplications?.[appId] || null;
   }
-  if ((await isRtdbAdminUsable()) && rtdbAdmin) {
-    const snap = await withTimeout(rtdbAdmin.ref(`pendingApplications/${appId}`).once('value'), 6000, 'Read pending application draft');
-    if (snap.exists()) return snap.val();
+  if (ensureAdminInit() && rtdbAdmin) {
+    try {
+      const snap = await withTimeout(rtdbAdmin.ref(`pendingApplications/${appId}`).once('value'), 6000, 'Read pending application draft');
+      if (snap.exists()) return snap.val();
+    } catch {}
   }
   return getPendingDraftsMap().get(appId) || null;
 }
@@ -2703,20 +2852,91 @@ async function buildAndValidateApplicationDraft(params: {
 }
 
 const inFlightApplicationCreates = new Map<string, Promise<{ status: number; body: any }>>();
+const inFlightPaymentCreates = new Map<string, Promise<{ status: number; body: any }>>();
+const createdGatewayOrdersByDedupKey = new Map<
+  string,
+  {
+    appId: string;
+    razorpayOrderId: string;
+    amountPaise: number;
+    charge: number;
+    serviceId: string;
+    subserviceName?: string;
+    keyId: string;
+    createdAt: number;
+  }
+>();
+
+function rememberGatewayOrderForDedup(
+  dedupKey: string | undefined,
+  entry: {
+    appId: string;
+    razorpayOrderId: string;
+    amountPaise: number;
+    charge: number;
+    serviceId: string;
+    subserviceName?: string;
+    keyId: string;
+  }
+) {
+  if (!dedupKey) return;
+  if (createdGatewayOrdersByDedupKey.size >= 2000) {
+    const first = createdGatewayOrdersByDedupKey.keys().next().value;
+    if (first) createdGatewayOrdersByDedupKey.delete(first);
+  }
+  createdGatewayOrdersByDedupKey.set(dedupKey, { ...entry, createdAt: Date.now() });
+}
+
+async function findExistingPendingDraftByClientRequestId(
+  uid: string,
+  clientRequestId: string
+): Promise<any | null> {
+  if (!uid || !clientRequestId) return null;
+  if (isTestMode()) {
+    const store = readTestStore();
+    return (
+      Object.values(store.pendingApplications || {}).find(
+        (p: any) => p && p.uid === uid && p.clientRequestId === clientRequestId && p.razorpayOrderId
+      ) || null
+    );
+  }
+  if (ensureAdminInit() && rtdbAdmin) {
+    try {
+      const snap = await withTimeout(
+        rtdbAdmin.ref('pendingApplications').orderByChild('uid').equalTo(uid).once('value'),
+        5000,
+        'Lookup existing pending payment draft'
+      );
+      if (snap.exists()) {
+        const match = Object.values(snap.val() || {}).find(
+          (p: any) => p && p.clientRequestId === clientRequestId && p.razorpayOrderId
+        );
+        if (match) return match;
+      }
+    } catch {}
+  }
+  for (const draft of getPendingDraftsMap().values()) {
+    if (draft && draft.uid === uid && draft.clientRequestId === clientRequestId && draft.razorpayOrderId) {
+      return draft;
+    }
+  }
+  return null;
+}
 
 async function persistNewApplicationDurably(
   appId: string,
   appRecord: Record<string, any>,
   caller: VerifiedCaller
 ): Promise<void> {
+  const cleanRecord = stripUndefinedDeep(appRecord);
   if (isTestMode()) {
     const store = readTestStore();
-    store.applications[appId] = appRecord;
+    store.applications[appId] = cleanRecord;
     writeTestStore(store);
     return;
   }
-  if ((await isRtdbAdminUsable()) && rtdbAdmin) {
-    await withTimeout(rtdbAdmin.ref(`applications/${appId}`).set(appRecord), 8000, 'Save service application');
+  if (ensureAdminInit() && rtdbAdmin) {
+    await withTimeout(rtdbAdmin.ref(`applications/${appId}`).set(cleanRecord), 8000, 'Save service application');
     return;
   }
   if (caller.idToken) {
@@ -2726,7 +2946,7 @@ async function persistNewApplicationDurably(
         method: 'PUT',
         signal: AbortSignal.timeout(8000),
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(appRecord),
+        body: JSON.stringify(cleanRecord),
       }
     );
     if (resp.ok) {
@@ -2914,150 +3134,475 @@ export async function handleCreateApplication(req: Request, res: Response) {
 export async function handleCreateApplicationPayment(req: Request, res: Response) {
   const requestId = (req as any).requestId || `pay_${Date.now().toString(36)}`;
   let callerUid: string | undefined;
+  let currentStage = 'verify_auth';
+  let currentAppId: string | undefined;
+  let gatewayModeForLog: string | undefined;
   const serviceIdForLog = cleanText(req.body?.serviceId, 120);
+
+  const buildErrorPayload = (opts: {
+    status: number;
+    code: string;
+    stage: string;
+    error: string;
+    err?: unknown;
+    message?: string;
+    httpStatus?: number;
+    gatewayCode?: string;
+    gatewayDescription?: string;
+  }) => {
+    const rawErr = opts.err as any;
+    logStructuredAppError({
+      req,
+      stage: opts.stage,
+      status: opts.status,
+      code: opts.code,
+      uid: callerUid,
+      serviceId: serviceIdForLog,
+      appId: currentAppId,
+      httpStatus: opts.httpStatus,
+      gatewayCode: opts.gatewayCode,
+      gatewayDescription: opts.gatewayDescription,
+      gatewayMode: gatewayModeForLog,
+      errorName: rawErr?.name,
+      errorCode: rawErr?.code || rawErr?.cause?.code,
+      err: opts.err,
+      message: opts.message || opts.error,
+    });
+    return {
+      status: opts.status,
+      body: {
+        success: false,
+        code: opts.code,
+        stage: opts.stage,
+        requestId,
+        error: opts.error,
+      },
+    };
+  };
+
   try {
+    currentStage = 'verify_auth';
     const caller = await requireAuthenticatedCaller(req, res);
     if (!caller) return;
     callerUid = caller.uid;
 
+    currentStage = 'rate_limit';
     const clientIp = (req.headers['x-forwarded-for'] as string)?.split(',')[0]?.trim() || req.socket.remoteAddress || 'unknown';
     if (!checkPublicNotificationRateLimit('create-app-payment', `${caller.uid}:${clientIp}`, 15, 60000)) {
-      return res.status(429).json({ success: false, code: 'RATE_LIMITED', stage: 'rate_limit', requestId, error: 'Too many payment attempts. Please wait a minute.' });
+      return res.status(429).json({
+        success: false,
+        code: 'RATE_LIMITED',
+        stage: 'rate_limit',
+        requestId,
+        error: 'Too many payment attempts. Please wait a minute.',
+      });
     }
 
     const body = req.body || {};
     const clientRequestId = cleanText(body.clientRequestId || body.idempotencyKey, 120);
     const dedupKey = clientRequestId ? `app_create_pay:${caller.uid}:${clientRequestId}` : undefined;
-    const cached = checkAppIdempotency(dedupKey);
-    if (cached) {
-      return res.status(200).json({ ...cached, duplicate: true, requestId });
+
+    if (dedupKey && inFlightPaymentCreates.has(dedupKey)) {
+      const pendingOut = await inFlightPaymentCreates.get(dedupKey)!;
+      if (pendingOut.status >= 200 && pendingOut.status < 300) {
+        return res.status(200).json({ ...pendingOut.body, duplicate: true, requestId });
+      }
+      return res.status(pendingOut.status).json({ ...pendingOut.body, requestId });
     }
 
-    const draft = await buildAndValidateApplicationDraft({ caller, body, paymentMethod: 'razorpay' });
-    if (draft.charge <= 0) {
-      return res.status(400).json({ success: false, code: 'ZERO_CHARGE_SERVICE', stage: 'validate_charge', requestId, error: 'This service has ₹0 fee and does not require online payment.' });
-    }
+    const executeCreatePayment = async (): Promise<{ status: number; body: any }> => {
+      currentStage = 'validate_application';
+      const draft = await buildAndValidateApplicationDraft({ caller, body, paymentMethod: 'razorpay' });
 
-    if (!isTestMode() && !(await isRtdbAdminUsable()) && !caller.idToken) {
-      logStructuredAppError({
-        req,
-        stage: 'preflight_db',
-        status: 503,
-        code: 'FIREBASE_ADMIN_UNCONFIGURED',
-        uid: caller.uid,
-        serviceId: draft.serviceId,
-        message: 'Neither RTDB Admin nor caller ID token available before payment order creation',
-      });
-      return res.status(503).json({
-        success: false,
-        code: 'FIREBASE_ADMIN_UNCONFIGURED',
-        stage: 'preflight_db',
-        requestId,
-        error: 'Online payment checkout is temporarily unavailable because server database access is not ready.',
-      });
-    }
+      currentStage = 'validate_charge';
+      if (draft.charge <= 0) {
+        return buildErrorPayload({
+          status: 400,
+          code: 'ZERO_CHARGE_SERVICE',
+          stage: 'validate_charge',
+          error: 'This service has ₹0 fee and does not require online payment.',
+        });
+      }
 
-    const amountPaise = Math.round(draft.charge * 100);
-    const appId = `ICC-APP-${Date.now()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
-    const keyId = (process.env.RAZORPAY_KEY_ID || '').trim();
-    const keySecret = (process.env.RAZORPAY_KEY_SECRET || '').trim();
+      const amountPaise = Math.round(draft.charge * 100);
+      if (!Number.isInteger(amountPaise) || amountPaise < 100 || amountPaise > 10000000) {
+        return buildErrorPayload({
+          status: 400,
+          code: 'INVALID_PAYMENT_AMOUNT',
+          stage: 'validate_charge',
+          error: 'Calculated service charge is outside valid online payment limits.',
+          message: `Invalid amountPaise=${amountPaise}`,
+        });
+      }
 
-    let razorpayOrderId = '';
-    if (isTestMode()) {
-      razorpayOrderId = `order_test_app_${crypto.randomBytes(6).toString('hex')}`;
-    } else {
-      if (!keyId || !keySecret) {
-        logStructuredAppError({
-          req,
-          stage: 'preflight_payment',
+      const cached = checkAppIdempotency(dedupKey);
+      if (
+        cached &&
+        Number(cached.amount) === amountPaise &&
+        (!cached.serviceId || cached.serviceId === draft.serviceId)
+      ) {
+        return { status: 200, body: { ...cached, duplicate: true, requestId } };
+      }
+
+      currentStage = 'preflight_payment';
+      if (clientRequestId) {
+        const existingPending = await findExistingPendingDraftByClientRequestId(caller.uid, clientRequestId);
+        if (
+          existingPending &&
+          existingPending.serviceId === draft.serviceId &&
+          Number(existingPending.amountPaise) === amountPaise &&
+          typeof existingPending.razorpayOrderId === 'string' &&
+          existingPending.razorpayOrderId
+        ) {
+          const fallbackKeyId = normalizeEnvSecret(process.env.RAZORPAY_KEY_ID) || 'rzp_test_key';
+          const dupResult = {
+            success: true,
+            duplicate: true,
+            appId: existingPending.id,
+            serviceId: existingPending.serviceId,
+            razorpayOrderId: existingPending.razorpayOrderId,
+            order_id: existingPending.razorpayOrderId,
+            amount: amountPaise,
+            amountInRupees: draft.charge,
+            currency: 'INR',
+            keyId: fallbackKeyId,
+            requestId,
+          };
+          recordAppIdempotency(dedupKey, dupResult);
+          return { status: 200, body: dupResult };
+        }
+      }
+
+      const keyId = normalizeEnvSecret(process.env.RAZORPAY_KEY_ID);
+      const keySecret = normalizeEnvSecret(process.env.RAZORPAY_KEY_SECRET);
+      gatewayModeForLog = keyId.startsWith('rzp_test_')
+        ? 'test'
+        : keyId.startsWith('rzp_live_')
+          ? 'live'
+          : keyId
+            ? 'unknown'
+            : 'unconfigured';
+
+      const adminReady = isTestMode() ? true : ensureAdminInit();
+      if (!isTestMode() && !adminReady && !caller.idToken) {
+        return buildErrorPayload({
           status: 503,
-          code: 'RAZORPAY_UNCONFIGURED',
-          uid: caller.uid,
-          serviceId: draft.serviceId,
-          message: 'RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET missing',
+          code: 'FIREBASE_ADMIN_UNCONFIGURED',
+          stage: 'preflight_db',
+          error: 'Online payment checkout is temporarily unavailable because server database access is not ready.',
+          message: 'Neither Firebase Admin SDK nor caller ID token available before payment order creation',
         });
-        return res.status(503).json({ success: false, code: 'RAZORPAY_UNCONFIGURED', stage: 'preflight_payment', requestId, error: 'Payment gateway is not configured on the server.' });
       }
-      const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
-      const rzpResp = await fetch('https://api.razorpay.com/v1/orders', {
-        method: 'POST',
-        headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: amountPaise,
-          currency: 'INR',
-          receipt: appId.slice(0, 40),
-          notes: {
-            kind: 'service_application',
-            appId,
-            uid: caller.uid,
-            serviceId: draft.serviceId,
-          },
-        }),
-        signal: AbortSignal.timeout(10000),
+
+      const recoveredOrder = dedupKey ? createdGatewayOrdersByDedupKey.get(dedupKey) : undefined;
+      const canReuseRecoveredOrder = Boolean(
+        recoveredOrder &&
+          Date.now() - recoveredOrder.createdAt < 30 * 60 * 1000 &&
+          recoveredOrder.serviceId === draft.serviceId &&
+          (recoveredOrder.subserviceName || '') === (draft.subserviceName || '') &&
+          recoveredOrder.amountPaise === amountPaise
+      );
+
+      let appId = canReuseRecoveredOrder
+        ? recoveredOrder!.appId
+        : `ICC-APP-${Date.now()}-${crypto.randomBytes(2).toString('hex').toUpperCase()}`;
+      currentAppId = appId;
+      let razorpayOrderId = canReuseRecoveredOrder ? recoveredOrder!.razorpayOrderId : '';
+      let responseKeyId = canReuseRecoveredOrder ? recoveredOrder!.keyId : keyId;
+
+      if (!razorpayOrderId) {
+        if (isTestMode()) {
+          const rzpSim = testPaymentInitBehavior.razorpayMode || 'ok';
+          if (rzpSim === 'unconfigured') {
+            return buildErrorPayload({
+              status: 503,
+              code: 'RAZORPAY_UNCONFIGURED',
+              stage: 'preflight_payment',
+              error: 'Payment gateway is not configured on the server.',
+              message: 'Simulated RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET missing',
+            });
+          }
+          currentStage = 'razorpay_create_order';
+          if (rzpSim === 'network_error') {
+            return buildErrorPayload({
+              status: 502,
+              code: 'RAZORPAY_NETWORK_ERROR',
+              stage: 'razorpay_create_order',
+              error: 'Unable to reach the payment gateway right now. Please try again shortly.',
+              err: Object.assign(new Error('fetch failed: ECONNRESET'), { code: 'ECONNRESET' }),
+            });
+          }
+          if (rzpSim === 'timeout') {
+            return buildErrorPayload({
+              status: 504,
+              code: 'RAZORPAY_TIMEOUT',
+              stage: 'razorpay_create_order',
+              error: 'Payment gateway timed out before starting checkout. Please try again.',
+              err: Object.assign(new Error('The operation timed out'), { name: 'TimeoutError' }),
+            });
+          }
+          if (rzpSim === 'http_error') {
+            const simStatus = testPaymentInitBehavior.razorpayStatus || 401;
+            const simCode = testPaymentInitBehavior.razorpayErrorCode || 'BAD_REQUEST_ERROR';
+            const simDesc = testPaymentInitBehavior.razorpayErrorDescription || 'Authentication failed';
+            return buildErrorPayload({
+              status: 502,
+              code: 'RAZORPAY_ORDER_FAILED',
+              stage: 'razorpay_create_order',
+              error: 'Unable to start online payment right now. Please try again shortly.',
+              httpStatus: simStatus,
+              gatewayCode: simCode,
+              gatewayDescription: simDesc,
+              message: `Razorpay HTTP ${simStatus}: ${simCode} - ${simDesc}`,
+            });
+          }
+          currentStage = 'razorpay_parse_response';
+          if (rzpSim === 'invalid_json') {
+            return buildErrorPayload({
+              status: 502,
+              code: 'RAZORPAY_INVALID_RESPONSE',
+              stage: 'razorpay_parse_response',
+              error: 'Received an invalid response from the payment gateway. Please try again.',
+              httpStatus: 200,
+              err: new SyntaxError('Unexpected token < in JSON at position 0'),
+            });
+          }
+          if (rzpSim === 'missing_order_id') {
+            return buildErrorPayload({
+              status: 502,
+              code: 'RAZORPAY_INVALID_RESPONSE',
+              stage: 'razorpay_parse_response',
+              error: 'Payment gateway returned an incomplete order response. Please try again.',
+              httpStatus: 200,
+              message: 'Razorpay response JSON missing valid order id',
+            });
+          }
+          razorpayOrderId = `order_test_app_${crypto.randomBytes(6).toString('hex')}`;
+          responseKeyId = keyId || 'rzp_test_key';
+        } else {
+          if (!keyId || !keySecret || keyId.length < 12 || keySecret.length < 10) {
+            return buildErrorPayload({
+              status: 503,
+              code: 'RAZORPAY_UNCONFIGURED',
+              stage: 'preflight_payment',
+              error: 'Payment gateway is not configured on the server.',
+              message: !keyId || !keySecret
+                ? 'RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET missing'
+                : 'RAZORPAY_KEY_ID or RAZORPAY_KEY_SECRET has invalid length/format',
+            });
+          }
+          if (!keyId.startsWith('rzp_test_') && !keyId.startsWith('rzp_live_')) {
+            return buildErrorPayload({
+              status: 503,
+              code: 'RAZORPAY_UNCONFIGURED',
+              stage: 'preflight_payment',
+              error: 'Payment gateway credentials on the server have an unrecognized format.',
+              message: 'RAZORPAY_KEY_ID must begin with rzp_test_ or rzp_live_',
+            });
+          }
+
+          currentStage = 'razorpay_create_order';
+          const authHeader = 'Basic ' + Buffer.from(`${keyId}:${keySecret}`).toString('base64');
+          let rzpResp: globalThis.Response;
+          try {
+            rzpResp = await fetch('https://api.razorpay.com/v1/orders', {
+              method: 'POST',
+              headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                amount: amountPaise,
+                currency: 'INR',
+                receipt: appId.slice(0, 40),
+                notes: {
+                  kind: 'service_application',
+                  appId,
+                  uid: caller.uid,
+                  serviceId: draft.serviceId,
+                },
+              }),
+              signal: AbortSignal.timeout(10000),
+            });
+          } catch (fetchErr: any) {
+            const msg = String(fetchErr?.message || '');
+            const isTimeout =
+              fetchErr?.name === 'TimeoutError' ||
+              fetchErr?.name === 'AbortError' ||
+              msg.toLowerCase().includes('timed out');
+            return buildErrorPayload({
+              status: isTimeout ? 504 : 502,
+              code: isTimeout ? 'RAZORPAY_TIMEOUT' : 'RAZORPAY_NETWORK_ERROR',
+              stage: 'razorpay_create_order',
+              error: isTimeout
+                ? 'Payment gateway timed out before starting checkout. Please try again.'
+                : 'Unable to reach the payment gateway right now. Please try again shortly.',
+              err: fetchErr,
+            });
+          }
+
+          if (!rzpResp.ok) {
+            const rawErrText = await rzpResp.text().catch(() => '');
+            let errData: any = {};
+            try {
+              errData = rawErrText ? JSON.parse(rawErrText) : {};
+            } catch {}
+            const gatewayCode = typeof errData?.error?.code === 'string' ? errData.error.code : undefined;
+            const gatewayDesc =
+              typeof errData?.error?.description === 'string'
+                ? errData.error.description
+                : rawErrText
+                  ? rawErrText.slice(0, 200)
+                  : `Razorpay HTTP ${rzpResp.status}`;
+            return buildErrorPayload({
+              status: 502,
+              code: 'RAZORPAY_ORDER_FAILED',
+              stage: 'razorpay_create_order',
+              error: 'Unable to start online payment right now. Your filled form details remain saved.',
+              httpStatus: rzpResp.status,
+              gatewayCode,
+              gatewayDescription: gatewayDesc,
+              message: `Razorpay order failed (${rzpResp.status}${gatewayCode ? ` ${gatewayCode}` : ''}): ${gatewayDesc}`,
+            });
+          }
+
+          currentStage = 'razorpay_parse_response';
+          let rzpOrder: any;
+          try {
+            const rawBodyText = await rzpResp.text();
+            rzpOrder = JSON.parse(rawBodyText);
+          } catch (parseErr: any) {
+            return buildErrorPayload({
+              status: 502,
+              code: 'RAZORPAY_INVALID_RESPONSE',
+              stage: 'razorpay_parse_response',
+              error: 'Received an invalid response from the payment gateway. Please try again.',
+              httpStatus: rzpResp.status,
+              err: parseErr,
+            });
+          }
+
+          if (!rzpOrder || typeof rzpOrder.id !== 'string' || !rzpOrder.id.trim().startsWith('order_')) {
+            return buildErrorPayload({
+              status: 502,
+              code: 'RAZORPAY_INVALID_RESPONSE',
+              stage: 'razorpay_parse_response',
+              error: 'Payment gateway returned an incomplete order response. Please try again.',
+              httpStatus: rzpResp.status,
+              message: `Razorpay response missing valid order id (keys=${rzpOrder && typeof rzpOrder === 'object' ? Object.keys(rzpOrder).join(',') : typeof rzpOrder})`,
+            });
+          }
+
+          razorpayOrderId = rzpOrder.id.trim();
+          responseKeyId = keyId;
+        }
+
+        rememberGatewayOrderForDedup(dedupKey, {
+          appId,
+          razorpayOrderId,
+          amountPaise,
+          charge: draft.charge,
+          serviceId: draft.serviceId,
+          subserviceName: draft.subserviceName,
+          keyId: responseKeyId,
+        });
+      }
+
+      currentStage = 'save_pending_application';
+      const nowIso = new Date().toISOString();
+      const pendingDraft = stripUndefinedDeep({
+        ...draft,
+        id: appId,
+        razorpayOrderId,
+        amountPaise,
+        status: 'pending_payment',
+        paymentStatus: 'pending',
+        date: nowIso,
+        updatedAt: nowIso,
+        ...(clientRequestId ? { clientRequestId } : {}),
       });
-      if (!rzpResp.ok) {
-        const errData: any = await rzpResp.json().catch(() => ({}));
-        logStructuredAppError({
-          req,
-          stage: 'razorpay_create_order',
-          status: 502,
-          code: 'RAZORPAY_ORDER_FAILED',
-          uid: caller.uid,
-          serviceId: draft.serviceId,
-          message: errData?.error?.description || `Razorpay HTTP ${rzpResp.status}`,
-        });
-        return res.status(502).json({
-          success: false,
-          code: 'RAZORPAY_ORDER_FAILED',
-          stage: 'razorpay_create_order',
-          requestId,
-          error: 'Unable to start online payment right now. Your filled form details remain saved.',
+
+      try {
+        await savePendingDraftDurably(appId, pendingDraft);
+      } catch (saveErr: any) {
+        const msg = String(saveErr?.message || '');
+        const isTimeout =
+          saveErr?.name === 'TimeoutError' ||
+          saveErr?.code === 'FIREBASE_WRITE_TIMEOUT' ||
+          msg.toLowerCase().includes('timed out');
+        const isPerm =
+          saveErr?.code === 'FIREBASE_PERMISSION_DENIED' ||
+          /permission[_\s-]?denied/i.test(msg);
+        return buildErrorPayload({
+          status: saveErr?.statusCode || (isTimeout ? 504 : isPerm ? 403 : 503),
+          code:
+            saveErr?.code ||
+            (isTimeout
+              ? 'FIREBASE_WRITE_TIMEOUT'
+              : isPerm
+                ? 'FIREBASE_PERMISSION_DENIED'
+                : 'FIREBASE_WRITE_FAILED'),
+          stage: 'save_pending_application',
+          error: isTimeout
+            ? 'Payment session confirmation timed out. Please keep this page open and try again.'
+            : 'Unable to confirm your payment session right now. Please keep this page open and try again.',
+          err: saveErr,
         });
       }
-      const rzpOrder: any = await rzpResp.json();
-      razorpayOrderId = rzpOrder.id;
+
+      currentStage = 'finalize_response';
+      const result = {
+        success: true,
+        appId,
+        serviceId: draft.serviceId,
+        razorpayOrderId,
+        order_id: razorpayOrderId,
+        amount: amountPaise,
+        amountInRupees: draft.charge,
+        currency: 'INR',
+        keyId: responseKeyId || 'rzp_test_key',
+        requestId,
+      };
+      recordAppIdempotency(dedupKey, result);
+      return { status: 201, body: result };
+    };
+
+    const runPromise = executeCreatePayment();
+    if (dedupKey) {
+      inFlightPaymentCreates.set(dedupKey, runPromise);
     }
-
-    const nowIso = new Date().toISOString();
-    const pendingDraft = {
-      ...draft,
-      id: appId,
-      razorpayOrderId,
-      amountPaise,
-      status: 'pending_payment',
-      paymentStatus: 'pending',
-      date: nowIso,
-      updatedAt: nowIso,
-      ...(clientRequestId ? { clientRequestId } : {}),
-    };
-
-    await savePendingDraftDurably(appId, pendingDraft);
-
-    const result = {
-      success: true,
-      appId,
-      razorpayOrderId,
-      order_id: razorpayOrderId,
-      amount: amountPaise,
-      amountInRupees: draft.charge,
-      currency: 'INR',
-      keyId: keyId || 'rzp_test_key',
-      requestId,
-    };
-    recordAppIdempotency(dedupKey, result);
-    return res.status(201).json(result);
+    try {
+      const outcome = await runPromise;
+      return res.status(outcome.status).json(outcome.body);
+    } finally {
+      if (dedupKey && inFlightPaymentCreates.get(dedupKey) === runPromise) {
+        inFlightPaymentCreates.delete(dedupKey);
+      }
+    }
   } catch (err: any) {
     const isTimeout = err?.name === 'TimeoutError' || String(err?.message || '').toLowerCase().includes('timed out');
     const status = err?.statusCode || (isTimeout ? 504 : 500);
     const code = err?.code || (isTimeout ? 'GATEWAY_TIMEOUT' : 'PAYMENT_INIT_FAILED');
-    const stage = err?.stage || 'handle_create_application_payment';
-    logStructuredAppError({ req, stage, status, code, uid: callerUid, serviceId: serviceIdForLog, err });
+    const stage = err?.stage || currentStage || 'handle_create_application_payment';
+    logStructuredAppError({
+      req,
+      stage,
+      status,
+      code,
+      uid: callerUid,
+      serviceId: serviceIdForLog,
+      appId: currentAppId,
+      gatewayMode: gatewayModeForLog,
+      errorName: err?.name,
+      errorCode: err?.code,
+      err,
+    });
     return res.status(status).json({
       success: false,
       code,
       stage,
       requestId,
-      error: status >= 500 && !err?.statusCode ? 'Unable to start online payment right now. Your filled form details remain saved.' : (err?.message || 'Unable to start online payment right now.'),
+      error:
+        status >= 500 && !err?.statusCode
+          ? 'Unable to start online payment right now. Please keep this page open and try again.'
+          : err?.message || 'Unable to start online payment right now.',
     });
   }
 }
@@ -3078,7 +3623,7 @@ async function finalizePendingApplicationRecord(params: {
     return existingCommitted;
   }
 
-  const finalRecord: Record<string, any> = {
+  const finalRecord: Record<string, any> = stripUndefinedDeep({
     ...(pendingDraft || {}),
     id: appId,
     uid: pendingDraft?.uid || '',
@@ -3100,7 +3645,7 @@ async function finalizePendingApplicationRecord(params: {
         createdAt: Date.now(),
       },
     },
-  };
+  });
 
   if (isTestMode()) {
     const store = readTestStore();
@@ -3118,7 +3663,7 @@ async function finalizePendingApplicationRecord(params: {
       createdAt: nowIso,
     };
     writeTestStore(store);
-  } else if ((await isRtdbAdminUsable()) && rtdbAdmin) {
+  } else if (ensureAdminInit() && rtdbAdmin) {
     const payKey = `app_${appId}_${razorpayPaymentId}`.replace(/[/.#$[\]]/g, '_');
     await withTimeout(
       rtdbAdmin.ref().update({

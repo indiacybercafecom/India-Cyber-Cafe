@@ -73,6 +73,7 @@ export function Apply({
   const [declarationChecked, setDeclarationChecked] = useState(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const paymentProcessingRef = useRef(false);
+  const uploadedFileUrlCacheRef = useRef<Map<string, string>>(new Map());
   const isMountedRef = useRef(true);
   const [uploadProgress, setUploadProgress] = useState<{ current: number; total: number; percent: number }>({
     current: 0,
@@ -86,6 +87,17 @@ export function Apply({
     runSubmission,
     rotateIdempotencyKey,
   } = useSubmissionLifecycle();
+
+  useEffect(() => {
+    rotateIdempotencyKey();
+  }, [serviceId, subserviceName, rotateIdempotencyKey]);
+
+  useEffect(() => {
+    const methods = selectedSubService?.paymentMethods || [];
+    if (selectedSubService && methods.includes('razorpay') && (Number(selectedSubService.charge) || 0) > 0) {
+      void loadRazorpayScript(12000);
+    }
+  }, [selectedSubService]);
 
   useEffect(() => {
     isMountedRef.current = true;
@@ -316,8 +328,15 @@ export function Apply({
             const uploadedUrls = await uploadFilesBounded(
               uploadTasks,
               async (task, _idx, reportItemProgress) => {
+                const cacheKey = `${task.file.name}:${task.file.size}:${task.file.lastModified}`;
+                const cachedUrl = uploadedFileUrlCacheRef.current.get(cacheKey);
+                if (cachedUrl) {
+                  reportItemProgress(100);
+                  return cachedUrl;
+                }
+                let url = '';
                 try {
-                  return await uploadFileWithRetry(task.file, {
+                  url = await uploadFileWithRetry(task.file, {
                     category: 'applications',
                     maxSizeBytes: MAX_SERVICE_FILE_SIZE,
                     maxRetries: 0,
@@ -330,12 +349,16 @@ export function Apply({
                     throw storageErr;
                   }
                   // Resilient authenticated server fallback when Firebase Storage rules/CORS reject browser upload
-                  return await uploadApplicationAttachmentApi(task.file, {
+                  url = await uploadApplicationAttachmentApi(task.file, {
                     signal,
                     timeoutMs: 30000,
                     onProgress: reportItemProgress,
                   });
                 }
+                if (url) {
+                  uploadedFileUrlCacheRef.current.set(cacheKey, url);
+                }
+                return url;
               },
               {
                 concurrency: 3,

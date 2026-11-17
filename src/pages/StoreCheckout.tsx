@@ -1,14 +1,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useLocation, Link } from 'react-router-dom';
 import { signInWithEmailAndPassword } from 'firebase/auth';
-import { auth, rtdb, storage } from '../firebase';
+import { auth, rtdb } from '../firebase';
 import { IconRenderer } from '../components/Icons';
 import { Product, UserProfile, Order, OrderAddress } from '../types';
 import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { get, update, ref as dbRef } from 'firebase/database';
+import { update, ref as dbRef } from 'firebase/database';
 import { getRazorpayKeyId, loadRazorpayScript } from '../services/razorpayService';
+import { uploadFileWithRetry, MAX_SERVICE_FILE_SIZE } from '../services/uploadService';
 import {
   findUserByEmail,
   findUserByPhone,
@@ -94,8 +94,10 @@ export function StoreCheckout({
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
+  const submittingRef = useRef(false);
   const [paymentProcessing, setPaymentProcessing] = useState(false);
   const paymentProcessingRef = useRef(false);
+  const razorpayOpenRef = useRef(false);
   const isMountedRef = useRef(true);
   const idempotencyKeyRef = useRef<string>(generateIdempotencyKey());
   const [pendingVerification, setPendingVerification] = useState<PendingPaymentVerification | null>(() => {
@@ -113,7 +115,9 @@ export function StoreCheckout({
     isMountedRef.current = true;
     return () => {
       isMountedRef.current = false;
+      submittingRef.current = false;
       paymentProcessingRef.current = false;
+      razorpayOpenRef.current = false;
     };
   }, []);
 
@@ -187,6 +191,13 @@ export function StoreCheckout({
   useEffect(() => {
     idempotencyKeyRef.current = generateIdempotencyKey();
   }, [productId, quantity, paymentMethod]);
+
+  // Preload Razorpay script when online payment is selected
+  useEffect(() => {
+    if (paymentMethod === 'online' && product) {
+      void loadRazorpayScript(12000).catch(() => {});
+    }
+  }, [paymentMethod, product?.id]);
 
   // Warn before accidental navigation during payment verification
   useEffect(() => {
@@ -410,18 +421,12 @@ export function StoreCheckout({
       }
 
       try {
-        const fileName = `custom-images/${Date.now()}-${customImageFile.name}`;
-        const fileRef = ref(storage, fileName);
-        await withClientTimeout(
-          uploadBytes(fileRef, customImageFile),
-          10000,
-          'Image upload timed out.'
-        );
-        return await withClientTimeout(
-          getDownloadURL(fileRef),
-          6000,
-          'Image URL lookup timed out.'
-        );
+        return await uploadFileWithRetry(customImageFile, {
+          category: 'custom-images',
+          maxSizeBytes: MAX_SERVICE_FILE_SIZE,
+          timeoutMs: 12000,
+          maxRetries: 2,
+        });
       } catch {
         return await uploadViaBackend();
       }
@@ -653,7 +658,7 @@ export function StoreCheckout({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (submitting || uploading || paymentProcessingRef.current) return;
+    if (submittingRef.current || submitting || uploading || paymentProcessingRef.current || razorpayOpenRef.current) return;
 
     if (!validateForm()) {
       showToast('Please fix the highlighted address fields', 'error');
@@ -661,6 +666,7 @@ export function StoreCheckout({
     }
 
     try {
+      submittingRef.current = true;
       setSubmitting(true);
 
       let uploadedImageUrl = customImageUrl;
@@ -669,6 +675,7 @@ export function StoreCheckout({
         if (uploadedImageUrl) {
           setCustomImageUrl(uploadedImageUrl);
         } else if (product.requiresCustomImage) {
+          submittingRef.current = false;
           setSubmitting(false);
           return;
         }
@@ -707,25 +714,27 @@ export function StoreCheckout({
         showToast('Order placed with Cash on Delivery!', 'success');
         await handlePostOrderSuccess(data.order, sanitizedAddress, data.guestTrackingToken);
       } else {
-        // Server-authoritative Razorpay pending order creation
-        const createResp = await fetchWithTimeout('/api/store/orders/create-payment', {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({
-            items: orderItems,
-            deliveryAddress: sanitizedAddress,
-            idempotencyKey: idempotencyKeyRef.current
+        // Server-authoritative Razorpay pending order creation + concurrent SDK script preload
+        const [createResp, scriptLoaded] = await Promise.all([
+          fetchWithTimeout('/api/store/orders/create-payment', {
+            method: 'POST',
+            headers,
+            body: JSON.stringify({
+              items: orderItems,
+              deliveryAddress: sanitizedAddress,
+              idempotencyKey: idempotencyKeyRef.current
+            }),
+            timeoutMs: 20000,
+            timeoutMessage: 'Could not reach payment gateway in time. Please try again.'
           }),
-          timeoutMs: 20000,
-          timeoutMessage: 'Could not reach payment gateway in time. Please try again.'
-        });
+          loadRazorpayScript(12000),
+        ]);
 
         const createData = await createResp.json().catch(() => ({}));
         if (!createResp.ok || !createData.success || !createData.razorpayOrderId) {
           throw new Error(createData.error || 'Unable to initiate online payment.');
         }
 
-        const scriptLoaded = await loadRazorpayScript(12000);
         if (!scriptLoaded || !window.Razorpay) {
           throw new Error('Payment gateway script could not load. Please check your connection and try again.');
         }
@@ -761,6 +770,7 @@ export function StoreCheckout({
             contact: sanitizedAddress.phone
           },
           handler: async (response: any) => {
+            razorpayOpenRef.current = false;
             if (paymentProcessingRef.current) return;
             paymentProcessingRef.current = true;
             if (isMountedRef.current) {
@@ -794,6 +804,7 @@ export function StoreCheckout({
               showToast(msg, 'error');
             } finally {
               paymentProcessingRef.current = false;
+              submittingRef.current = false;
               if (isMountedRef.current) {
                 setPaymentProcessing(false);
                 setSubmitting(false);
@@ -802,7 +813,9 @@ export function StoreCheckout({
           },
           modal: {
             ondismiss: async () => {
+              razorpayOpenRef.current = false;
               paymentProcessingRef.current = false;
+              submittingRef.current = false;
               if (isMountedRef.current) {
                 setPaymentProcessing(false);
                 setSubmitting(false);
@@ -823,7 +836,9 @@ export function StoreCheckout({
         const rzp = new (window as any).Razorpay(options);
         if (typeof rzp?.on === 'function') {
           rzp.on('payment.failed', (failureResp: any) => {
+            razorpayOpenRef.current = false;
             paymentProcessingRef.current = false;
+            submittingRef.current = false;
             if (isMountedRef.current) {
               setPaymentProcessing(false);
               setSubmitting(false);
@@ -836,8 +851,10 @@ export function StoreCheckout({
           });
         }
 
+        razorpayOpenRef.current = true;
         rzp.open();
         // Modal is now open and manages handler/ondismiss/payment.failed; never leave button stuck
+        submittingRef.current = false;
         if (isMountedRef.current) {
           setSubmitting(false);
         }
@@ -847,6 +864,7 @@ export function StoreCheckout({
       console.error('Order submission error:', error);
       showToast(error, 'error', 'Failed to place order. Please try again.');
     } finally {
+      submittingRef.current = false;
       if (!paymentProcessingRef.current && isMountedRef.current) {
         setSubmitting(false);
       }

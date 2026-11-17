@@ -296,6 +296,8 @@ async function runTests() {
       assert.strictEqual(assignResp.status, 200);
       assert.strictEqual(assignData.success, true);
 
+      await emailSvc.flushNotificationOutboxForTesting();
+
       const opBMails = sentMails.filter(m => m.to === 'suresh.op@example.com');
       const opAMails = sentMails.filter(m => m.to === 'ramesh.op@example.com');
       const custMails = sentMails.filter(m => m.to === 'priya.verma@example.com');
