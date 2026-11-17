@@ -51,7 +51,13 @@ function isFileUrl(value: unknown): value is string {
   if (lower.startsWith('javascript:') || lower.startsWith('data:') || lower.startsWith('vbscript:')) {
     return false;
   }
-  return lower.startsWith('http://') || lower.startsWith('https://') || lower.includes('/uploads/');
+  return (
+    lower.startsWith('http://') ||
+    lower.startsWith('https://') ||
+    lower.includes('/uploads/') ||
+    lower.startsWith('/api/applications/attachments/') ||
+    lower.startsWith('/api/operator/attachments/')
+  );
 }
 
 function extractFileUrls(value: unknown): string[] | null {
@@ -106,12 +112,14 @@ async function fetchWithTimeout(
 function resolveInternalAttachmentFetchUrl(rawUrl: string, appId?: string): string | null {
   let cleaned = String(rawUrl || '').trim().replace(/&amp;/g, '&');
   if (!cleaned) return null;
-  if (cleaned.startsWith('api/operator/attachments/')) {
+  if (cleaned.startsWith('api/operator/attachments/') || cleaned.startsWith('api/applications/attachments/')) {
     cleaned = `/${cleaned}`;
   }
   try {
     const parsed = new URL(cleaned, window.location.origin);
-    if (!parsed.pathname.startsWith('/api/operator/attachments/')) {
+    const isOperatorAtt = parsed.pathname.startsWith('/api/operator/attachments/');
+    const isAppAtt = parsed.pathname.startsWith('/api/applications/attachments/');
+    if (!isOperatorAtt && !isAppAtt) {
       return null;
     }
     if (appId && !parsed.searchParams.get('appId')) {
@@ -1063,23 +1071,26 @@ export function ApplicationDetailsModal({ app, onClose, currentUser, operators }
                     <span className="text-slate-600 text-[10px] sm:text-sm break-words">
                       {fileUrls ? (
                         fileUrls.length === 1 ? (
-                          <a href={fileUrls[0]} target="_blank" rel="noreferrer" className="text-primary hover:underline font-bold flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenAttachment(fileUrls[0], key)}
+                            className="text-primary hover:underline font-bold inline-flex items-center gap-1"
+                          >
                             <IconRenderer name="external-link" className="w-3 h-3" />
                             View
-                          </a>
+                          </button>
                         ) : (
                           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
                             {fileUrls.map((url, index) => (
-                              <a
+                              <button
                                 key={`${key}-${index}`}
-                                href={url}
-                                target="_blank"
-                                rel="noreferrer"
+                                type="button"
+                                onClick={() => handleOpenAttachment(url, `${key}-${index + 1}`)}
                                 className="text-primary hover:underline font-bold inline-flex items-center gap-1"
                               >
                                 <IconRenderer name="external-link" className="w-3 h-3" />
                                 {`View ${getOrdinalLabel(index)}`}
-                              </a>
+                              </button>
                             ))}
                           </span>
                         )

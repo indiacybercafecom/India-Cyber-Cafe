@@ -6,6 +6,7 @@ import { recoverNotificationOutbox, getNotificationOutboxStats } from './src/ser
 import {
   startAsyncWorkerLoop,
   shutdownAsyncWorkerLoop,
+  recoverExpiredQueueLeases,
   getQueueStats,
 } from './src/server/asyncQueueService.js';
 import './src/server/operatorService.js';
@@ -20,9 +21,10 @@ const SWEEP_INTERVAL_MS = Math.max(500, Number(process.env.WORKER_SWEEP_INTERVAL
 console.log(`[WORKER] Starting standalone background worker (pid=${process.pid})...`);
 
 try {
-  const recovered = recoverNotificationOutbox();
-  if (recovered > 0) {
-    console.log(`[WORKER] Recovered ${recovered} pending outbox notification(s).`);
+  const recoveredOutbox = recoverNotificationOutbox();
+  const recoveredLeases = recoverExpiredQueueLeases();
+  if (recoveredOutbox > 0 || recoveredLeases > 0) {
+    console.log(`[WORKER] Startup recovery: outbox=${recoveredOutbox}, expiredQueueLeases=${recoveredLeases}`);
   }
 } catch (err: any) {
   console.warn('[WORKER] Initial outbox recovery notice:', err?.message || err);
@@ -33,10 +35,12 @@ startAsyncWorkerLoop();
 const outboxSweepTimer = setInterval(() => {
   try {
     recoverNotificationOutbox();
+    recoverExpiredQueueLeases();
   } catch (err: any) {
-    console.warn('[WORKER] Outbox sweep notice:', err?.message || err);
+    console.warn('[WORKER] Sweep notice:', err?.message || err);
   }
 }, SWEEP_INTERVAL_MS);
+if (typeof outboxSweepTimer.unref === 'function') outboxSweepTimer.unref();
 
 console.log(`[WORKER] Active. Queue stats:`, JSON.stringify({
   queue: getQueueStats(),

@@ -239,13 +239,42 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string = 'Some
     return 'Unable to start payment. Please try again.';
   }
 
-  // 6. Database / Permission Errors
+  // 6. Database / Permission / Structured Backend Codes
   if (
     lowerCode === 'permission_denied' ||
+    lowerCode === 'rtdb_permission_denied' ||
     lowerMsg.includes('permission_denied') ||
     lowerMsg.includes('permission denied')
   ) {
     return 'You do not have permission to perform this action.';
+  }
+
+  if (
+    lowerCode === 'firebase_admin_unconfigured' ||
+    lowerCode === 'rtdb_unavailable' ||
+    lowerCode === 'rtdb_write_failed'
+  ) {
+    return 'Submission service is temporarily unavailable. Please try again in a few minutes.';
+  }
+
+  if (lowerCode === 'razorpay_unconfigured' || lowerCode === 'razorpay_order_failed') {
+    return 'Online payment checkout is temporarily unavailable. Your filled form details remain saved.';
+  }
+
+  if (lowerCode === 'server_busy') {
+    return 'Server is handling high traffic right now. Please wait a moment and try again.';
+  }
+
+  if (lowerCode === 'file_too_large') {
+    return 'File exceeds the 5 MB limit.';
+  }
+
+  if (lowerCode === 'invalid_file_type') {
+    return 'Unsupported file format. Only PDF, JPG, PNG, and WEBP files are allowed.';
+  }
+
+  if (lowerCode === 'rate_limited') {
+    return 'Too many attempts. Please wait a minute and try again.';
   }
 
   // 7. Human Validation Messages Preservation
@@ -257,11 +286,11 @@ export function getFriendlyErrorMessage(error: unknown, fallback: string = 'Some
     return rawMessage;
   }
 
-  // If rawMessage is clean, short (under 80 characters), has no technical details, and looks like human text
+  // If rawMessage is clean, concise (under 220 characters), has no technical details, and looks like human text
   if (
     !containsTechnicalDetails &&
     rawMessage.length > 5 &&
-    rawMessage.length < 80 &&
+    rawMessage.length < 220 &&
     !rawMessage.includes('{') &&
     !rawMessage.includes('}') &&
     !rawMessage.includes('null') &&

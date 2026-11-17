@@ -109,7 +109,7 @@ async function postJson<T = any>(
   url: string,
   body: Record<string, any>,
   options: { throwOnError?: boolean; timeoutMs?: number; signal?: AbortSignal } = {}
-): Promise<T & { success: boolean; status?: number; error?: string; emailDelivery?: EmailDeliverySummary; notificationQueued?: boolean }> {
+): Promise<T & { success: boolean; status?: number; error?: string; code?: string; stage?: string; requestId?: string; emailDelivery?: EmailDeliverySummary; notificationQueued?: boolean }> {
   const headers = await getAuthHeaders();
   const response = await fetchWithTimeout(url, {
     method: 'POST',
@@ -122,7 +122,17 @@ async function postJson<T = any>(
   if (!response.ok || data?.success === false) {
     const errMsg = data?.error || `Request failed with status ${response.status}`;
     if (options.throwOnError) {
-      throw new Error(errMsg);
+      const err = new Error(errMsg) as Error & {
+        status?: number;
+        code?: string;
+        stage?: string;
+        requestId?: string;
+      };
+      err.status = response.status;
+      if (data?.code) err.code = String(data.code);
+      if (data?.stage) err.stage = String(data.stage);
+      if (data?.requestId) err.requestId = String(data.requestId);
+      throw err;
     }
     return { ...data, success: false, status: response.status, error: errMsg };
   }
@@ -130,6 +140,119 @@ async function postJson<T = any>(
 }
 
 // ============= SERVER-AUTHORITATIVE APPLICATION, ORDER & NOTIFICATION APIS =============
+
+export async function uploadApplicationAttachmentApi(
+  file: File,
+  opts?: { signal?: AbortSignal; timeoutMs?: number; onProgress?: (percent: number) => void }
+): Promise<string> {
+  if (opts?.signal?.aborted) {
+    throw new DOMException('Upload cancelled', 'AbortError');
+  }
+  const idToken = await auth.currentUser?.getIdToken().catch(() => undefined);
+  if (!idToken) {
+    throw new Error('Authentication required to upload files.');
+  }
+
+  const timeoutMs = opts?.timeoutMs ?? 30000;
+  const formData = new FormData();
+  formData.append('file', file);
+
+  if (typeof XMLHttpRequest !== 'undefined') {
+    return new Promise<string>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      let settled = false;
+
+      const cleanup = () => {
+        clearTimeout(timer);
+        if (opts?.signal && onAbort) {
+          opts.signal.removeEventListener('abort', onAbort);
+        }
+      };
+
+      const fail = (err: any) => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(err);
+      };
+
+      const onAbort = () => {
+        try { xhr.abort(); } catch {}
+        fail(new DOMException('Upload cancelled', 'AbortError'));
+      };
+
+      if (opts?.signal) {
+        opts.signal.addEventListener('abort', onAbort, { once: true });
+      }
+
+      const timer = setTimeout(() => {
+        try { xhr.abort(); } catch {}
+        fail(new Error(`Upload timed out for "${file.name}". Please check your connection and try again.`));
+      }, timeoutMs);
+
+      xhr.open('POST', '/api/applications/upload-attachment');
+      xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
+
+      xhr.upload.onprogress = (evt) => {
+        if (evt.lengthComputable && evt.total > 0) {
+          const pct = Math.min(99, Math.round((evt.loaded / evt.total) * 100));
+          opts?.onProgress?.(pct);
+        }
+      };
+
+      xhr.onload = () => {
+        let data: any = {};
+        try { data = JSON.parse(xhr.responseText || '{}'); } catch {}
+        if (xhr.status >= 200 && xhr.status < 300 && data?.success && data?.url) {
+          opts?.onProgress?.(100);
+          settled = true;
+          cleanup();
+          resolve(String(data.url));
+          return;
+        }
+        const err = new Error(data?.error || `Unable to upload "${file.name}".`) as Error & {
+          status?: number;
+          code?: string;
+          stage?: string;
+          requestId?: string;
+        };
+        err.status = xhr.status;
+        if (data?.code) err.code = String(data.code);
+        if (data?.stage) err.stage = String(data.stage);
+        if (data?.requestId) err.requestId = String(data.requestId);
+        fail(err);
+      };
+
+      xhr.onerror = () => fail(new Error(`Network error while uploading "${file.name}".`));
+      xhr.onabort = () => fail(new DOMException('Upload cancelled', 'AbortError'));
+      xhr.send(formData);
+    });
+  }
+
+  const resp = await fetchWithTimeout('/api/applications/upload-attachment', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${idToken}` },
+    body: formData as any,
+    timeoutMs,
+    signal: opts?.signal,
+  });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok || !data?.success || !data?.url) {
+    const err = new Error(data?.error || `Unable to upload "${file.name}".`) as Error & {
+      status?: number;
+      code?: string;
+      stage?: string;
+      requestId?: string;
+    };
+    err.status = resp.status;
+    if (data?.code) err.code = String(data.code);
+    if (data?.stage) err.stage = String(data.stage);
+    if (data?.requestId) err.requestId = String(data.requestId);
+    throw err;
+  }
+  opts?.onProgress?.(100);
+  return String(data.url);
+}
 
 export async function createApplicationApi(
   payload: Record<string, any>,

@@ -96,6 +96,11 @@ let isShuttingDown = false;
 let enqueuedTotal = 0;
 let processedTotal = 0;
 let retriedTotal = 0;
+let queueFlushTimer: NodeJS.Timeout | null = null;
+let queueWriting = false;
+let queueDirty = false;
+let rtdbQueueUsableCache: { usable: boolean; expiresAt: number } = { usable: false, expiresAt: 0 };
+let rtdbQueueProbeInFlight: Promise<boolean> | null = null;
 
 export function getQueueDriver(): QueueDriverType {
   const configured = (process.env.QUEUE_DRIVER || '').trim().toLowerCase();
@@ -107,6 +112,34 @@ export function getQueueDriver(): QueueDriverType {
     return 'rtdb';
   }
   return 'local';
+}
+
+async function isQueueRtdbUsable(): Promise<boolean> {
+  if (isTestMode() || getApps().length === 0) return false;
+  const now = Date.now();
+  if (rtdbQueueUsableCache.expiresAt > now) {
+    return rtdbQueueUsableCache.usable;
+  }
+  if (rtdbQueueProbeInFlight) {
+    return rtdbQueueProbeInFlight;
+  }
+  rtdbQueueProbeInFlight = (async () => {
+    try {
+      const db = getDatabase(getApps()[0]);
+      await Promise.race([
+        db.ref('asyncQueue/jobs').limitToFirst(1).once('value'),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('RTDB queue probe timeout')), 2000)),
+      ]);
+      rtdbQueueUsableCache = { usable: true, expiresAt: Date.now() + 30000 };
+      return true;
+    } catch {
+      rtdbQueueUsableCache = { usable: false, expiresAt: Date.now() + 15000 };
+      return false;
+    } finally {
+      rtdbQueueProbeInFlight = null;
+    }
+  })();
+  return rtdbQueueProbeInFlight;
 }
 
 export function registerQueueProcessor(kind: string, handler: JobProcessorFn): void {
@@ -135,11 +168,31 @@ function computeLatencyPercentiles(): { avg: number; p95: number } {
   };
 }
 
+function buildQueueSnapshots(): { jobsObj: Record<string, AsyncQueueJob>; dlqObj: Record<string, AsyncQueueJob> } {
+  const sortedJobs = Array.from(memoryJobs.entries())
+    .sort((a, b) => new Date(b[1].createdAt || 0).getTime() - new Date(a[1].createdAt || 0).getTime())
+    .slice(0, 1000);
+  const sortedDlq = Array.from(memoryDlq.entries())
+    .sort((a, b) => new Date(b[1].updatedAt || 0).getTime() - new Date(a[1].updatedAt || 0).getTime())
+    .slice(0, 500);
+  return {
+    jobsObj: Object.fromEntries(sortedJobs),
+    dlqObj: Object.fromEntries(sortedDlq),
+  };
+}
+
 function writeJsonAtomic(filePath: string, data: Record<string, any>): void {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   const tmpPath = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
   fs.writeFileSync(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
   fs.renameSync(tmpPath, filePath);
+}
+
+async function writeJsonAtomicAsync(filePath: string, data: Record<string, any>): Promise<void> {
+  await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
+  const tmpPath = `${filePath}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+  await fs.promises.writeFile(tmpPath, JSON.stringify(data, null, 2), 'utf-8');
+  await fs.promises.rename(tmpPath, filePath);
 }
 
 function readLocalStore(filePath: string): Record<string, AsyncQueueJob> {
@@ -177,24 +230,55 @@ function hydrateLocalQueue(force = false): void {
   memoryHydrated = true;
 }
 
-function persistLocalQueue(): void {
+export async function flushLocalQueueToDisk(): Promise<void> {
+  if (queueWriting) {
+    queueDirty = true;
+    return;
+  }
+  queueDirty = false;
+  queueWriting = true;
   try {
-    const sortedJobs = Array.from(memoryJobs.entries())
-      .sort((a, b) => new Date(b[1].createdAt || 0).getTime() - new Date(a[1].createdAt || 0).getTime())
-      .slice(0, 1000);
-    writeJsonAtomic(LOCAL_QUEUE_PATH, Object.fromEntries(sortedJobs));
+    const { jobsObj, dlqObj } = buildQueueSnapshots();
+    await Promise.all([
+      writeJsonAtomicAsync(LOCAL_QUEUE_PATH, jobsObj),
+      writeJsonAtomicAsync(LOCAL_DLQ_PATH, dlqObj),
+    ]);
+  } catch (err: any) {
+    console.warn('[asyncQueueService] Async local persistence warning:', err?.message || err);
+  } finally {
+    queueWriting = false;
+    if (queueDirty && !isShuttingDown) {
+      scheduleLocalQueueFlush();
+    }
+  }
+}
 
-    const sortedDlq = Array.from(memoryDlq.entries())
-      .sort((a, b) => new Date(b[1].updatedAt || 0).getTime() - new Date(a[1].updatedAt || 0).getTime())
-      .slice(0, 500);
-    writeJsonAtomic(LOCAL_DLQ_PATH, Object.fromEntries(sortedDlq));
+function scheduleLocalQueueFlush(): void {
+  queueDirty = true;
+  if (queueFlushTimer) return;
+  queueFlushTimer = setTimeout(() => {
+    queueFlushTimer = null;
+    void flushLocalQueueToDisk();
+  }, 120);
+  if (typeof queueFlushTimer.unref === 'function') queueFlushTimer.unref();
+}
+
+function persistLocalQueue(immediateSync = false): void {
+  try {
+    if (immediateSync || isTestMode()) {
+      const { jobsObj, dlqObj } = buildQueueSnapshots();
+      writeJsonAtomic(LOCAL_QUEUE_PATH, jobsObj);
+      writeJsonAtomic(LOCAL_DLQ_PATH, dlqObj);
+      return;
+    }
+    scheduleLocalQueueFlush();
   } catch (err: any) {
     console.warn('[asyncQueueService] Local persistence warning:', err?.message || err);
   }
 }
 
 async function persistRtdbJob(job: AsyncQueueJob): Promise<void> {
-  if (isTestMode() || getApps().length === 0) return;
+  if (!(await isQueueRtdbUsable())) return;
   try {
     const db = getDatabase(getApps()[0]);
     const sanitized = JSON.parse(JSON.stringify(job));
@@ -354,6 +438,75 @@ export function enqueueAsyncJob<TPayload = any>(input: EnqueueJobInput<TPayload>
   return job;
 }
 
+async function claimRtdbDueJobs(limit: number): Promise<AsyncQueueJob[]> {
+  if (getQueueDriver() !== 'rtdb' || !(await isQueueRtdbUsable())) {
+    return [];
+  }
+  const claimed: AsyncQueueJob[] = [];
+  const db = getDatabase(getApps()[0]);
+  const now = Date.now();
+  try {
+    const [queuedSnap, procSnap] = await Promise.all([
+      Promise.race([
+        db.ref('asyncQueue/jobs').orderByChild('state').equalTo('queued').limitToFirst(Math.max(limit * 3, 18)).once('value'),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 2500)),
+      ]),
+      Promise.race([
+        db.ref('asyncQueue/jobs').orderByChild('state').equalTo('processing').limitToFirst(Math.max(limit * 2, 12)).once('value'),
+        new Promise<null>(resolve => setTimeout(() => resolve(null), 2500)),
+      ]),
+    ]);
+
+    const candidates: AsyncQueueJob[] = [];
+    if (queuedSnap && (queuedSnap as any).exists?.()) {
+      for (const val of Object.values((queuedSnap as any).val() || {}) as AsyncQueueJob[]) {
+        if (val && (val.nextAttemptAt || 0) <= now) candidates.push(val);
+      }
+    }
+    if (procSnap && (procSnap as any).exists?.()) {
+      for (const val of Object.values((procSnap as any).val() || {}) as AsyncQueueJob[]) {
+        if (val && typeof val.leaseExpiresAt === 'number' && val.leaseExpiresAt > 0 && val.leaseExpiresAt <= now) {
+          candidates.push(val);
+        }
+      }
+    }
+
+    for (const candidate of candidates) {
+      if (claimed.length >= limit) break;
+      if (!candidate?.jobId) continue;
+      const txn = await db.ref(`asyncQueue/jobs/${candidate.jobId}`).transaction((current: any) => {
+        if (!current || typeof current !== 'object') return;
+        const t = Date.now();
+        const isQueued = current.state === 'queued' && (current.nextAttemptAt || 0) <= t;
+        const isExpired =
+          current.state === 'processing' &&
+          typeof current.leaseExpiresAt === 'number' &&
+          current.leaseExpiresAt > 0 &&
+          current.leaseExpiresAt <= t;
+        if (!isQueued && !isExpired) return;
+        return {
+          ...current,
+          state: 'processing',
+          leaseOwner: WORKER_ID,
+          leaseExpiresAt: t + DEFAULT_LEASE_MS,
+          updatedAt: new Date().toISOString(),
+        };
+      });
+      if (txn.committed && txn.snapshot.exists()) {
+        const claimedJob = txn.snapshot.val() as AsyncQueueJob;
+        memoryJobs.set(claimedJob.jobId, claimedJob);
+        if (claimedJob.idempotencyKey) {
+          idempotencyJobIndex.set(`${claimedJob.kind}:${claimedJob.idempotencyKey}`, claimedJob.jobId);
+        }
+        claimed.push(claimedJob);
+      }
+    }
+  } catch (err: any) {
+    console.warn('[asyncQueueService] RTDB distributed claim notice:', err?.message || err);
+  }
+  return claimed;
+}
+
 /**
  * Atomic lease acquisition supporting crashed-worker recovery:
  * any processing job whose lease expired is automatically reclaimable.
@@ -390,6 +543,26 @@ function claimDueJobs(limit: number): AsyncQueueJob[] {
 async function runSingleJob(job: AsyncQueueJob): Promise<void> {
   const startedAt = Date.now();
   activeWorkers += 1;
+
+  // Periodic lease heartbeat keeps long-running jobs owned until completion
+  const heartbeatIntervalMs = Math.max(2000, Math.floor(DEFAULT_LEASE_MS / 3));
+  const heartbeatTimer = setInterval(() => {
+    if (job.state === 'processing' && job.leaseOwner === WORKER_ID && !isShuttingDown) {
+      job.leaseExpiresAt = Date.now() + DEFAULT_LEASE_MS;
+      job.updatedAt = new Date().toISOString();
+      if (getQueueDriver() === 'rtdb') {
+        void isQueueRtdbUsable().then(usable => {
+          if (usable && job.state === 'processing' && job.leaseOwner === WORKER_ID) {
+            void getDatabase(getApps()[0])
+              .ref(`asyncQueue/jobs/${job.jobId}`)
+              .update({ leaseExpiresAt: job.leaseExpiresAt, updatedAt: job.updatedAt })
+              .catch(() => {});
+          }
+        });
+      }
+    }
+  }, heartbeatIntervalMs);
+  if (typeof heartbeatTimer.unref === 'function') heartbeatTimer.unref();
 
   try {
     const processor = processors.get(job.kind);
@@ -450,6 +623,7 @@ async function runSingleJob(job: AsyncQueueJob): Promise<void> {
       processedTotal += 1;
     }
   } finally {
+    clearInterval(heartbeatTimer);
     activeWorkers = Math.max(0, activeWorkers - 1);
     job.updatedAt = new Date().toISOString();
     recordDuration(Date.now() - startedAt);
@@ -500,7 +674,16 @@ export async function pumpAsyncQueue(forceDue = false): Promise<number> {
       const availableSlots = Math.max(0, DEFAULT_CONCURRENCY - activeWorkers);
       if (availableSlots <= 0) break;
 
-      const batch = claimDueJobs(availableSlots);
+      let batch = claimDueJobs(availableSlots);
+      if (batch.length < availableSlots && getQueueDriver() === 'rtdb') {
+        const localClaimedIds = new Set(batch.map(b => b.jobId));
+        const rtdbClaimed = await claimRtdbDueJobs(availableSlots - batch.length);
+        for (const rJob of rtdbClaimed) {
+          if (!localClaimedIds.has(rJob.jobId)) {
+            batch.push(rJob);
+          }
+        }
+      }
       if (batch.length === 0) break;
 
       count += batch.length;
@@ -575,6 +758,10 @@ export async function shutdownAsyncWorkerLoop(timeoutMs = 8000): Promise<void> {
     clearInterval(workerLoopTimer);
     workerLoopTimer = null;
   }
+  if (queueFlushTimer) {
+    clearTimeout(queueFlushTimer);
+    queueFlushTimer = null;
+  }
 
   const deadline = Date.now() + timeoutMs;
   while (activeWorkers > 0 && Date.now() < deadline) {
@@ -583,19 +770,15 @@ export async function shutdownAsyncWorkerLoop(timeoutMs = 8000): Promise<void> {
 
   // Release any leases still held by this dying worker so peers can immediately reclaim them
   hydrateLocalQueue();
-  let released = false;
   for (const job of memoryJobs.values()) {
     if (job.state === 'processing' && job.leaseOwner === WORKER_ID) {
       job.state = 'queued';
       job.leaseOwner = null;
       job.leaseExpiresAt = null;
       job.nextAttemptAt = Date.now();
-      released = true;
     }
   }
-  if (released) {
-    persistLocalQueue();
-  }
+  persistLocalQueue(true);
 }
 
 export function getDlqJobs(limit = 50): AsyncQueueJob[] {

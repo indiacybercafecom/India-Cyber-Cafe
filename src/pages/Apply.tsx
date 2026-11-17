@@ -12,6 +12,7 @@ import {
   createApplicationPaymentApi,
   confirmApplicationPaymentApi,
   recoverApplicationPaymentApi,
+  uploadApplicationAttachmentApi,
 } from '../services/emailService';
 import {
   MAX_SERVICE_FILE_SIZE,
@@ -83,6 +84,7 @@ export function Apply({
     isSubmitting: loading,
     submittingRef,
     runSubmission,
+    rotateIdempotencyKey,
   } = useSubmissionLifecycle();
 
   useEffect(() => {
@@ -261,76 +263,108 @@ export function Apply({
     const activeFields = selectedSubService?.fields && selectedSubService.fields.length > 0
       ? selectedSubService.fields
       : service.fields;
-    const missingRequiredMultiselect = activeFields.find(field => (
-      field.type === 'multiselect' &&
-      field.required !== false &&
-      (!Array.isArray(formData[field.name || field.label]) || formData[field.name || field.label].length === 0)
-    ));
-    if (missingRequiredMultiselect) {
-      showToast(`${missingRequiredMultiselect.label} is required.`, 'error');
-      return;
+
+    for (let idx = 0; idx < activeFields.length; idx++) {
+      const field = activeFields[idx];
+      if (!field || field.required === false) continue;
+
+      if (field.type === 'file') {
+        if (!(files[field.label]?.length)) {
+          showToast(`${field.label} is required.`, 'error');
+          document.getElementById(`file-drop-${idx}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+        continue;
+      }
+
+      if (field.type === 'multiselect') {
+        const val = formData[field.name || field.label];
+        if (!Array.isArray(val) || val.length === 0) {
+          showToast(`${field.label} is required.`, 'error');
+          return;
+        }
+        continue;
+      }
+
+      const rawVal = formData[field.label] ?? formData[field.name || field.label];
+      if (rawVal === undefined || rawVal === null || String(rawVal).trim().length === 0) {
+        showToast(`${field.label} is required.`, 'error');
+        const el = document.getElementById(`field-${idx}`) as HTMLElement | null;
+        el?.focus?.();
+        return;
+      }
     }
-    const missingRequiredFile = activeFields.find(field => (
-      field.type === 'file' && field.required !== false && !(files[field.label]?.length)
-    ));
-    if (missingRequiredFile) {
-      showToast(`${missingRequiredFile.label} is required.`, 'error');
-      return;
-    }
+
+    const methods = selectedSubService?.paymentMethods || [];
+    const hasRazorpay = Boolean(selectedSubService && methods.includes('razorpay') && (Number(selectedSubService.charge) || 0) > 0);
 
     try {
-      await runSubmission(async ({ signal, idempotencyKey, setPhase, setProgress }) => {
-        const uploadedFiles: Record<string, string | string[]> = {};
-        const fileEntries = Object.entries(files) as [string, File[]][];
-        const uploadTasks = fileEntries.flatMap(([label, fieldFiles]) => {
-          const field = activeFields.find(activeField => activeField.label === label);
-          const isMultiple = field?.multiple === true;
-          return fieldFiles.map(file => ({ label, file, isMultiple }));
-        });
+      await runSubmission(
+        async ({ signal, idempotencyKey, setPhase, setProgress }) => {
+          const uploadedFiles: Record<string, string | string[]> = {};
+          const fileEntries = Object.entries(files) as [string, File[]][];
+          const uploadTasks = fileEntries.flatMap(([label, fieldFiles]) => {
+            const field = activeFields.find(activeField => activeField.label === label);
+            const isMultiple = field?.multiple === true;
+            return fieldFiles.map(file => ({ label, file, isMultiple }));
+          });
 
-        if (uploadTasks.length > 0) {
-          setPhase('uploading');
-          setUploadProgress({ current: 0, total: uploadTasks.length, percent: 0 });
+          if (uploadTasks.length > 0) {
+            setPhase('uploading');
+            setUploadProgress({ current: 0, total: uploadTasks.length, percent: 0 });
 
-          const uploadedUrls = await uploadFilesBounded(
-            uploadTasks,
-            (task, _idx, reportItemProgress) =>
-              uploadFileWithRetry(task.file, {
-                category: 'applications',
-                maxSizeBytes: MAX_SERVICE_FILE_SIZE,
-                signal,
-                onProgress: reportItemProgress,
-              }),
-            {
-              concurrency: 3,
-              signal,
-              onProgress: (completed, total, percent) => {
-                setProgress(percent);
-                if (isMountedRef.current) {
-                  setUploadProgress({ current: completed, total, percent });
+            const uploadedUrls = await uploadFilesBounded(
+              uploadTasks,
+              async (task, _idx, reportItemProgress) => {
+                try {
+                  return await uploadFileWithRetry(task.file, {
+                    category: 'applications',
+                    maxSizeBytes: MAX_SERVICE_FILE_SIZE,
+                    maxRetries: 1,
+                    timeoutMs: 20000,
+                    signal,
+                    onProgress: reportItemProgress,
+                  });
+                } catch (storageErr: any) {
+                  if (storageErr?.name === 'AbortError' || signal.aborted) {
+                    throw storageErr;
+                  }
+                  // Resilient authenticated server fallback when Firebase Storage rules/CORS reject browser upload
+                  return await uploadApplicationAttachmentApi(task.file, {
+                    signal,
+                    timeoutMs: 30000,
+                    onProgress: reportItemProgress,
+                  });
                 }
               },
-            }
-          );
+              {
+                concurrency: 3,
+                signal,
+                onProgress: (completed, total, percent) => {
+                  setProgress(percent);
+                  if (isMountedRef.current) {
+                    setUploadProgress({ current: completed, total, percent });
+                  }
+                },
+              }
+            );
 
-          const groupedUrls: Record<string, { urls: string[]; isMultiple: boolean }> = {};
-          uploadTasks.forEach((task, idx) => {
-            if (!groupedUrls[task.label]) {
-              groupedUrls[task.label] = { urls: [], isMultiple: task.isMultiple };
+            const groupedUrls: Record<string, { urls: string[]; isMultiple: boolean }> = {};
+            uploadTasks.forEach((task, idx) => {
+              if (!groupedUrls[task.label]) {
+                groupedUrls[task.label] = { urls: [], isMultiple: task.isMultiple };
+              }
+              groupedUrls[task.label].urls.push(uploadedUrls[idx]);
+            });
+            for (const [label, entry] of Object.entries(groupedUrls)) {
+              uploadedFiles[label] = entry.isMultiple ? entry.urls : entry.urls[0];
             }
-            groupedUrls[task.label].urls.push(uploadedUrls[idx]);
-          });
-          for (const [label, entry] of Object.entries(groupedUrls)) {
-            uploadedFiles[label] = entry.isMultiple ? entry.urls : entry.urls[0];
           }
-        }
 
-        setPhase('submitting');
-        const sanitizedDetails = sanitizeFormData({ ...formData, ...uploadedFiles });
-        const methods = selectedSubService?.paymentMethods || [];
-        const hasRazorpay = Boolean(selectedSubService && methods.includes('razorpay') && (Number(selectedSubService.charge) || 0) > 0);
+          setPhase('submitting');
+          const sanitizedDetails = sanitizeFormData({ ...formData, ...uploadedFiles });
 
-        if (hasRazorpay && selectedSubService) {
+          if (hasRazorpay && selectedSubService) {
           const createRes = await createApplicationPaymentApi(
             {
               serviceId: service.id,
@@ -385,6 +419,7 @@ export function Apply({
                 }
 
                 try { window.localStorage.removeItem(PENDING_APP_PAYMENT_KEY); } catch {}
+                rotateIdempotencyKey();
                 showToast('Application Submitted Successfully!');
                 onSuccess();
               } catch (err: any) {
@@ -392,6 +427,7 @@ export function Apply({
                 const recovered = await recoverApplicationPaymentApi(createRes.appId).catch(() => null);
                 if (recovered?.verified) {
                   try { window.localStorage.removeItem(PENDING_APP_PAYMENT_KEY); } catch {}
+                  rotateIdempotencyKey();
                   showToast('Application Submitted Successfully!');
                   onSuccess();
                   return;
@@ -413,6 +449,7 @@ export function Apply({
                 const recovered = await recoverApplicationPaymentApi(createRes.appId).catch(() => null);
                 if (recovered?.verified && isMountedRef.current) {
                   try { window.localStorage.removeItem(PENDING_APP_PAYMENT_KEY); } catch {}
+                  rotateIdempotencyKey();
                   showToast('Payment detected! Application submitted.', 'success');
                   onSuccess();
                   return;
@@ -460,7 +497,9 @@ export function Apply({
 
         showToast('Application Submitted Successfully!');
         onSuccess();
-      });
+      },
+      { rotateKeyOnSuccess: !hasRazorpay }
+    );
     } catch (error: any) {
       if (error?.name !== 'AbortError') {
         showToast(error, 'error', 'Something went wrong. Please try again.');
@@ -694,7 +733,7 @@ export function Apply({
                 <div className="relative w-full">
                   <input 
                     type="file" 
-                    required={field.required !== false}
+                    aria-required={field.required !== false}
                     accept={field.accept}
                     multiple={field.multiple === true}
                     className="hidden" 
@@ -703,6 +742,7 @@ export function Apply({
                   />
                   <div className={field.multiple === true ? 'space-y-2' : ''}>
                     <label
+                      id={`file-drop-${i}`}
                       htmlFor={`file-${i}`}
                       className="w-full flex flex-col items-center justify-center gap-1 p-3 sm:p-4 md:p-5 border-2 border-dashed border-slate-200 rounded-lg sm:rounded-xl cursor-pointer hover:border-primary hover:bg-primary/5 transition-all overflow-hidden"
                     >
@@ -763,6 +803,7 @@ export function Apply({
                 </div>
               ) : field.type === 'textarea' ? (
                 <textarea 
+                  id={`field-${i}`}
                   required={field.required !== false}
                   value={formData[field.label] ?? ''}
                   placeholder={Object.prototype.hasOwnProperty.call(field, 'placeholder') ? field.placeholder : `Enter ${field.label.toLowerCase()}`}
@@ -815,6 +856,7 @@ export function Apply({
                 />
               ) : (
                 <input 
+                  id={`field-${i}`}
                   type={field.type === 'phone' ? 'tel' : field.type} 
                   required={field.required !== false}
                   value={formData[field.label] ?? ''}

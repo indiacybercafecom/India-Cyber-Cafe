@@ -48,6 +48,8 @@ import {
   handleCreateApplicationPayment,
   handleConfirmApplicationPayment,
   handleRecoverApplicationPayment,
+  handleUploadApplicationAttachment,
+  handleGetApplicationAttachment,
   reconcilePendingApplicationFromWebhook,
   handleProfileUpdate,
   handleNotifyApplicationSubmitted,
@@ -198,15 +200,16 @@ async function startServer() {
     limits: { fileSize: 5 * 1024 * 1024 }
   });
   const operatorAttachmentUploadMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const requestId = (req as any).requestId || `att_${Date.now().toString(36)}`;
     customImageUpload.single("file")(req, res, (err: any) => {
       if (!err) return next();
       if (err instanceof multer.MulterError) {
         if (err.code === 'LIMIT_FILE_SIZE') {
-          return res.status(400).json({ success: false, error: 'File exceeds the 5 MB limit.' });
+          return res.status(400).json({ success: false, code: 'FILE_TOO_LARGE', stage: 'upload_multer', requestId, error: 'File exceeds the 5 MB limit.' });
         }
-        return res.status(400).json({ success: false, error: `Invalid attachment upload: ${err.message}` });
+        return res.status(400).json({ success: false, code: 'INVALID_UPLOAD', stage: 'upload_multer', requestId, error: `Invalid attachment upload: ${err.message}` });
       }
-      return res.status(400).json({ success: false, error: err?.message || 'Failed to parse attachment upload.' });
+      return res.status(400).json({ success: false, code: 'INVALID_UPLOAD', stage: 'upload_multer', requestId, error: err?.message || 'Failed to parse attachment upload.' });
     });
   };
   const userReplyAttachmentsUploadMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -388,28 +391,60 @@ async function startServer() {
     return true;
   }
 
+  let phoneIndexCache: Record<string, { uid?: string; email: string; isGoogleOnly?: boolean }> | null = null;
+  let phoneIndexFlushTimer: NodeJS.Timeout | null = null;
+  let phoneIndexWriting = false;
+  let phoneIndexDirty = false;
+
   function readPhoneIndex(): Record<string, { uid?: string; email: string; isGoogleOnly?: boolean }> {
+    if (phoneIndexCache) return phoneIndexCache;
     try {
       if (fs.existsSync(PHONE_INDEX_PATH)) {
-        return JSON.parse(fs.readFileSync(PHONE_INDEX_PATH, 'utf-8'));
+        const parsed = JSON.parse(fs.readFileSync(PHONE_INDEX_PATH, 'utf-8'));
+        phoneIndexCache = parsed && typeof parsed === 'object' ? parsed : {};
+        return phoneIndexCache;
       }
     } catch (e) {
       console.warn("Could not read phone index:", e);
     }
-    return {};
+    phoneIndexCache = {};
+    return phoneIndexCache;
+  }
+
+  async function flushPhoneIndexToDisk(): Promise<void> {
+    if (!phoneIndexCache || phoneIndexWriting) return;
+    phoneIndexDirty = false;
+    phoneIndexWriting = true;
+    try {
+      const snapshot = JSON.stringify(phoneIndexCache, null, 2);
+      await fs.promises.mkdir(path.dirname(PHONE_INDEX_PATH), { recursive: true });
+      const tmp = `${PHONE_INDEX_PATH}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
+      await fs.promises.writeFile(tmp, snapshot, 'utf-8');
+      await fs.promises.rename(tmp, PHONE_INDEX_PATH);
+    } catch (e) {
+      console.warn("Could not update phone index:", e);
+    } finally {
+      phoneIndexWriting = false;
+      if (phoneIndexDirty) {
+        schedulePhoneIndexFlush();
+      }
+    }
+  }
+
+  function schedulePhoneIndexFlush() {
+    phoneIndexDirty = true;
+    if (phoneIndexFlushTimer) return;
+    phoneIndexFlushTimer = setTimeout(() => {
+      phoneIndexFlushTimer = null;
+      void flushPhoneIndexToDisk();
+    }, 250);
+    if (typeof phoneIndexFlushTimer.unref === 'function') phoneIndexFlushTimer.unref();
   }
 
   function updatePhoneIndex(phone: string, data: { uid?: string; email: string; isGoogleOnly?: boolean }) {
-    try {
-      const current = readPhoneIndex();
-      current[phone] = data;
-      fs.mkdirSync(path.dirname(PHONE_INDEX_PATH), { recursive: true });
-      const tmp = `${PHONE_INDEX_PATH}.${process.pid}.${crypto.randomBytes(4).toString('hex')}.tmp`;
-      fs.writeFileSync(tmp, JSON.stringify(current, null, 2), 'utf-8');
-      fs.renameSync(tmp, PHONE_INDEX_PATH);
-    } catch (e) {
-      console.warn("Could not update phone index:", e);
-    }
+    const current = readPhoneIndex();
+    current[phone] = data;
+    schedulePhoneIndexFlush();
   }
 
   // Secure Phone Lookup: Returns only email & provider flag for login; zero PII leakage
@@ -503,6 +538,8 @@ async function startServer() {
   // --- Trusted Server-Authoritative Applications, Profile & Operator Endpoints ---
   app.post("/api/applications", handleCreateApplication);
   app.post("/api/applications/create-payment", handleCreateApplicationPayment);
+  app.post("/api/applications/upload-attachment", operatorAttachmentUploadMiddleware, handleUploadApplicationAttachment);
+  app.get("/api/applications/attachments/:attachmentId", handleGetApplicationAttachment);
   app.post("/api/applications/:appId/confirm-payment", handleConfirmApplicationPayment);
   app.post("/api/applications/:appId/recover-payment", handleRecoverApplicationPayment);
   app.post("/api/profile/update", handleProfileUpdate);
@@ -2293,13 +2330,23 @@ async function startServer() {
     if (shuttingDown) return;
     shuttingDown = true;
     console.log(`[SERVER] Received ${signal}, draining active requests and worker leases...`);
+    if (phoneIndexFlushTimer) {
+      clearTimeout(phoneIndexFlushTimer);
+      phoneIndexFlushTimer = null;
+    }
     (server as any).closeIdleConnections?.();
     server.close(async () => {
-      await shutdownAsyncWorkerLoop(8000).catch(() => {});
+      await Promise.allSettled([
+        flushPhoneIndexToDisk(),
+        shutdownAsyncWorkerLoop(8000),
+      ]);
       process.exit(0);
     });
     const forceTimer = setTimeout(async () => {
-      await shutdownAsyncWorkerLoop(2000).catch(() => {});
+      await Promise.allSettled([
+        flushPhoneIndexToDisk(),
+        shutdownAsyncWorkerLoop(2000),
+      ]);
       process.exit(0);
     }, 10000);
     if (forceTimer.unref) forceTimer.unref();
