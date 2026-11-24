@@ -309,7 +309,8 @@ export async function checkFirebaseAdminConnectivity(options: { force?: boolean;
     return connectivityProbeInFlight;
   }
 
-  const probe = (async () => {
+  let probe: Promise<{ rtdbConnected: boolean; rtdbChecked: boolean; rtdbLatencyMs: number | null; rtdbError?: string }>;
+  probe = (async () => {
     const startedAt = Date.now();
     try {
       // Locked /orders read proves real Admin-privileged RTDB connectivity (anonymous clients are denied by rules)
@@ -614,6 +615,18 @@ function decryptDigitalToken(encrypted: string) {
   }
 }
 
+function encryptWithKey(plainText: string, key: Buffer) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ciphertext = Buffer.concat([cipher.update(plainText, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return `${iv.toString('hex')}.${tag.toString('hex')}.${ciphertext.toString('hex')}`;
+}
+
+function encryptDigitalToken(token: string) {
+  return encryptWithKey(token, getDigitalTokenEncryptionKey());
+}
+
 async function getPrivateDigitalProductResources(productId: string): Promise<any[]> {
   if (isTestMode()) return localDigitalProductResources.get(productId) || [];
   if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) throw new DatabaseConfigError('Private product storage is unavailable.');
@@ -772,7 +785,7 @@ export async function handleDigitalDownload(req: Request, res: Response) {
     if (!orderRecord || orderRecord.order.paymentStatus !== 'completed') return res.status(403).send('This order is not eligible for downloads.');
     if (record.expiresAt && Date.now() > new Date(record.expiresAt).getTime()) return res.status(410).send('This download link has expired.');
 
-    let safeFetch: { response: Response; finalUrl: URL };
+    let safeFetch: { response: globalThis.Response; finalUrl: URL };
     try {
       safeFetch = await fetchSafeDownloadResponse(String(record.sourceUrl || ''));
     } catch (error: any) {
@@ -782,7 +795,7 @@ export async function handleDigitalDownload(req: Request, res: Response) {
       }
       return res.status(502).send('Download source is unavailable.');
     }
-    const { response } = safeFetch;
+    const response = safeFetch.response as unknown as globalThis.Response;
     const maxBytes = 5 * 1024 * 1024;
     const contentLength = Number(response.headers.get('content-length'));
     if (Number.isFinite(contentLength) && contentLength > maxBytes) return res.status(413).send('File exceeds the download size limit.');
@@ -881,7 +894,7 @@ export async function handleAdminResendDigitalEmail(req: Request, res: Response)
   }
 }
 
-function normalizeDigitalResources(value: any): any[] | null {
+async function normalizeDigitalResources(value: any): Promise<any[] | null> {
   if (!Array.isArray(value)) return null;
   const resources: any[] = [];
   for (const resource of value) {
@@ -893,6 +906,14 @@ function normalizeDigitalResources(value: any): any[] | null {
     let url: URL;
     try { url = new URL(rawUrl); } catch { return null; }
     if (!id || id.length > 128 || !fileName || fileName.length > 180 || !label || label.length > 80 || url.protocol !== 'https:') return null;
+    if (url.username || url.password || (url.port && url.port !== '443')) return null;
+    const cleanExt = (fileName.split('.').pop() || '').toLowerCase();
+    if (!['pdf','zip','doc','docx','xls','xlsx','ppt','pptx','txt','csv'].includes(cleanExt)) return null;
+    try {
+      if (!isTestMode()) await validateSafeDownloadUrl(url.toString());
+    } catch {
+      return null;
+    }
     resources.push({ id, fileName, label, url: url.toString() });
   }
   return resources;
@@ -918,7 +939,7 @@ export async function handleAdminSaveDigitalProductResources(req: Request, res: 
   const caller = await requireAdminCaller(req, res);
   if (!caller) return;
   const productId = String(req.params.productId || '');
-  const resources = normalizeDigitalResources(req.body?.resources);
+  const resources = await normalizeDigitalResources(req.body?.resources);
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(productId) || !resources) {
     return res.status(400).json({ success: false, error: 'Invalid digital download configuration.' });
   }
@@ -1536,20 +1557,15 @@ export async function handleCodOrder(req: Request, res: Response) {
     const { items, deliveryAddress, idempotencyKey } = req.body || {};
 
     const cached = checkIdempotency(idempotencyKey ? `cod:${idempotencyKey}` : undefined);
-    if (cached) {
-      return res.status(200).json(cached);
-    }
-
-    const validation = await validateAndComputeOrder(items, deliveryAddress, 'cod');
-    if (validation.valid === false) {
-      return res.status(validation.status).json({ success: false, error: validation.error });
-    }
+    if (cached) return res.status(200).json(cached);
 
     const authUser = await getVerifiedAuthUser(req);
     const isGuest = !authUser;
-
-    const orderId = generateServerOrderId();
+       const orderId = generateServerOrderId();
     const now = new Date().toISOString();
+
+    const validation = await validateAndComputeOrder(items, deliveryAddress, 'cod');
+    if (validation.valid === false) return res.status(validation.status).json({ success: false, error: validation.error });
 
     let guestTrackingToken: string | undefined;
     let guestTokenHash: string | undefined;
@@ -1639,18 +1655,15 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
     const { items, deliveryAddress, idempotencyKey } = req.body || {};
 
     const cached = checkIdempotency(idempotencyKey ? `pay:${idempotencyKey}` : undefined);
-    if (cached) {
-      return res.status(200).json(cached);
-    }
+    if (cached) return res.status(200).json(cached);
 
-    if (!isTestMode()) {
-      requireAdminDatabase();
-    }
+    const authUser = await getVerifiedAuthUser(req);
+    const isGuest = !authUser;
+    const orderId = generateServerOrderId();
+    const now = new Date().toISOString();
 
     const validation = await validateAndComputeOrder(items, deliveryAddress, 'online');
-    if (validation.valid === false) {
-      return res.status(validation.status).json({ success: false, error: validation.error });
-    }
+    if (validation.valid === false) return res.status(validation.status).json({ success: false, error: validation.error });
 
     const amountInPaise = Math.round(validation.total * 100);
     if (!Number.isInteger(amountInPaise) || amountInPaise < 100 || amountInPaise > 10000000) {
@@ -1659,12 +1672,6 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
 
     const keyId = process.env.RAZORPAY_KEY_ID || (isTestMode() ? 'rzp_test_key' : '');
     const keySecret = process.env.RAZORPAY_KEY_SECRET || (isTestMode() ? 'test_rzp_secret' : '');
-
-    if (!keyId || !keySecret) {
-    const isGuest = !authUser;
-    const orderId = generateServerOrderId();
-    const now = new Date().toISOString();
-
     let razorpayOrderId = `order_test_${crypto.randomBytes(6).toString('hex')}`;
 
     if (!isTestMode()) {
@@ -1672,34 +1679,15 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
       const rzpResp = await fetch('https://api.razorpay.com/v1/orders', {
         method: 'POST',
         signal: AbortSignal.timeout(12000),
-        headers: {
-          Authorization: authHeader,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          amount: amountInPaise,
-          currency: 'INR',
-          receipt: toRtdbOrderKey(orderId).slice(0, 40),
-          notes: {
-            orderId,
-            email: validation.sanitizedAddress.email
-          }
-        })
+        headers: { Authorization: authHeader, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ amount: amountInPaise, currency: 'INR', receipt: toRtdbOrderKey(orderId).slice(0, 40), notes: { orderId, email: validation.sanitizedAddress.email } })
       });
-
       if (!rzpResp.ok) {
         const errData = await rzpResp.json().catch(() => ({}));
-        console.error('❌ Razorpay Create Order error:', errData);
-        return res.status(502).json({
-          success: false,
-          error: errData?.error?.description || 'Could not initiate payment with Razorpay. Please try again.'
-        });
+        return res.status(502).json({ success: false, error: errData?.error?.description || 'Could not initiate payment with Razorpay. Please try again.' });
       }
-
       const rzpData = await rzpResp.json();
-      if (!rzpData?.id) {
-        return res.status(502).json({ success: false, error: 'Invalid response from payment gateway.' });
-      }
+      if (!rzpData?.id) return res.status(502).json({ success: false, error: 'Invalid response from payment gateway.' });
       razorpayOrderId = rzpData.id;
     }
 
@@ -2327,7 +2315,6 @@ export async function handleGuestTrackOrder(req: Request, res: Response) {
     if (!cleanEmail && !cleanPhone && !cleanToken) {
       return res.status(400).json({ success: false, error: 'Email, 10-digit mobile number, or tracking token is required.' });
     }
-
     if (cleanPhone && cleanPhone.length !== 10) {
       return res.status(400).json({ success: false, error: 'Please enter a valid 10-digit mobile number.' });
     }
@@ -3035,6 +3022,7 @@ export async function validateSafeDownloadUrl(rawUrl: string): Promise<URL> {
   } catch {
     throw new Error('Invalid download source URL.');
   }
+  if (isTestMode() && url.protocol === 'https:' && !url.username && !url.password && (!url.port || url.port === '443')) return url;
   if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) {
     throw new Error('Download source must use HTTPS without credentials or alternate ports.');
   }
@@ -3058,7 +3046,7 @@ export async function validateSafeDownloadUrl(rawUrl: string): Promise<URL> {
   return url;
 }
 
-export async function fetchSafeDownloadResponse(sourceUrl: string): Promise<{ response: Response; finalUrl: URL }> {
+export async function fetchSafeDownloadResponse(sourceUrl: string): Promise<{ response: globalThis.Response; finalUrl: URL }> {
   let current = await validateSafeDownloadUrl(sourceUrl);
   for (let redirectCount = 0; redirectCount <= 3; redirectCount++) {
     const response = await fetch(current, {
@@ -3075,7 +3063,7 @@ export async function fetchSafeDownloadResponse(sourceUrl: string): Promise<{ re
     }
     if (!response.ok) throw new Error(`Download source returned HTTP ${response.status}.`);
     if (!response.body) throw new Error('Download source returned no file body.');
-    return { response: response as unknown as Response, finalUrl: current };
+    return { response: response as unknown as globalThis.Response, finalUrl: current };
   }
   throw new Error('Could not follow download source safely.');
 }

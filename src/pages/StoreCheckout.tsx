@@ -6,7 +6,7 @@ import { IconRenderer } from '../components/Icons';
 import { Product, UserProfile, Order, OrderAddress } from '../types';
 import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
-import { update, ref as dbRef } from 'firebase/database';
+import { get, update, ref as dbRef } from 'firebase/database';
 import { getRazorpayKeyId, loadRazorpayScript } from '../services/razorpayService';
 import { uploadFileWithRetry, MAX_SERVICE_FILE_SIZE } from '../services/uploadService';
 import {

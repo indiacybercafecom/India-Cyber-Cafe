@@ -20,6 +20,7 @@ const CUSTOM_UPLOADS_DIR = path.resolve('data/uploads/custom-images');
 const DIGITAL_TEST_PRODUCT_ID = 'test-virtual-download-product';
 const APPLY_TSX_PATH = path.resolve('src/pages/Apply.tsx');
 const INDEX_CSS_PATH = path.resolve('src/index.css');
+const STORE_IDEMPOTENCY_PATH = path.resolve('data/store_idempotency.json');
 
 async function runTests() {
   // Back up any existing data/orders_store.json and remove on completion
@@ -28,6 +29,7 @@ async function runTests() {
   const productsBackup = fs.readFileSync(PRODUCTS_DATA_PATH, 'utf-8');
   const outboxBackup = fs.existsSync(NOTIFICATION_OUTBOX_PATH) ? fs.readFileSync(NOTIFICATION_OUTBOX_PATH, 'utf-8') : null;
   const ledgerBackup = fs.existsSync(NOTIFICATION_LEDGER_PATH) ? fs.readFileSync(NOTIFICATION_LEDGER_PATH, 'utf-8') : null;
+  const idempotencyBackup = fs.existsSync(STORE_IDEMPOTENCY_PATH) ? fs.readFileSync(STORE_IDEMPOTENCY_PATH, 'utf-8') : null;
   if (hadExistingStore) fs.unlinkSync(ORDERS_STORE_PATH);
 
   const createdUploadFiles: string[] = [];
@@ -773,6 +775,11 @@ async function runTests() {
     }
     for (const filePath of createdUploadFiles) {
       if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    }
+    if (idempotencyBackup !== null) {
+      fs.writeFileSync(STORE_IDEMPOTENCY_PATH, idempotencyBackup, 'utf-8');
+    } else if (fs.existsSync(STORE_IDEMPOTENCY_PATH)) {
+      fs.unlinkSync(STORE_IDEMPOTENCY_PATH);
     }
   }
 }

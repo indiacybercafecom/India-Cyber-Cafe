@@ -54,6 +54,22 @@ service firebase.storage {
       return request.resource.name.matches('.*\\.(pdf|zip|doc|docx|xls|xlsx|ppt|pptx|txt|csv)$');
     }
 
+    function hasMatchingDigitalMimeAndExtension() {
+      return (
+        (request.resource.contentType == 'application/pdf' && request.resource.name.matches('.*\\.pdf$')) ||
+        (request.resource.contentType == 'application/zip' && request.resource.name.matches('.*\\.zip$')) ||
+        (request.resource.contentType == 'application/x-zip-compressed' && request.resource.name.matches('.*\\.zip$')) ||
+        (request.resource.contentType == 'application/msword' && request.resource.name.matches('.*\\.doc$')) ||
+        (request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' && request.resource.name.matches('.*\\.docx$')) ||
+        (request.resource.contentType == 'application/vnd.ms-excel' && request.resource.name.matches('.*\\.xls$')) ||
+        (request.resource.contentType == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' && request.resource.name.matches('.*\\.xlsx$')) ||
+        (request.resource.contentType == 'application/vnd.ms-powerpoint' && request.resource.name.matches('.*\\.ppt$')) ||
+        (request.resource.contentType == 'application/vnd.openxmlformats-officedocument.presentationml.presentation' && request.resource.name.matches('.*\\.pptx$')) ||
+        (request.resource.contentType == 'text/plain' && request.resource.name.matches('.*\\.txt$')) ||
+        (request.resource.contentType == 'text/csv' && request.resource.name.matches('.*\\.csv$'))
+      );
+    }
+
     // Owner-scoped application reply attachments (up to 5MB PDF/JPG/PNG/WEBP)
     match /application-replies/{userId}/{appId}/{fileName} {
       allow read: if isSignedIn() && (request.auth.uid == userId || isAdmin());
@@ -100,7 +116,8 @@ service firebase.storage {
       allow write: if isAdmin()
         && isUnderDigitalLimit()
         && isAllowedDigitalType()
-        && hasAllowedDigitalExtension();
+        && hasAllowedDigitalExtension()
+        && hasMatchingDigitalMimeAndExtension();
     }
 
     // Product review images

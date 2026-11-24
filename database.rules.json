@@ -188,12 +188,43 @@
 
     "digitalProductResources": {
       ".read": false,
-      ".write": false
+      ".write": false,
+      "$productId": {
+        ".read": false,
+        ".write": false,
+        "resources": { ".read": false, ".write": false },
+        "sourceUrl": { ".read": false, ".write": false },
+        "url": { ".read": false, ".write": false }
+      }
     },
 
     "digitalDownloads": {
       ".read": false,
-      ".write": false
+      ".write": false,
+      "orders": {
+        ".read": false,
+        ".write": false,
+        "$orderId": {
+          ".read": false,
+          ".write": false,
+          "resources": { ".read": false, ".write": false },
+          "encryptedToken": { ".read": false, ".write": false },
+          "sourceUrl": { ".read": false, ".write": false },
+          "tokenHash": { ".read": false, ".write": false }
+        }
+      },
+      "tokens": {
+        ".read": false,
+        ".write": false,
+        "$tokenHash": {
+          ".read": false,
+          ".write": false,
+          "encryptedToken": { ".read": false, ".write": false },
+          "sourceUrl": { ".read": false, ".write": false },
+          "tokenHash": { ".read": false, ".write": false },
+          "downloadCount": { ".read": false, ".write": false }
+        }
+      }
     },
 
     "asyncQueue": {

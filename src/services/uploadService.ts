@@ -7,14 +7,13 @@ export const MAX_SERVICE_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
   'image/jpeg',
-  'image/jpg',
   'image/png',
   'image/webp'
 ]);
 
 const ALLOWED_EXTENSIONS = new Set(['pdf', 'jpg', 'jpeg', 'png', 'webp']);
 
-const DIGITAL_MIME_TO_EXTENSIONS: Record<string, Set<string>> = {
+export const DIGITAL_MIME_TO_EXTENSIONS: Record<string, ReadonlySet<string>> = {
   'application/pdf': new Set(['pdf']),
   'application/zip': new Set(['zip']),
   'application/x-zip-compressed': new Set(['zip']),
@@ -62,8 +61,20 @@ function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauthentica
     return { cleanExt };
   }
 
-  if (!ALLOWED_EXTENSIONS.has(cleanExt) || (mime && !ALLOWED_MIME_TYPES.has(mime))) {
+  const genericMimeToExtension: Record<string, ReadonlySet<string>> = {
+    'application/pdf': new Set(['pdf']),
+    'image/jpeg': new Set(['jpg', 'jpeg']),
+    'image/png': new Set(['png']),
+    'image/webp': new Set(['webp']),
+  };
+  if (!cleanExt || !ALLOWED_EXTENSIONS.has(cleanExt)) {
     throw new Error(`Invalid file type "${file.name}". Only PDF and standard image formats (JPG, PNG, WEBP) are allowed.`);
+  }
+  if (mime && (!ALLOWED_MIME_TYPES.has(mime) || !genericMimeToExtension[mime]?.has(cleanExt))) {
+    throw new Error(`Invalid file type "${file.name}". The file extension does not match its MIME type.`);
+  }
+  if (!mime) {
+    throw new Error(`Invalid file type "${file.name}". A supported MIME type is required.`);
   }
   return { cleanExt };
 }
