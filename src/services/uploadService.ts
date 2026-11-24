@@ -1,5 +1,5 @@
 import { auth, storage } from '../firebase';
-import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
+import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
 export const MAX_SERVICE_FILE_SIZE = 5 * 1024 * 1024;
@@ -29,6 +29,7 @@ export const MAX_DIGITAL_FILE_SIZE = 5 * 1024 * 1024;
 
 export interface UploadFileOptions {
   category?: string;
+  uploadId?: string;
   maxSizeBytes?: number;
   allowUnauthenticated?: boolean;
   onProgress?: (percent: number) => void;
@@ -42,7 +43,7 @@ function getFileExtension(fileName: string): string {
   return dotIndex > 0 ? fileName.slice(dotIndex + 1).toLowerCase().trim() : '';
 }
 
-function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauthenticated?: boolean, category?: string): { cleanExt: string } {
+async function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauthenticated?: boolean, category?: string): Promise<DigitalUploadValidation> {
   if (!allowUnauthenticated && !auth.currentUser) {
     throw new Error('Authentication required to upload files.');
   }
@@ -59,8 +60,7 @@ function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauthentica
   const mime = (file.type || '').toLowerCase().trim();
 
   if (category === 'digital-products') {
-    validateDigitalUploadFile(file);
-    return { cleanExt };
+    return validateDigitalUploadFile(file);
   }
 
   const genericMimeToExtension: Record<string, ReadonlySet<string>> = {
@@ -78,12 +78,13 @@ function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauthentica
   if (!mime) {
     throw new Error(`Invalid file type "${file.name}". A supported MIME type is required.`);
   }
-  return { cleanExt };
+  return { cleanExt, mime };
 }
 
 function uploadOnceResumable(
   file: File,
   cleanExt: string,
+  contentType: string,
   options: UploadFileOptions,
   filePath: string
 ): Promise<string> {
@@ -99,7 +100,7 @@ function uploadOnceResumable(
 
   const storageRef = ref(storage, filePath);
   const metadata = {
-    contentType: file.type || 'application/octet-stream',
+    contentType,
   };
 
   return new Promise<string>((resolve, reject) => {
@@ -195,12 +196,13 @@ export async function uploadFileWithRetry(
   file: File,
   options: UploadFileOptions = {}
 ): Promise<string> {
-  const { cleanExt } = validateUploadFile(file, options.maxSizeBytes, options.allowUnauthenticated, options.category);
+  const { cleanExt, mime } = await validateUploadFile(file, options.maxSizeBytes, options.allowUnauthenticated, options.category);
   const maxRetries = Math.max(0, options.maxRetries ?? 2);
   const category = options.category ?? 'general';
   const safeCategory = category.replace(/[^a-zA-Z0-9_-]/g, '') || 'general';
   const randomString = Math.random().toString(36).substring(2, 14);
-  const filePath = `${safeCategory}/${Date.now()}_${randomString}.${cleanExt}`;
+  const uploadId = options.uploadId?.replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100) || `${Date.now()}_${randomString}`;
+  const filePath = `${safeCategory}/${uploadId}.${cleanExt}`;
   let lastError: any = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -208,7 +210,7 @@ export async function uploadFileWithRetry(
       throw new DOMException('Upload cancelled', 'AbortError');
     }
     try {
-      return await uploadOnceResumable(file, cleanExt, options, filePath);
+      return await uploadOnceResumable(file, cleanExt, mime, options, filePath);
     } catch (error: any) {
       lastError = error;
       if (attempt < maxRetries && isRetryableUploadError(error)) {
@@ -220,6 +222,7 @@ export async function uploadFileWithRetry(
     }
   }
 
+  try { await deleteObject(ref(storage, filePath)); } catch {}
   console.error('File Upload Error:', lastError);
   if (lastError?.name === 'AbortError') {
     throw lastError;
@@ -230,6 +233,14 @@ export async function uploadFileWithRetry(
 
 export async function uploadFile(file: File, category: string = 'general', maxSizeBytes?: number): Promise<string> {
   return uploadFileWithRetry(file, { category, maxSizeBytes });
+}
+
+export async function deleteUploadedDigitalFile(downloadUrl: string): Promise<void> {
+  const storageRef = ref(storage, downloadUrl);
+  if (!storageRef.fullPath.startsWith('digital-products/')) {
+    throw new Error('Refusing to delete a file outside digital product storage.');
+  }
+  await deleteObject(storageRef);
 }
 
 export interface BoundedUploadOptions {
@@ -298,15 +309,34 @@ export interface DigitalUploadValidation {
   mime: string;
 }
 
-export function validateDigitalUploadFile(file: File): DigitalUploadValidation {
+export async function validateDigitalUploadFile(file: File): Promise<DigitalUploadValidation> {
   if (file.size <= 0) throw new Error(`File "${file.name}" is empty.`);
   if (file.size > MAX_DIGITAL_FILE_SIZE) throw new Error(`File "${file.name}" exceeds the 5 MB limit.`);
 
   const cleanExt = getFileExtension(file.name);
-  const mime = (file.type || '').toLowerCase().trim();
-  const allowedExtensions = DIGITAL_MIME_TO_EXTENSIONS[mime];
-  if (!allowedExtensions || !allowedExtensions.has(cleanExt)) {
+  const canonicalMime = Object.entries(DIGITAL_MIME_TO_EXTENSIONS)
+    .find(([, extensions]) => extensions.has(cleanExt))?.[0];
+  if (!canonicalMime) {
     throw new Error(`Invalid digital file type "${file.name}". Supported formats are PDF, ZIP, DOC, DOCX, XLS, XLSX, PPT and PPTX.`);
   }
-  return { cleanExt, mime };
+
+  const declaredMime = (file.type || '').toLowerCase().trim();
+  if (declaredMime && declaredMime !== 'application/octet-stream' && !DIGITAL_MIME_TO_EXTENSIONS[declaredMime]?.has(cleanExt)) {
+    throw new Error(`Invalid digital file type "${file.name}". The file extension does not match its MIME type.`);
+  }
+
+  const signature = new Uint8Array(await file.slice(0, 8).arrayBuffer());
+  const signatureText = String.fromCharCode(...signature);
+  const isPdf = cleanExt === 'pdf' && signatureText.startsWith('%PDF-');
+  const isZip = ['zip', 'docx', 'xlsx', 'pptx'].includes(cleanExt)
+    && signature[0] === 0x50 && signature[1] === 0x4b
+    && [0x03, 0x05, 0x07].includes(signature[2])
+    && [0x04, 0x06, 0x08].includes(signature[3]);
+  const isLegacyOffice = ['doc', 'xls', 'ppt'].includes(cleanExt)
+    && signature.slice(0, 8).every((byte, index) => byte === [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1][index]);
+  if (!isPdf && !isZip && !isLegacyOffice) {
+    throw new Error(`Invalid digital file content in "${file.name}".`);
+  }
+
+  return { cleanExt, mime: canonicalMime };
 }

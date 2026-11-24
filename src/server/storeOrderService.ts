@@ -910,8 +910,8 @@ async function normalizeDigitalResources(value: any): Promise<any[] | null> {
     if (url.username || url.password || (url.port && url.port !== '443')) return null;
     const cleanExt = (fileName.split('.').pop() || '').toLowerCase().trim();
     if (!['pdf','zip','doc','docx','xls','xlsx','ppt','pptx'].includes(cleanExt)) return null;
-    if (!isTestMode()) {
-      if (url.hostname !== 'firebasestorage.googleapis.com' || url.searchParams.get('alt') !== 'media' || !url.searchParams.get('token')) return null;
+    if (!isTestMode() && url.hostname === 'firebasestorage.googleapis.com') {
+      if (url.searchParams.get('alt') !== 'media' || !url.searchParams.get('token')) return null;
       const storagePath = url.pathname.match(/^\/v0\/b\/india-cyber-cafe-free\/o\/(.+)$/);
       if (!storagePath) return null;
       let objectName: string;

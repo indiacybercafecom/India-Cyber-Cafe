@@ -6,7 +6,7 @@ import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { generateSlug } from '../utils/slugGenerator';
 import { trimWhitespace } from '../utils/sanitizer';
-import { uploadFilesBounded, uploadFileWithRetry, MAX_SERVICE_FILE_SIZE } from '../services/uploadService';
+import { deleteUploadedDigitalFile, uploadFilesBounded, uploadFileWithRetry, MAX_SERVICE_FILE_SIZE } from '../services/uploadService';
 import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
 import { withClientTimeout } from '../utils/fetchWithTimeout';
 
@@ -45,12 +45,49 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
 
   const [uploadingImages, setUploadingImages] = useState(false);
   const [uploadingResourceId, setUploadingResourceId] = useState<string | null>(null);
+  const [failedResourceUpload, setFailedResourceUpload] = useState<{ resourceId: string; file: File; uploadId: string; message: string } | null>(null);
   const [resourcesLoaded, setResourcesLoaded] = useState(!product || product.productType !== 'virtual');
   const [resourcesLoadFailed, setResourcesLoadFailed] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const uploadingRef = useRef(false);
   const newProductIdRef = useRef('');
+  const pendingResourceUploadsRef = useRef(new Set<string>());
   const { isSubmitting: loading, submittingRef, runSubmission } = useSubmissionLifecycle();
+
+  const handleClose = async () => {
+    if (uploadingRef.current) return;
+    const pendingUrls = [...pendingResourceUploadsRef.current];
+    if (pendingUrls.length > 0) {
+      try {
+        const productId = product?.id || newProductIdRef.current;
+        let savedUrls = new Set<string>();
+        if (productId) {
+          const idToken = await auth.currentUser?.getIdToken();
+          if (!idToken) throw new Error('Admin authentication is required to clean up uploaded files.');
+          const response = await fetch(`/api/admin/store/products/${encodeURIComponent(productId)}/digital-resources`, {
+            headers: { Authorization: `Bearer ${idToken}` },
+          });
+          const result = await response.json().catch(() => null);
+          if (!response.ok || !result?.success || !Array.isArray(result.resources)) {
+            throw new Error(result?.error || 'Could not verify saved digital resources.');
+          }
+          savedUrls = new Set(result.resources.map((resource: DigitalResource) => resource.url));
+        }
+
+        for (const url of pendingUrls) {
+          if (savedUrls.has(url)) {
+            pendingResourceUploadsRef.current.delete(url);
+            continue;
+          }
+          await deleteUploadedDigitalFile(url);
+          pendingResourceUploadsRef.current.delete(url);
+        }
+      } catch (error: any) {
+        showToast(error, 'error', 'Could not clean up an unsaved digital file.');
+      }
+    }
+    onClose();
+  };
 
   useEffect(() => {
     if (!product?.id || product.productType !== 'virtual') return;
@@ -144,22 +181,32 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
     }));
   };
 
-  const handleDigitalFileUpload = async (resourceId: string, file?: File) => {
+  const handleDigitalFileUpload = async (resourceId: string, file?: File, uploadId?: string) => {
     if (!file || uploadingRef.current) return;
+    const stableUploadId: string = uploadId || crypto.randomUUID();
     uploadingRef.current = true;
     setUploadingResourceId(resourceId);
+    setFailedResourceUpload(null);
     setUploadPercent(0);
     try {
       const url = await uploadFileWithRetry(file, {
         category: 'digital-products',
+        uploadId: stableUploadId,
         maxSizeBytes: MAX_SERVICE_FILE_SIZE,
         onProgress: setUploadPercent,
       });
       setDigitalResources(items => items.map(item => item.id === resourceId
         ? { ...item, fileName: file.name, url, label: item.label || `Download ${file.name}` }
         : item));
+      pendingResourceUploadsRef.current.add(url);
       showToast('Digital file uploaded successfully.', 'success');
     } catch (error: any) {
+      setFailedResourceUpload({
+        resourceId,
+        file,
+        uploadId: stableUploadId,
+        message: error instanceof Error ? error.message : String(error || 'Upload failed.'),
+      });
       showToast(error, 'error', 'Unable to upload digital file.');
     } finally {
       uploadingRef.current = false;
@@ -251,7 +298,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
 
         await withClientTimeout(onSave(sanitizedData), 15000, 'Saving product timed out. Please try again.');
         showToast(product ? 'Product updated successfully!' : 'Product added successfully!', 'success');
-        onClose();
+        await handleClose();
       });
     } catch (error: any) {
       if (error?.name !== 'AbortError') {
@@ -265,7 +312,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       <div className="bg-white rounded-2xl sm:rounded-3xl shadow-2xl w-full max-w-2xl relative overflow-hidden max-h-[98vh] sm:max-h-[95vh] flex flex-col">
         <div className="p-4 sm:p-6 bg-white border-b border-slate-100 flex justify-between items-center z-10 flex-shrink-0">
           <h2 className="text-xl sm:text-2xl font-bold text-navy pr-2">{product ? 'Edit Product' : 'Add New Product'}</h2>
-          <button onClick={onClose} className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-full transition-all flex-shrink-0">
+          <button type="button" onClick={() => void handleClose()} disabled={Boolean(uploadingResourceId)} className="p-1.5 sm:p-2 hover:bg-slate-100 rounded-full transition-all flex-shrink-0 disabled:opacity-50">
             <IconRenderer name="x" className="w-5 h-5 sm:w-6 sm:h-6 text-slate-400" />
           </button>
         </div>
@@ -426,6 +473,22 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                         {uploadingResourceId === resource.id ? 'Uploading...' : 'Upload file'}
                         <input type="file" accept=".pdf,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx" disabled={Boolean(uploadingResourceId)} onChange={e => { void handleDigitalFileUpload(resource.id, e.target.files?.[0]); e.target.value = ''; }} className="sr-only" />
                       </label>
+                      {uploadingResourceId === resource.id && (
+                        <p role="status" className="text-xs text-slate-500">Uploading: {uploadPercent}%</p>
+                      )}
+                      {failedResourceUpload?.resourceId === resource.id && (
+                        <div className="space-y-1">
+                          <p role="alert" className="text-xs text-red-600">{failedResourceUpload.message}</p>
+                          <button
+                            type="button"
+                            disabled={Boolean(uploadingResourceId)}
+                            onClick={() => void handleDigitalFileUpload(resource.id, failedResourceUpload.file, failedResourceUpload.uploadId)}
+                            className="text-xs font-semibold text-navy underline disabled:opacity-50"
+                          >
+                            Retry upload
+                          </button>
+                        </div>
+                      )}
                     </div>
                     <button type="button" title="Remove resource" aria-label="Remove resource" onClick={() => setDigitalResources(items => items.filter(item => item.id !== resource.id))} className="p-2 text-red-600"><IconRenderer name="trash-2" className="w-4 h-4" /></button>
                   </div>
@@ -616,7 +679,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-slate-200 mt-3 sm:mt-4">
               <button
                 type="button"
-                onClick={onClose}
+                onClick={() => void handleClose()}
                 className="flex-1 px-4 sm:px-6 py-3 rounded-xl border-2 border-slate-200 font-bold text-slate-700 hover:bg-slate-50 transition-all text-sm sm:text-base"
               >
                 Cancel

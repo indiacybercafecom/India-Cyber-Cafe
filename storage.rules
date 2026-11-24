@@ -112,11 +112,12 @@ service firebase.storage {
     // Digital product files are admin-readable for upload URL retrieval and customer-private otherwise.
     match /digital-products/{allPaths=**} {
       allow read: if isAdmin();
-      allow write: if isAdmin()
+      allow create, update: if isAdmin()
         && isUnderDigitalLimit()
         && isAllowedDigitalType()
         && hasAllowedDigitalExtension()
         && hasMatchingDigitalMimeAndExtension();
+      allow delete: if isAdmin();
     }
 
     // Product review images
