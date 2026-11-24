@@ -49,6 +49,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
   const [resourcesLoadFailed, setResourcesLoadFailed] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const uploadingRef = useRef(false);
+  const newProductIdRef = useRef('');
   const { isSubmitting: loading, submittingRef, runSubmission } = useSubmissionLifecycle();
 
   useEffect(() => {
@@ -144,12 +145,15 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
   };
 
   const handleDigitalFileUpload = async (resourceId: string, file?: File) => {
-    if (!file) return;
+    if (!file || uploadingRef.current) return;
+    uploadingRef.current = true;
     setUploadingResourceId(resourceId);
+    setUploadPercent(0);
     try {
       const url = await uploadFileWithRetry(file, {
         category: 'digital-products',
         maxSizeBytes: MAX_SERVICE_FILE_SIZE,
+        onProgress: setUploadPercent,
       });
       setDigitalResources(items => items.map(item => item.id === resourceId
         ? { ...item, fileName: file.name, url, label: item.label || `Download ${file.name}` }
@@ -158,7 +162,9 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
     } catch (error: any) {
       showToast(error, 'error', 'Unable to upload digital file.');
     } finally {
+      uploadingRef.current = false;
       setUploadingResourceId(null);
+      setUploadPercent(0);
     }
   };
 
@@ -206,7 +212,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       return;
     }
 
-    if (!formData.images || formData.images.length === 0) {
+    if (!isVirtual && (!formData.images || formData.images.length === 0)) {
       showToast('Please upload at least one product image', 'error');
       return;
     }
@@ -227,15 +233,18 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
           name: trimWhitespace(formData.name),
           shortDescription: trimWhitespace(formData.shortDescription),
           longDescription: trimWhitespace(formData.longDescription),
-          customImageInstructions: trimWhitespace(formData.customImageInstructions),
-          turnaroundTime: isVirtual ? '' : trimWhitespace(formData.turnaroundTime),
-          seoTitle: trimWhitespace(formData.seoTitle),
-          seoDescription: trimWhitespace(formData.seoDescription),
-          seoKeywords: trimWhitespace(formData.seoKeywords)
+          customImageInstructions: trimWhitespace(formData.customImageInstructions || ''),
+          turnaroundTime: isVirtual ? '' : trimWhitespace(formData.turnaroundTime || ''),
+          seoTitle: trimWhitespace(formData.seoTitle || ''),
+          seoDescription: trimWhitespace(formData.seoDescription || ''),
+          seoKeywords: trimWhitespace(formData.seoKeywords || '')
         };
 
         if (!product) {
-          sanitizedData.id = generateSlug(sanitizedData.name);
+          if (!newProductIdRef.current) {
+            newProductIdRef.current = `${generateSlug(sanitizedData.name)}-${crypto.randomUUID()}`;
+          }
+          sanitizedData.id = newProductIdRef.current;
         }
 
         sanitizedData.permalink = generateSlug(sanitizedData.name);
@@ -467,7 +476,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
 
           {/* Product Images */}
           <div className="space-y-2 sm:space-y-3 px-3 sm:px-4">
-            <h3 className="font-bold text-navy text-lg">Product Images *</h3>
+            <h3 className="font-bold text-navy text-lg">Product Images {!isVirtual && '*'}</h3>
             
             <div className="border-2 border-dashed border-slate-300 rounded-2xl p-4 text-center hover:border-navy transition-colors">
               <input
@@ -520,7 +529,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                 placeholder="Page title for search engines"
                 maxLength={60}
               />
-              <p className="text-xs text-slate-400 mt-1">{formData.seoTitle.length}/60</p>
+              <p className="text-xs text-slate-400 mt-1">{(formData.seoTitle || '').length}/60</p>
             </div>
 
             <div>
@@ -533,7 +542,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                 placeholder="Page description for search engines"
                 maxLength={160}
               />
-              <p className="text-xs text-slate-400 mt-1">{formData.seoDescription.length}/160</p>
+              <p className="text-xs text-slate-400 mt-1">{(formData.seoDescription || '').length}/160</p>
             </div>
 
             <div>

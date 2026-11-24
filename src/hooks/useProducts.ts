@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ref, onValue, set, update, remove } from 'firebase/database';
+import { ref, onValue, set, update, remove, push, runTransaction } from 'firebase/database';
 import { auth, rtdb } from '../firebase';
 import { Product } from '../types';
 import { cacheManager } from '../utils/cacheManager';
@@ -203,38 +203,54 @@ export function useProducts() {
     return Array.isArray(result.resources) ? result.resources : [];
   };
 
-  const addProduct = async (product: Omit<Product, 'id'>) => {
-    let productId = generateSlug(product.name);
-
-    const existingProduct = products.find((p) => p.id === productId);
-    if (existingProduct) {
-      const timestamp = Date.now().toString().slice(-6);
-      productId = `${productId}-${timestamp}`;
+  const addProduct = async (product: Omit<Product, 'id'> & { id?: string }) => {
+    const productsRef = ref(rtdb, 'products');
+    let productId = product.id?.trim() || generateSlug(product.name);
+    if (products.some(existing => existing.id === productId)) {
+      productId = push(productsRef).key || generateSlug(product.name);
     }
-
     const { digitalResources = [], ...publicProduct } = product;
+    let created = false;
+    let matchingExistingRecord = false;
 
     try {
-      await set(ref(rtdb, `products/${productId}`), {
-        ...publicProduct,
-        id: productId,
-      });
+      for (let attempt = 0; attempt < 3 && !created; attempt++) {
+        const result = await runTransaction(ref(rtdb, `products/${productId}`), current => {
+          if (current !== null) return;
+          return { ...publicProduct, id: productId };
+        }, { applyLocally: false });
+        created = result.committed;
+        if (!created && product.id?.trim() === productId) {
+          const existing = result.snapshot.val();
+          matchingExistingRecord = Boolean(existing
+            && existing.name === publicProduct.name
+            && existing.permalink === publicProduct.permalink
+            && existing.productType === publicProduct.productType
+            && existing.price === publicProduct.price
+            && existing.category === publicProduct.category);
+          if (matchingExistingRecord) break;
+        }
+        if (!created && !matchingExistingRecord) {
+          productId = push(productsRef).key || `${generateSlug(product.name)}-${Date.now()}`;
+        }
+      }
+      if (!created && !matchingExistingRecord) throw new Error('Could not reserve a unique product ID. Please try again.');
 
       if (product.productType === 'virtual') {
         await saveDigitalResources(productId, digitalResources);
       }
     } catch (error) {
-      try {
-        await remove(ref(rtdb, `products/${productId}`));
+      if (created) {
+        try { await remove(ref(rtdb, `products/${productId}`)); } catch {}
         if (product.productType === 'virtual') {
-          await deleteDigitalResources(productId);
+          try { await deleteDigitalResources(productId); } catch {}
         }
-      } catch {}
+      }
       throw error;
     }
 
     const newProduct = { ...publicProduct, id: productId } as Product;
-    const updated = [...products, newProduct];
+    const updated = [...products.filter(existing => existing.id !== productId), newProduct];
     setProducts(updated);
     cacheManager.set('products', updated);
     syncManager.updateSync('products');
@@ -256,7 +272,9 @@ export function useProducts() {
       } catch (error) {
         try {
           if (existingProduct) await set(ref(rtdb, `products/${id}`), existingProduct);
-          await saveDigitalResources(id, previousResources || []);
+          else await remove(ref(rtdb, `products/${id}`));
+          if (existingProduct?.productType === 'virtual') await saveDigitalResources(id, previousResources || []);
+          else await deleteDigitalResources(id);
         } catch {}
         throw error;
       }
@@ -276,7 +294,11 @@ export function useProducts() {
       await update(ref(rtdb, `products/${id}`), publicData);
     }
 
-    const updated = products.map((p: Product) => (p.id === id ? { ...p, ...data } : p));
+    const updated = products.map((product: Product) => {
+      const publicProduct = { ...product };
+      delete publicProduct.digitalResources;
+      return publicProduct.id === id ? { ...publicProduct, ...publicData } : publicProduct;
+    });
     setProducts(updated);
     cacheManager.set('products', updated);
     syncManager.updateSync('products');

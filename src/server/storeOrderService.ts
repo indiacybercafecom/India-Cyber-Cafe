@@ -309,7 +309,7 @@ export async function checkFirebaseAdminConnectivity(options: { force?: boolean;
     return connectivityProbeInFlight;
   }
 
-  let probe: Promise<{ rtdbConnected: boolean; rtdbChecked: boolean; rtdbLatencyMs: number | null; rtdbError?: string }>;
+  let probe: Promise<{ rtdbConnected: boolean; rtdbChecked: boolean; rtdbLatencyMs: number | null; rtdbError?: string }> | null = null;
   probe = (async () => {
     const startedAt = Date.now();
     try {
@@ -334,7 +334,7 @@ export async function checkFirebaseAdminConnectivity(options: { force?: boolean;
       connectivityCache = { expiresAt: Date.now() + 15000, result: res };
       return res;
     } finally {
-      if (connectivityProbeInFlight === probe) {
+      if (probe && connectivityProbeInFlight === probe) {
         connectivityProbeInFlight = null;
       }
     }
@@ -895,8 +895,9 @@ export async function handleAdminResendDigitalEmail(req: Request, res: Response)
 }
 
 async function normalizeDigitalResources(value: any): Promise<any[] | null> {
-  if (!Array.isArray(value)) return null;
+  if (!Array.isArray(value) || value.length > 50) return null;
   const resources: any[] = [];
+  const resourceIds = new Set<string>();
   for (const resource of value) {
     if (!resource || typeof resource !== 'object') return null;
     const id = String(resource.id || '').trim();
@@ -905,15 +906,27 @@ async function normalizeDigitalResources(value: any): Promise<any[] | null> {
     const rawUrl = String(resource.url || '').trim();
     let url: URL;
     try { url = new URL(rawUrl); } catch { return null; }
-    if (!id || id.length > 128 || !fileName || fileName.length > 180 || !label || label.length > 80 || url.protocol !== 'https:') return null;
+    if (!id || id.length > 128 || resourceIds.has(id) || !fileName || fileName.length > 180 || /[\u0000-\u001f\u007f/\\]/.test(fileName) || !label || label.length > 80 || url.protocol !== 'https:') return null;
     if (url.username || url.password || (url.port && url.port !== '443')) return null;
-    const cleanExt = (fileName.split('.').pop() || '').toLowerCase();
+    const cleanExt = (fileName.split('.').pop() || '').toLowerCase().trim();
     if (!['pdf','zip','doc','docx','xls','xlsx','ppt','pptx'].includes(cleanExt)) return null;
+    if (!isTestMode()) {
+      if (url.hostname !== 'firebasestorage.googleapis.com' || url.searchParams.get('alt') !== 'media' || !url.searchParams.get('token')) return null;
+      const storagePath = url.pathname.match(/^\/v0\/b\/india-cyber-cafe-free\/o\/(.+)$/);
+      if (!storagePath) return null;
+      let objectName: string;
+      try { objectName = decodeURIComponent(storagePath[1]); } catch { return null; }
+      const objectFileName = objectName.slice('digital-products/'.length);
+      if (!objectName.startsWith('digital-products/') || !objectFileName || objectFileName.includes('/') || objectFileName.includes('\\')) return null;
+      const objectExt = (objectFileName.split('.').pop() || '').toLowerCase();
+      if (objectExt !== cleanExt) return null;
+    }
     try {
       if (!isTestMode()) await validateSafeDownloadUrl(url.toString());
     } catch {
       return null;
     }
+    resourceIds.add(id);
     resources.push({ id, fileName, label, url: url.toString() });
   }
   return resources;
@@ -927,7 +940,7 @@ export async function handleAdminGetDigitalProductResources(req: Request, res: R
   try {
     if (isTestMode()) return res.json({ success: true, resources: localDigitalProductResources.get(productId) || [] });
     if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) return res.status(503).json({ success: false, error: 'Private product storage is unavailable.' });
-    const snapshot = await rtdbAdmin.ref(`digitalProductResources/${productId}`).once('value');
+    const snapshot = await withTimeout(rtdbAdmin.ref(`digitalProductResources/${productId}`).once('value'), 7000, 'Reading private product resources');
     return res.json({ success: true, resources: snapshot.val()?.resources || [] });
   } catch (error: any) {
     console.error('Could not read private product downloads:', error?.message || error);
@@ -947,7 +960,7 @@ export async function handleAdminSaveDigitalProductResources(req: Request, res: 
     if (isTestMode()) localDigitalProductResources.set(productId, resources);
     else {
       if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) return res.status(503).json({ success: false, error: 'Private product storage is unavailable.' });
-      await rtdbAdmin.ref(`digitalProductResources/${productId}`).set({ resources, updatedAt: new Date().toISOString(), updatedBy: caller.uid });
+      await withTimeout(rtdbAdmin.ref(`digitalProductResources/${productId}`).set({ resources, updatedAt: new Date().toISOString(), updatedBy: caller.uid }), 7000, 'Saving private product resources');
     }
     return res.json({ success: true });
   } catch (error: any) {
@@ -965,7 +978,7 @@ export async function handleAdminDeleteDigitalProductResources(req: Request, res
     if (isTestMode()) localDigitalProductResources.delete(productId);
     else {
       if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) return res.status(503).json({ success: false, error: 'Private product storage is unavailable.' });
-      await rtdbAdmin.ref(`digitalProductResources/${productId}`).remove();
+      await withTimeout(rtdbAdmin.ref(`digitalProductResources/${productId}`).remove(), 7000, 'Deleting private product resources');
     }
     return res.json({ success: true });
   } catch (error: any) {

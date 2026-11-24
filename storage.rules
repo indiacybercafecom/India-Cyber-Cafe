@@ -7,7 +7,10 @@ service firebase.storage {
     }
 
     function isAdmin() {
-      return isSignedIn() && request.auth.uid == 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2';
+      return isSignedIn() && (
+        request.auth.uid == 'fC9a8NWCx7XsnPb2iJKMa1UtZMr2' ||
+        request.auth.token.admin == true
+      );
     }
 
     function isUnder5MB() {

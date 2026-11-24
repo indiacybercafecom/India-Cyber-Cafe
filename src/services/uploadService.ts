@@ -37,6 +37,11 @@ export interface UploadFileOptions {
   maxRetries?: number;
 }
 
+function getFileExtension(fileName: string): string {
+  const dotIndex = fileName.lastIndexOf('.');
+  return dotIndex > 0 ? fileName.slice(dotIndex + 1).toLowerCase().trim() : '';
+}
+
 function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauthenticated?: boolean, category?: string): { cleanExt: string } {
   if (!allowUnauthenticated && !auth.currentUser) {
     throw new Error('Authentication required to upload files.');
@@ -44,14 +49,13 @@ function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauthentica
   if (file.size <= 0) {
     throw new Error(`File "${file.name}" is empty.`);
   }
-  const effectiveLimit = category === 'digital-products'
-    ? MAX_DIGITAL_FILE_SIZE
-    : (maxSizeBytes ?? MAX_SERVICE_FILE_SIZE);
+  const policyLimit = category === 'digital-products' ? MAX_DIGITAL_FILE_SIZE : MAX_SERVICE_FILE_SIZE;
+  const effectiveLimit = Math.min(maxSizeBytes ?? policyLimit, policyLimit);
   if (file.size > effectiveLimit) {
     throw new Error(`File "${file.name}" exceeds the ${Math.round(effectiveLimit / (1024 * 1024))} MB limit.`);
   }
 
-  const cleanExt = (file.name.split('.').pop() || '').toLowerCase().trim();
+  const cleanExt = getFileExtension(file.name);
   const mime = (file.type || '').toLowerCase().trim();
 
   if (category === 'digital-products') {
@@ -80,10 +84,10 @@ function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauthentica
 function uploadOnceResumable(
   file: File,
   cleanExt: string,
-  options: UploadFileOptions
+  options: UploadFileOptions,
+  filePath: string
 ): Promise<string> {
   const {
-    category = 'general',
     onProgress,
     signal,
     timeoutMs = 45000,
@@ -93,11 +97,7 @@ function uploadOnceResumable(
     return Promise.reject(new DOMException('Upload cancelled', 'AbortError'));
   }
 
-  const randomString = Math.random().toString(36).substring(2, 14);
-  const timestamp = Date.now();
-  const safeCategory = category.replace(/[^a-zA-Z0-9_-]/g, '') || 'general';
-  const fileName = `${safeCategory}/${timestamp}_${randomString}.${cleanExt}`;
-  const storageRef = ref(storage, fileName);
+  const storageRef = ref(storage, filePath);
   const metadata = {
     contentType: file.type || 'application/octet-stream',
   };
@@ -169,12 +169,38 @@ function isRetryableUploadError(err: any): boolean {
   return true;
 }
 
+function waitForRetry(delayMs: number, signal?: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let timer: ReturnType<typeof setTimeout>;
+    const cleanup = () => signal?.removeEventListener('abort', onAbort);
+    const onAbort = () => {
+      clearTimeout(timer);
+      cleanup();
+      reject(new DOMException('Upload cancelled', 'AbortError'));
+    };
+
+    if (signal?.aborted) {
+      onAbort();
+      return;
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+    timer = setTimeout(() => {
+      cleanup();
+      resolve();
+    }, delayMs);
+  });
+}
+
 export async function uploadFileWithRetry(
   file: File,
   options: UploadFileOptions = {}
 ): Promise<string> {
   const { cleanExt } = validateUploadFile(file, options.maxSizeBytes, options.allowUnauthenticated, options.category);
   const maxRetries = Math.max(0, options.maxRetries ?? 2);
+  const category = options.category ?? 'general';
+  const safeCategory = category.replace(/[^a-zA-Z0-9_-]/g, '') || 'general';
+  const randomString = Math.random().toString(36).substring(2, 14);
+  const filePath = `${safeCategory}/${Date.now()}_${randomString}.${cleanExt}`;
   let lastError: any = null;
 
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -182,21 +208,12 @@ export async function uploadFileWithRetry(
       throw new DOMException('Upload cancelled', 'AbortError');
     }
     try {
-      return await uploadOnceResumable(file, cleanExt, options);
+      return await uploadOnceResumable(file, cleanExt, options, filePath);
     } catch (error: any) {
       lastError = error;
       if (attempt < maxRetries && isRetryableUploadError(error)) {
         const delayMs = 400 * Math.pow(2, attempt);
-        await new Promise<void>((resolve, reject) => {
-          const t = setTimeout(resolve, delayMs);
-          if (options.signal) {
-            const abortWait = () => {
-              clearTimeout(t);
-              reject(new DOMException('Upload cancelled', 'AbortError'));
-            };
-            options.signal.addEventListener('abort', abortWait, { once: true });
-          }
-        });
+        await waitForRetry(delayMs, options.signal);
         continue;
       }
       break;
@@ -285,7 +302,7 @@ export function validateDigitalUploadFile(file: File): DigitalUploadValidation {
   if (file.size <= 0) throw new Error(`File "${file.name}" is empty.`);
   if (file.size > MAX_DIGITAL_FILE_SIZE) throw new Error(`File "${file.name}" exceeds the 5 MB limit.`);
 
-  const cleanExt = (file.name.split('.').pop() || '').toLowerCase().trim();
+  const cleanExt = getFileExtension(file.name);
   const mime = (file.type || '').toLowerCase().trim();
   const allowedExtensions = DIGITAL_MIME_TO_EXTENSIONS[mime];
   if (!allowedExtensions || !allowedExtensions.has(cleanExt)) {
