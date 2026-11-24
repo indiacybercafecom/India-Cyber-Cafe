@@ -333,7 +333,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
           <div className="space-y-2 sm:space-y-3 p-3 sm:p-4 bg-slate-50 rounded-2xl">
             <h3 className="font-bold text-navy text-lg">Pricing & Stock</h3>
             
-            {!isVirtual && <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1">Base Price (₹) *</label>
                 <input
@@ -359,7 +359,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                   step="0.01"
                 />
               </div>
-            </div>}
+            </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div>
