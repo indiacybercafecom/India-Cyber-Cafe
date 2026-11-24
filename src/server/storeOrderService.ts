@@ -908,7 +908,7 @@ async function normalizeDigitalResources(value: any): Promise<any[] | null> {
     if (!id || id.length > 128 || !fileName || fileName.length > 180 || !label || label.length > 80 || url.protocol !== 'https:') return null;
     if (url.username || url.password || (url.port && url.port !== '443')) return null;
     const cleanExt = (fileName.split('.').pop() || '').toLowerCase();
-    if (!['pdf','zip','doc','docx','xls','xlsx','ppt','pptx','txt','csv'].includes(cleanExt)) return null;
+    if (!['pdf','zip','doc','docx','xls','xlsx','ppt','pptx'].includes(cleanExt)) return null;
     try {
       if (!isTestMode()) await validateSafeDownloadUrl(url.toString());
     } catch {

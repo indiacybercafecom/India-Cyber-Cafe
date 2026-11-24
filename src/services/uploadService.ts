@@ -23,8 +23,6 @@ export const DIGITAL_MIME_TO_EXTENSIONS: Record<string, ReadonlySet<string>> = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': new Set(['xlsx']),
   'application/vnd.ms-powerpoint': new Set(['ppt']),
   'application/vnd.openxmlformats-officedocument.presentationml.presentation': new Set(['pptx']),
-  'text/plain': new Set(['txt']),
-  'text/csv': new Set(['csv']),
 };
 
 export const MAX_DIGITAL_FILE_SIZE = 5 * 1024 * 1024;
@@ -291,7 +289,7 @@ export function validateDigitalUploadFile(file: File): DigitalUploadValidation {
   const mime = (file.type || '').toLowerCase().trim();
   const allowedExtensions = DIGITAL_MIME_TO_EXTENSIONS[mime];
   if (!allowedExtensions || !allowedExtensions.has(cleanExt)) {
-    throw new Error(`Invalid digital file type "${file.name}". Supported formats are PDF, ZIP, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT and CSV.`);
+    throw new Error(`Invalid digital file type "${file.name}". Supported formats are PDF, ZIP, DOC, DOCX, XLS, XLSX, PPT and PPTX.`);
   }
   return { cleanExt, mime };
 }

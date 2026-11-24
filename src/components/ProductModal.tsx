@@ -415,7 +415,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                       <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-navy">
                         <IconRenderer name="upload" className="h-4 w-4" />
                         {uploadingResourceId === resource.id ? 'Uploading...' : 'Upload file'}
-                        <input type="file" accept=".pdf,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" disabled={Boolean(uploadingResourceId)} onChange={e => { void handleDigitalFileUpload(resource.id, e.target.files?.[0]); e.target.value = ''; }} className="sr-only" />
+                        <input type="file" accept=".pdf,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx" disabled={Boolean(uploadingResourceId)} onChange={e => { void handleDigitalFileUpload(resource.id, e.target.files?.[0]); e.target.value = ''; }} className="sr-only" />
                       </label>
                     </div>
                     <button type="button" title="Remove resource" aria-label="Remove resource" onClick={() => setDigitalResources(items => items.filter(item => item.id !== resource.id))} className="p-2 text-red-600"><IconRenderer name="trash-2" className="w-4 h-4" /></button>
