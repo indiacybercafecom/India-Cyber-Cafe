@@ -16,6 +16,12 @@ service firebase.storage {
         && request.resource.size <= 5 * 1024 * 1024;
     }
 
+    function isUnderDigitalLimit() {
+      return request.resource != null
+        && request.resource.size > 0
+        && request.resource.size <= 5 * 1024 * 1024;
+    }
+
     function isAllowedAttachmentType() {
       return request.resource != null && (
         request.resource.contentType == 'application/pdf' ||
@@ -35,14 +41,17 @@ service firebase.storage {
         request.resource.contentType == 'application/vnd.ms-powerpoint' ||
         request.resource.contentType == 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
         request.resource.contentType == 'text/plain' ||
-        request.resource.contentType == 'text/csv' ||
-        request.resource.contentType == 'application/octet-stream'
+        request.resource.contentType == 'text/csv'
       );
     }
 
     function isImageType() {
       return request.resource != null &&
         request.resource.contentType.matches('image/(jpeg|jpg|png|webp|gif)');
+    }
+
+    function hasAllowedDigitalExtension() {
+      return request.resource.name.matches('.*\\.(pdf|zip|doc|docx|xls|xlsx|ppt|pptx|txt|csv)$');
     }
 
     // Owner-scoped application reply attachments (up to 5MB PDF/JPG/PNG/WEBP)
@@ -88,7 +97,10 @@ service firebase.storage {
     // Digital product files are admin-readable for upload URL retrieval and customer-private otherwise.
     match /digital-products/{allPaths=**} {
       allow read: if isAdmin();
-      allow write: if isAdmin() && isUnder5MB() && isAllowedDigitalType();
+      allow write: if isAdmin()
+        && isUnderDigitalLimit()
+        && isAllowedDigitalType()
+        && hasAllowedDigitalExtension();
     }
 
     // Product review images

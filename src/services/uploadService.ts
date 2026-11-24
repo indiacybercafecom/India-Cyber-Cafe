@@ -6,7 +6,6 @@ export const MAX_SERVICE_FILE_SIZE = 5 * 1024 * 1024;
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
-  'application/x-pdf',
   'image/jpeg',
   'image/jpg',
   'image/png',
@@ -14,6 +13,22 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const ALLOWED_EXTENSIONS = new Set(['pdf', 'jpg', 'jpeg', 'png', 'webp']);
+
+const DIGITAL_MIME_TO_EXTENSIONS: Record<string, Set<string>> = {
+  'application/pdf': new Set(['pdf']),
+  'application/zip': new Set(['zip']),
+  'application/x-zip-compressed': new Set(['zip']),
+  'application/msword': new Set(['doc']),
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': new Set(['docx']),
+  'application/vnd.ms-excel': new Set(['xls']),
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': new Set(['xlsx']),
+  'application/vnd.ms-powerpoint': new Set(['ppt']),
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': new Set(['pptx']),
+  'text/plain': new Set(['txt']),
+  'text/csv': new Set(['csv']),
+};
+
+export const MAX_DIGITAL_FILE_SIZE = 5 * 1024 * 1024;
 
 export interface UploadFileOptions {
   category?: string;
@@ -25,16 +40,29 @@ export interface UploadFileOptions {
   maxRetries?: number;
 }
 
-function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauthenticated?: boolean): { cleanExt: string } {
+function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauthenticated?: boolean, category?: string): { cleanExt: string } {
   if (!allowUnauthenticated && !auth.currentUser) {
     throw new Error('Authentication required to upload files.');
   }
-  if (maxSizeBytes !== undefined && file.size > maxSizeBytes) {
-    throw new Error(`File "${file.name}" exceeds the ${Math.round(maxSizeBytes / (1024 * 1024))} MB limit.`);
+  if (file.size <= 0) {
+    throw new Error(`File "${file.name}" is empty.`);
+  }
+  const effectiveLimit = category === 'digital-products'
+    ? MAX_DIGITAL_FILE_SIZE
+    : (maxSizeBytes ?? MAX_SERVICE_FILE_SIZE);
+  if (file.size > effectiveLimit) {
+    throw new Error(`File "${file.name}" exceeds the ${Math.round(effectiveLimit / (1024 * 1024))} MB limit.`);
   }
 
   const cleanExt = (file.name.split('.').pop() || '').toLowerCase().trim();
-  if (!ALLOWED_EXTENSIONS.has(cleanExt) || (file.type && !ALLOWED_MIME_TYPES.has(file.type.toLowerCase()))) {
+  const mime = (file.type || '').toLowerCase().trim();
+
+  if (category === 'digital-products') {
+    validateDigitalUploadFile(file);
+    return { cleanExt };
+  }
+
+  if (!ALLOWED_EXTENSIONS.has(cleanExt) || (mime && !ALLOWED_MIME_TYPES.has(mime))) {
     throw new Error(`Invalid file type "${file.name}". Only PDF and standard image formats (JPG, PNG, WEBP) are allowed.`);
   }
   return { cleanExt };
@@ -136,7 +164,7 @@ export async function uploadFileWithRetry(
   file: File,
   options: UploadFileOptions = {}
 ): Promise<string> {
-  const { cleanExt } = validateUploadFile(file, options.maxSizeBytes, options.allowUnauthenticated);
+  const { cleanExt } = validateUploadFile(file, options.maxSizeBytes, options.allowUnauthenticated, options.category);
   const maxRetries = Math.max(0, options.maxRetries ?? 2);
   let lastError: any = null;
 
@@ -237,4 +265,22 @@ export async function uploadFilesBounded<TItem, TResult = string>(
     throw firstError;
   }
   return results;
+}
+
+export interface DigitalUploadValidation {
+  cleanExt: string;
+  mime: string;
+}
+
+export function validateDigitalUploadFile(file: File): DigitalUploadValidation {
+  if (file.size <= 0) throw new Error(`File "${file.name}" is empty.`);
+  if (file.size > MAX_DIGITAL_FILE_SIZE) throw new Error(`File "${file.name}" exceeds the 5 MB limit.`);
+
+  const cleanExt = (file.name.split('.').pop() || '').toLowerCase().trim();
+  const mime = (file.type || '').toLowerCase().trim();
+  const allowedExtensions = DIGITAL_MIME_TO_EXTENSIONS[mime];
+  if (!allowedExtensions || !allowedExtensions.has(cleanExt)) {
+    throw new Error(`Invalid digital file type "${file.name}". Supported formats are PDF, ZIP, DOC, DOCX, XLS, XLSX, PPT, PPTX, TXT and CSV.`);
+  }
+  return { cleanExt, mime };
 }

@@ -192,10 +192,20 @@ export function useProducts() {
     if (!response.ok) throw new Error('Could not remove private download resources.');
   };
 
+  const getDigitalResources = async (productId: string): Promise<Product['digitalResources']> => {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error('Admin authentication is required to load digital downloads.');
+    const response = await fetch(`/api/admin/store/products/${encodeURIComponent(productId)}/digital-resources`, {
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.success) throw new Error(result?.error || 'Could not load private download resources.');
+    return Array.isArray(result.resources) ? result.resources : [];
+  };
+
   const addProduct = async (product: Omit<Product, 'id'>) => {
     let productId = generateSlug(product.name);
 
-    // Append timestamp if product with this slug already exists
     const existingProduct = products.find((p) => p.id === productId);
     if (existingProduct) {
       const timestamp = Date.now().toString().slice(-6);
@@ -203,49 +213,98 @@ export function useProducts() {
     }
 
     const { digitalResources = [], ...publicProduct } = product;
-    await set(ref(rtdb, `products/${productId}`), {
-      ...publicProduct,
-      id: productId,
-    });
-    if (product.productType === 'virtual') await saveDigitalResources(productId, digitalResources);
 
-    // Update local state and cache
+    try {
+      await set(ref(rtdb, `products/${productId}`), {
+        ...publicProduct,
+        id: productId,
+      });
+
+      if (product.productType === 'virtual') {
+        await saveDigitalResources(productId, digitalResources);
+      }
+    } catch (error) {
+      try {
+        await remove(ref(rtdb, `products/${productId}`));
+        if (product.productType === 'virtual') {
+          await deleteDigitalResources(productId);
+        }
+      } catch {}
+      throw error;
+    }
+
     const newProduct = { ...publicProduct, id: productId } as Product;
     const updated = [...products, newProduct];
     setProducts(updated);
     cacheManager.set('products', updated);
     syncManager.updateSync('products');
-    // Sync JSON after Firebase write
     await triggerJsonSync();
   };
 
   const updateProduct = async (id: string, data: Partial<Product>) => {
     const { digitalResources, ...publicData } = data;
     const existingProduct = products.find(product => product.id === id);
-    if (data.productType === 'virtual' && digitalResources !== undefined) await saveDigitalResources(id, digitalResources);
-    else if (existingProduct?.productType === 'virtual' && data.productType === 'physical') await deleteDigitalResources(id);
-    await update(ref(rtdb, `products/${id}`), publicData);
 
-    // Update local state and cache
+    if (data.productType === 'virtual' && digitalResources !== undefined) {
+      let previousResources: Product['digitalResources'] = [];
+      if (existingProduct?.productType === 'virtual') {
+        previousResources = await getDigitalResources(id);
+      }
+      try {
+        await update(ref(rtdb, `products/${id}`), publicData);
+        await saveDigitalResources(id, digitalResources);
+      } catch (error) {
+        try {
+          if (existingProduct) await set(ref(rtdb, `products/${id}`), existingProduct);
+          await saveDigitalResources(id, previousResources || []);
+        } catch {}
+        throw error;
+      }
+    } else if (existingProduct?.productType === 'virtual' && data.productType === 'physical') {
+      const previousResources = await getDigitalResources(id);
+      try {
+        await update(ref(rtdb, `products/${id}`), publicData);
+        await deleteDigitalResources(id);
+      } catch (error) {
+        try {
+          if (existingProduct) await set(ref(rtdb, `products/${id}`), existingProduct);
+          await saveDigitalResources(id, previousResources || []);
+        } catch {}
+        throw error;
+      }
+    } else {
+      await update(ref(rtdb, `products/${id}`), publicData);
+    }
+
     const updated = products.map((p: Product) => (p.id === id ? { ...p, ...data } : p));
     setProducts(updated);
     cacheManager.set('products', updated);
     syncManager.updateSync('products');
-    // Sync JSON after Firebase write
     await triggerJsonSync();
   };
 
   const deleteProduct = async (id: string) => {
     const existingProduct = products.find(product => product.id === id);
-    await remove(ref(rtdb, `products/${id}`));
-    if (existingProduct?.productType === 'virtual') await deleteDigitalResources(id);
+    if (existingProduct?.productType === 'virtual') {
+      const previousResources = await getDigitalResources(id);
+      try {
+        await remove(ref(rtdb, `products/${id}`));
+        await deleteDigitalResources(id);
+      } catch (error) {
+        try {
+          await set(ref(rtdb, `products/${id}`), existingProduct);
+          await saveDigitalResources(id, previousResources || []);
+        } catch {}
+        throw error;
+      }
+    } else {
+      await remove(ref(rtdb, `products/${id}`));
+    }
 
-    // Update local state and cache
     const updated = products.filter((p: Product) => p.id !== id);
     setProducts(updated);
     cacheManager.set('products', updated);
     syncManager.updateSync('products');
-    // Sync JSON after Firebase write
     await triggerJsonSync();
   };
 

@@ -14,6 +14,8 @@ import {
   buildQueuedEmailDeliverySummary,
 } from './emailNotificationService.js';
 import { requireAdminCaller, verifyCallerWithRole } from './operatorService.js';
+import * as dns from 'node:dns/promises';
+import * as net from 'node:net';
 
 // Resolve application root
 const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
@@ -579,23 +581,37 @@ const localDigitalDownloadTokens = new Map<string, any>();
 const publicStoreBaseUrl = () => (process.env.PUBLIC_BASE_URL || 'https://b.indiacybercafe.com').replace(/\/+$/, '');
 
 function getDigitalTokenEncryptionKey() {
-  const secret = process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET || process.env.RAZORPAY_KEY_SECRET || (isTestMode() ? 'test_rzp_secret' : '');
-  if (!secret) throw new DatabaseConfigError('Digital download token encryption is not configured.');
-  return crypto.createHash('sha256').update(secret).digest();
+  const dedicated = String(process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET || '').trim();
+  if (dedicated) return crypto.createHash('sha256').update(dedicated).digest();
+  if (isTestMode()) return crypto.createHash('sha256').update('test_digital_download_secret').digest();
+  throw new DatabaseConfigError('DIGITAL_DOWNLOAD_TOKEN_SECRET is not configured.');
 }
 
-function encryptDigitalToken(token: string) {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv('aes-256-gcm', getDigitalTokenEncryptionKey(), iv);
-  const ciphertext = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
-  return [iv.toString('hex'), cipher.getAuthTag().toString('hex'), ciphertext.toString('hex')].join('.');
+function getLegacyDigitalTokenEncryptionKey(): Buffer | null {
+  const legacy = String(process.env.RAZORPAY_KEY_SECRET || '').trim();
+  return legacy ? crypto.createHash('sha256').update(legacy).digest() : null;
+}
+
+function decryptWithKey(encrypted: string, key: Buffer) {
+  const [ivHex, tagHex, ciphertextHex] = String(encrypted || '').split('.');
+  if (!ivHex || !tagHex || !ciphertextHex) throw new Error('Invalid encrypted download token.');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(ivHex, 'hex'));
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  return Buffer.concat([decipher.update(Buffer.from(ciphertextHex, 'hex')), decipher.final()]).toString('utf8');
 }
 
 function decryptDigitalToken(encrypted: string) {
-  const [ivHex, tagHex, ciphertextHex] = String(encrypted || '').split('.');
-  const decipher = crypto.createDecipheriv('aes-256-gcm', getDigitalTokenEncryptionKey(), Buffer.from(ivHex, 'hex'));
-  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
-  return Buffer.concat([decipher.update(Buffer.from(ciphertextHex, 'hex')), decipher.final()]).toString('utf8');
+  try {
+    return decryptWithKey(encrypted, getDigitalTokenEncryptionKey());
+  } catch (dedicatedError) {
+    const legacyKey = getLegacyDigitalTokenEncryptionKey();
+    if (!legacyKey) throw dedicatedError;
+    try {
+      return decryptWithKey(encrypted, legacyKey);
+    } catch {
+      throw dedicatedError;
+    }
+  }
 }
 
 async function getPrivateDigitalProductResources(productId: string): Promise<any[]> {
@@ -612,10 +628,12 @@ function groupDownloadResources(resources: any[]) {
       product = { productName: resource.productName, resources: [] };
       grouped.push(product);
     }
+    const readableToken = getReadableLegacyToken(resource);
+    if (!readableToken) return grouped;
     product.resources.push({
       fileName: resource.fileName,
       label: resource.label,
-      downloadUrl: `${publicStoreBaseUrl()}/api/store/downloads/${encodeURIComponent(decryptDigitalToken(resource.encryptedToken))}`,
+      downloadUrl: `${publicStoreBaseUrl()}/api/store/downloads/${encodeURIComponent(readableToken)}`,
       expiresAt: resource.expiresAt || null,
       downloadLimit: resource.downloadLimit,
       downloadsUsed: resource.downloadCount || 0,
@@ -745,21 +763,29 @@ export async function handleDigitalDownload(req: Request, res: Response) {
       const snapshot = await rtdbAdmin.ref(`digitalDownloads/tokens/${tokenHash}`).once('value');
       record = snapshot.val();
     }
-    if (!record || record.revoked || record.tokenHash !== tokenHash) return res.status(404).send('Download not found.');
+    if (!record || record.revoked) return res.status(404).send('Download not found.');
+    if (typeof record.token === 'string' && record.token === token) {
+      record.tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    }
+    if (record.tokenHash !== tokenHash) return res.status(404).send('Download not found.');
     const orderRecord = await findOrderRecord(record.orderId);
     if (!orderRecord || orderRecord.order.paymentStatus !== 'completed') return res.status(403).send('This order is not eligible for downloads.');
     if (record.expiresAt && Date.now() > new Date(record.expiresAt).getTime()) return res.status(410).send('This download link has expired.');
 
-    const source = new URL(record.sourceUrl);
-    if (source.protocol !== 'https:' || ['localhost', '127.0.0.1', '::1'].includes(source.hostname.toLowerCase())) {
-      return res.status(400).send('Invalid download source.');
+    let safeFetch: { response: Response; finalUrl: URL };
+    try {
+      safeFetch = await fetchSafeDownloadResponse(String(record.sourceUrl || ''));
+    } catch (error: any) {
+      const message = String(error?.message || 'Invalid download source.');
+      if (/private|local|localhost|reserved|credentials|alternate|invalid|resolve/i.test(message)) {
+        return res.status(400).send(message);
+      }
+      return res.status(502).send('Download source is unavailable.');
     }
-    const response = await fetch(source, { redirect: 'follow', signal: AbortSignal.timeout(120000) });
-    const finalSourceUrl = response.url ? new URL(response.url) : source;
-    if (!response.ok || !response.body || finalSourceUrl.protocol !== 'https:') return res.status(502).send('Download source is unavailable.');
-    const maxBytes = 250 * 1024 * 1024;
+    const { response } = safeFetch;
+    const maxBytes = 5 * 1024 * 1024;
     const contentLength = Number(response.headers.get('content-length'));
-    if (contentLength > maxBytes) return res.status(413).send('File exceeds the download size limit.');
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) return res.status(413).send('File exceeds the download size limit.');
     const latestOrder = await findOrderRecord(record.orderId);
     if (!latestOrder || latestOrder.order.paymentStatus !== 'completed') return res.status(403).send('This order is not eligible for downloads.');
     if (isTestMode()) {
@@ -1635,10 +1661,6 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
     const keySecret = process.env.RAZORPAY_KEY_SECRET || (isTestMode() ? 'test_rzp_secret' : '');
 
     if (!keyId || !keySecret) {
-      return res.status(503).json({ success: false, error: 'Online payment gateway is not configured.' });
-    }
-
-    const authUser = await getVerifiedAuthUser(req);
     const isGuest = !authUser;
     const orderId = generateServerOrderId();
     const now = new Date().toISOString();
@@ -2591,8 +2613,8 @@ export async function handleAdminUpdateOrderStatus(req: Request, res: Response) 
         ...existingNotes,
         {
           type: 'status',
-          by: admin.name || admin.email,
-          email: admin.email,
+          by: 'system',
+          email: 'system@indiacybercafe.com',
           text: cleanReason
             ? `Order status changed to ${nextOrderStatus}: ${cleanReason}`
             : `Order status changed to ${nextOrderStatus}`,
@@ -2971,5 +2993,103 @@ export async function handleSubmitStoreReview(req: Request, res: Response) {
     const status = error instanceof DatabaseConfigError ? error.statusCode : error?.message?.includes('timed out') ? 504 : 500;
     return res.status(status).json({ success: false, error: 'Failed to submit review. Please try again.' });
   }
+}
+
+// Exportable SSRF-safe URL validation and redirect-safe fetch helpers for digital downloads
+export function isPrivateOrReservedIp(ip: string): boolean {
+  const normalized = String(ip || '').trim().toLowerCase().replace(/%.+$/, '');
+  const family = net.isIP(normalized);
+  if (!family) return true;
+
+  if (family === 4) {
+    const parts = normalized.split('.').map(part => Number(part));
+    if (parts.length !== 4 || parts.some(part => !Number.isInteger(part) || part < 0 || part > 255)) return true;
+    const [a, b, c] = parts;
+    return (
+      a === 0 || a === 10 || a === 127 ||
+      (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) ||
+      (a === 192 && b === 168) ||
+      (a === 100 && b >= 64 && b <= 127) ||
+      (a === 198 && (b === 18 || b === 19)) ||
+      (a === 192 && b === 0 && c === 0) ||
+      (a === 192 && b === 0 && c === 2) ||
+      (a === 198 && b === 51 && c === 100) ||
+      (a === 203 && b === 0 && c === 113) ||
+      a >= 224
+    );
+  }
+
+  if (normalized.startsWith('::ffff:')) {
+    const mapped = normalized.slice('::ffff:'.length);
+    if (net.isIP(mapped) === 4) return isPrivateOrReservedIp(mapped);
+  }
+  return normalized === '::' || normalized === '::1' || normalized.startsWith('fc') || normalized.startsWith('fd') ||
+    /^fe[89ab]/.test(normalized) || normalized.startsWith('ff') || normalized.startsWith('2001:db8');
+}
+
+export async function validateSafeDownloadUrl(rawUrl: string): Promise<URL> {
+  let url: URL;
+  try {
+    url = new URL(rawUrl);
+  } catch {
+    throw new Error('Invalid download source URL.');
+  }
+  if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) {
+    throw new Error('Download source must use HTTPS without credentials or alternate ports.');
+  }
+  const hostname = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  if (!hostname || ['localhost', 'localhost.localdomain', 'ip6-localhost'].includes(hostname) || hostname.endsWith('.localhost') || hostname.endsWith('.local')) {
+    throw new Error('Private or local download hosts are not allowed.');
+  }
+  if (net.isIP(hostname) && isPrivateOrReservedIp(hostname)) throw new Error('Private IP download hosts are not allowed.');
+
+  if (!net.isIP(hostname)) {
+    let addresses: Array<{ address: string }>;
+    try {
+      addresses = await dns.lookup(hostname, { all: true, verbatim: true });
+    } catch {
+      throw new Error('Could not resolve download source host.');
+    }
+    if (!addresses.length || addresses.some(({ address }) => isPrivateOrReservedIp(address))) {
+      throw new Error('Download source resolved to a private or reserved address.');
+    }
+  }
+  return url;
+}
+
+export async function fetchSafeDownloadResponse(sourceUrl: string): Promise<{ response: Response; finalUrl: URL }> {
+  let current = await validateSafeDownloadUrl(sourceUrl);
+  for (let redirectCount = 0; redirectCount <= 3; redirectCount++) {
+    const response = await fetch(current, {
+      redirect: 'manual',
+      headers: { 'User-Agent': 'ICC-Digital-Download/1.0', 'Accept': '*/*' },
+      signal: AbortSignal.timeout(120000),
+    });
+    if (response.status >= 300 && response.status < 400) {
+      if (redirectCount === 3) throw new Error('Download source redirected too many times.');
+      const location = response.headers.get('location');
+      if (!location) throw new Error('Download source redirect has no location.');
+      current = await validateSafeDownloadUrl(new URL(location, current).toString());
+      continue;
+    }
+    if (!response.ok) throw new Error(`Download source returned HTTP ${response.status}.`);
+    if (!response.body) throw new Error('Download source returned no file body.');
+    return { response: response as unknown as Response, finalUrl: current };
+  }
+  throw new Error('Could not follow download source safely.');
+}
+
+function getReadableLegacyToken(resource: any): string | null {
+  if (typeof resource?.token === 'string' && /^[A-Za-z0-9_-]{40,60}$/.test(resource.token)) return resource.token;
+  if (typeof resource?.encryptedToken === 'string') {
+    try {
+      const token = decryptDigitalToken(resource.encryptedToken);
+      return /^[A-Za-z0-9_-]{40,60}$/.test(token) ? token : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
 }
 

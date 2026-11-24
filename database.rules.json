@@ -186,6 +186,16 @@
       ".write": false
     },
 
+    "digitalProductResources": {
+      ".read": false,
+      ".write": false
+    },
+
+    "digitalDownloads": {
+      ".read": false,
+      ".write": false
+    },
+
     "asyncQueue": {
       ".read": false,
       ".write": false,
