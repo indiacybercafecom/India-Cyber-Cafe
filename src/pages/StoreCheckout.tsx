@@ -134,28 +134,30 @@ export function StoreCheckout({
         return;
       }
 
-      fetchWithTimeout('/api/store/orders/recover-payment', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId: parsed.orderId }),
-        timeoutMs: 10000
-      })
-        .then(async (resp) => {
-          const data = await resp.json().catch(() => ({}));
-          if (!cancelled && isMountedRef.current && resp.ok && data.verified && data.order) {
-            window.localStorage.removeItem(PENDING_ATTEMPT_STORAGE_KEY);
-            window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
-            onOrderSuccess?.();
-            navigate('/store/order-confirmation', {
-              state: {
-                order: data.order,
-                productName: parsed.productName || product?.name || 'Order',
-                guestTrackingToken: parsed.guestTrackingToken
-              }
-            });
-          }
-        })
-        .catch(() => {});
+      void (async () => {
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        const idToken = await auth.currentUser?.getIdToken().catch(() => undefined);
+        if (idToken) headers.Authorization = `Bearer ${idToken}`;
+        const resp = await fetchWithTimeout('/api/store/orders/recover-payment', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ orderId: parsed.orderId, guestTrackingToken: parsed.guestTrackingToken }),
+          timeoutMs: 10000
+        });
+        const data = await resp.json().catch(() => ({}));
+        if (!cancelled && isMountedRef.current && resp.ok && data.verified && data.order) {
+          window.localStorage.removeItem(PENDING_ATTEMPT_STORAGE_KEY);
+          window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
+          onOrderSuccess?.();
+          navigate('/store/order-confirmation', {
+            state: {
+              order: data.order,
+              productName: parsed.productName || product?.name || 'Order',
+              guestTrackingToken: parsed.guestTrackingToken
+            }
+          });
+        }
+      })().catch(() => {});
     } catch {}
 
     return () => {
@@ -541,12 +543,15 @@ export function StoreCheckout({
     });
   };
 
-  const recoverOrderFromServer = async (orderId: string): Promise<Order | null> => {
+  const recoverOrderFromServer = async (orderId: string, guestTrackingToken?: string): Promise<Order | null> => {
     try {
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      const idToken = await auth.currentUser?.getIdToken().catch(() => undefined);
+      if (idToken) headers.Authorization = `Bearer ${idToken}`;
       const recResp = await fetchWithTimeout('/api/store/orders/recover-payment', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderId }),
+        headers,
+        body: JSON.stringify({ orderId, guestTrackingToken }),
         timeoutMs: 12000,
         timeoutMessage: 'Order status recovery timed out.'
       });
@@ -618,7 +623,7 @@ export function StoreCheckout({
     }
 
     // Immediate automatic server-side recovery check before alerting user
-    const recoveredOrder = await recoverOrderFromServer(payload.orderId);
+    const recoveredOrder = await recoverOrderFromServer(payload.orderId, payload.guestTrackingToken);
     if (recoveredOrder) {
       return recoveredOrder;
     }
@@ -821,7 +826,7 @@ export function StoreCheckout({
                 setSubmitting(false);
               }
               // Check quietly if Razorpay completed right as modal closed
-              const recovered = await recoverOrderFromServer(pendingPayloadBase.orderId);
+              const recovered = await recoverOrderFromServer(pendingPayloadBase.orderId, pendingPayloadBase.guestTrackingToken);
               if (recovered && isMountedRef.current) {
                 showToast('Payment detected! Confirming your order.', 'success');
                 await handlePostOrderSuccess(recovered, sanitizedAddress, pendingPayloadBase.guestTrackingToken);

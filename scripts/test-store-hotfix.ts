@@ -7,12 +7,17 @@ import path from 'path';
 
 // Ensure strict isolated test mode BEFORE importing storeOrderService
 process.env.STORE_ORDER_TEST_MODE = '1';
+process.env.DISABLE_EMBEDDED_WORKER = '1';
 process.env.RAZORPAY_KEY_ID = 'rzp_test_key';
 process.env.RAZORPAY_KEY_SECRET = 'test_rzp_secret';
 process.env.RAZORPAY_WEBHOOK_SECRET = 'test_webhook_secret';
 
 const ORDERS_STORE_PATH = path.resolve('data/orders_store.json');
+const PRODUCTS_DATA_PATH = path.resolve('public/data/products.json');
+const NOTIFICATION_OUTBOX_PATH = path.resolve('data/notification_outbox.json');
+const NOTIFICATION_LEDGER_PATH = path.resolve('data/notification_events.json');
 const CUSTOM_UPLOADS_DIR = path.resolve('data/uploads/custom-images');
+const DIGITAL_TEST_PRODUCT_ID = 'test-virtual-download-product';
 const APPLY_TSX_PATH = path.resolve('src/pages/Apply.tsx');
 const INDEX_CSS_PATH = path.resolve('src/index.css');
 
@@ -20,11 +25,36 @@ async function runTests() {
   // Back up any existing data/orders_store.json and remove on completion
   const hadExistingStore = fs.existsSync(ORDERS_STORE_PATH);
   const existingBackup = hadExistingStore ? fs.readFileSync(ORDERS_STORE_PATH, 'utf-8') : null;
+  const productsBackup = fs.readFileSync(PRODUCTS_DATA_PATH, 'utf-8');
+  const outboxBackup = fs.existsSync(NOTIFICATION_OUTBOX_PATH) ? fs.readFileSync(NOTIFICATION_OUTBOX_PATH, 'utf-8') : null;
+  const ledgerBackup = fs.existsSync(NOTIFICATION_LEDGER_PATH) ? fs.readFileSync(NOTIFICATION_LEDGER_PATH, 'utf-8') : null;
   if (hadExistingStore) fs.unlinkSync(ORDERS_STORE_PATH);
 
   const createdUploadFiles: string[] = [];
 
   try {
+    const productsJson = JSON.parse(productsBackup);
+    productsJson.products = Array.isArray(productsJson.products) ? productsJson.products : [];
+    productsJson.products.push({
+      id: DIGITAL_TEST_PRODUCT_ID,
+      name: 'Virtual Download Test Product',
+      permalink: DIGITAL_TEST_PRODUCT_ID,
+      category: 'test',
+      productType: 'virtual',
+      price: 99,
+      discountedPrice: 99,
+      shortDescription: 'Integration test digital product',
+      longDescription: '',
+      images: ['https://example.com/test-product.png'],
+      requiresCustomImage: false,
+      inStock: true,
+      ratings: { average: 5, count: 0 },
+      paymentMethods: ['online'],
+      downloadExpiryDays: 7,
+      downloadLimit: 2,
+    });
+    fs.writeFileSync(PRODUCTS_DATA_PATH, JSON.stringify(productsJson, null, 2), 'utf-8');
+
     const storeSvc = await import('../src/server/storeOrderService.js');
 
     const app = express();
@@ -46,6 +76,10 @@ async function runTests() {
     app.get('/api/store/orders/my', storeSvc.handleGetMyOrders);
     app.post('/api/store/orders/guest-track', storeSvc.handleGuestTrackOrder);
     app.post('/api/store/orders/link-guest-orders', storeSvc.handleLinkGuestOrders);
+    app.get('/api/store/downloads/:token', storeSvc.handleDigitalDownload);
+    app.get('/api/admin/store/products/:productId/digital-resources', storeSvc.handleAdminGetDigitalProductResources);
+    app.put('/api/admin/store/products/:productId/digital-resources', storeSvc.handleAdminSaveDigitalProductResources);
+    app.post('/api/admin/orders/:orderId/status', storeSvc.handleAdminUpdateOrderStatus);
 
     const server = await new Promise<any>((resolve) => {
       const s = app.listen(0, '127.0.0.1', () => resolve(s));
@@ -272,6 +306,145 @@ async function runTests() {
         const retryData = await retryResp.json();
         assert.strictEqual(retryResp.status, 200);
         assert.strictEqual(retryData.verified, true);
+      });
+
+      await check('Virtual checkout delivers private, payment-gated, limited download tokens', async () => {
+        const adminHeaders = {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer test-token:admin_uid_1:admin1@indiacybercafe.com'
+        };
+        const resourceUrl = 'https://downloads.example.test/manual.pdf';
+        const saveResources = await fetch(`${baseUrl}/api/admin/store/products/${DIGITAL_TEST_PRODUCT_ID}/digital-resources`, {
+          method: 'PUT',
+          headers: adminHeaders,
+          body: JSON.stringify({ resources: [{ id: 'manual-1', fileName: 'manual.pdf', label: 'Download Manual', url: resourceUrl }] })
+        });
+        assert.strictEqual(saveResources.status, 200);
+
+        const codResponse = await fetch(`${baseUrl}/api/store/orders/cod`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ items: [{ productId: DIGITAL_TEST_PRODUCT_ID, quantity: 1 }], deliveryAddress: validAddress })
+        });
+        assert.strictEqual(codResponse.status, 400);
+
+        const createResponse = await fetch(`${baseUrl}/api/store/orders/create-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items: [{ productId: DIGITAL_TEST_PRODUCT_ID, quantity: 1 }],
+            deliveryAddress: validAddress,
+            idempotencyKey: 'digital-download-test-order'
+          })
+        });
+        const created = await createResponse.json();
+        assert.strictEqual(createResponse.status, 201);
+        assert.strictEqual(created.amount, 9900);
+
+        const paymentId = 'pay_digital_test_001';
+        const signature = crypto.createHmac('sha256', 'test_rzp_secret')
+          .update(`${created.razorpayOrderId}|${paymentId}`)
+          .digest('hex');
+        const verifyResponse = await fetch(`${baseUrl}/api/store/orders/verify-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: created.orderId,
+            razorpay_order_id: created.razorpayOrderId,
+            razorpay_payment_id: paymentId,
+            razorpay_signature: signature
+          })
+        });
+        const verified = await verifyResponse.json();
+        assert.strictEqual(verifyResponse.status, 200);
+        assert.strictEqual(verified.order.paymentStatus, 'completed');
+        assert.strictEqual(verified.order.digitalDeliveryStatus, 'available');
+        assert.strictEqual(verified.order.digitalDownloads[0].resources.length, 1);
+        assert(verified.order.digitalDownloads[0].resources[0].downloadUrl.includes('/api/store/downloads/'));
+        assert(!JSON.stringify(verified).includes(resourceUrl), 'Original download URL must not be returned to customers.');
+        assert(!JSON.stringify(JSON.parse(fs.readFileSync(PRODUCTS_DATA_PATH, 'utf-8')).products.find((p: any) => p.id === DIGITAL_TEST_PRODUCT_ID)).includes(resourceUrl), 'Original URL must not be written to public product JSON.');
+
+        const unauthorizedRecovery = await fetch(`${baseUrl}/api/store/orders/recover-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: created.orderId })
+        }).then(response => response.json());
+        assert.strictEqual(unauthorizedRecovery.order.digitalDownloads.length, 0);
+
+        const guestView = await fetch(`${baseUrl}/api/store/orders/guest-track`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId: created.orderId, token: created.guestTrackingToken })
+        }).then(response => response.json());
+        assert.strictEqual(guestView.order.digitalDownloads[0].resources.length, 1);
+
+        const registeredAddress = { ...validAddress, email: 'cust1@example.com' };
+        const registeredCreateResponse = await fetch(`${baseUrl}/api/store/orders/create-payment`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer test-token:cust_uid_1:cust1@example.com'
+          },
+          body: JSON.stringify({
+            items: [{ productId: DIGITAL_TEST_PRODUCT_ID, quantity: 1 }],
+            deliveryAddress: registeredAddress,
+            idempotencyKey: 'digital-download-registered-order'
+          })
+        });
+        const registeredOrder = await registeredCreateResponse.json();
+        const registeredPaymentId = 'pay_digital_registered_002';
+        const registeredSignature = crypto.createHmac('sha256', 'test_rzp_secret')
+          .update(`${registeredOrder.razorpayOrderId}|${registeredPaymentId}`)
+          .digest('hex');
+        const registeredVerification = await fetch(`${baseUrl}/api/store/orders/verify-payment`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: registeredOrder.orderId,
+            razorpay_order_id: registeredOrder.razorpayOrderId,
+            razorpay_payment_id: registeredPaymentId,
+            razorpay_signature: registeredSignature
+          })
+        });
+        assert.strictEqual(registeredVerification.status, 200);
+        const registeredOrders = await fetch(`${baseUrl}/api/store/orders/my`, {
+          headers: { Authorization: 'Bearer test-token:cust_uid_1:cust1@example.com' }
+        }).then(response => response.json());
+        const registeredDigitalOrder = registeredOrders.orders.find((order: any) => order.id === registeredOrder.orderId);
+        assert(registeredDigitalOrder?.digitalDownloads?.[0]?.resources?.[0]?.downloadUrl);
+
+        const downloadUrl = new URL(verified.order.digitalDownloads[0].resources[0].downloadUrl);
+        const token = downloadUrl.pathname.split('/').pop();
+        const originalFetch = globalThis.fetch;
+        globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+          const requestUrl = input instanceof Request ? input.url : String(input);
+          if (requestUrl === resourceUrl) {
+            return new Response(Buffer.from('digital-file-content'), {
+              status: 200,
+              headers: { 'Content-Type': 'application/pdf', 'Content-Length': '20' }
+            });
+          }
+          return originalFetch(input, init);
+        }) as typeof fetch;
+        try {
+          const downloadEndpoint = `${baseUrl}/api/store/downloads/${token}`;
+          const firstDownload = await fetch(downloadEndpoint);
+          assert.strictEqual(firstDownload.status, 200);
+          assert.strictEqual(firstDownload.headers.get('content-disposition'), "attachment; filename*=UTF-8''manual.pdf");
+          assert.strictEqual(await firstDownload.text(), 'digital-file-content');
+          assert.strictEqual((await fetch(downloadEndpoint)).status, 200);
+          assert.strictEqual((await fetch(downloadEndpoint)).status, 429);
+        } finally {
+          globalThis.fetch = originalFetch;
+        }
+
+        const refund = await fetch(`${baseUrl}/api/admin/orders/${encodeURIComponent(created.orderId)}/status`, {
+          method: 'POST',
+          headers: adminHeaders,
+          body: JSON.stringify({ paymentStatus: 'refunded' })
+        });
+        assert.strictEqual(refund.status, 200);
+        assert.strictEqual((await fetch(`${baseUrl}/api/store/downloads/${token}`)).status, 404);
       });
 
       // 9. Prevent reusing same razorpayPaymentId on a second order
@@ -588,6 +761,11 @@ async function runTests() {
     }
   } finally {
     // Cleanup temporary test data
+    fs.writeFileSync(PRODUCTS_DATA_PATH, productsBackup, 'utf-8');
+    if (outboxBackup !== null) fs.writeFileSync(NOTIFICATION_OUTBOX_PATH, outboxBackup, 'utf-8');
+    else if (fs.existsSync(NOTIFICATION_OUTBOX_PATH)) fs.unlinkSync(NOTIFICATION_OUTBOX_PATH);
+    if (ledgerBackup !== null) fs.writeFileSync(NOTIFICATION_LEDGER_PATH, ledgerBackup, 'utf-8');
+    else if (fs.existsSync(NOTIFICATION_LEDGER_PATH)) fs.unlinkSync(NOTIFICATION_LEDGER_PATH);
     if (existingBackup !== null) {
       fs.writeFileSync(ORDERS_STORE_PATH, existingBackup, 'utf-8');
     } else if (fs.existsSync(ORDERS_STORE_PATH)) {

@@ -195,6 +195,29 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
               </div>
             </div>
 
+            {order.paymentStatus === 'completed' && order.digitalDownloads?.length ? (
+              <div className="space-y-3 rounded-xl border border-green-200 bg-green-50 p-4">
+                <div>
+                  <p className="font-bold text-green-900">Digital downloads</p>
+                  <p className="text-xs text-green-800">Protected links for this paid order</p>
+                </div>
+                {order.digitalDownloads.map((group, groupIndex) => (
+                  <div key={`${group.productName}-${groupIndex}`} className="space-y-2">
+                    <p className="text-sm font-semibold text-navy">{group.productName}</p>
+                    {group.resources.map((resource, resourceIndex) => (
+                      <div key={`${resource.fileName}-${resourceIndex}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-3">
+                        <span className="min-w-0 break-all text-sm text-slate-700">{resource.fileName}</span>
+                        <a href={resource.downloadUrl} className="inline-flex items-center gap-2 rounded-lg bg-green-700 px-3 py-2 text-sm font-bold text-white hover:bg-green-800">
+                          <IconRenderer name="download" className="h-4 w-4" />{resource.label || 'Download Now'}
+                        </a>
+                        {resource.expiresAt && <span className="w-full text-xs text-slate-500">Expires {new Date(resource.expiresAt).toLocaleString('en-IN')}</span>}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            ) : null}
+
             {/* Delivery Address */}
             {order.deliveryAddress && (
               <div className="bg-slate-50 rounded-xl p-4">

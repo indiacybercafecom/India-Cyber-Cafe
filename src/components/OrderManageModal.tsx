@@ -4,7 +4,7 @@ import { IconRenderer } from './Icons';
 import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { motion } from 'motion/react';
-import { addOrderNoteApi, updateAdminOrderStatusApi } from '../services/emailService';
+import { addOrderNoteApi, updateAdminOrderStatusApi, resendDigitalDeliveryEmailApi, regenerateDigitalDownloadAccessApi, revokeDigitalDownloadAccessApi } from '../services/emailService';
 import { uploadFileWithRetry, MAX_SERVICE_FILE_SIZE } from '../services/uploadService';
 import { normalizeApplicationNotes } from '../utils/permissions';
 import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
@@ -32,6 +32,7 @@ export function OrderManageModal({
   const [noteText, setNoteText] = useState('');
   const [noteFile, setNoteFile] = useState<File | null>(null);
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [digitalActionLoading, setDigitalActionLoading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { isSubmitting: loading, submittingRef, runSubmission } = useSubmissionLifecycle();
 
@@ -49,6 +50,20 @@ export function OrderManageModal({
   const deliveryCharges = order.deliveryCharges || 0;
   const discount = order.discount || 0;
   const notes = normalizeApplicationNotes(order.notes);
+  const hasDigitalDelivery = items.some(item => item.productType === 'virtual') || Boolean(order.digitalDeliveryStatus && order.digitalDeliveryStatus !== 'not_required');
+
+  const runDigitalAction = async (action: () => Promise<unknown>, successMessage: string) => {
+    if (digitalActionLoading) return;
+    setDigitalActionLoading(true);
+    try {
+      await action();
+      showToast(successMessage, 'success');
+    } catch (error: any) {
+      showToast(error, 'error', 'Digital delivery action failed.');
+    } finally {
+      setDigitalActionLoading(false);
+    }
+  };
 
   const handleStatusUpdate = async () => {
     if (!order.id || submittingRef.current) return;
@@ -316,6 +331,25 @@ export function OrderManageModal({
                 )}
               </div>
             </div>
+
+            {hasDigitalDelivery && (
+              <div className="space-y-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <h3 className="font-bold text-navy">Digital Delivery</h3>
+                  <span className="text-xs font-semibold capitalize text-slate-600">{order.digitalDeliveryStatus || 'pending'} · Email {order.digitalEmailStatus || 'unknown'}</span>
+                </div>
+                {order.digitalResourceNames?.length ? (
+                  <ul className="space-y-1 text-sm text-slate-700">
+                    {order.digitalResourceNames.map((resource, index) => <li key={`${resource.fileName}-${index}`}>{resource.productName}: {resource.fileName}</li>)}
+                  </ul>
+                ) : <p className="text-sm text-slate-500">No resources listed for this order.</p>}
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" disabled={digitalActionLoading || order.paymentStatus !== 'completed'} onClick={() => void runDigitalAction(() => resendDigitalDeliveryEmailApi(order.id), 'Download email queued.')} className="rounded-lg bg-navy px-3 py-2 text-sm font-bold text-white disabled:opacity-50">Resend Download Email</button>
+                  <button type="button" disabled={digitalActionLoading || order.paymentStatus !== 'completed'} onClick={() => void runDigitalAction(() => regenerateDigitalDownloadAccessApi(order.id), 'Download access regenerated.')} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-700 disabled:opacity-50">Regenerate Access</button>
+                  <button type="button" disabled={digitalActionLoading} onClick={() => { if (window.confirm('Revoke all current download links for this order?')) void runDigitalAction(() => revokeDigitalDownloadAccessApi(order.id), 'Download access revoked.'); }} className="rounded-lg border border-red-200 bg-white px-3 py-2 text-sm font-bold text-red-700 disabled:opacity-50">Revoke Access</button>
+                </div>
+              </div>
+            )}
 
             {/* Order Summary */}
             <div className="space-y-3">

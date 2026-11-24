@@ -248,7 +248,7 @@ export function StoreProduct({ products, reviews: externalReviews, user, isLoadi
                 </>
               )}
             </div>
-            {product.deliveryCharges !== undefined && (
+            {product.productType !== 'virtual' && product.deliveryCharges !== undefined && (
               <p className="text-slate-600 text-xs sm:text-sm">
                 Delivery charges: ₹{product.deliveryCharges}
               </p>
@@ -256,12 +256,17 @@ export function StoreProduct({ products, reviews: externalReviews, user, isLoadi
           </div>
 
           {/* Turnaround Time */}
-          {product.turnaroundTime && (
+          {product.productType === 'virtual' ? (
+            <div className="flex items-center gap-2 text-sm font-semibold text-green-700">
+              <IconRenderer name="download" className="w-4 h-4" />
+              <span>Digital download available after successful payment</span>
+            </div>
+          ) : product.turnaroundTime ? (
             <div className="flex items-center gap-2 text-slate-600 text-sm">
               <IconRenderer name="clock" className="w-4 h-4 text-primary" />
               <span>Turnaround time: {product.turnaroundTime}</span>
             </div>
-          )}
+          ) : null}
 
           {/* Stock Status */}
           <div className={`inline-block px-3 sm:px-4 py-2 rounded-lg font-semibold text-sm ${
@@ -341,7 +346,7 @@ export function StoreProduct({ products, reviews: externalReviews, user, isLoadi
                 className="w-4 h-4 bg-primary"
                 style={{ WebkitMaskImage: 'url(/icons/bi--rocket-takeoff.svg)', maskImage: 'url(/icons/bi--rocket-takeoff.svg)', WebkitMaskRepeat: 'no-repeat', maskRepeat: 'no-repeat', WebkitMaskPosition: 'center', maskPosition: 'center', WebkitMaskSize: 'contain', maskSize: 'contain' }}
               />
-              <span className="text-xs sm:text-sm text-slate-600">Fast Delivery</span>
+              <span className="text-xs sm:text-sm text-slate-600">{product.productType === 'virtual' ? 'Instant Download' : 'Fast Delivery'}</span>
             </div>
             <div className="flex items-center gap-2">
               <IconRenderer name="headset" className="w-4 h-4 text-primary" />

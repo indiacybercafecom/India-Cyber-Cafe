@@ -4,6 +4,8 @@ import { Request, Response } from 'express';
 import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
+import { Readable, Transform } from 'stream';
+import { pipeline } from 'stream/promises';
 import { initializeApp, getApps, cert, ServiceAccount } from 'firebase-admin/app';
 import { getDatabase, Database } from 'firebase-admin/database';
 import { getAuth, Auth } from 'firebase-admin/auth';
@@ -570,6 +572,361 @@ function sanitizeOrderForClient(order: any, options: { includeOwnerUid?: boolean
   return copy;
 }
 
+const localDigitalProductResources = new Map<string, any[]>();
+const localDigitalDownloadOrders = new Map<string, any>();
+const localDigitalDownloadTokens = new Map<string, any>();
+
+const publicStoreBaseUrl = () => (process.env.PUBLIC_BASE_URL || 'https://b.indiacybercafe.com').replace(/\/+$/, '');
+
+function getDigitalTokenEncryptionKey() {
+  const secret = process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET || process.env.RAZORPAY_KEY_SECRET || (isTestMode() ? 'test_rzp_secret' : '');
+  if (!secret) throw new DatabaseConfigError('Digital download token encryption is not configured.');
+  return crypto.createHash('sha256').update(secret).digest();
+}
+
+function encryptDigitalToken(token: string) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', getDigitalTokenEncryptionKey(), iv);
+  const ciphertext = Buffer.concat([cipher.update(token, 'utf8'), cipher.final()]);
+  return [iv.toString('hex'), cipher.getAuthTag().toString('hex'), ciphertext.toString('hex')].join('.');
+}
+
+function decryptDigitalToken(encrypted: string) {
+  const [ivHex, tagHex, ciphertextHex] = String(encrypted || '').split('.');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', getDigitalTokenEncryptionKey(), Buffer.from(ivHex, 'hex'));
+  decipher.setAuthTag(Buffer.from(tagHex, 'hex'));
+  return Buffer.concat([decipher.update(Buffer.from(ciphertextHex, 'hex')), decipher.final()]).toString('utf8');
+}
+
+async function getPrivateDigitalProductResources(productId: string): Promise<any[]> {
+  if (isTestMode()) return localDigitalProductResources.get(productId) || [];
+  if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) throw new DatabaseConfigError('Private product storage is unavailable.');
+  const snapshot = await withTimeout(rtdbAdmin.ref(`digitalProductResources/${productId}`).once('value'), 7000, 'Reading private product resources');
+  return snapshot.val()?.resources || [];
+}
+
+function groupDownloadResources(resources: any[]) {
+  return (resources || []).filter(resource => !resource.revoked).reduce((grouped: any[], resource: any) => {
+    let product = grouped.find(entry => entry.productName === resource.productName);
+    if (!product) {
+      product = { productName: resource.productName, resources: [] };
+      grouped.push(product);
+    }
+    product.resources.push({
+      fileName: resource.fileName,
+      label: resource.label,
+      downloadUrl: `${publicStoreBaseUrl()}/api/store/downloads/${encodeURIComponent(decryptDigitalToken(resource.encryptedToken))}`,
+      expiresAt: resource.expiresAt || null,
+      downloadLimit: resource.downloadLimit,
+      downloadsUsed: resource.downloadCount || 0,
+    });
+    return grouped;
+  }, []);
+}
+
+async function getDigitalDownloadEntitlement(orderId: string): Promise<any | null> {
+  if (isTestMode()) return localDigitalDownloadOrders.get(orderId) || null;
+  if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) return null;
+  const snapshot = await rtdbAdmin.ref(`digitalDownloads/orders/${toRtdbOrderKey(orderId)}`).once('value');
+  return snapshot.val();
+}
+
+async function saveDigitalDownloadEntitlement(orderId: string, entitlement: any) {
+  if (isTestMode()) {
+    localDigitalDownloadOrders.set(orderId, entitlement);
+    for (const resource of entitlement.resources || []) localDigitalDownloadTokens.set(resource.tokenHash, resource);
+    return;
+  }
+  if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) throw new DatabaseConfigError('Private download storage is unavailable.');
+  const updates: Record<string, any> = {
+    [`digitalDownloads/orders/${toRtdbOrderKey(orderId)}`]: entitlement,
+  };
+  for (const resource of entitlement.resources || []) {
+    updates[`digitalDownloads/tokens/${resource.tokenHash}`] = { ...resource, orderId };
+  }
+  await rtdbAdmin.ref().update(updates);
+}
+
+async function ensureDigitalDownloads(order: any, regenerate = false): Promise<any[]> {
+  if (!order || order.paymentStatus !== 'completed' || order.paymentMethod === 'cash' || order.paymentStatus === 'refunded') return [];
+  const orderItems = Array.isArray(order.items) ? order.items : Object.values(order.items || {});
+  const virtualItems = orderItems.filter((item: any) => item?.productType === 'virtual');
+  if (!virtualItems.length) return [];
+
+  const current = await getDigitalDownloadEntitlement(order.id);
+  if (current && !regenerate) return current.revoked ? [] : groupDownloadResources(current.resources || []);
+
+  if (current) {
+    for (const resource of current.resources || []) {
+      resource.revoked = true;
+      if (isTestMode()) localDigitalDownloadTokens.set(resource.tokenHash, resource);
+    }
+    if (!isTestMode() && rtdbAdmin) {
+      const revocations: Record<string, boolean> = {};
+      for (const resource of current.resources || []) revocations[`digitalDownloads/tokens/${resource.tokenHash}/revoked`] = true;
+      if (Object.keys(revocations).length) await rtdbAdmin.ref().update(revocations);
+    }
+  }
+
+  const createdAt = new Date().toISOString();
+  const resources: any[] = [];
+  for (const item of virtualItems as any[]) {
+    const productResources = await getPrivateDigitalProductResources(item.productId);
+    if (!Array.isArray(productResources) || productResources.length === 0) {
+      throw new Error(`Digital download configuration missing for ${item.productId}`);
+    }
+    for (const resource of productResources) {
+      const token = crypto.randomBytes(32).toString('base64url');
+      const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+      const expiryDays = Math.max(0, Number(item.downloadExpiryDays) || 0);
+      resources.push({
+        tokenHash,
+        encryptedToken: encryptDigitalToken(token),
+        orderId: order.id,
+        productId: item.productId,
+        productName: item.productName,
+        fileName: resource.fileName,
+        label: resource.label,
+        sourceUrl: resource.url,
+        createdAt,
+        expiresAt: expiryDays ? new Date(Date.now() + expiryDays * 86400000).toISOString() : null,
+        downloadLimit: Math.min(1000, Math.max(1, Math.floor(Number(item.downloadLimit) || 5))),
+        downloadCount: 0,
+        revoked: false,
+      });
+    }
+  }
+  const entitlement = { orderId: order.id, createdAt, revoked: false, resources };
+  await saveDigitalDownloadEntitlement(order.id, entitlement);
+  return groupDownloadResources(resources);
+}
+
+async function revokeDigitalDownloads(orderId: string) {
+  const entitlement = await getDigitalDownloadEntitlement(orderId);
+  if (!entitlement) return;
+  entitlement.revoked = true;
+  const updates: Record<string, any> = {
+    [`digitalDownloads/orders/${toRtdbOrderKey(orderId)}`]: entitlement,
+  };
+  for (const resource of entitlement.resources || []) {
+    resource.revoked = true;
+    if (isTestMode()) localDigitalDownloadTokens.set(resource.tokenHash, resource);
+    else updates[`digitalDownloads/tokens/${resource.tokenHash}/revoked`] = true;
+  }
+  if (isTestMode()) localDigitalDownloadOrders.set(orderId, entitlement);
+  else if (rtdbAdmin) await rtdbAdmin.ref().update(updates);
+}
+
+async function prepareDigitalDelivery(order: any, rtdbPath?: string) {
+  const downloads = await ensureDigitalDownloads(order);
+  const hasVirtualItems = (Array.isArray(order.items) ? order.items : Object.values(order.items || {}))
+    .some((item: any) => item?.productType === 'virtual');
+  const updates = {
+    digitalDeliveryStatus: hasVirtualItems ? (downloads.length ? 'available' : 'unavailable') : 'not_required',
+    digitalEmailStatus: hasVirtualItems ? 'queued' : 'not_required',
+    digitalResourceNames: downloads.flatMap((product: any) => (product.resources || []).map((resource: any) => ({
+      productName: product.productName,
+      fileName: resource.fileName,
+    }))),
+  };
+  await updateOrderInDatabase(order.id, updates, rtdbPath);
+  return { downloads, order: { ...order, ...updates, digitalDownloads: downloads } };
+}
+
+export async function handleDigitalDownload(req: Request, res: Response) {
+  try {
+    const token = String(req.params.token || '');
+    if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return res.status(404).send('Download not found.');
+    const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+    let record: any;
+    if (isTestMode()) record = localDigitalDownloadTokens.get(tokenHash);
+    else {
+      if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) return res.status(503).send('Download service unavailable.');
+      const snapshot = await rtdbAdmin.ref(`digitalDownloads/tokens/${tokenHash}`).once('value');
+      record = snapshot.val();
+    }
+    if (!record || record.revoked || record.tokenHash !== tokenHash) return res.status(404).send('Download not found.');
+    const orderRecord = await findOrderRecord(record.orderId);
+    if (!orderRecord || orderRecord.order.paymentStatus !== 'completed') return res.status(403).send('This order is not eligible for downloads.');
+    if (record.expiresAt && Date.now() > new Date(record.expiresAt).getTime()) return res.status(410).send('This download link has expired.');
+
+    const source = new URL(record.sourceUrl);
+    if (source.protocol !== 'https:' || ['localhost', '127.0.0.1', '::1'].includes(source.hostname.toLowerCase())) {
+      return res.status(400).send('Invalid download source.');
+    }
+    const response = await fetch(source, { redirect: 'follow', signal: AbortSignal.timeout(120000) });
+    const finalSourceUrl = response.url ? new URL(response.url) : source;
+    if (!response.ok || !response.body || finalSourceUrl.protocol !== 'https:') return res.status(502).send('Download source is unavailable.');
+    const maxBytes = 250 * 1024 * 1024;
+    const contentLength = Number(response.headers.get('content-length'));
+    if (contentLength > maxBytes) return res.status(413).send('File exceeds the download size limit.');
+    const latestOrder = await findOrderRecord(record.orderId);
+    if (!latestOrder || latestOrder.order.paymentStatus !== 'completed') return res.status(403).send('This order is not eligible for downloads.');
+    if (isTestMode()) {
+      if (record.downloadCount >= record.downloadLimit) return res.status(429).send('Download limit reached.');
+      record.downloadCount += 1;
+    } else {
+      const tokenRef = rtdbAdmin!.ref(`digitalDownloads/tokens/${tokenHash}`);
+      const transaction = await tokenRef.transaction((current: any) => {
+        if (!current || current.revoked || current.tokenHash !== tokenHash || current.downloadCount >= current.downloadLimit || (current.expiresAt && Date.now() > new Date(current.expiresAt).getTime())) return;
+        current.downloadCount = (Number(current.downloadCount) || 0) + 1;
+        current.lastDownloadedAt = new Date().toISOString();
+        return current;
+      });
+      if (!transaction.committed) return res.status(429).send('Download limit reached or link revoked.');
+      record = transaction.snapshot.val();
+    }
+    const safeFileName = String(record.fileName || 'download').replace(/[\r\n"\\]/g, '_');
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
+    if (Number.isFinite(contentLength) && contentLength > 0) res.setHeader('Content-Length', String(contentLength));
+    let bytesSent = 0;
+    const sizeGuard = new Transform({
+      transform(chunk, _encoding, callback) {
+        bytesSent += chunk.length;
+        callback(bytesSent > maxBytes ? new Error('File exceeds the download size limit.') : null, chunk);
+      },
+    });
+    await pipeline(Readable.fromWeb(response.body as any), sizeGuard, res);
+    return;
+  } catch (error: any) {
+    console.error('Digital download error:', error?.message || error);
+    if (res.headersSent) return res.destroy();
+    return res.status(500).send('Could not process this download.');
+  }
+}
+
+export async function handleAdminRegenerateDigitalDownloads(req: Request, res: Response) {
+  const admin = await requireAdminCaller(req, res);
+  if (!admin) return;
+  try {
+    const record = await findOrderRecord(String(req.params.orderId || ''));
+    if (!record || record.order.paymentStatus !== 'completed') return res.status(403).json({ success: false, error: 'Downloads are available only for paid orders.' });
+    const downloads = await ensureDigitalDownloads(record.order, true);
+    if (!downloads.length) return res.status(400).json({ success: false, error: 'No digital resources are configured for this order.' });
+    await updateOrderInDatabase(record.order.id, {
+      digitalDeliveryStatus: 'available',
+      digitalResourceNames: downloads.flatMap((product: any) => (product.resources || []).map((resource: any) => ({ productName: product.productName, fileName: resource.fileName }))),
+    }, record.rtdbPath);
+    return res.json({ success: true, downloads });
+  } catch (error: any) {
+    console.error('Download access regeneration failed:', error?.message || error);
+    return res.status(500).json({ success: false, error: 'Could not regenerate download access.' });
+  }
+}
+
+export async function handleAdminRevokeDigitalDownloads(req: Request, res: Response) {
+  const admin = await requireAdminCaller(req, res);
+  if (!admin) return;
+  try {
+    const record = await findOrderRecord(String(req.params.orderId || ''));
+    if (!record) return res.status(404).json({ success: false, error: 'Order not found.' });
+    await revokeDigitalDownloads(record.order.id);
+    await updateOrderInDatabase(record.order.id, { digitalDeliveryStatus: 'revoked' }, record.rtdbPath);
+    return res.json({ success: true });
+  } catch (error: any) {
+    console.error('Download access revocation failed:', error?.message || error);
+    return res.status(500).json({ success: false, error: 'Could not revoke download access.' });
+  }
+}
+
+export async function handleAdminResendDigitalEmail(req: Request, res: Response) {
+  const admin = await requireAdminCaller(req, res);
+  if (!admin) return;
+  try {
+    const record = await findOrderRecord(String(req.params.orderId || ''));
+    if (!record || record.order.paymentStatus !== 'completed') return res.status(403).json({ success: false, error: 'Download emails are available only for paid orders.' });
+    const downloads = await ensureDigitalDownloads(record.order);
+    if (!downloads.length) return res.status(400).json({ success: false, error: 'No active digital downloads are available.' });
+    const clientRequestId = String(req.body?.idempotencyKey || crypto.randomUUID()).replace(/[^A-Za-z0-9_-]/g, '').slice(0, 100);
+    const job = enqueueOutboxNotification({
+      idempotencyKey: `digital_delivery:${record.order.id}:${clientRequestId}`,
+      kind: 'digital_delivery',
+      orderId: record.order.id,
+      payload: { order: record.order, downloads },
+      maxAttempts: 5,
+    });
+    await updateOrderInDatabase(record.order.id, { digitalEmailStatus: 'queued' }, record.rtdbPath);
+    return res.json({ success: true, outboxJobId: job.job.jobId, emailDelivery: buildQueuedEmailDeliverySummary(job.job.jobId) });
+  } catch (error: any) {
+    console.error('Digital delivery email resend failed:', error?.message || error);
+    return res.status(500).json({ success: false, error: 'Could not queue the download email.' });
+  }
+}
+
+function normalizeDigitalResources(value: any): any[] | null {
+  if (!Array.isArray(value)) return null;
+  const resources: any[] = [];
+  for (const resource of value) {
+    if (!resource || typeof resource !== 'object') return null;
+    const id = String(resource.id || '').trim();
+    const fileName = String(resource.fileName || '').trim();
+    const label = String(resource.label || '').trim();
+    const rawUrl = String(resource.url || '').trim();
+    let url: URL;
+    try { url = new URL(rawUrl); } catch { return null; }
+    if (!id || id.length > 128 || !fileName || fileName.length > 180 || !label || label.length > 80 || url.protocol !== 'https:') return null;
+    resources.push({ id, fileName, label, url: url.toString() });
+  }
+  return resources;
+}
+
+export async function handleAdminGetDigitalProductResources(req: Request, res: Response) {
+  const caller = await requireAdminCaller(req, res);
+  if (!caller) return;
+  const productId = String(req.params.productId || '');
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(productId)) return res.status(400).json({ success: false, error: 'Invalid product ID.' });
+  try {
+    if (isTestMode()) return res.json({ success: true, resources: localDigitalProductResources.get(productId) || [] });
+    if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) return res.status(503).json({ success: false, error: 'Private product storage is unavailable.' });
+    const snapshot = await rtdbAdmin.ref(`digitalProductResources/${productId}`).once('value');
+    return res.json({ success: true, resources: snapshot.val()?.resources || [] });
+  } catch (error: any) {
+    console.error('Could not read private product downloads:', error?.message || error);
+    return res.status(500).json({ success: false, error: 'Could not load download resources.' });
+  }
+}
+
+export async function handleAdminSaveDigitalProductResources(req: Request, res: Response) {
+  const caller = await requireAdminCaller(req, res);
+  if (!caller) return;
+  const productId = String(req.params.productId || '');
+  const resources = normalizeDigitalResources(req.body?.resources);
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(productId) || !resources) {
+    return res.status(400).json({ success: false, error: 'Invalid digital download configuration.' });
+  }
+  try {
+    if (isTestMode()) localDigitalProductResources.set(productId, resources);
+    else {
+      if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) return res.status(503).json({ success: false, error: 'Private product storage is unavailable.' });
+      await rtdbAdmin.ref(`digitalProductResources/${productId}`).set({ resources, updatedAt: new Date().toISOString(), updatedBy: caller.uid });
+    }
+    return res.json({ success: true });
+  } catch (error: any) {
+    console.error('Could not save private product downloads:', error?.message || error);
+    return res.status(500).json({ success: false, error: 'Could not save download resources.' });
+  }
+}
+
+export async function handleAdminDeleteDigitalProductResources(req: Request, res: Response) {
+  const caller = await requireAdminCaller(req, res);
+  if (!caller) return;
+  const productId = String(req.params.productId || '');
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(productId)) return res.status(400).json({ success: false, error: 'Invalid product ID.' });
+  try {
+    if (isTestMode()) localDigitalProductResources.delete(productId);
+    else {
+      if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) return res.status(503).json({ success: false, error: 'Private product storage is unavailable.' });
+      await rtdbAdmin.ref(`digitalProductResources/${productId}`).remove();
+    }
+    return res.json({ success: true });
+  } catch (error: any) {
+    console.error('Could not remove private product downloads:', error?.message || error);
+    return res.status(500).json({ success: false, error: 'Could not remove download resources.' });
+  }
+}
+
 let localOrdersCache: Record<string, any> | null = null;
 let localOrdersFlushTimer: NodeJS.Timeout | null = null;
 let localOrdersWriting = false;
@@ -785,6 +1142,17 @@ async function getVerifiedAuthUser(req: Request): Promise<{ uid: string; email: 
   return null;
 }
 
+async function mayReadOrderDownloads(req: Request, order: any): Promise<boolean> {
+  const caller = await getVerifiedAuthUser(req);
+  if (caller && (caller.uid === order?.uid || caller.uid === order?.userId)) return true;
+  const token = typeof req.body?.guestTrackingToken === 'string' ? req.body.guestTrackingToken.trim() : '';
+  if (!token || !order?.guestTokenHash) return false;
+  const hash = crypto.createHash('sha256').update(token).digest('hex');
+  const actual = Buffer.from(hash, 'utf8');
+  const expected = Buffer.from(String(order.guestTokenHash), 'utf8');
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
 function requireAdminDatabase(): Database {
   ensureFirebaseAdminInitialized();
   if (!hasAdminCredential || !rtdbAdmin) {
@@ -992,6 +1360,19 @@ async function validateAndComputeOrder(
       return { valid: false, status: 400, error: `${product.name} is currently out of stock.` };
     }
 
+    const productType = product.productType === 'virtual' ? 'virtual' : 'physical';
+    if (productType === 'virtual' && intendedMethod === 'cod') {
+      return { valid: false, status: 400, error: `${product.name} requires online payment.` };
+    }
+    if (productType === 'virtual') {
+      try {
+        const resources = await getPrivateDigitalProductResources(product.id);
+        if (!resources.length) return { valid: false, status: 400, error: `Digital downloads are not configured for ${product.name}.` };
+      } catch {
+        return { valid: false, status: 503, error: 'Digital download configuration is temporarily unavailable.' };
+      }
+    }
+
     // Check product permitted payment methods
     const methods: string[] = Array.isArray(product.paymentMethods) ? product.paymentMethods : ['online', 'cod'];
     const allowsBoth = methods.includes('both') || (methods.includes('online') && methods.includes('cod'));
@@ -1010,11 +1391,11 @@ async function validateAndComputeOrder(
     }
 
     const customImageUrl = typeof item.customImageUrl === 'string' ? item.customImageUrl.trim() : '';
-    if (product.requiresCustomImage) {
+    if (productType === 'physical' && product.requiresCustomImage) {
       if (!customImageUrl || !isValidSafeUrl(customImageUrl)) {
         return { valid: false, status: 400, error: `A valid uploaded image is required for ${product.name}.` };
       }
-    } else if (customImageUrl && !isValidSafeUrl(customImageUrl)) {
+    } else if (productType === 'physical' && customImageUrl && !isValidSafeUrl(customImageUrl)) {
       return { valid: false, status: 400, error: 'Invalid custom image URL.' };
     }
 
@@ -1026,7 +1407,7 @@ async function validateAndComputeOrder(
     }
 
     calculatedSubtotal += unitPrice * quantity;
-    calculatedDelivery += Number(product.deliveryCharges) || 0;
+    if (productType === 'physical') calculatedDelivery += Number(product.deliveryCharges) || 0;
 
     verifiedItems.push(stripUndefinedDeep({
       productId: product.id,
@@ -1034,7 +1415,10 @@ async function validateAndComputeOrder(
       price: basePrice,
       discountedPrice: !isNaN(discountedPrice) && discountedPrice > 0 ? discountedPrice : undefined,
       quantity,
-      customImageUrl: customImageUrl || undefined,
+      productType,
+      downloadExpiryDays: productType === 'virtual' ? Math.min(3650, Math.max(0, Number(product.downloadExpiryDays) || 0)) || undefined : undefined,
+      downloadLimit: productType === 'virtual' ? Math.min(1000, Math.max(1, Number(product.downloadLimit) || 5)) : undefined,
+      customImageUrl: productType === 'physical' ? customImageUrl || undefined : undefined,
       specialInstructions: cleanText(item.specialInstructions, 500) || undefined
     }));
   }
@@ -1420,11 +1804,22 @@ export async function handleVerifyPayment(req: Request, res: Response) {
       if (existingOrder.razorpayPaymentId && existingOrder.razorpayPaymentId !== razorpay_payment_id) {
         return res.status(409).json({ verified: false, error: 'Order already paid with another transaction.' });
       }
+      const delivery = await prepareDigitalDelivery(existingOrder, rtdbPath);
+      const obx = enqueueOutboxNotification({
+        idempotencyKey: `order_confirmed:online:${orderId}:${razorpay_payment_id}`,
+        kind: 'order_confirmed',
+        orderId,
+        payload: { order: delivery.order },
+        maxAttempts: 5,
+      });
       return res.json({
         verified: true,
         orderId,
-        order: sanitizeOrderForClient(existingOrder, { includeOwnerUid: !existingOrder.isGuest }),
-        message: 'Order was already verified and confirmed.'
+        order: sanitizeOrderForClient(delivery.order, { includeOwnerUid: !existingOrder.isGuest }),
+        message: 'Order was already verified and confirmed.',
+        notificationQueued: true,
+        outboxJobId: obx.job.jobId,
+        emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
       });
     }
 
@@ -1474,18 +1869,19 @@ export async function handleVerifyPayment(req: Request, res: Response) {
     };
 
     await recordVerifiedPaymentTransaction(completedOrder, razorpay_payment_id, razorpay_order_id, now);
+    const delivery = await prepareDigitalDelivery(completedOrder, rtdbPath);
     const obx = enqueueOutboxNotification({
       idempotencyKey: `order_confirmed:online:${orderId}:${razorpay_payment_id}`,
       kind: 'order_confirmed',
       orderId,
-      payload: { order: completedOrder },
+      payload: { order: delivery.order },
       maxAttempts: 5,
     });
 
     return res.json({
       verified: true,
       orderId,
-      order: sanitizeOrderForClient(completedOrder, { includeOwnerUid: !completedOrder.isGuest }),
+      order: sanitizeOrderForClient(delivery.order, { includeOwnerUid: !completedOrder.isGuest }),
       message: 'Payment verified and order confirmed successfully.',
       notificationQueued: true,
       outboxJobId: obx.job.jobId,
@@ -1519,11 +1915,13 @@ export async function handleRecoverPayment(req: Request, res: Response) {
     }
 
     const { order, rtdbPath } = record;
+    const mayReadDownloads = await mayReadOrderDownloads(req, order);
     if (order.paymentStatus === 'completed') {
+      const delivery = await prepareDigitalDelivery(order, rtdbPath);
       return res.json({
         success: true,
         verified: true,
-        order: sanitizeOrderForClient(order, { includeOwnerUid: !order.isGuest })
+        order: sanitizeOrderForClient(mayReadDownloads ? delivery.order : { ...delivery.order, digitalDownloads: [] }, { includeOwnerUid: !order.isGuest })
       });
     }
 
@@ -1590,18 +1988,19 @@ export async function handleRecoverPayment(req: Request, res: Response) {
     await updateOrderInDatabase(order.id, updates, rtdbPath);
     const updatedOrder = { ...order, ...updates };
     await recordVerifiedPaymentTransaction(updatedOrder, capturedPayment.id, order.razorpayOrderId, now);
+    const delivery = await prepareDigitalDelivery(updatedOrder, rtdbPath);
     const obx = enqueueOutboxNotification({
       idempotencyKey: `order_confirmed:recovered:${order.id}:${capturedPayment.id}`,
       kind: 'order_confirmed',
       orderId: order.id,
-      payload: { order: updatedOrder },
+      payload: { order: delivery.order },
       maxAttempts: 5,
     });
 
     return res.json({
       success: true,
       verified: true,
-      order: sanitizeOrderForClient(updatedOrder, { includeOwnerUid: !updatedOrder.isGuest }),
+      order: sanitizeOrderForClient(mayReadDownloads ? delivery.order : { ...delivery.order, digitalDownloads: [] }, { includeOwnerUid: !updatedOrder.isGuest }),
       notificationQueued: true,
       outboxJobId: obx.job.jobId,
       emailDelivery: buildQueuedEmailDeliverySummary(obx.job.jobId),
@@ -1682,11 +2081,12 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
           if (paymentId) {
             await recordVerifiedPaymentTransaction(updatedOrder, paymentId, rzpOrderId, now);
           }
+          const delivery = await prepareDigitalDelivery(updatedOrder, rtdbPath);
           enqueueOutboxNotification({
             idempotencyKey: `order_confirmed:webhook:${order.id}:${paymentId || rzpOrderId}`,
             kind: 'order_confirmed',
             orderId: order.id,
-            payload: { order: updatedOrder },
+            payload: { order: delivery.order },
             maxAttempts: 5,
           });
         }
@@ -1699,6 +2099,27 @@ export async function handleRazorpayWebhook(req: Request, res: Response) {
         }).catch((err: any) => {
           console.warn('Application webhook reconciliation notice:', err?.message || err);
         });
+      }
+    }
+
+    if (event === 'payment.refunded' && rzpOrderId) {
+      const matched = await findOrderByRazorpayOrderId(rzpOrderId);
+      if (matched && matched.order.paymentStatus !== 'refunded') {
+        const { order, rtdbPath } = matched;
+        const now = new Date().toISOString();
+        const updates = {
+          paymentStatus: 'refunded',
+          refundAmount: typeof payment?.amount === 'number' ? payment.amount / 100 : Number(order.total) || 0,
+          refundedAt: now,
+          updatedAt: now,
+        };
+        await updateOrderInDatabase(order.id, updates, rtdbPath);
+        const hasDigitalItems = (Array.isArray(order.items) ? order.items : Object.values(order.items || {}))
+          .some((item: any) => item?.productType === 'virtual');
+        if (hasDigitalItems) {
+          await revokeDigitalDownloads(order.id);
+          await updateOrderInDatabase(order.id, { digitalDeliveryStatus: 'revoked' }, rtdbPath);
+        }
       }
     }
 
@@ -1843,10 +2264,14 @@ export async function handleGetMyOrders(req: Request, res: Response) {
     const userOrders = Array.from(orderMap.values()).sort(
       (a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
     );
+    const ordersWithDownloads = await Promise.all(userOrders.map(async (order: any) => ({
+      ...order,
+      digitalDownloads: order.paymentStatus === 'completed' ? await ensureDigitalDownloads(order) : [],
+    })));
 
     return res.json({
       success: true,
-      orders: userOrders
+      orders: ordersWithDownloads
     });
   } catch (error: any) {
     console.error('Get my orders error:', error);
@@ -1892,6 +2317,7 @@ export async function handleGuestTrackOrder(req: Request, res: Response) {
 
     const order = record.order;
     let isAuthorized = false;
+    let isAuthorizedByGuestToken = false;
 
     if (cleanToken && order.guestTokenHash) {
       const computedHash = crypto.createHash('sha256').update(cleanToken).digest('hex');
@@ -1899,6 +2325,7 @@ export async function handleGuestTrackOrder(req: Request, res: Response) {
       const b = Buffer.from(String(order.guestTokenHash), 'utf8');
       if (a.length === b.length && crypto.timingSafeEqual(a, b)) {
         isAuthorized = true;
+        isAuthorizedByGuestToken = true;
       }
     }
 
@@ -1922,7 +2349,10 @@ export async function handleGuestTrackOrder(req: Request, res: Response) {
 
     return res.json({
       success: true,
-      order: sanitizeOrderForClient(order, { includeOwnerUid: false })
+      order: sanitizeOrderForClient({
+        ...order,
+        digitalDownloads: order.paymentStatus === 'completed' && isAuthorizedByGuestToken ? await ensureDigitalDownloads(order) : [],
+      }, { includeOwnerUid: false })
     });
   } catch (error: any) {
     console.error('Guest tracking error:', error);
@@ -2176,7 +2606,14 @@ export async function handleAdminUpdateOrderStatus(req: Request, res: Response) 
     }
 
     await updateOrderInDatabase(existingOrder.id, updates, rtdbPath);
-    const updatedOrder = { ...existingOrder, ...updates };
+    let updatedOrder = { ...existingOrder, ...updates };
+    const hasDigitalItems = (Array.isArray(existingOrder.items) ? existingOrder.items : Object.values(existingOrder.items || {}))
+      .some((item: any) => item?.productType === 'virtual');
+    if (hasDigitalItems && paymentChanged && nextPaymentStatus && nextPaymentStatus !== 'completed') {
+      await revokeDigitalDownloads(existingOrder.id);
+      await updateOrderInDatabase(existingOrder.id, { digitalDeliveryStatus: 'revoked' }, rtdbPath);
+      updatedOrder = { ...updatedOrder, digitalDeliveryStatus: 'revoked' };
+    }
 
     let obxJobId: string | undefined;
     if (statusChanged && nextOrderStatus) {
@@ -2264,7 +2701,14 @@ export async function handleAdminOrderRefund(req: Request, res: Response) {
     };
 
     await updateOrderInDatabase(existingOrder.id, updates, rtdbPath);
-    const updatedOrder = { ...existingOrder, ...updates };
+    let updatedOrder = { ...existingOrder, ...updates };
+    const hasDigitalItems = (Array.isArray(existingOrder.items) ? existingOrder.items : Object.values(existingOrder.items || {}))
+      .some((item: any) => item?.productType === 'virtual');
+    if (hasDigitalItems) {
+      await revokeDigitalDownloads(existingOrder.id);
+      await updateOrderInDatabase(existingOrder.id, { digitalDeliveryStatus: 'revoked' }, rtdbPath);
+      updatedOrder = { ...updatedOrder, digitalDeliveryStatus: 'revoked' };
+    }
 
     const obx = enqueueOutboxNotification({
       idempotencyKey: `order_refund:${existingOrder.id}:${requestedAmount}:${now}`,

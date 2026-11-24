@@ -228,6 +228,29 @@ export function OrderConfirmation() {
           </div>
         )}
 
+        {isPaidOnline && Array.isArray(order.digitalDownloads) && order.digitalDownloads.length > 0 && (
+          <div className="space-y-4 rounded-lg border border-green-200 bg-green-50 p-4">
+            <div>
+              <p className="text-sm font-bold text-green-900">Your digital downloads are ready</p>
+              <p className="mt-1 text-xs text-green-800">Links are protected for this order and may expire or reach their download limit.</p>
+            </div>
+            {order.digitalDownloads.map((group, groupIndex) => (
+              <div key={`${group.productName}-${groupIndex}`} className="space-y-2">
+                <p className="text-sm font-semibold text-navy">{group.productName}</p>
+                {group.resources.map((resource, resourceIndex) => (
+                  <div key={`${resource.fileName}-${resourceIndex}`} className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-white p-3">
+                    <span className="min-w-0 break-all text-sm text-slate-700">{resource.fileName}</span>
+                    <a href={resource.downloadUrl} className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm" rel="noreferrer">
+                      <IconRenderer name="download" className="h-4 w-4" />{resource.label || 'Download Now'}
+                    </a>
+                    {resource.expiresAt && <span className="w-full text-xs text-slate-500">Expires {new Date(resource.expiresAt).toLocaleString('en-IN')}</span>}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+
         {/* Guest Order Tracking Info */}
         {(order.isGuest || guestTrackingToken) && (
           <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">

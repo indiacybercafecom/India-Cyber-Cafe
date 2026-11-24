@@ -27,6 +27,13 @@ import {
   handleAdminUpdateOrderStatus,
   handleAdminOrderRefund,
   handleAdminAddOrderNote,
+  handleAdminGetDigitalProductResources,
+  handleAdminSaveDigitalProductResources,
+  handleAdminDeleteDigitalProductResources,
+  handleDigitalDownload,
+  handleAdminRegenerateDigitalDownloads,
+  handleAdminRevokeDigitalDownloads,
+  handleAdminResendDigitalEmail,
   handleSubmitStoreReview,
   registerApplicationWebhookReconciler,
   getStoreServiceHealth
@@ -578,7 +585,14 @@ async function startServer() {
   app.get("/api/store/orders/my", handleGetMyOrders);
   app.post("/api/store/orders/guest-track", handleGuestTrackOrder);
   app.post("/api/store/orders/link-guest-orders", handleLinkGuestOrders);
+  app.get("/api/store/downloads/:token", handleDigitalDownload);
   app.post("/api/store/reviews", handleSubmitStoreReview);
+  app.get("/api/admin/store/products/:productId/digital-resources", handleAdminGetDigitalProductResources);
+  app.put("/api/admin/store/products/:productId/digital-resources", handleAdminSaveDigitalProductResources);
+  app.delete("/api/admin/store/products/:productId/digital-resources", handleAdminDeleteDigitalProductResources);
+  app.post("/api/admin/orders/:orderId/digital-downloads/regenerate", handleAdminRegenerateDigitalDownloads);
+  app.post("/api/admin/orders/:orderId/digital-downloads/revoke", handleAdminRevokeDigitalDownloads);
+  app.post("/api/admin/orders/:orderId/digital-downloads/resend", handleAdminResendDigitalEmail);
   app.post("/api/admin/orders/:orderId/status", handleAdminUpdateOrderStatus);
   app.post("/api/admin/orders/:orderId/refund", handleAdminOrderRefund);
   app.post("/api/admin/orders/:orderId/notes", handleAdminAddOrderNote);

@@ -64,9 +64,17 @@ function mergeAndSortOrders(lists: Order[][], maxItems = INITIAL_LIMIT): Order[]
       } else {
         const existingTime = new Date(existing.updatedAt || existing.createdAt || 0).getTime();
         const incomingTime = new Date(ord.updatedAt || ord.createdAt || 0).getTime();
-        if (incomingTime >= existingTime) {
-          map.set(ord.id, ord);
-        }
+        const preferred = incomingTime >= existingTime ? ord : existing;
+        const fallback = preferred === ord ? existing : ord;
+        map.set(ord.id, {
+          ...fallback,
+          ...preferred,
+          ...(Object.prototype.hasOwnProperty.call(ord, 'digitalDownloads')
+            ? { digitalDownloads: ord.digitalDownloads }
+            : Object.prototype.hasOwnProperty.call(existing, 'digitalDownloads')
+              ? { digitalDownloads: existing.digitalDownloads }
+              : {}),
+        });
       }
     }
   }

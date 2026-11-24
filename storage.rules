@@ -23,6 +23,23 @@ service firebase.storage {
       );
     }
 
+    function isAllowedDigitalType() {
+      return request.resource != null && (
+        request.resource.contentType == 'application/pdf' ||
+        request.resource.contentType == 'application/zip' ||
+        request.resource.contentType == 'application/x-zip-compressed' ||
+        request.resource.contentType == 'application/msword' ||
+        request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        request.resource.contentType == 'application/vnd.ms-excel' ||
+        request.resource.contentType == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+        request.resource.contentType == 'application/vnd.ms-powerpoint' ||
+        request.resource.contentType == 'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+        request.resource.contentType == 'text/plain' ||
+        request.resource.contentType == 'text/csv' ||
+        request.resource.contentType == 'application/octet-stream'
+      );
+    }
+
     function isImageType() {
       return request.resource != null &&
         request.resource.contentType.matches('image/(jpeg|jpg|png|webp|gif)');
@@ -66,6 +83,12 @@ service firebase.storage {
     match /products/{allPaths=**} {
       allow read: if true;
       allow write: if isAdmin() && isUnder5MB() && isImageType();
+    }
+
+    // Digital product files are admin-readable for upload URL retrieval and customer-private otherwise.
+    match /digital-products/{allPaths=**} {
+      allow read: if isAdmin();
+      allow write: if isAdmin() && isUnder5MB() && isAllowedDigitalType();
     }
 
     // Product review images

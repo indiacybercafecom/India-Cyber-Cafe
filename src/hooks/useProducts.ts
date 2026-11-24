@@ -168,6 +168,30 @@ export function useProducts() {
     console.log('[useProducts] JSON sync completed');
   };
 
+  const saveDigitalResources = async (productId: string, resources: Product['digitalResources'] = []) => {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error('Admin authentication is required to save digital downloads.');
+    const response = await fetch(`/api/admin/store/products/${encodeURIComponent(productId)}/digital-resources`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${idToken}` },
+      body: JSON.stringify({ resources }),
+    });
+    const result = await response.json().catch(() => null);
+    if (!response.ok || !result?.success) {
+      throw new Error(result?.error || 'Could not save private download resources.');
+    }
+  };
+
+  const deleteDigitalResources = async (productId: string) => {
+    const idToken = await auth.currentUser?.getIdToken();
+    if (!idToken) throw new Error('Admin authentication is required to update digital downloads.');
+    const response = await fetch(`/api/admin/store/products/${encodeURIComponent(productId)}/digital-resources`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${idToken}` },
+    });
+    if (!response.ok) throw new Error('Could not remove private download resources.');
+  };
+
   const addProduct = async (product: Omit<Product, 'id'>) => {
     let productId = generateSlug(product.name);
 
@@ -178,13 +202,15 @@ export function useProducts() {
       productId = `${productId}-${timestamp}`;
     }
 
+    const { digitalResources = [], ...publicProduct } = product;
     await set(ref(rtdb, `products/${productId}`), {
-      ...product,
+      ...publicProduct,
       id: productId,
     });
+    if (product.productType === 'virtual') await saveDigitalResources(productId, digitalResources);
 
     // Update local state and cache
-    const newProduct = { ...product, id: productId } as Product;
+    const newProduct = { ...publicProduct, id: productId } as Product;
     const updated = [...products, newProduct];
     setProducts(updated);
     cacheManager.set('products', updated);
@@ -194,7 +220,11 @@ export function useProducts() {
   };
 
   const updateProduct = async (id: string, data: Partial<Product>) => {
-    await update(ref(rtdb, `products/${id}`), data);
+    const { digitalResources, ...publicData } = data;
+    const existingProduct = products.find(product => product.id === id);
+    if (data.productType === 'virtual' && digitalResources !== undefined) await saveDigitalResources(id, digitalResources);
+    else if (existingProduct?.productType === 'virtual' && data.productType === 'physical') await deleteDigitalResources(id);
+    await update(ref(rtdb, `products/${id}`), publicData);
 
     // Update local state and cache
     const updated = products.map((p: Product) => (p.id === id ? { ...p, ...data } : p));
@@ -206,7 +236,9 @@ export function useProducts() {
   };
 
   const deleteProduct = async (id: string) => {
+    const existingProduct = products.find(product => product.id === id);
     await remove(ref(rtdb, `products/${id}`));
+    if (existingProduct?.productType === 'virtual') await deleteDigitalResources(id);
 
     // Update local state and cache
     const updated = products.filter((p: Product) => p.id !== id);

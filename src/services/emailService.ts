@@ -451,6 +451,20 @@ export async function initiateAdminOrderRefundApi(
   );
 }
 
+export async function resendDigitalDeliveryEmailApi(orderId: string) {
+  return postJson(`/api/admin/orders/${encodeURIComponent(orderId)}/digital-downloads/resend`, {
+    idempotencyKey: typeof crypto !== 'undefined' && crypto.randomUUID ? crypto.randomUUID() : `resend_${Date.now()}`,
+  }, { throwOnError: true });
+}
+
+export async function regenerateDigitalDownloadAccessApi(orderId: string) {
+  return postJson(`/api/admin/orders/${encodeURIComponent(orderId)}/digital-downloads/regenerate`, {}, { throwOnError: true });
+}
+
+export async function revokeDigitalDownloadAccessApi(orderId: string) {
+  return postJson(`/api/admin/orders/${encodeURIComponent(orderId)}/digital-downloads/revoke`, {}, { throwOnError: true });
+}
+
 // ============= DEPRECATED GENERIC CLIENT EMAIL HELPERS =============
 // Direct arbitrary HTML emails from the client are disabled; all email routing
 // and HTML generation live in src/server/emailNotificationService.

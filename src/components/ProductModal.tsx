@@ -1,5 +1,6 @@
-import { useState, useRef } from 'react';
-import { Product, ProductCategory } from '../types';
+import { useState, useRef, useEffect } from 'react';
+import { auth } from '../firebase';
+import { DigitalResource, Product, ProductCategory } from '../types';
 import { IconRenderer } from './Icons';
 import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
@@ -17,6 +18,7 @@ interface ProductModalProps {
 }
 
 export function ProductModal({ product, categories, onClose, onSave }: ProductModalProps) {
+  const [digitalResources, setDigitalResources] = useState<DigitalResource[]>(product?.digitalResources || []);
   const [formData, setFormData] = useState<Product>(
     product || {
       id: '',
@@ -39,11 +41,44 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       seoKeywords: ''
     }
   );
+  const isVirtual = formData.productType === 'virtual';
 
   const [uploadingImages, setUploadingImages] = useState(false);
+  const [uploadingResourceId, setUploadingResourceId] = useState<string | null>(null);
+  const [resourcesLoaded, setResourcesLoaded] = useState(!product || product.productType !== 'virtual');
+  const [resourcesLoadFailed, setResourcesLoadFailed] = useState(false);
   const [uploadPercent, setUploadPercent] = useState(0);
   const uploadingRef = useRef(false);
   const { isSubmitting: loading, submittingRef, runSubmission } = useSubmissionLifecycle();
+
+  useEffect(() => {
+    if (!product?.id || product.productType !== 'virtual') return;
+    let active = true;
+    const loadResources = async () => {
+      try {
+        const idToken = await auth.currentUser?.getIdToken();
+        if (!idToken) throw new Error('Admin authentication is required to edit digital resources.');
+        const response = await fetch(`/api/admin/store/products/${encodeURIComponent(product.id)}/digital-resources`, {
+          headers: { Authorization: `Bearer ${idToken}` },
+        });
+        const result = await response.json().catch(() => null);
+        if (!response.ok || !result?.success) throw new Error(result?.error || 'Could not load digital resources.');
+        if (active) {
+          setDigitalResources(Array.isArray(result.resources) ? result.resources : []);
+          setResourcesLoadFailed(false);
+        }
+      } catch (error: any) {
+        if (active) {
+          setResourcesLoadFailed(true);
+          showToast(error, 'error', 'Unable to load private download resources.');
+        }
+      } finally {
+        if (active) setResourcesLoaded(true);
+      }
+    };
+    void loadResources();
+    return () => { active = false; };
+  }, [product?.id, product?.productType]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
@@ -108,9 +143,33 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
     }));
   };
 
+  const handleDigitalFileUpload = async (resourceId: string, file?: File) => {
+    if (!file) return;
+    setUploadingResourceId(resourceId);
+    try {
+      const url = await uploadFileWithRetry(file, {
+        category: 'digital-products',
+        maxSizeBytes: MAX_SERVICE_FILE_SIZE,
+      });
+      setDigitalResources(items => items.map(item => item.id === resourceId
+        ? { ...item, fileName: file.name, url, label: item.label || `Download ${file.name}` }
+        : item));
+      showToast('Digital file uploaded successfully.', 'success');
+    } catch (error: any) {
+      showToast(error, 'error', 'Unable to upload digital file.');
+    } finally {
+      setUploadingResourceId(null);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (submittingRef.current || uploadingRef.current) return;
+    if (submittingRef.current || uploadingRef.current || uploadingResourceId || !resourcesLoaded) return;
+
+    if (isVirtual && resourcesLoadFailed) {
+      showToast('Private download resources could not be loaded. Close and reopen this product before saving.', 'error');
+      return;
+    }
 
     if (!formData.name.trim()) {
       showToast('Product name is required', 'error');
@@ -132,6 +191,21 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       return;
     }
 
+    if (isVirtual && digitalResources.some(resource => !resource.fileName.trim() || !resource.label.trim() || !resource.url.trim())) {
+      showToast('Complete the file name, button label and URL for every download resource', 'error');
+      return;
+    }
+    if (isVirtual && digitalResources.some(resource => {
+      try { return new URL(resource.url).protocol !== 'https:'; } catch { return true; }
+    })) {
+      showToast('Download URLs must use HTTPS', 'error');
+      return;
+    }
+    if (isVirtual && digitalResources.length === 0) {
+      showToast('Add at least one digital download resource', 'error');
+      return;
+    }
+
     if (!formData.images || formData.images.length === 0) {
       showToast('Please upload at least one product image', 'error');
       return;
@@ -141,11 +215,20 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       await runSubmission(async () => {
         const sanitizedData = {
           ...formData,
+          digitalResources: isVirtual ? digitalResources.map(resource => ({
+            ...resource,
+            fileName: trimWhitespace(resource.fileName),
+            label: trimWhitespace(resource.label),
+            url: trimWhitespace(resource.url),
+          })) : [],
+          paymentMethods: isVirtual ? ['online'] as ('online' | 'cod' | 'both')[] : formData.paymentMethods,
+          deliveryCharges: isVirtual ? 0 : formData.deliveryCharges,
+          requiresCustomImage: isVirtual ? false : formData.requiresCustomImage,
           name: trimWhitespace(formData.name),
           shortDescription: trimWhitespace(formData.shortDescription),
           longDescription: trimWhitespace(formData.longDescription),
           customImageInstructions: trimWhitespace(formData.customImageInstructions),
-          turnaroundTime: trimWhitespace(formData.turnaroundTime),
+          turnaroundTime: isVirtual ? '' : trimWhitespace(formData.turnaroundTime),
           seoTitle: trimWhitespace(formData.seoTitle),
           seoDescription: trimWhitespace(formData.seoDescription),
           seoKeywords: trimWhitespace(formData.seoKeywords)
@@ -180,6 +263,23 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
 
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto">
           <div className="p-3 sm:p-4 space-y-2 sm:space-y-3">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-1">Product Type</label>
+              <SelectDropdown
+                value={formData.productType || 'physical'}
+                onChange={value => setFormData({
+                  ...formData,
+                  productType: value as 'physical' | 'virtual',
+                  ...(value === 'virtual' ? { paymentMethods: ['online'], deliveryCharges: 0, requiresCustomImage: false, turnaroundTime: '' } : {})
+                })}
+                className="w-full px-4 py-3 rounded-xl border border-slate-200 focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none transition-all"
+                options={[
+                  { value: 'physical', label: 'Physical Product' },
+                  { value: 'virtual', label: 'Virtual Product' },
+                ]}
+              />
+            </div>
+
             
             <div>
               <label className="block text-sm font-bold text-slate-700 mb-1">Product Name *</label>
@@ -233,7 +333,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
           <div className="space-y-2 sm:space-y-3 p-3 sm:p-4 bg-slate-50 rounded-2xl">
             <h3 className="font-bold text-navy text-lg">Pricing & Stock</h3>
             
-            <div className="grid grid-cols-2 gap-3">
+            {!isVirtual && <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-sm font-bold text-slate-700 mb-1">Base Price (₹) *</label>
                 <input
@@ -259,7 +359,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                   step="0.01"
                 />
               </div>
-            </div>
+            </div>}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -290,7 +390,42 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
             </div>
           </div>
 
-          {/* Turnaround */}
+          {isVirtual ? (
+            <div className="space-y-3 px-3 sm:px-4">
+              <h3 className="font-bold text-navy text-lg">Digital Downloads</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-sm font-bold text-slate-700">Expiry (days, optional)
+                  <input type="number" min="1" value={formData.downloadExpiryDays || ''} onChange={e => setFormData({ ...formData, downloadExpiryDays: Number(e.target.value) || undefined })} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200" />
+                </label>
+                <label className="text-sm font-bold text-slate-700">Download limit per resource
+                  <input type="number" min="1" value={formData.downloadLimit || 5} onChange={e => setFormData({ ...formData, downloadLimit: Math.max(1, Number(e.target.value) || 1) })} className="mt-1 w-full px-3 py-2 rounded-lg border border-slate-200" />
+                </label>
+              </div>
+              <div className="space-y-3">
+                {digitalResources.map((resource, index) => (
+                  <div key={resource.id} className="grid grid-cols-[auto_1fr_1fr_auto] items-center gap-2 rounded-lg border border-slate-200 p-3">
+                    <div className="flex flex-col gap-1">
+                      <button type="button" title="Move up" aria-label="Move resource up" disabled={index === 0} onClick={() => setDigitalResources(items => { const next = [...items]; [next[index - 1], next[index]] = [next[index], next[index - 1]]; return next; })} className="disabled:opacity-30">↑</button>
+                      <button type="button" title="Move down" aria-label="Move resource down" disabled={index === digitalResources.length - 1} onClick={() => setDigitalResources(items => { const next = [...items]; [next[index + 1], next[index]] = [next[index], next[index + 1]]; return next; })} className="disabled:opacity-30">↓</button>
+                    </div>
+                    <input aria-label="Download file name" placeholder="File name (e.g. guide.pdf)" value={resource.fileName} onChange={e => setDigitalResources(items => items.map(item => item.id === resource.id ? { ...item, fileName: e.target.value } : item))} className="min-w-0 px-3 py-2 rounded-lg border border-slate-200" />
+                    <div className="space-y-2">
+                      <input aria-label="Download button label" placeholder="Button label" value={resource.label} onChange={e => setDigitalResources(items => items.map(item => item.id === resource.id ? { ...item, label: e.target.value } : item))} className="w-full min-w-0 px-3 py-2 rounded-lg border border-slate-200" />
+                      <input aria-label="Download URL" type="url" placeholder="https://..." value={resource.url} onChange={e => setDigitalResources(items => items.map(item => item.id === resource.id ? { ...item, url: e.target.value } : item))} className="w-full min-w-0 px-3 py-2 rounded-lg border border-slate-200" />
+                      <label className="inline-flex cursor-pointer items-center gap-2 text-xs font-semibold text-navy">
+                        <IconRenderer name="upload" className="h-4 w-4" />
+                        {uploadingResourceId === resource.id ? 'Uploading...' : 'Upload file'}
+                        <input type="file" accept=".pdf,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv" disabled={Boolean(uploadingResourceId)} onChange={e => { void handleDigitalFileUpload(resource.id, e.target.files?.[0]); e.target.value = ''; }} className="sr-only" />
+                      </label>
+                    </div>
+                    <button type="button" title="Remove resource" aria-label="Remove resource" onClick={() => setDigitalResources(items => items.filter(item => item.id !== resource.id))} className="p-2 text-red-600"><IconRenderer name="trash-2" className="w-4 h-4" /></button>
+                  </div>
+                ))}
+              </div>
+              <button type="button" onClick={() => setDigitalResources(items => [...items, { id: crypto.randomUUID(), fileName: '', label: 'Download Now', url: '' }])} className="px-3 py-2 border border-slate-300 rounded-lg font-semibold text-sm">Add download resource</button>
+              <p className="text-xs text-slate-500">Only secure order-specific download links are shown to customers. Resource URLs are stored privately.</p>
+            </div>
+          ) : (
           <div className="space-y-2 sm:space-y-3 px-3 sm:px-4">
             <h3 className="font-bold text-navy text-lg">Delivery</h3>
             
@@ -305,9 +440,10 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
               />
             </div>
           </div>
+          )}
 
           {/* Custom Image */}
-          <div className="space-y-2 sm:space-y-3 p-3 sm:p-4 mx-3 sm:mx-4 bg-orange-50 rounded-2xl border-2 border-orange-200">
+          {!isVirtual && <div className="space-y-2 sm:space-y-3 p-3 sm:p-4 mx-3 sm:mx-4 bg-orange-50 rounded-2xl border-2 border-orange-200">
             <div className="flex items-center gap-4">
               <input
                 type="checkbox"
@@ -327,7 +463,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                 placeholder="Instructions for customer on what image to upload..."
               />
             )}
-          </div>
+          </div>}
 
           {/* Product Images */}
           <div className="space-y-2 sm:space-y-3 px-3 sm:px-4">
@@ -412,7 +548,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
             </div>
 
             {/* Payment Methods */}
-            <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 rounded-2xl border-2 border-slate-200 space-y-3">
+            {!isVirtual && <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-4 rounded-2xl border-2 border-slate-200 space-y-3">
               <h3 className="font-bold text-navy text-lg flex items-center gap-2">
                 <span className="text-xl">💳</span>
                 Payment Methods
@@ -465,7 +601,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                   </div>
                 </label>
               </div>
-            </div>
+            </div>}
 
             {/* Actions */}
             <div className="flex flex-col sm:flex-row gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-slate-200 mt-3 sm:mt-4">
@@ -478,7 +614,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
               </button>
               <button
                 type="submit"
-                disabled={loading || uploadingImages}
+                disabled={loading || uploadingImages || Boolean(uploadingResourceId) || !resourcesLoaded}
                 className="flex-1 px-4 sm:px-6 py-3 rounded-xl bg-navy text-white font-bold hover:bg-navy-light transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 text-sm sm:text-base"
               >
                 {loading ? (

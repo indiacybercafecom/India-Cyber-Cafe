@@ -136,6 +136,10 @@ export interface Product {
   id: string;
   name: string;
   permalink: string; // URL-friendly slug based on product name
+  productType?: 'physical' | 'virtual';
+  digitalResources?: DigitalResource[];
+  downloadExpiryDays?: number;
+  downloadLimit?: number;
   category: string;
   price: number;
   discountedPrice: number;
@@ -156,6 +160,27 @@ export interface Product {
   seoDescription?: string;
   seoKeywords?: string;
   paymentMethods?: ('online' | 'cod' | 'both')[]; // Payment methods: online (Razorpay), cash on delivery, or both
+}
+
+export interface DigitalResource {
+  id: string;
+  fileName: string;
+  label: string;
+  url: string;
+}
+
+export interface DigitalDownloadResource {
+  fileName: string;
+  label: string;
+  downloadUrl: string;
+  expiresAt?: string | null;
+  downloadLimit: number;
+  downloadsUsed: number;
+}
+
+export interface DigitalDownloadGroup {
+  productName: string;
+  resources: DigitalDownloadResource[];
 }
 
 export interface DocumentCategory {
@@ -188,6 +213,9 @@ export interface OrderItem {
   quantity: number;
   customImageUrl?: string; // URL of custom image user uploaded
   specialInstructions?: string;
+  productType?: 'physical' | 'virtual';
+  downloadExpiryDays?: number;
+  downloadLimit?: number;
 }
 
 export interface OrderAddress {
@@ -216,7 +244,7 @@ export interface Order {
   discount?: number;
   total: number;
   paymentMethod: 'razorpay' | 'cash' | 'bank_transfer';
-  paymentStatus: 'pending' | 'completed' | 'failed';
+  paymentStatus: 'pending' | 'completed' | 'failed' | 'refunded';
   razorpayPaymentId?: string;
   razorpayOrderId?: string;
   razorpaySignature?: string;
@@ -224,6 +252,10 @@ export interface Order {
   notes: ApplicationNote[];
   createdAt: string;
   updatedAt: string;
+  digitalDeliveryStatus?: 'not_required' | 'available' | 'unavailable' | 'revoked';
+  digitalEmailStatus?: 'not_required' | 'queued' | 'sent' | 'failed';
+  digitalResourceNames?: Array<{ productName: string; fileName: string }>;
+  digitalDownloads?: DigitalDownloadGroup[];
 }
 
 // Privacy & Consent Management

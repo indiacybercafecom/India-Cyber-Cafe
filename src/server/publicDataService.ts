@@ -24,6 +24,7 @@ export interface ProductItem {
   id: string;
   name: string;
   permalink?: string;
+  productType?: 'physical' | 'virtual';
   category: string;
   price: number;
   discountedPrice?: number;
@@ -37,6 +38,9 @@ export interface ProductItem {
   seoKeywords?: string;
   turnaroundTime?: string;
   deliveryCharges?: number;
+  downloadExpiryDays?: number;
+  downloadLimit?: number;
+  paymentMethods?: string[];
 }
 
 export interface ProductCategoryItem {
