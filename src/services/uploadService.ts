@@ -32,7 +32,7 @@ export interface UploadFileOptions {
   uploadId?: string;
   maxSizeBytes?: number;
   allowUnauthenticated?: boolean;
-  onProgress?: (percent: nhostingerbapply umber) => void;
+  onProgress?: (percent: number) => void;
   signal?: AbortSignal;
   timeoutMs?: number;
   maxRetries?: number;
