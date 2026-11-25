@@ -60,7 +60,9 @@ import {
   Share2,
   Copy,
   HardDrive,
-  Folder
+  Folder,
+  Image,
+  Save
 } from 'lucide-react';
 
 export const Icons = {
@@ -123,7 +125,9 @@ export const Icons = {
   Truck,
   Inbox,
   PackageX,
-  RefreshCw
+  RefreshCw,
+  Image,
+  Save
 };
 
 export function IconRenderer({ name, className }: { name: string; className?: string }) {
@@ -194,6 +198,9 @@ export function IconRenderer({ name, className }: { name: string; className?: st
   if (lowerName.includes('refresh')) return <Icons.RefreshCw className={className} />;
   if (lowerName.includes('share')) return <Icons.Share2 className={className} />;
   if (lowerName.includes('copy')) return <Icons.Copy className={className} />;
+  if (lowerName.includes('upload')) return <Icons.Upload className={className} />;
+  if (lowerName.includes('image') || lowerName.includes('photo')) return <Icons.Image className={className} />;
+  if (lowerName.includes('save')) return <Icons.Save className={className} />;
   
   return <Icons.Info className={className} />;
 }

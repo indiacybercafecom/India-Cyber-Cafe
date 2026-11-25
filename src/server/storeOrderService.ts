@@ -894,42 +894,119 @@ export async function handleAdminResendDigitalEmail(req: Request, res: Response)
   }
 }
 
-async function normalizeDigitalResources(value: any): Promise<any[] | null> {
-  if (!Array.isArray(value) || value.length > 50) return null;
+const ALLOWED_DIGITAL_EXTENSIONS = new Set(['pdf', 'zip', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
+
+function extractVerifiedFirebaseDigitalObject(url: URL): { bucket: string; objectName: string; objectExt: string } | null {
+  if (url.hostname !== 'firebasestorage.googleapis.com') return null;
+  if (url.searchParams.get('alt') !== 'media' || !url.searchParams.get('token')) return null;
+  const storagePath = url.pathname.match(/^\/v0\/b\/(india-cyber-cafe-free(?:\.(?:appspot\.com|firebasestorage\.app))?)\/o\/(.+)$/);
+  if (!storagePath) return null;
+  let objectName: string;
+  try {
+    objectName = decodeURIComponent(storagePath[2]);
+  } catch {
+    return null;
+  }
+  if (!objectName.startsWith('digital-products/')) return null;
+  const objectFileName = objectName.slice('digital-products/'.length);
+  if (!objectFileName || objectFileName.includes('/') || objectFileName.includes('\\')) return null;
+  const dotIdx = objectFileName.lastIndexOf('.');
+  const objectExt = dotIdx > 0 ? objectFileName.slice(dotIdx + 1).toLowerCase().trim() : '';
+  if (!ALLOWED_DIGITAL_EXTENSIONS.has(objectExt)) return null;
+  return { bucket: storagePath[1], objectName, objectExt };
+}
+
+export async function normalizeDigitalResources(
+  value: any
+): Promise<{ ok: true; resources: any[] } | { ok: false; error: string }> {
+  if (!Array.isArray(value)) {
+    return { ok: false, error: 'Download resources must be a list.' };
+  }
+  if (value.length > 50) {
+    return { ok: false, error: 'A maximum of 50 digital download resources is allowed per product.' };
+  }
   const resources: any[] = [];
   const resourceIds = new Set<string>();
-  for (const resource of value) {
-    if (!resource || typeof resource !== 'object') return null;
-    const id = String(resource.id || '').trim();
-    const fileName = String(resource.fileName || '').trim();
+  for (let i = 0; i < value.length; i++) {
+    const resource = value[i];
+    const idxLabel = `Resource #${i + 1}`;
+    if (!resource || typeof resource !== 'object') {
+      return { ok: false, error: `${idxLabel}: Invalid resource entry.` };
+    }
+    const id = String(resource.id || '').trim() || crypto.randomUUID();
+    let fileName = String(resource.fileName || '').trim();
     const label = String(resource.label || '').trim();
     const rawUrl = String(resource.url || '').trim();
     let url: URL;
-    try { url = new URL(rawUrl); } catch { return null; }
-    if (!id || id.length > 128 || resourceIds.has(id) || !fileName || fileName.length > 180 || /[\u0000-\u001f\u007f/\\]/.test(fileName) || !label || label.length > 80 || url.protocol !== 'https:') return null;
-    if (url.username || url.password || (url.port && url.port !== '443')) return null;
-    const cleanExt = (fileName.split('.').pop() || '').toLowerCase().trim();
-    if (!['pdf','zip','doc','docx','xls','xlsx','ppt','pptx'].includes(cleanExt)) return null;
-    if (!isTestMode() && url.hostname === 'firebasestorage.googleapis.com') {
-      if (url.searchParams.get('alt') !== 'media' || !url.searchParams.get('token')) return null;
-      const storagePath = url.pathname.match(/^\/v0\/b\/india-cyber-cafe-free\/o\/(.+)$/);
-      if (!storagePath) return null;
-      let objectName: string;
-      try { objectName = decodeURIComponent(storagePath[1]); } catch { return null; }
-      const objectFileName = objectName.slice('digital-products/'.length);
-      if (!objectName.startsWith('digital-products/') || !objectFileName || objectFileName.includes('/') || objectFileName.includes('\\')) return null;
-      const objectExt = (objectFileName.split('.').pop() || '').toLowerCase();
-      if (objectExt !== cleanExt) return null;
-    }
     try {
-      if (!isTestMode()) await validateSafeDownloadUrl(url.toString());
+      url = new URL(rawUrl);
     } catch {
-      return null;
+      return { ok: false, error: `${idxLabel}: Enter a valid HTTPS download URL.` };
+    }
+    if (id.length > 128 || resourceIds.has(id)) {
+      return { ok: false, error: `${idxLabel}: Duplicate or invalid resource ID.` };
+    }
+    if (!fileName || fileName.length > 180 || /[\u0000-\u001f\u007f/\\]/.test(fileName)) {
+      return { ok: false, error: `${idxLabel}: File name is required and cannot contain slashes.` };
+    }
+    if (!label || label.length > 160) {
+      return { ok: false, error: `${idxLabel}: Button label must be between 1 and 160 characters.` };
+    }
+    if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) {
+      return { ok: false, error: `${idxLabel}: Download URL must use HTTPS without credentials or custom ports.` };
+    }
+
+    const isFirebaseStorageHost = url.hostname === 'firebasestorage.googleapis.com';
+    let verifiedFirebaseObject: { bucket: string; objectName: string; objectExt: string } | null = null;
+    if (!isTestMode() && isFirebaseStorageHost) {
+      verifiedFirebaseObject = extractVerifiedFirebaseDigitalObject(url);
+      if (!verifiedFirebaseObject) {
+        return {
+          ok: false,
+          error: `${idxLabel}: Firebase Storage files must be uploaded via "Upload file" into digital product storage.`,
+        };
+      }
+    }
+
+    const dotIdx = fileName.lastIndexOf('.');
+    let cleanExt = dotIdx > 0 ? fileName.slice(dotIdx + 1).toLowerCase().trim() : '';
+    if (!ALLOWED_DIGITAL_EXTENSIONS.has(cleanExt) && verifiedFirebaseObject) {
+      // Automatically preserve the uploaded file's extension if the admin omitted it in the display filename
+      fileName = `${fileName.replace(/\.+$/, '')}.${verifiedFirebaseObject.objectExt}`.slice(0, 180);
+      cleanExt = verifiedFirebaseObject.objectExt;
+    }
+    if (!ALLOWED_DIGITAL_EXTENSIONS.has(cleanExt)) {
+      return {
+        ok: false,
+        error: `${idxLabel}: File name must end with .pdf, .zip, .doc, .docx, .xls, .xlsx, .ppt, or .pptx.`,
+      };
+    }
+    if (verifiedFirebaseObject && verifiedFirebaseObject.objectExt !== cleanExt) {
+      return {
+        ok: false,
+        error: `${idxLabel}: File name extension (.${cleanExt}) must match the uploaded file (.${verifiedFirebaseObject.objectExt}).`,
+      };
+    }
+
+    if (!isTestMode()) {
+      try {
+        await validateSafeDownloadUrl(url.toString());
+      } catch (err: any) {
+        // Shared hosting DNS resolvers occasionally fail/time out on getaddrinfo for firebasestorage.googleapis.com.
+        // Only allow bypassing transient DNS resolution failures when the URL is already pinned to our Firebase Storage bucket.
+        const isTransientDnsFailure = err?.message === 'Could not resolve download source host.';
+        if (!(verifiedFirebaseObject && isTransientDnsFailure)) {
+          return {
+            ok: false,
+            error: `${idxLabel}: ${err?.message || 'Download URL is not allowed.'}`,
+          };
+        }
+      }
     }
     resourceIds.add(id);
     resources.push({ id, fileName, label, url: url.toString() });
   }
-  return resources;
+  return { ok: true, resources };
 }
 
 export async function handleAdminGetDigitalProductResources(req: Request, res: Response) {
@@ -952,10 +1029,18 @@ export async function handleAdminSaveDigitalProductResources(req: Request, res: 
   const caller = await requireAdminCaller(req, res);
   if (!caller) return;
   const productId = String(req.params.productId || '');
-  const resources = await normalizeDigitalResources(req.body?.resources);
-  if (!/^[A-Za-z0-9_-]{1,128}$/.test(productId) || !resources) {
-    return res.status(400).json({ success: false, error: 'Invalid digital download configuration.' });
+  if (!/^[A-Za-z0-9_-]{1,128}$/.test(productId)) {
+    return res.status(400).json({ success: false, error: 'Invalid product ID.' });
   }
+  const normalized = await normalizeDigitalResources(req.body?.resources);
+  if (normalized.ok === false) {
+    console.warn('[storeOrderService] Digital resource validation failed:', {
+      productId,
+      error: normalized.error,
+    });
+    return res.status(400).json({ success: false, error: normalized.error });
+  }
+  const resources = normalized.resources;
   try {
     if (isTestMode()) localDigitalProductResources.set(productId, resources);
     else {
@@ -3046,11 +3131,21 @@ export async function validateSafeDownloadUrl(rawUrl: string): Promise<URL> {
   if (net.isIP(hostname) && isPrivateOrReservedIp(hostname)) throw new Error('Private IP download hosts are not allowed.');
 
   if (!net.isIP(hostname)) {
-    let addresses: Array<{ address: string }>;
+    let addresses: Array<{ address: string }> = [];
     try {
       addresses = await dns.lookup(hostname, { all: true, verbatim: true });
     } catch {
-      throw new Error('Could not resolve download source host.');
+      // Fallback to direct DNS record resolution when system getaddrinfo fails on shared hosting
+      const [v4, v6] = await Promise.allSettled([dns.resolve4(hostname), dns.resolve6(hostname)]);
+      if (v4.status === 'fulfilled') {
+        addresses.push(...v4.value.map(address => ({ address })));
+      }
+      if (v6.status === 'fulfilled') {
+        addresses.push(...v6.value.map(address => ({ address })));
+      }
+      if (!addresses.length) {
+        throw new Error('Could not resolve download source host.');
+      }
     }
     if (!addresses.length || addresses.some(({ address }) => isPrivateOrReservedIp(address))) {
       throw new Error('Download source resolved to a private or reserved address.');

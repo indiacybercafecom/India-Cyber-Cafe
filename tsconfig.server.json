@@ -16,6 +16,7 @@
     "src/server/**/*.ts"
   ],
   "exclude": [
-    "src/server/dataSync.ts"
+    "src/server/dataSync.ts",
+    "src/server/**/*.test.ts"
   ]
 }
