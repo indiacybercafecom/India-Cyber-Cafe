@@ -257,19 +257,23 @@ export function OrderManageModal({
                     <p className="text-sm sm:text-base text-navy font-semibold">{deliveryAddress.phone || 'N/A'}</p>
                   </div>
                   <div>
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">City</p>
-                    <p className="text-navy font-semibold">{deliveryAddress.city || 'N/A'}</p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">
+                      {deliveryAddress.city ? 'City' : 'Delivery Mode'}
+                    </p>
+                    <p className="text-navy font-semibold">{deliveryAddress.city || 'Digital Delivery'}</p>
                   </div>
                 </div>
-                <div className="border-t border-slate-300 pt-3">
-                  <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Full Address</p>
-                  <p className="text-xs sm:text-sm text-navy font-semibold leading-relaxed">
-                    {deliveryAddress.addressLine1 || 'N/A'}
-                    {deliveryAddress.addressLine2 && `, ${deliveryAddress.addressLine2}`}
-                    {deliveryAddress.state && `, ${deliveryAddress.state}`}
-                    {deliveryAddress.pincode && ` - ${deliveryAddress.pincode}`}
-                  </p>
-                </div>
+                {(deliveryAddress.addressLine1 || deliveryAddress.state || deliveryAddress.pincode) && (
+                  <div className="border-t border-slate-300 pt-3">
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Full Address</p>
+                    <p className="text-xs sm:text-sm text-navy font-semibold leading-relaxed">
+                      {deliveryAddress.addressLine1 || 'N/A'}
+                      {deliveryAddress.addressLine2 && `, ${deliveryAddress.addressLine2}`}
+                      {deliveryAddress.state && `, ${deliveryAddress.state}`}
+                      {deliveryAddress.pincode && ` - ${deliveryAddress.pincode}`}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
 

@@ -178,7 +178,12 @@ export function StoreCheckout({
 
   // Sync allowed payment method whenever product loads
   useEffect(() => {
-    if (!product?.paymentMethods || product.paymentMethods.length === 0) return;
+    if (!product) return;
+    if (product.productType === 'virtual') {
+      setPaymentMethod('online');
+      return;
+    }
+    if (!product.paymentMethods || product.paymentMethods.length === 0) return;
     const methods = product.paymentMethods;
     const allowsBoth = methods.includes('both') || (methods.includes('online') && methods.includes('cod'));
     if (allowsBoth) return;
@@ -187,7 +192,7 @@ export function StoreCheckout({
     } else if (methods.includes('online')) {
       setPaymentMethod('online');
     }
-  }, [product?.id]);
+  }, [product?.id, product?.productType]);
 
   // Reset idempotency key when checkout payload changes meaningfully
   useEffect(() => {
@@ -250,6 +255,8 @@ export function StoreCheckout({
       </div>
     );
   }
+
+  const isVirtual = product.productType === 'virtual';
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -452,13 +459,15 @@ export function StoreCheckout({
     if (!/^[0-9]{10}$/.test(cleanPhone.length > 10 ? cleanPhone.slice(-10) : cleanPhone)) {
       errors.phone = 'Valid 10-digit phone is required';
     }
-    if (!address.addressLine1.trim()) errors.addressLine1 = 'Address is required';
-    if (!address.city.trim()) errors.city = 'City is required';
-    if (!address.state.trim()) errors.state = 'State is required';
-    if (!address.pincode.trim()) errors.pincode = 'Pincode is required';
-    if (!/^[0-9]{6}$/.test(address.pincode.trim())) errors.pincode = 'Valid 6-digit pincode is required';
+    if (!isVirtual) {
+      if (!address.addressLine1.trim()) errors.addressLine1 = 'Address is required';
+      if (!address.city.trim()) errors.city = 'City is required';
+      if (!address.state.trim()) errors.state = 'State is required';
+      if (!address.pincode.trim()) errors.pincode = 'Pincode is required';
+      if (!/^[0-9]{6}$/.test(address.pincode.trim())) errors.pincode = 'Valid 6-digit pincode is required';
+    }
 
-    if (product.requiresCustomImage && !customImageFile && !customImageUrl) {
+    if (!isVirtual && product.requiresCustomImage && !customImageFile && !customImageUrl) {
       errors.customImage = 'Custom image is required for this product';
     }
 
@@ -502,8 +511,8 @@ export function StoreCheckout({
       });
     }
 
-    // Save address to profile non-blockingly if logged in and profile has no address yet
-    if (auth.currentUser && user && !user.address) {
+    // Save address to profile non-blockingly if logged in and profile has no address yet (physical orders only)
+    if (!isVirtual && auth.currentUser && user && !user.address && sanitizedAddress.addressLine1) {
       void withClientTimeout(
         update(dbRef(rtdb, `users/${auth.currentUser.uid}`), { address: sanitizedAddress }),
         5000,
@@ -666,7 +675,10 @@ export function StoreCheckout({
     if (submittingRef.current || submitting || uploading || paymentProcessingRef.current || razorpayOpenRef.current) return;
 
     if (!validateForm()) {
-      showToast('Please fix the highlighted address fields', 'error');
+      showToast(
+        isVirtual ? 'Please fix the highlighted contact details' : 'Please fix the highlighted address fields',
+        'error'
+      );
       return;
     }
 
@@ -675,7 +687,7 @@ export function StoreCheckout({
       setSubmitting(true);
 
       let uploadedImageUrl = customImageUrl;
-      if (customImageFile && !customImageUrl) {
+      if (!isVirtual && customImageFile && !customImageUrl) {
         uploadedImageUrl = (await uploadCustomImage()) || '';
         if (uploadedImageUrl) {
           setCustomImageUrl(uploadedImageUrl);
@@ -686,7 +698,19 @@ export function StoreCheckout({
         }
       }
 
-      const sanitizedAddress = sanitizeAddress(address);
+      const sanitizedAddress = sanitizeAddress(
+        isVirtual
+          ? {
+              ...address,
+              addressLine1: '',
+              addressLine2: '',
+              city: '',
+              state: '',
+              pincode: '',
+              country: address.country || 'India'
+            }
+          : address
+      );
       const orderItems = [
         {
           productId: product.id,
@@ -878,13 +902,13 @@ export function StoreCheckout({
 
   const unitPrice = product.discountedPrice && product.discountedPrice > 0 ? product.discountedPrice : product.price;
   const subtotal = unitPrice * quantity;
-  const deliveryCharges = product.deliveryCharges || 0;
+  const deliveryCharges = isVirtual ? 0 : (product.deliveryCharges || 0);
   const total = subtotal + deliveryCharges;
 
-  const methods = product.paymentMethods || ['online', 'cod'];
-  const supportsBoth = methods.includes('both') || (methods.includes('online') && methods.includes('cod'));
-  const supportsOnlineOnly = !supportsBoth && methods.includes('online');
-  const supportsCodOnly = !supportsBoth && methods.includes('cod');
+  const methods = isVirtual ? ['online'] : (product.paymentMethods || ['online', 'cod']);
+  const supportsBoth = !isVirtual && (methods.includes('both') || (methods.includes('online') && methods.includes('cod')));
+  const supportsOnlineOnly = isVirtual || (!supportsBoth && methods.includes('online'));
+  const supportsCodOnly = !isVirtual && !supportsBoth && methods.includes('cod');
 
   return (
     <div className="space-y-6 sm:space-y-10 pb-12">
@@ -963,7 +987,7 @@ export function StoreCheckout({
         {/* Main Form */}
         <div className="lg:col-span-2 space-y-6">
           {/* Custom Image Upload */}
-          {product.requiresCustomImage && (
+          {!isVirtual && product.requiresCustomImage && (
             <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 space-y-4">
               <h2 className="text-lg sm:text-xl font-bold text-navy flex items-center gap-2">
                 <IconRenderer name="camera" className="w-5 h-5 text-primary" />
@@ -1027,12 +1051,21 @@ export function StoreCheckout({
             </div>
           )}
 
-          {/* Delivery Address */}
+          {/* Delivery Address / Contact Details */}
           <div className="bg-white border border-slate-200 rounded-xl sm:rounded-2xl p-4 sm:p-6 space-y-4">
             <h2 className="text-lg sm:text-xl font-bold text-navy flex items-center gap-2">
-              <IconRenderer name="map-pin" className="w-5 h-5 text-primary" />
-              Delivery Address
+              <IconRenderer name={isVirtual ? 'user' : 'map-pin'} className="w-5 h-5 text-primary" />
+              {isVirtual ? 'Contact Details' : 'Delivery Address'}
             </h2>
+
+            {isVirtual && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 sm:p-3.5 text-xs sm:text-sm text-blue-900 flex items-start gap-2.5">
+                <IconRenderer name="download" className="w-4 h-4 text-navy shrink-0 mt-0.5" />
+                <p>
+                  <span className="font-semibold text-navy">Instant Digital Delivery:</span> No shipping address is needed. Your download link will be sent to your email and unlocked immediately after payment.
+                </p>
+              </div>
+            )}
 
             {existingUserFound && passwordVerified && (
               <div className="bg-green-50 border-2 border-green-400 rounded-lg p-3 flex items-center gap-2 mb-4">
@@ -1051,7 +1084,9 @@ export function StoreCheckout({
                   <div>
                     <p className="font-bold text-slate-900 text-base">Existing Account Found</p>
                     <p className="text-xs text-slate-700 mt-1 leading-relaxed">
-                      Enter your password to sign in and auto-fill your saved address, or skip to continue as guest.
+                      {isVirtual
+                        ? 'Enter your password to sign in and auto-fill your saved contact details, or skip to continue as guest.'
+                        : 'Enter your password to sign in and auto-fill your saved address, or skip to continue as guest.'}
                     </p>
                   </div>
                 </div>
@@ -1132,7 +1167,7 @@ export function StoreCheckout({
                 {formErrors.email && <p className="text-red-600 text-xs mt-1">{formErrors.email}</p>}
               </div>
 
-              <div>
+              <div className={isVirtual ? 'sm:col-span-2' : ''}>
                 <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Phone *</label>
                 <input
                   type="tel"
@@ -1148,65 +1183,73 @@ export function StoreCheckout({
                 {formErrors.phone && <p className="text-red-600 text-xs mt-1">{formErrors.phone}</p>}
               </div>
 
-              <div>
-                <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">State *</label>
-                <input
-                  type="text"
-                  value={address.state}
-                  onChange={e => setAddress({ ...address, state: e.target.value })}
-                  className={`input-field w-full text-xs sm:text-sm ${formErrors.state ? 'border-red-500' : ''}`}
-                  placeholder="Madhya Pradesh"
-                />
-                {formErrors.state && <p className="text-red-600 text-xs mt-1">{formErrors.state}</p>}
-              </div>
+              {!isVirtual && (
+                <>
+                  <div>
+                    <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">State *</label>
+                    <input
+                      type="text"
+                      value={address.state}
+                      onChange={e => setAddress({ ...address, state: e.target.value })}
+                      className={`input-field w-full text-xs sm:text-sm ${formErrors.state ? 'border-red-500' : ''}`}
+                      placeholder="Madhya Pradesh"
+                    />
+                    {formErrors.state && <p className="text-red-600 text-xs mt-1">{formErrors.state}</p>}
+                  </div>
 
-              <div>
-                <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">City *</label>
-                <input
-                  type="text"
-                  value={address.city}
-                  onChange={e => setAddress({ ...address, city: e.target.value })}
-                  className={`input-field w-full text-xs sm:text-sm ${formErrors.city ? 'border-red-500' : ''}`}
-                  placeholder="Singrauli"
-                />
-                {formErrors.city && <p className="text-red-600 text-xs mt-1">{formErrors.city}</p>}
-              </div>
+                  <div>
+                    <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">City *</label>
+                    <input
+                      type="text"
+                      value={address.city}
+                      onChange={e => setAddress({ ...address, city: e.target.value })}
+                      className={`input-field w-full text-xs sm:text-sm ${formErrors.city ? 'border-red-500' : ''}`}
+                      placeholder="Singrauli"
+                    />
+                    {formErrors.city && <p className="text-red-600 text-xs mt-1">{formErrors.city}</p>}
+                  </div>
 
-              <div>
-                <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Pincode *</label>
-                <input
-                  type="text"
-                  value={address.pincode}
-                  onChange={e => setAddress({ ...address, pincode: e.target.value })}
-                  className={`input-field w-full text-xs sm:text-sm ${formErrors.pincode ? 'border-red-500' : ''}`}
-                  placeholder="486886"
-                />
-                {formErrors.pincode && <p className="text-red-600 text-xs mt-1">{formErrors.pincode}</p>}
-              </div>
+                  <div>
+                    <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Pincode *</label>
+                    <input
+                      type="text"
+                      value={address.pincode}
+                      onChange={e => setAddress({ ...address, pincode: e.target.value })}
+                      className={`input-field w-full text-xs sm:text-sm ${formErrors.pincode ? 'border-red-500' : ''}`}
+                      placeholder="486886"
+                    />
+                    {formErrors.pincode && <p className="text-red-600 text-xs mt-1">{formErrors.pincode}</p>}
+                  </div>
+                </>
+              )}
             </div>
 
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Address *</label>
-              <input
-                type="text"
-                value={address.addressLine1}
-                onChange={e => setAddress({ ...address, addressLine1: e.target.value })}
-                className={`input-field w-full text-xs sm:text-sm ${formErrors.addressLine1 ? 'border-red-500' : ''}`}
-                placeholder="House No, Street, Locality"
-              />
-              {formErrors.addressLine1 && <p className="text-red-600 text-xs mt-1">{formErrors.addressLine1}</p>}
-            </div>
+            {!isVirtual && (
+              <>
+                <div>
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Address *</label>
+                  <input
+                    type="text"
+                    value={address.addressLine1}
+                    onChange={e => setAddress({ ...address, addressLine1: e.target.value })}
+                    className={`input-field w-full text-xs sm:text-sm ${formErrors.addressLine1 ? 'border-red-500' : ''}`}
+                    placeholder="House No, Street, Locality"
+                  />
+                  {formErrors.addressLine1 && <p className="text-red-600 text-xs mt-1">{formErrors.addressLine1}</p>}
+                </div>
 
-            <div>
-              <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Address Line 2 (Optional)</label>
-              <input
-                type="text"
-                value={address.addressLine2 || ''}
-                onChange={e => setAddress({ ...address, addressLine2: e.target.value })}
-                className="input-field w-full text-xs sm:text-sm"
-                placeholder="Landmark, Apartment, Suite"
-              />
-            </div>
+                <div>
+                  <label className="block text-xs sm:text-sm font-semibold text-slate-700 mb-1">Address Line 2 (Optional)</label>
+                  <input
+                    type="text"
+                    value={address.addressLine2 || ''}
+                    onChange={e => setAddress({ ...address, addressLine2: e.target.value })}
+                    className="input-field w-full text-xs sm:text-sm"
+                    placeholder="Landmark, Apartment, Suite"
+                  />
+                </div>
+              </>
+            )}
           </div>
 
           {/* Guest Checkout Account Option */}

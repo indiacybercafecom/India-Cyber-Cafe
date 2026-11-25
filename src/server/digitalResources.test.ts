@@ -167,3 +167,80 @@ test('rejects non-HTTPS URLs, private IP URLs, and disallowed file extensions', 
     );
   });
 });
+
+test('validateAndComputeOrder allows virtual product checkout without physical address and still enforces address for physical products', async () => {
+  const prevTestMode = process.env.STORE_ORDER_TEST_MODE;
+  process.env.STORE_ORDER_TEST_MODE = '1';
+  try {
+    const { validateAndComputeOrder, handleAdminSaveDigitalProductResources } = await import('./storeOrderService');
+    const virtualProductId = 'bt-105-autocad-complete-solved-notes-20222026';
+    const physicalProductId = 'mfs110-with-aadhaar-rd-service-l1-biometric-fingerprint-scanner';
+
+    // Seed a digital resource for the virtual product in test mode
+    const fakeReq: any = {
+      params: { productId: virtualProductId },
+      headers: { authorization: 'Bearer test-token:admin_uid_1:admin1@indiacybercafe.com' },
+      body: {
+        resources: [
+          {
+            id: 'res-test-1',
+            fileName: 'BT-105_AutoCAD_Notes.pdf',
+            label: 'Download Notes PDF',
+            url: FIREBASE_PDF_URL,
+          },
+        ],
+      },
+    };
+    let saveStatus = 200;
+    const fakeRes: any = {
+      status(code: number) {
+        saveStatus = code;
+        return this;
+      },
+      json() {
+        return this;
+      },
+    };
+    await handleAdminSaveDigitalProductResources(fakeReq, fakeRes);
+    assert.equal(saveStatus, 200);
+
+    const contactOnly = {
+      name: 'Suresh Kumar',
+      email: 'suresh@example.com',
+      phone: '9876543210',
+      addressLine1: '',
+      addressLine2: '',
+      city: '',
+      state: '',
+      pincode: '',
+      country: 'India',
+    };
+
+    const virtualResult = await validateAndComputeOrder(
+      [{ productId: virtualProductId, quantity: 1 }],
+      contactOnly,
+      'online'
+    );
+    assert.equal(virtualResult.valid, true);
+    if (virtualResult.valid) {
+      assert.equal(virtualResult.deliveryCharges, 0);
+      assert.equal(virtualResult.sanitizedAddress.addressLine1, '');
+      assert.equal(virtualResult.sanitizedAddress.pincode, '');
+      assert.equal(virtualResult.sanitizedAddress.email, 'suresh@example.com');
+    }
+
+    const physicalMissingAddress = await validateAndComputeOrder(
+      [{ productId: physicalProductId, quantity: 1 }],
+      contactOnly,
+      'online'
+    );
+    assert.equal(physicalMissingAddress.valid, false);
+    if (!physicalMissingAddress.valid) {
+      assert.equal(physicalMissingAddress.status, 400);
+      assert.match(physicalMissingAddress.error, /street address/i);
+    }
+  } finally {
+    if (prevTestMode === undefined) delete process.env.STORE_ORDER_TEST_MODE;
+    else process.env.STORE_ORDER_TEST_MODE = prevTestMode;
+  }
+});

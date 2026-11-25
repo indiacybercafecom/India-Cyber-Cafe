@@ -218,17 +218,34 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
               </div>
             ) : null}
 
-            {/* Delivery Address */}
+            {/* Delivery Address / Contact Details */}
             {order.deliveryAddress && (
               <div className="bg-slate-50 rounded-xl p-4">
-                <p className="font-bold text-slate-900 mb-3">Delivery Address</p>
-                <div className="text-sm text-slate-700 space-y-1">
-                  <p>{order.deliveryAddress.addressLine1}</p>
-                  {order.deliveryAddress.addressLine2 && <p>{order.deliveryAddress.addressLine2}</p>}
-                  <p>{order.deliveryAddress.city}, {order.deliveryAddress.state} {order.deliveryAddress.pincode}</p>
-                  <p>{order.deliveryAddress.country}</p>
-                  <p className="mt-2 text-xs">Phone: {order.deliveryAddress.phone}</p>
-                </div>
+                {order.deliveryAddress.addressLine1 || order.deliveryAddress.city || order.deliveryAddress.state || order.deliveryAddress.pincode ? (
+                  <>
+                    <p className="font-bold text-slate-900 mb-3">Delivery Address</p>
+                    <div className="text-sm text-slate-700 space-y-1">
+                      {order.deliveryAddress.addressLine1 && <p>{order.deliveryAddress.addressLine1}</p>}
+                      {order.deliveryAddress.addressLine2 && <p>{order.deliveryAddress.addressLine2}</p>}
+                      <p>
+                        {[order.deliveryAddress.city, order.deliveryAddress.state].filter(Boolean).join(', ')}
+                        {order.deliveryAddress.pincode ? ` ${order.deliveryAddress.pincode}` : ''}
+                      </p>
+                      {order.deliveryAddress.country && <p>{order.deliveryAddress.country}</p>}
+                      {order.deliveryAddress.phone && <p className="mt-2 text-xs">Phone: {order.deliveryAddress.phone}</p>}
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="font-bold text-slate-900 mb-2">Digital Delivery</p>
+                    <div className="text-sm text-slate-700 space-y-1">
+                      {order.deliveryAddress.name && <p className="font-semibold text-navy">{order.deliveryAddress.name}</p>}
+                      {order.deliveryAddress.email && <p>Email: {order.deliveryAddress.email}</p>}
+                      {order.deliveryAddress.phone && <p className="text-xs">Phone: {order.deliveryAddress.phone}</p>}
+                      <p className="text-xs text-green-700 pt-1">Instant digital download — no shipping address required</p>
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

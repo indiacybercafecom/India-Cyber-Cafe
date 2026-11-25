@@ -1443,8 +1443,8 @@ async function updateOrderInDatabase(orderId: string, updates: Record<string, an
   } catch {}
 }
 
-// Validate delivery address and recalculate server-authoritative order amounts
-async function validateAndComputeOrder(
+// Validate delivery/contact details and recalculate server-authoritative order amounts
+export async function validateAndComputeOrder(
   rawItems: any,
   rawAddress: any,
   intendedMethod: 'cod' | 'online'
@@ -1461,7 +1461,7 @@ async function validateAndComputeOrder(
   }
 
   if (!rawAddress || typeof rawAddress !== 'object') {
-    return { valid: false, status: 400, error: 'Complete delivery address is required.' };
+    return { valid: false, status: 400, error: 'Customer contact details are required.' };
   }
 
   const name = cleanText(rawAddress.name, 100);
@@ -1479,10 +1479,6 @@ async function validateAndComputeOrder(
   if (!/^[6-9]\d{9}$/.test(phone) && !/^\d{10}$/.test(phone)) {
     return { valid: false, status: 400, error: 'Valid 10-digit mobile number is required.' };
   }
-  if (!addressLine1 || addressLine1.length < 4) return { valid: false, status: 400, error: 'Complete street address is required.' };
-  if (!city) return { valid: false, status: 400, error: 'City is required.' };
-  if (!state) return { valid: false, status: 400, error: 'State is required.' };
-  if (!/^\d{6}$/.test(pincode)) return { valid: false, status: 400, error: 'Valid 6-digit pincode is required.' };
 
   const catalog = await loadProductCatalog();
   if (catalog.length === 0) {
@@ -1491,6 +1487,7 @@ async function validateAndComputeOrder(
 
   let calculatedSubtotal = 0;
   let calculatedDelivery = 0;
+  let hasPhysicalItem = false;
   const verifiedItems: any[] = [];
 
   for (const item of rawItems) {
@@ -1506,6 +1503,9 @@ async function validateAndComputeOrder(
     }
 
     const productType = product.productType === 'virtual' ? 'virtual' : 'physical';
+    if (productType === 'physical') {
+      hasPhysicalItem = true;
+    }
     if (productType === 'virtual' && intendedMethod === 'cod') {
       return { valid: false, status: 400, error: `${product.name} requires online payment.` };
     }
@@ -1568,6 +1568,13 @@ async function validateAndComputeOrder(
     }));
   }
 
+  if (hasPhysicalItem) {
+    if (!addressLine1 || addressLine1.length < 4) return { valid: false, status: 400, error: 'Complete street address is required.' };
+    if (!city) return { valid: false, status: 400, error: 'City is required.' };
+    if (!state) return { valid: false, status: 400, error: 'State is required.' };
+    if (!/^\d{6}$/.test(pincode)) return { valid: false, status: 400, error: 'Valid 6-digit pincode is required.' };
+  }
+
   const calculatedTotal = calculatedSubtotal + calculatedDelivery;
 
   return {
@@ -1577,11 +1584,11 @@ async function validateAndComputeOrder(
       name,
       email,
       phone,
-      addressLine1,
-      addressLine2,
-      city,
-      state,
-      pincode,
+      addressLine1: hasPhysicalItem ? addressLine1 : '',
+      addressLine2: hasPhysicalItem ? addressLine2 : '',
+      city: hasPhysicalItem ? city : '',
+      state: hasPhysicalItem ? state : '',
+      pincode: hasPhysicalItem ? pincode : '',
       country
     },
     subtotal: calculatedSubtotal,

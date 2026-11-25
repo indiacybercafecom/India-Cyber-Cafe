@@ -160,18 +160,35 @@ export function OrderConfirmation() {
           ))}
         </div>
 
-        {/* Delivery Address */}
+        {/* Delivery Address / Contact Details */}
         {order.deliveryAddress && (
           <div className="bg-slate-50 rounded-lg p-4 space-y-2 border border-slate-200">
-            <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-3">Delivery Address</p>
-            <div className="text-xs sm:text-sm text-slate-600 space-y-1">
-              <p className="font-semibold text-navy">{order.deliveryAddress.name}</p>
-              <p>{order.deliveryAddress.addressLine1}</p>
-              {order.deliveryAddress.addressLine2 && <p>{order.deliveryAddress.addressLine2}</p>}
-              <p>{order.deliveryAddress.city}, {order.deliveryAddress.state} {order.deliveryAddress.pincode}</p>
-              <p>{order.deliveryAddress.country}</p>
-              {order.deliveryAddress.phone && <p className="pt-1 font-medium">Mobile: {order.deliveryAddress.phone}</p>}
-            </div>
+            {order.deliveryAddress.addressLine1 || order.deliveryAddress.city || order.deliveryAddress.state || order.deliveryAddress.pincode ? (
+              <>
+                <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-3">Delivery Address</p>
+                <div className="text-xs sm:text-sm text-slate-600 space-y-1">
+                  <p className="font-semibold text-navy">{order.deliveryAddress.name}</p>
+                  {order.deliveryAddress.addressLine1 && <p>{order.deliveryAddress.addressLine1}</p>}
+                  {order.deliveryAddress.addressLine2 && <p>{order.deliveryAddress.addressLine2}</p>}
+                  <p>
+                    {[order.deliveryAddress.city, order.deliveryAddress.state].filter(Boolean).join(', ')}
+                    {order.deliveryAddress.pincode ? ` ${order.deliveryAddress.pincode}` : ''}
+                  </p>
+                  {order.deliveryAddress.country && <p>{order.deliveryAddress.country}</p>}
+                  {order.deliveryAddress.phone && <p className="pt-1 font-medium">Mobile: {order.deliveryAddress.phone}</p>}
+                </div>
+              </>
+            ) : (
+              <>
+                <p className="text-xs font-semibold text-slate-700 uppercase tracking-wider mb-3">Digital Delivery Contact</p>
+                <div className="text-xs sm:text-sm text-slate-600 space-y-1">
+                  <p className="font-semibold text-navy">{order.deliveryAddress.name}</p>
+                  {order.deliveryAddress.email && <p>Email: {order.deliveryAddress.email}</p>}
+                  {order.deliveryAddress.phone && <p className="font-medium">Mobile: {order.deliveryAddress.phone}</p>}
+                  <p className="text-xs text-green-700 pt-1 font-medium">Instant digital download — no physical shipping required</p>
+                </div>
+              </>
+            )}
           </div>
         )}
 

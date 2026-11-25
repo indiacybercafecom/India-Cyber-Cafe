@@ -1112,7 +1112,9 @@ export const serverEmailTemplates = {
      </div>
     ${renderItemsTable(p.items)}
     ${(p.digitalDownloads || []).map((product: any) => `<div style="margin:20px 0;padding:14px;border:1px solid #e2e8f0;border-radius:6px;"><h3 style="margin:0 0 10px;color:#1e293b;font-size:16px;">${escapeHtml(product.productName)}</h3>${(product.resources || []).map((resource: any) => `<p style="margin:8px 0 4px;"><strong>${escapeHtml(resource.fileName)}</strong></p>${renderButton(resource.label || 'Download Now', resource.downloadUrl)}${resource.expiresAt ? `<p style="margin:0;color:#64748b;font-size:12px;">Available until ${escapeHtml(new Date(resource.expiresAt).toLocaleString('en-IN'))}</p>` : ''}`).join('')}</div>`).join('')}
-     ${p.address ? `<p><strong>Delivery Address:</strong> ${escapeHtml(p.address.addressLine1 || '')}, ${escapeHtml(p.address.city || '')}, ${escapeHtml(p.address.state || '')} - ${escapeHtml(p.address.pincode || '')}</p>` : ''}
+     ${p.address && (p.address.addressLine1 || p.address.city || p.address.state || p.address.pincode)
+       ? `<p><strong>Delivery Address:</strong> ${escapeHtml(p.address.addressLine1 || '')}, ${escapeHtml(p.address.city || '')}, ${escapeHtml(p.address.state || '')} - ${escapeHtml(p.address.pincode || '')}</p>`
+       : `<p><strong>Delivery Mode:</strong> Instant Digital Delivery (No physical shipping required)</p>`}
      ${renderButton('Track Your Order', p.isGuest ? `/track-order?orderId=${encodeURIComponent(p.orderId)}` : '/track')}
      <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`
   ),
@@ -1154,7 +1156,9 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Timestamp:</strong> ${escapeHtml(p.timestamp)}</p>
      </div>
      ${renderItemsTable(p.items)}
-     ${p.address ? `<p><strong>Shipping Address:</strong> ${escapeHtml(p.address.addressLine1 || '')}, ${escapeHtml(p.address.city || '')}, ${escapeHtml(p.address.state || '')} - ${escapeHtml(p.address.pincode || '')}</p>` : ''}
+     ${p.address && (p.address.addressLine1 || p.address.city || p.address.state || p.address.pincode)
+       ? `<p><strong>Shipping Address:</strong> ${escapeHtml(p.address.addressLine1 || '')}, ${escapeHtml(p.address.city || '')}, ${escapeHtml(p.address.state || '')} - ${escapeHtml(p.address.pincode || '')}</p>`
+       : `<p><strong>Delivery Mode:</strong> Instant Digital Delivery (Virtual Product)</p>`}
      ${renderButton('Manage Order in Admin Panel', '/admin', '#1e293b')}
      <p>Best Regards,<br/><strong>India Cyber Cafe Notification System</strong></p>`,
     'Admin Order Alert'
