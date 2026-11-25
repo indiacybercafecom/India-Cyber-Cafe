@@ -2380,4 +2380,7 @@ async function startServer() {
   });
 }
 
-startServer();
+void startServer().catch((error) => {
+  console.error('[SERVER] Startup failed:', error);
+  process.exit(1);
+});

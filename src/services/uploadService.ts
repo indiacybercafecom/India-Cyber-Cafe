@@ -1,4 +1,19 @@
-import { auth, storage } from '../firebase';
+URGENT: Fix the new Hostinger 503 error in ZIP (37). Inspect exact clauses before editing.
+
+1. "server.js:20–22" — TSX ESM bootstrap.
+2. "server.js:23–2169" — remove obsolete legacy server implementation from the bootstrap entry; retain only a minimal, reliable bootstrap that starts "server.ts" exactly once.
+3. "server.ts" — verify imports, initialization, "startServer()" and startup error handling.
+4. "package.json:4–8" — verify ESM configuration and installed TSX startup dependency.
+5. Root ".htaccess" — currently proxies to "127.0.0.1:3000".
+6. "server.ts" — currently listens on "process.env.PORT || 3000".
+
+CRITICAL: Verify Hostinger's actual PORT matches the Apache proxy port. Fix the mismatch if present; do not hardcode an incorrect port.
+
+Check all startup imports and runtime exceptions. Ensure no duplicate server, circular import, missing module or failed initialization.
+
+Test actual Node.js startup, HTTP "/", "/favicon.ico", "/api/health" (if registered), and digital-resource API routes. Preserve existing API functionality.
+
+Do not change Firebase data, database rules, UI or unrelated features. No Python, terminal or CLI. Build and runtime verification are both mandatory. Report exact modified files and actual test results. Never claim deployment success without verification.import { auth, storage } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
 
