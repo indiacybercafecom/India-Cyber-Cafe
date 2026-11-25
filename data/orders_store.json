@@ -166,5 +166,194 @@
     ],
     "createdAt": "2026-11-17T09:13:07.155Z",
     "updatedAt": "2026-11-17T09:13:07.155Z"
+  },
+  "ICC/STORE-25112026-080522-84590": {
+    "id": "ICC/STORE-25112026-080522-84590",
+    "uid": "buyer_uid_101",
+    "userId": "buyer_uid_101",
+    "isGuest": false,
+    "email": "buyer101@example.com",
+    "items": [
+      {
+        "productId": "bt-105-autocad-complete-solved-notes-20222026",
+        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+        "price": 50,
+        "discountedPrice": 1,
+        "quantity": 1,
+        "productType": "virtual",
+        "downloadLimit": 5
+      }
+    ],
+    "deliveryAddress": {
+      "name": "Verified Buyer",
+      "email": "buyer101@example.com",
+      "phone": "9876543211",
+      "addressLine1": "",
+      "addressLine2": "",
+      "city": "",
+      "state": "",
+      "pincode": "",
+      "country": "India"
+    },
+    "subtotal": 1,
+    "deliveryCharges": 0,
+    "total": 1,
+    "paymentMethod": "razorpay",
+    "paymentStatus": "completed",
+    "razorpayOrderId": "order_test_180a6a5b6366",
+    "orderStatus": "processing",
+    "notes": [
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment initiated via Razorpay (Ref: order_test_180a6a5b6366)",
+        "time": "2026-11-25T08:05:22.593Z"
+      },
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment verified via Razorpay (pay_buyer_1795593922599)",
+        "time": "2026-11-25T08:05:22.601Z"
+      }
+    ],
+    "createdAt": "2026-11-25T08:05:22.593Z",
+    "updatedAt": "2026-11-25T08:05:22.601Z",
+    "razorpayPaymentId": "pay_buyer_1795593922599",
+    "digitalDeliveryStatus": "available",
+    "digitalEmailStatus": "queued",
+    "digitalResourceNames": [
+      {
+        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+        "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf"
+      }
+    ]
+  },
+  "ICC/STORE-25112026-080706-21585": {
+    "id": "ICC/STORE-25112026-080706-21585",
+    "uid": "buyer_uid_101",
+    "userId": "buyer_uid_101",
+    "isGuest": false,
+    "email": "buyer101@example.com",
+    "items": [
+      {
+        "productId": "bt-105-autocad-complete-solved-notes-20222026",
+        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+        "price": 50,
+        "discountedPrice": 1,
+        "quantity": 1,
+        "productType": "virtual",
+        "downloadLimit": 5
+      }
+    ],
+    "deliveryAddress": {
+      "name": "Verified Buyer",
+      "email": "buyer101@example.com",
+      "phone": "9876543211",
+      "addressLine1": "",
+      "addressLine2": "",
+      "city": "",
+      "state": "",
+      "pincode": "",
+      "country": "India"
+    },
+    "subtotal": 1,
+    "deliveryCharges": 0,
+    "total": 1,
+    "paymentMethod": "razorpay",
+    "paymentStatus": "completed",
+    "razorpayOrderId": "order_test_c5275f47096e",
+    "orderStatus": "processing",
+    "notes": [
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment initiated via Razorpay (Ref: order_test_c5275f47096e)",
+        "time": "2026-11-25T08:07:06.003Z"
+      },
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment verified via Razorpay (pay_buyer_1795594026004)",
+        "time": "2026-11-25T08:07:06.008Z"
+      }
+    ],
+    "createdAt": "2026-11-25T08:07:06.003Z",
+    "updatedAt": "2026-11-25T08:07:06.008Z",
+    "razorpayPaymentId": "pay_buyer_1795594026004",
+    "digitalDeliveryStatus": "available",
+    "digitalEmailStatus": "queued",
+    "digitalResourceNames": [
+      {
+        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+        "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf"
+      }
+    ]
+  },
+  "ICC/STORE-25112026-081408-44366": {
+    "id": "ICC/STORE-25112026-081408-44366",
+    "uid": "buyer_uid_101",
+    "userId": "buyer_uid_101",
+    "isGuest": false,
+    "email": "buyer101@example.com",
+    "items": [
+      {
+        "productId": "bt-105-autocad-complete-solved-notes-20222026",
+        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+        "price": 50,
+        "discountedPrice": 1,
+        "quantity": 1,
+        "productType": "virtual",
+        "downloadLimit": 5
+      }
+    ],
+    "deliveryAddress": {
+      "name": "Verified Buyer",
+      "email": "buyer101@example.com",
+      "phone": "9876543211",
+      "addressLine1": "",
+      "addressLine2": "",
+      "city": "",
+      "state": "",
+      "pincode": "",
+      "country": "India"
+    },
+    "subtotal": 1,
+    "deliveryCharges": 0,
+    "total": 1,
+    "paymentMethod": "razorpay",
+    "paymentStatus": "completed",
+    "razorpayOrderId": "order_test_6714f6437153",
+    "orderStatus": "processing",
+    "notes": [
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment initiated via Razorpay (Ref: order_test_6714f6437153)",
+        "time": "2026-11-25T08:14:08.926Z"
+      },
+      {
+        "type": "status",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
+        "text": "Payment verified via Razorpay (pay_buyer_1795594448927)",
+        "time": "2026-11-25T08:14:08.929Z"
+      }
+    ],
+    "createdAt": "2026-11-25T08:14:08.926Z",
+    "updatedAt": "2026-11-25T08:14:08.929Z",
+    "razorpayPaymentId": "pay_buyer_1795594448927",
+    "digitalDeliveryStatus": "available",
+    "digitalEmailStatus": "queued",
+    "digitalResourceNames": [
+      {
+        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+        "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf"
+      }
+    ]
   }
 }

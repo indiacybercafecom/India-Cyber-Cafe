@@ -1908,7 +1908,7 @@ export function renderUniversalPage(
     );
   }
 
-  // 16. PRIVATE / AUTHENTICATED PAGES (admin, operator, track, profile, checkout, my-documents)
+  // 16. PRIVATE / AUTHENTICATED PAGES (admin, operator, track, profile, checkout, my-documents, digital downloads)
   if (
     cleanPath.startsWith('/admin') ||
     cleanPath === '/operator' ||
@@ -1916,24 +1916,26 @@ export function renderUniversalPage(
     cleanPath.startsWith('/track') ||
     cleanPath.endsWith('/checkout') ||
     cleanPath === '/store/order-confirmation' ||
+    /^\/store\/download\/[^/]+$/.test(cleanPath) ||
     cleanPath.startsWith('/my-documents')
   ) {
+    const isDigitalDownload = /^\/store\/download\/[^/]+$/.test(cleanPath);
     const bodyHtml = `
       <div class="max-w-2xl mx-auto py-16 text-center space-y-4" aria-busy="true">
-        <h1 class="text-xl sm:text-2xl font-bold text-navy">Loading Portal...</h1>
-        <p class="text-xs sm:text-sm text-slate-500">Checking credentials and loading secure application data.</p>
+        <h1 class="text-xl sm:text-2xl font-bold text-navy">${isDigitalDownload ? 'Preparing Secure Download...' : 'Loading Portal...'}</h1>
+        <p class="text-xs sm:text-sm text-slate-500">${isDigitalDownload ? 'Verifying your buyer account before starting the download.' : 'Checking credentials and loading secure application data.'}</p>
       </div>
     `;
 
     return buildResult(
       200,
-      'Portal | India Cyber Cafe',
-      'India Cyber Cafe portal dashboard.',
+      isDigitalDownload ? 'Secure Digital Download | India Cyber Cafe' : 'Portal | India Cyber Cafe',
+      isDigitalDownload ? 'Authenticated digital product download at India Cyber Cafe.' : 'India Cyber Cafe portal dashboard.',
       cleanPath,
       bodyHtml,
       {
         robots: 'noindex, nofollow',
-        omitInitialData: cleanPath.startsWith('/admin') || cleanPath === '/operator'
+        omitInitialData: cleanPath.startsWith('/admin') || cleanPath === '/operator' || isDigitalDownload
       }
     );
   }

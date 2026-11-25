@@ -353,6 +353,426 @@
     },
     "lastError": "customer:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
   },
+  "obx_1795593922606_1e77f72971": {
+    "jobId": "obx_1795593922606_1e77f72971",
+    "idempotencyKey": "order_confirmed:online:ICC/STORE-25112026-080522-84590:pay_buyer_1795593922599",
+    "kind": "order_confirmed",
+    "appId": "",
+    "orderId": "ICC/STORE-25112026-080522-84590",
+    "payload": {
+      "order": {
+        "id": "ICC/STORE-25112026-080522-84590",
+        "uid": "buyer_uid_101",
+        "userId": "buyer_uid_101",
+        "isGuest": false,
+        "email": "buyer101@example.com",
+        "items": [
+          {
+            "productId": "bt-105-autocad-complete-solved-notes-20222026",
+            "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+            "price": 50,
+            "discountedPrice": 1,
+            "quantity": 1,
+            "productType": "virtual",
+            "downloadLimit": 5
+          }
+        ],
+        "deliveryAddress": {
+          "name": "Verified Buyer",
+          "email": "buyer101@example.com",
+          "phone": "9876543211",
+          "addressLine1": "",
+          "addressLine2": "",
+          "city": "",
+          "state": "",
+          "pincode": "",
+          "country": "India"
+        },
+        "subtotal": 1,
+        "deliveryCharges": 0,
+        "total": 1,
+        "paymentMethod": "razorpay",
+        "paymentStatus": "completed",
+        "razorpayOrderId": "order_test_180a6a5b6366",
+        "orderStatus": "processing",
+        "notes": [
+          {
+            "type": "status",
+            "by": "system",
+            "email": "system@indiacybercafe.com",
+            "text": "Payment initiated via Razorpay (Ref: order_test_180a6a5b6366)",
+            "time": "2026-11-25T08:05:22.593Z"
+          },
+          {
+            "type": "status",
+            "by": "system",
+            "email": "system@indiacybercafe.com",
+            "text": "Payment verified via Razorpay (pay_buyer_1795593922599)",
+            "time": "2026-11-25T08:05:22.601Z"
+          }
+        ],
+        "createdAt": "2026-11-25T08:05:22.593Z",
+        "updatedAt": "2026-11-25T08:05:22.601Z",
+        "razorpayPaymentId": "pay_buyer_1795593922599",
+        "digitalDeliveryStatus": "available",
+        "digitalEmailStatus": "queued",
+        "digitalResourceNames": [
+          {
+            "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+            "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf"
+          }
+        ],
+        "digitalDownloads": [
+          {
+            "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+            "resources": [
+              {
+                "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf",
+                "label": "Download AutoCAD Notes PDF",
+                "downloadUrl": "https://b.indiacybercafe.com/api/store/downloads/-jLBkPWNEsdpIPab_ccl3lIkrLuuriDd2guutA8kej0",
+                "downloadPageUrl": "https://b.indiacybercafe.com/store/download/-jLBkPWNEsdpIPab_ccl3lIkrLuuriDd2guutA8kej0",
+                "expiresAt": null,
+                "downloadLimit": 5,
+                "downloadsUsed": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "state": "queued",
+    "attempts": 4,
+    "maxAttempts": 5,
+    "nextAttemptAt": 1795594449152,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-25T08:05:22.606Z",
+    "updatedAt": "2026-11-25T08:14:09.092Z",
+    "report": {
+      "success": false,
+      "hasFailures": true,
+      "totalCount": 3,
+      "sentCount": 0,
+      "failedCount": 3,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1795594449027_9ad2927f80",
+          "templateId": "customerOrderConfirmed",
+          "recipient": "buyer101@example.com",
+          "recipientRole": "customer",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        },
+        {
+          "eventId": "ntf_1795594449027_32a712cb4e",
+          "templateId": "adminOrderCreated",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        },
+        {
+          "eventId": "ntf_1795594449027_3d0b50e9ac",
+          "templateId": "adminOrderCreated",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        }
+      ]
+    },
+    "lastError": "customer:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+  },
+  "obx_1795594026017_f39f3ad6be": {
+    "jobId": "obx_1795594026017_f39f3ad6be",
+    "idempotencyKey": "order_confirmed:online:ICC/STORE-25112026-080706-21585:pay_buyer_1795594026004",
+    "kind": "order_confirmed",
+    "appId": "",
+    "orderId": "ICC/STORE-25112026-080706-21585",
+    "payload": {
+      "order": {
+        "id": "ICC/STORE-25112026-080706-21585",
+        "uid": "buyer_uid_101",
+        "userId": "buyer_uid_101",
+        "isGuest": false,
+        "email": "buyer101@example.com",
+        "items": [
+          {
+            "productId": "bt-105-autocad-complete-solved-notes-20222026",
+            "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+            "price": 50,
+            "discountedPrice": 1,
+            "quantity": 1,
+            "productType": "virtual",
+            "downloadLimit": 5
+          }
+        ],
+        "deliveryAddress": {
+          "name": "Verified Buyer",
+          "email": "buyer101@example.com",
+          "phone": "9876543211",
+          "addressLine1": "",
+          "addressLine2": "",
+          "city": "",
+          "state": "",
+          "pincode": "",
+          "country": "India"
+        },
+        "subtotal": 1,
+        "deliveryCharges": 0,
+        "total": 1,
+        "paymentMethod": "razorpay",
+        "paymentStatus": "completed",
+        "razorpayOrderId": "order_test_c5275f47096e",
+        "orderStatus": "processing",
+        "notes": [
+          {
+            "type": "status",
+            "by": "system",
+            "email": "system@indiacybercafe.com",
+            "text": "Payment initiated via Razorpay (Ref: order_test_c5275f47096e)",
+            "time": "2026-11-25T08:07:06.003Z"
+          },
+          {
+            "type": "status",
+            "by": "system",
+            "email": "system@indiacybercafe.com",
+            "text": "Payment verified via Razorpay (pay_buyer_1795594026004)",
+            "time": "2026-11-25T08:07:06.008Z"
+          }
+        ],
+        "createdAt": "2026-11-25T08:07:06.003Z",
+        "updatedAt": "2026-11-25T08:07:06.008Z",
+        "razorpayPaymentId": "pay_buyer_1795594026004",
+        "digitalDeliveryStatus": "available",
+        "digitalEmailStatus": "queued",
+        "digitalResourceNames": [
+          {
+            "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+            "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf"
+          }
+        ],
+        "digitalDownloads": [
+          {
+            "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+            "resources": [
+              {
+                "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf",
+                "label": "Download AutoCAD Notes PDF",
+                "downloadUrl": "https://b.indiacybercafe.com/api/store/downloads/3ZCmEPc5DLXK7FZZPK4bZvfF-SWTwB4mN4AG7W7rczs",
+                "downloadPageUrl": "https://b.indiacybercafe.com/store/download/3ZCmEPc5DLXK7FZZPK4bZvfF-SWTwB4mN4AG7W7rczs",
+                "expiresAt": null,
+                "downloadLimit": 5,
+                "downloadsUsed": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "state": "queued",
+    "attempts": 3,
+    "maxAttempts": 5,
+    "nextAttemptAt": 1795594449135,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-25T08:07:06.017Z",
+    "updatedAt": "2026-11-25T08:14:09.090Z",
+    "report": {
+      "success": false,
+      "hasFailures": true,
+      "totalCount": 3,
+      "sentCount": 0,
+      "failedCount": 3,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1795594448999_514b20cf84",
+          "templateId": "customerOrderConfirmed",
+          "recipient": "buyer101@example.com",
+          "recipientRole": "customer",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        },
+        {
+          "eventId": "ntf_1795594448999_ff73dc19fa",
+          "templateId": "adminOrderCreated",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        },
+        {
+          "eventId": "ntf_1795594448999_561fb9f411",
+          "templateId": "adminOrderCreated",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        }
+      ]
+    },
+    "lastError": "customer:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+  },
+  "obx_1795594448934_c33b283906": {
+    "jobId": "obx_1795594448934_c33b283906",
+    "idempotencyKey": "order_confirmed:online:ICC/STORE-25112026-081408-44366:pay_buyer_1795594448927",
+    "kind": "order_confirmed",
+    "appId": "",
+    "orderId": "ICC/STORE-25112026-081408-44366",
+    "payload": {
+      "order": {
+        "id": "ICC/STORE-25112026-081408-44366",
+        "uid": "buyer_uid_101",
+        "userId": "buyer_uid_101",
+        "isGuest": false,
+        "email": "buyer101@example.com",
+        "items": [
+          {
+            "productId": "bt-105-autocad-complete-solved-notes-20222026",
+            "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+            "price": 50,
+            "discountedPrice": 1,
+            "quantity": 1,
+            "productType": "virtual",
+            "downloadLimit": 5
+          }
+        ],
+        "deliveryAddress": {
+          "name": "Verified Buyer",
+          "email": "buyer101@example.com",
+          "phone": "9876543211",
+          "addressLine1": "",
+          "addressLine2": "",
+          "city": "",
+          "state": "",
+          "pincode": "",
+          "country": "India"
+        },
+        "subtotal": 1,
+        "deliveryCharges": 0,
+        "total": 1,
+        "paymentMethod": "razorpay",
+        "paymentStatus": "completed",
+        "razorpayOrderId": "order_test_6714f6437153",
+        "orderStatus": "processing",
+        "notes": [
+          {
+            "type": "status",
+            "by": "system",
+            "email": "system@indiacybercafe.com",
+            "text": "Payment initiated via Razorpay (Ref: order_test_6714f6437153)",
+            "time": "2026-11-25T08:14:08.926Z"
+          },
+          {
+            "type": "status",
+            "by": "system",
+            "email": "system@indiacybercafe.com",
+            "text": "Payment verified via Razorpay (pay_buyer_1795594448927)",
+            "time": "2026-11-25T08:14:08.929Z"
+          }
+        ],
+        "createdAt": "2026-11-25T08:14:08.926Z",
+        "updatedAt": "2026-11-25T08:14:08.929Z",
+        "razorpayPaymentId": "pay_buyer_1795594448927",
+        "digitalDeliveryStatus": "available",
+        "digitalEmailStatus": "queued",
+        "digitalResourceNames": [
+          {
+            "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+            "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf"
+          }
+        ],
+        "digitalDownloads": [
+          {
+            "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+            "resources": [
+              {
+                "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf",
+                "label": "Download AutoCAD Notes PDF",
+                "downloadUrl": "https://b.indiacybercafe.com/api/store/downloads/CW0acW6HmkE9vtbqWNL4AK6IVufB5IX9TWjmkN8Z4y4",
+                "downloadPageUrl": "https://b.indiacybercafe.com/store/download/CW0acW6HmkE9vtbqWNL4AK6IVufB5IX9TWjmkN8Z4y4",
+                "expiresAt": null,
+                "downloadLimit": 5,
+                "downloadsUsed": 0
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "state": "queued",
+    "attempts": 1,
+    "maxAttempts": 5,
+    "nextAttemptAt": 1795594449108,
+    "leaseOwner": null,
+    "leaseExpiresAt": null,
+    "createdAt": "2026-11-25T08:14:08.934Z",
+    "updatedAt": "2026-11-25T08:14:09.093Z",
+    "report": {
+      "success": false,
+      "hasFailures": true,
+      "totalCount": 3,
+      "sentCount": 0,
+      "failedCount": 3,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1795594449061_d2d28d3dd1",
+          "templateId": "customerOrderConfirmed",
+          "recipient": "buyer101@example.com",
+          "recipientRole": "customer",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        },
+        {
+          "eventId": "ntf_1795594449062_ea086c50d7",
+          "templateId": "adminOrderCreated",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        },
+        {
+          "eventId": "ntf_1795594449062_f8f921f521",
+          "templateId": "adminOrderCreated",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        }
+      ]
+    },
+    "lastError": "customer:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+  },
   "obx_1794906786896_c298f3dd40": {
     "jobId": "obx_1794906786896_c298f3dd40",
     "idempotencyKey": "profile_update:cust_uid_1:Phone Number:1794906786896",

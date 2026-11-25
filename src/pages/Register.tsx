@@ -13,6 +13,7 @@ import { sanitizeUserProfile, sanitizeEmail } from '../utils/sanitizer';
 import { signInWithGoogle, normalizeIndianMobile, checkPhoneRegistered, mapAuthError, sendRegistrationNotificationsOnce } from '../services/authService';
 import { DEFAULT_AVATAR } from '../utils/avatar';
 import { fetchWithTimeout, withClientTimeout } from '../utils/fetchWithTimeout';
+import { getSafeInternalRedirect } from '../utils/digitalDownload';
 
 interface RegisterProps {
   user: UserProfile | null;
@@ -30,7 +31,7 @@ export function Register({ user }: RegisterProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const redirectPath = searchParams.get('redirect') || '/';
+  const redirectPath = getSafeInternalRedirect(searchParams.get('redirect'), '/');
 
   useEffect(() => {
     if (user) {

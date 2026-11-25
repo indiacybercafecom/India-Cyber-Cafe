@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { IconRenderer } from '../components/Icons';
 import { Product, ProductReview, UserProfile } from '../types';
 import { SEO } from '../components/SEO';
@@ -10,22 +10,31 @@ import { StoreProductDetailSkeleton } from '../components/Skeleton';
 import { useLoadingState } from '../hooks/useLoadingState';
 import { useProductReviews } from '../hooks/useProductReviews';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
+import { loadCheckoutDraft, saveCheckoutDraft } from '../utils/digitalDownload';
 
 interface StoreProductProps {
   products: Product[];
   reviews?: ProductReview[];
   user: UserProfile | null;
+  authLoading?: boolean;
   isLoading?: boolean;
   error?: Error | null;
   onRetry?: () => void;
   onAddReview: (review: Omit<ProductReview, 'id'>) => Promise<void>;
 }
 
-export function StoreProduct({ products, reviews: externalReviews, user, isLoading = false, error = null, onRetry, onAddReview }: StoreProductProps) {
+export function StoreProduct({ products, reviews: externalReviews, user, authLoading = false, isLoading = false, error = null, onRetry, onAddReview }: StoreProductProps) {
   const { productId, categoryId } = useParams<{ productId: string; categoryId: string }>();
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedImageIndex, setSelectedImageIndex] = useState(0);
-  const [quantity, setQuantity] = useState(1);
+  const [quantity, setQuantity] = useState<number>(() => {
+    const qtyFromUrl = Number(new URLSearchParams(location.search).get('qty'));
+    if (Number.isFinite(qtyFromUrl) && qtyFromUrl >= 1) return Math.floor(qtyFromUrl);
+    const saved = loadCheckoutDraft(productId);
+    if (saved?.quantity && saved.quantity >= 1) return Math.floor(saved.quantity);
+    return 1;
+  });
   
   // Load reviews for this product using the hook
   const { productReviews: hookReviews, addProductReview } = useProductReviews(productId);
@@ -93,8 +102,25 @@ export function StoreProduct({ products, reviews: externalReviews, user, isLoadi
 
   const seoDescription = `${product.shortDescription}. Price: ₹${product.discountedPrice || product.price}. ${productReviews.length} customer reviews.`;
 
+  const isVirtual = product.productType === 'virtual';
+  const isBuyLocked = isVirtual && !user;
+
+  const checkoutTargetWithQty = `/store/${categoryId}/${productId}/checkout?qty=${quantity}`;
+
+  const handleLoginToBuy = () => {
+    const existing = loadCheckoutDraft(productId);
+    saveCheckoutDraft(productId, { ...(existing || {}), quantity });
+    navigate(`/login?redirect=${encodeURIComponent(checkoutTargetWithQty)}`);
+  };
+
   const handleBuyNow = () => {
-    navigate(`/store/${categoryId}/${productId}/checkout`, {
+    if (isBuyLocked) {
+      handleLoginToBuy();
+      return;
+    }
+    const existing = loadCheckoutDraft(productId);
+    saveCheckoutDraft(productId, { ...(existing || {}), quantity });
+    navigate(checkoutTargetWithQty, {
       state: { quantity }
     });
   };
@@ -317,13 +343,26 @@ export function StoreProduct({ products, reviews: externalReviews, user, isLoadi
             </div>
 
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
-              <button
-                onClick={handleBuyNow}
-                disabled={!product.inStock}
-                className="flex-1 btn-primary py-3 sm:py-4 text-base sm:text-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                🛒 Buy Now
-              </button>
+              {isBuyLocked ? (
+                <button
+                  type="button"
+                  disabled
+                  aria-disabled="true"
+                  data-testid="virtual-buy-locked-btn"
+                  className="flex-1 btn-primary py-3 sm:py-4 text-base sm:text-lg font-bold opacity-60 cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  <IconRenderer name="lock" className="w-5 h-5 shrink-0" />
+                  <span>{authLoading ? 'Checking Login...' : 'Login Required to Buy'}</span>
+                </button>
+              ) : (
+                <button
+                  onClick={handleBuyNow}
+                  disabled={!product.inStock}
+                  className="flex-1 btn-primary py-3 sm:py-4 text-base sm:text-lg font-bold disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  🛒 Buy Now
+                </button>
+              )}
               <ShareButton
                 data={getProductShareData(product)}
                 label="Share"
@@ -332,6 +371,29 @@ export function StoreProduct({ products, reviews: externalReviews, user, isLoadi
                 className="py-3 sm:py-4 px-6 justify-center"
               />
             </div>
+
+            {isBuyLocked && !authLoading && (
+              <div
+                data-testid="virtual-product-login-notice"
+                className="p-4 bg-linear-to-r from-navy/5 via-primary/5 to-navy/5 border border-primary/25 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3"
+              >
+                <div className="flex items-start gap-2.5 min-w-0">
+                  <IconRenderer name="lock" className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                    Please <span className="font-semibold text-navy">login to your account</span> to unlock purchase and secure buyer-only PDF download. Your product &amp; quantity will be preserved.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleLoginToBuy}
+                  data-testid="virtual-product-login-btn"
+                  className="btn-primary px-4 py-2 text-xs sm:text-sm font-bold whitespace-nowrap shrink-0 flex items-center justify-center gap-2"
+                >
+                  <IconRenderer name="user" className="w-4 h-4 shrink-0" />
+                  <span>Login to Buy</span>
+                </button>
+              </div>
+            )}
           </div>
 
           {/* Features */}

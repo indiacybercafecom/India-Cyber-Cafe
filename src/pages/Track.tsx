@@ -451,14 +451,16 @@ export function Track({
                             </p>
                           )}
                         </div>
-                        <a
-                          href={resource.downloadUrl}
-                          rel="noreferrer"
+                        <Link
+                          to={(() => {
+                            const match = String(resource.downloadUrl || '').match(/\/(?:api\/store\/downloads|store\/download)\/([A-Za-z0-9_-]{40,60})/);
+                            return match ? `/store/download/${encodeURIComponent(match[1])}` : '/track';
+                          })()}
                           className="inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 text-xs sm:text-sm shrink-0"
                         >
                           <IconRenderer name="download" className="w-4 h-4" />
                           {resource.label || 'Download Now'}
-                        </a>
+                        </Link>
                       </div>
                     ))}
                   </div>

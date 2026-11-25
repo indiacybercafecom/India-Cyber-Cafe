@@ -49,6 +49,7 @@ const Store = lazy(() => import('./pages/Store').then(m => ({ default: m.Store }
 const StoreProduct = lazy(() => import('./pages/StoreProduct').then(m => ({ default: m.StoreProduct })));
 const StoreCheckout = lazy(() => import('./pages/StoreCheckout').then(m => ({ default: m.StoreCheckout })));
 const OrderConfirmation = lazy(() => import('./pages/OrderConfirmation').then(m => ({ default: m.OrderConfirmation })));
+const DigitalDownload = lazy(() => import('./pages/DigitalDownload').then(m => ({ default: m.DigitalDownload })));
 const PriceList = lazy(() => import('./pages/PriceList').then(m => ({ default: m.PriceList })));
 const Pay = lazy(() => import('./pages/Pay').then(m => ({ default: m.Pay })));
 const FormsDocuments = lazy(() => import('./pages/FormsDocuments').then(m => ({ default: m.FormsDocuments })));
@@ -440,7 +441,7 @@ function AppContent() {
         onLoginClick={() =>
           isApplyRoute
             ? setIsAuthModalOpen(true)
-            : navigate(`/login?redirect=${encodeURIComponent(location.pathname)}`)
+            : navigate(`/login?redirect=${encodeURIComponent(`${location.pathname}${location.search}`)}`)
         }
         onMenuClick={() => setIsSidebarOpen(true)}
         onLogoClick={() => navigate('/')}
@@ -537,6 +538,15 @@ function AppContent() {
             />
             <Route path="/store/order-confirmation" element={<OrderConfirmation />} />
             <Route
+              path="/store/download/:token"
+              element={
+                <DigitalDownload
+                  authUser={authUser}
+                  authLoading={authLoading || (Boolean(authUser) && profileLoading)}
+                />
+              }
+            />
+            <Route
               path="/store/:categoryId/:productId/checkout"
               element={
                 authLoading || (authUser && profileLoading) ? (
@@ -544,7 +554,8 @@ function AppContent() {
                 ) : (
                   <StoreCheckout
                     products={products}
-                    user={user || null}
+                    user={user && !userIsDisabled ? user : null}
+                    authLoading={authLoading || (Boolean(authUser) && profileLoading)}
                     isLoading={productsLoading}
                     error={productsError}
                     onRetry={retryProducts}
@@ -559,7 +570,8 @@ function AppContent() {
               element={
                 <StoreProductRoute
                   products={products}
-                  user={user}
+                  user={user && !userIsDisabled ? user : null}
+                  authLoading={authLoading || (Boolean(authUser) && profileLoading)}
                   isLoading={productsLoading}
                   error={productsError}
                   onRetry={retryProducts}
@@ -836,7 +848,7 @@ function AppContent() {
 }
 
 // Component to handle StoreProduct route with proper review loading
-function StoreProductRoute({ products, user, isLoading, error, onRetry }: { products: any[]; user: UserProfile | null; isLoading: boolean; error: Error | null; onRetry: () => void }) {
+function StoreProductRoute({ products, user, authLoading, isLoading, error, onRetry }: { products: any[]; user: UserProfile | null; authLoading: boolean; isLoading: boolean; error: Error | null; onRetry: () => void }) {
   const { productId } = useParams<{ productId: string }>();
   const { productReviews, addProductReview } = useProductReviews(productId);
 
@@ -845,6 +857,7 @@ function StoreProductRoute({ products, user, isLoading, error, onRetry }: { prod
       products={products}
       reviews={productReviews}
       user={user}
+      authLoading={authLoading}
       isLoading={isLoading}
       error={error}
       onRetry={onRetry}

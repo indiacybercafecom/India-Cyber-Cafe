@@ -237,6 +237,12 @@ export function Store({ products, categories, isLoading = false, error = null, o
                     {Math.round(((product.price - product.discountedPrice) / product.price) * 100)}% OFF
                   </div>
                 )}
+                {product.productType === 'virtual' && (
+                  <div className="absolute bottom-2 left-2 bg-navy/90 text-white px-2 py-0.5 rounded-md text-[10px] sm:text-xs font-semibold flex items-center gap-1">
+                    <IconRenderer name="download" className="w-3 h-3" />
+                    <span>Digital</span>
+                  </div>
+                )}
                 <div className="absolute top-2 left-2 z-10">
                   <ShareButton
                     data={getProductShareData(product)}

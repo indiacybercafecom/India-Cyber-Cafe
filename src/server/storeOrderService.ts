@@ -652,6 +652,7 @@ function groupDownloadResources(resources: any[]) {
       fileName: resource.fileName,
       label: resource.label,
       downloadUrl: `${publicStoreBaseUrl()}/api/store/downloads/${encodeURIComponent(readableToken)}`,
+      downloadPageUrl: `${publicStoreBaseUrl()}/store/download/${encodeURIComponent(readableToken)}`,
       expiresAt: resource.expiresAt || null,
       downloadLimit: resource.downloadLimit,
       downloadsUsed: resource.downloadCount || 0,
@@ -726,7 +727,7 @@ async function ensureDigitalDownloads(order: any, regenerate = false): Promise<a
         sourceUrl: resource.url,
         createdAt,
         expiresAt: expiryDays ? new Date(Date.now() + expiryDays * 86400000).toISOString() : null,
-        downloadLimit: Math.min(1000, Math.max(1, Math.floor(Number(item.downloadLimit) || 5))),
+        downloadLimit: Math.min(1000, Math.max(1, Math.floor(Number(item.downloadLimit) || 10))),
         downloadCount: 0,
         revoked: false,
       });
@@ -772,23 +773,75 @@ async function prepareDigitalDelivery(order: any, rtdbPath?: string) {
 export async function handleDigitalDownload(req: Request, res: Response) {
   try {
     const token = String(req.params.token || '');
-    if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) return res.status(404).send('Download not found.');
+    if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) {
+      return res.status(404).json({ error: 'Download not found.' });
+    }
+
+    // Require authenticated buyer (redirect plain browser navigations to the SPA download page which handles login + preserved redirect)
+    const authUser = await getVerifiedAuthUser(req);
+    if (!authUser) {
+      const acceptHeader = String(req.headers.accept || '');
+      if (acceptHeader.includes('text/html') && !req.headers.authorization) {
+        return res.redirect(302, `/store/download/${encodeURIComponent(token)}`);
+      }
+      return res.status(401).json({ error: 'Please sign in to download this file.' });
+    }
+
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     let record: any;
-    if (isTestMode()) record = localDigitalDownloadTokens.get(tokenHash);
-    else {
-      if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) return res.status(503).send('Download service unavailable.');
+    if (isTestMode()) {
+      record = localDigitalDownloadTokens.get(tokenHash);
+    } else {
+      if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) {
+        return res.status(503).json({ error: 'Download service unavailable.' });
+      }
       const snapshot = await rtdbAdmin.ref(`digitalDownloads/tokens/${tokenHash}`).once('value');
       record = snapshot.val();
     }
-    if (!record || record.revoked) return res.status(404).send('Download not found.');
+    if (!record || record.revoked) {
+      return res.status(404).json({ error: 'This download link is no longer active.' });
+    }
     if (typeof record.token === 'string' && record.token === token) {
       record.tokenHash = crypto.createHash('sha256').update(token).digest('hex');
     }
-    if (record.tokenHash !== tokenHash) return res.status(404).send('Download not found.');
+    if (record.tokenHash !== tokenHash) {
+      return res.status(404).json({ error: 'Download not found.' });
+    }
+
     const orderRecord = await findOrderRecord(record.orderId);
-    if (!orderRecord || orderRecord.order.paymentStatus !== 'completed') return res.status(403).send('This order is not eligible for downloads.');
-    if (record.expiresAt && Date.now() > new Date(record.expiresAt).getTime()) return res.status(410).send('This download link has expired.');
+    if (!orderRecord || orderRecord.order.paymentStatus !== 'completed') {
+      return res.status(403).json({ error: 'This order is not eligible for downloads.' });
+    }
+
+    // Enforce strict buyer-only (or admin) ownership check
+    const order = orderRecord.order;
+    const orderUid = String(order.userId || order.uid || '').trim();
+    const orderEmail = String(order.email || order.deliveryAddress?.email || '').toLowerCase().trim();
+    let isAuthorizedBuyer =
+      (Boolean(orderUid) && orderUid !== 'guest' && orderUid === authUser.uid) ||
+      (Boolean(authUser.email) && authUser.emailVerified && Boolean(orderEmail) && orderEmail === authUser.email);
+    if (!isAuthorizedBuyer) {
+      const callerWithRole = await withTimeout(
+        verifyCallerWithRole(req),
+        4000,
+        'Admin role verification'
+      ).catch(() => null);
+      if (callerWithRole?.role === 'admin') {
+        isAuthorizedBuyer = true;
+      }
+    }
+    if (!isAuthorizedBuyer) {
+      return res.status(403).json({ error: 'Only the account that purchased this order can download this file.' });
+    }
+
+    if (record.expiresAt && Date.now() > new Date(record.expiresAt).getTime()) {
+      return res.status(410).json({ error: 'This download link has expired.' });
+    }
+
+    const downloadLimit = Math.max(1, Number(record.downloadLimit) || 10);
+    if ((Number(record.downloadCount) || 0) >= downloadLimit) {
+      return res.status(429).json({ error: 'Download limit reached for this file.' });
+    }
 
     let safeFetch: { response: globalThis.Response; finalUrl: URL };
     try {
@@ -796,35 +849,63 @@ export async function handleDigitalDownload(req: Request, res: Response) {
     } catch (error: any) {
       const message = String(error?.message || 'Invalid download source.');
       if (/private|local|localhost|reserved|credentials|alternate|invalid|resolve/i.test(message)) {
-        return res.status(400).send(message);
+        return res.status(400).json({ error: message });
       }
-      return res.status(502).send('Download source is unavailable.');
+      return res.status(502).json({ error: 'Download source is unavailable. Please try again.' });
     }
     const response = safeFetch.response as unknown as globalThis.Response;
-    const maxBytes = 5 * 1024 * 1024;
+    const maxBytes = 25 * 1024 * 1024;
     const contentLength = Number(response.headers.get('content-length'));
-    if (Number.isFinite(contentLength) && contentLength > maxBytes) return res.status(413).send('File exceeds the download size limit.');
-    const latestOrder = await findOrderRecord(record.orderId);
-    if (!latestOrder || latestOrder.order.paymentStatus !== 'completed') return res.status(403).send('This order is not eligible for downloads.');
-    if (isTestMode()) {
-      if (record.downloadCount >= record.downloadLimit) return res.status(429).send('Download limit reached.');
-      record.downloadCount += 1;
-    } else {
-      const tokenRef = rtdbAdmin!.ref(`digitalDownloads/tokens/${tokenHash}`);
-      const transaction = await tokenRef.transaction((current: any) => {
-        if (!current || current.revoked || current.tokenHash !== tokenHash || current.downloadCount >= current.downloadLimit || (current.expiresAt && Date.now() > new Date(current.expiresAt).getTime())) return;
-        current.downloadCount = (Number(current.downloadCount) || 0) + 1;
-        current.lastDownloadedAt = new Date().toISOString();
-        return current;
-      });
-      if (!transaction.committed) return res.status(429).send('Download limit reached or link revoked.');
-      record = transaction.snapshot.val();
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      return res.status(413).json({ error: 'File exceeds the download size limit.' });
     }
-    const safeFileName = String(record.fileName || 'download').replace(/[\r\n"\\]/g, '_');
+
+    const latestOrder = await findOrderRecord(record.orderId);
+    if (!latestOrder || latestOrder.order.paymentStatus !== 'completed') {
+      return res.status(403).json({ error: 'This order is not eligible for downloads.' });
+    }
+
+    if (isTestMode()) {
+      if ((Number(record.downloadCount) || 0) >= downloadLimit) {
+        return res.status(429).json({ error: 'Download limit reached for this file.' });
+      }
+      record.downloadCount = (Number(record.downloadCount) || 0) + 1;
+      record.lastDownloadedAt = new Date().toISOString();
+    } else {
+      // Re-verify active status authoritatively, then atomically increment the scalar downloadCount child
+      // (avoids RTDB transaction(null) first-pass abort trap on object nodes)
+      const latestSnap = await rtdbAdmin!.ref(`digitalDownloads/tokens/${tokenHash}`).once('value');
+      const latestRecord = latestSnap.val();
+      if (!latestRecord || latestRecord.revoked || latestRecord.tokenHash !== tokenHash) {
+        return res.status(404).json({ error: 'This download link is no longer active.' });
+      }
+      if (latestRecord.expiresAt && Date.now() > new Date(latestRecord.expiresAt).getTime()) {
+        return res.status(410).json({ error: 'This download link has expired.' });
+      }
+      const effectiveLimit = Math.max(1, Number(latestRecord.downloadLimit) || downloadLimit);
+      const countTx = await rtdbAdmin!
+        .ref(`digitalDownloads/tokens/${tokenHash}/downloadCount`)
+        .transaction((currentCount: any) => {
+          const numeric = Number(currentCount || 0);
+          if (numeric >= effectiveLimit) return;
+          return numeric + 1;
+        });
+      if (!countTx.committed) {
+        return res.status(429).json({ error: 'Download limit reached for this file.' });
+      }
+      await rtdbAdmin!
+        .ref(`digitalDownloads/tokens/${tokenHash}/lastDownloadedAt`)
+        .set(new Date().toISOString())
+        .catch(() => {});
+    }
+
+    const safeFileName = String(record.fileName || 'download.pdf').replace(/[\r\n"\\]/g, '_');
     res.setHeader('Cache-Control', 'private, no-store');
-    res.setHeader('Content-Type', response.headers.get('content-type') || 'application/octet-stream');
+    res.setHeader('Content-Type', response.headers.get('content-type') || 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
-    if (Number.isFinite(contentLength) && contentLength > 0) res.setHeader('Content-Length', String(contentLength));
+    if (Number.isFinite(contentLength) && contentLength > 0) {
+      res.setHeader('Content-Length', String(contentLength));
+    }
     let bytesSent = 0;
     const sizeGuard = new Transform({
       transform(chunk, _encoding, callback) {
@@ -837,7 +918,7 @@ export async function handleDigitalDownload(req: Request, res: Response) {
   } catch (error: any) {
     console.error('Digital download error:', error?.message || error);
     if (res.headersSent) return res.destroy();
-    return res.status(500).send('Could not process this download.');
+    return res.status(500).json({ error: 'Could not process this download. Please try again.' });
   }
 }
 
@@ -1775,6 +1856,14 @@ export async function handleCreatePaymentOrder(req: Request, res: Response) {
     const validation = await validateAndComputeOrder(items, deliveryAddress, 'online');
     if (validation.valid === false) return res.status(validation.status).json({ success: false, error: validation.error });
 
+    const hasVirtualProduct = validation.verifiedItems.some((item: any) => item.productType === 'virtual');
+    if (hasVirtualProduct && isGuest) {
+      return res.status(401).json({
+        success: false,
+        error: 'Please sign in to your account to purchase virtual/digital products.',
+      });
+    }
+
     const amountInPaise = Math.round(validation.total * 100);
     if (!Number.isInteger(amountInPaise) || amountInPaise < 100 || amountInPaise > 10000000) {
       return res.status(400).json({ success: false, error: 'Order amount is outside allowed online payment bounds.' });
@@ -2468,7 +2557,7 @@ export async function handleGuestTrackOrder(req: Request, res: Response) {
       success: true,
       order: sanitizeOrderForClient({
         ...order,
-        digitalDownloads: order.paymentStatus === 'completed' ? await ensureDigitalDownloads(order) : [],
+        digitalDownloads: [],
       }, { includeOwnerUid: false })
     });
   } catch (error: any) {

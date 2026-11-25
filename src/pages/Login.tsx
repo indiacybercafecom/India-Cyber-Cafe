@@ -11,6 +11,7 @@ import { motion } from 'motion/react';
 import { UserProfile } from '../types';
 import { sanitizeEmail, trimWhitespace } from '../utils/sanitizer';
 import { signInWithGoogle, normalizeIndianMobile, mapAuthError } from '../services/authService';
+import { getSafeInternalRedirect } from '../utils/digitalDownload';
 
 interface LoginProps {
   user: UserProfile | null;
@@ -27,7 +28,7 @@ export function Login({ authUser, authLoading }: LoginProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const searchParams = new URLSearchParams(location.search);
-  const redirectPath = searchParams.get('redirect') || '/';
+  const redirectPath = getSafeInternalRedirect(searchParams.get('redirect'), '/');
 
   useEffect(() => {
     if (!authLoading && authUser) {

@@ -4,6 +4,7 @@ import { IconRenderer } from '../components/Icons';
 import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
 import { Order, OrderItem } from '../types';
+import { downloadProtectedDigitalFile, extractDownloadToken } from '../utils/digitalDownload';
 
 const LAST_ORDER_STORAGE_KEY = 'icc_last_order_confirmation';
 
@@ -37,6 +38,30 @@ export function OrderConfirmation() {
       } catch {}
     }
   }, [routeState]);
+
+  const [downloadingKey, setDownloadingKey] = useState<string | null>(null);
+
+  const handleProtectedDownload = async (downloadUrl: string, fileName: string, key: string) => {
+    if (downloadingKey) return;
+    setDownloadingKey(key);
+    try {
+      const result = await downloadProtectedDigitalFile(downloadUrl, fileName);
+      if (result.ok) {
+        showToast('Download started!', 'success');
+      } else if (result.requiresAuth) {
+        const token = extractDownloadToken(downloadUrl);
+        const redirectTarget = token ? `/store/download/${encodeURIComponent(token)}` : '/store/order-confirmation';
+        showToast('Please sign in with your buyer account to download.', 'info');
+        navigate(`/login?redirect=${encodeURIComponent(redirectTarget)}`);
+      } else {
+        showToast(result.error || 'Could not download this file.', 'error');
+      }
+    } catch {
+      showToast('Network error while downloading. Please try again.', 'error');
+    } finally {
+      setDownloadingKey(null);
+    }
+  };
 
   const copyText = async (value: string, label: string) => {
     try {
@@ -137,33 +162,42 @@ export function OrderConfirmation() {
               Your Digital Downloads Are Ready
             </p>
             <p className="text-xs sm:text-sm text-green-800">
-              Click below to download directly — no login or verification key needed. A direct download link has also been sent to{' '}
+              Click below to download your PDF securely with your buyer account. Your download link has also been emailed to{' '}
               <span className="font-semibold">{order.email || order.deliveryAddress?.email}</span>.
             </p>
           </div>
           {order.digitalDownloads.map((group, groupIndex) => (
             <div key={`${group.productName}-${groupIndex}`} className="space-y-2.5">
               <p className="text-sm font-bold text-navy">{group.productName}</p>
-              {group.resources.map((resource, resourceIndex) => (
-                <div key={`${resource.fileName}-${resourceIndex}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-white border border-green-200 p-3.5 shadow-xs">
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm text-slate-800 break-all">{resource.fileName}</p>
-                    {resource.expiresAt && (
-                      <p className="text-xs text-slate-500 mt-0.5">
-                        Available until {new Date(resource.expiresAt).toLocaleString('en-IN')}
-                      </p>
-                    )}
+              {group.resources.map((resource, resourceIndex) => {
+                const key = `${groupIndex}-${resourceIndex}`;
+                const isDownloading = downloadingKey === key;
+                return (
+                  <div key={`${resource.fileName}-${resourceIndex}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-white border border-green-200 p-3.5 shadow-xs">
+                    <div className="min-w-0">
+                      <p className="font-semibold text-sm text-slate-800 break-all">{resource.fileName}</p>
+                      {resource.expiresAt && (
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          Available until {new Date(resource.expiresAt).toLocaleString('en-IN')}
+                        </p>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      disabled={Boolean(downloadingKey)}
+                      onClick={() => handleProtectedDownload(resource.downloadUrl, resource.fileName, key)}
+                      className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white font-bold px-5 py-2.5 text-sm shadow-sm transition-colors shrink-0"
+                    >
+                      {isDownloading ? (
+                        <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                      ) : (
+                        <IconRenderer name="download" className="h-4 w-4" />
+                      )}
+                      {isDownloading ? 'Downloading...' : resource.label || 'Download Now'}
+                    </button>
                   </div>
-                  <a
-                    href={resource.downloadUrl}
-                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold px-5 py-2.5 text-sm shadow-sm transition-colors shrink-0"
-                    rel="noreferrer"
-                  >
-                    <IconRenderer name="download" className="h-4 w-4" />
-                    {resource.label || 'Download Now'}
-                  </a>
-                </div>
-              ))}
+                );
+              })}
             </div>
           ))}
         </div>

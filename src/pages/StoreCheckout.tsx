@@ -22,6 +22,7 @@ import { CheckoutSkeleton } from '../components/Skeleton';
 import { useLoadingState } from '../hooks/useLoadingState';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
 import { fetchWithTimeout, withClientTimeout } from '../utils/fetchWithTimeout';
+import { loadCheckoutDraft, saveCheckoutDraft, clearCheckoutDraft } from '../utils/digitalDownload';
 
 const PENDING_VERIFICATION_STORAGE_KEY = 'icc_pending_store_payment';
 const PENDING_ATTEMPT_STORAGE_KEY = 'icc_pending_store_attempt';
@@ -29,6 +30,7 @@ const PENDING_ATTEMPT_STORAGE_KEY = 'icc_pending_store_attempt';
 interface StoreCheckoutProps {
   products: Product[];
   user: UserProfile | null;
+  authLoading?: boolean;
   isLoading?: boolean;
   error?: Error | null;
   onRetry?: () => void;
@@ -56,6 +58,7 @@ function generateIdempotencyKey(): string {
 export function StoreCheckout({
   products,
   user,
+  authLoading = false,
   isLoading = false,
   error = null,
   onRetry,
@@ -64,7 +67,14 @@ export function StoreCheckout({
   const { productId, categoryId } = useParams<{ productId: string; categoryId: string }>();
   const navigate = useNavigate();
   const location = useLocation();
-  const quantity = Math.max(1, Number(location.state?.quantity) || 1);
+  const initialDraft = loadCheckoutDraft(productId);
+  const qtyFromQuery = Number(new URLSearchParams(location.search).get('qty'));
+  const quantity = Math.max(
+    1,
+    Number(location.state?.quantity) ||
+      (Number.isFinite(qtyFromQuery) && qtyFromQuery >= 1 ? Math.floor(qtyFromQuery) : 0) ||
+      (initialDraft?.quantity && initialDraft.quantity >= 1 ? Math.floor(initialDraft.quantity) : 1)
+  );
 
   const product = products.find(p => p.id === productId);
   const displayLoading = useLoadingState(isLoading, 600);
@@ -73,11 +83,11 @@ export function StoreCheckout({
   const [customImageUrl, setCustomImageUrl] = useState<string>('');
   const [imagePreview, setImagePreview] = useState<string>('');
   const [uploading, setUploading] = useState(false);
-  const [specialInstructions, setSpecialInstructions] = useState('');
+  const [specialInstructions, setSpecialInstructions] = useState(initialDraft?.specialInstructions || '');
   const [paymentMethod, setPaymentMethod] = useState<'online' | 'cod'>('online');
 
-  const [address, setAddress] = useState<OrderAddress>(
-    user?.address
+  const [address, setAddress] = useState<OrderAddress>(() => {
+    const base: OrderAddress = user?.address
       ? { ...user.address }
       : {
           name: user?.name || '',
@@ -89,8 +99,21 @@ export function StoreCheckout({
           state: '',
           pincode: '',
           country: 'India'
-        }
-  );
+        };
+    if (!initialDraft) return base;
+    return {
+      ...base,
+      name: initialDraft.name || base.name,
+      email: initialDraft.email || base.email,
+      phone: initialDraft.phone || base.phone,
+      addressLine1: initialDraft.addressLine1 || base.addressLine1,
+      addressLine2: initialDraft.addressLine2 || base.addressLine2,
+      city: initialDraft.city || base.city,
+      state: initialDraft.state || base.state,
+      pincode: initialDraft.pincode || base.pincode,
+      country: initialDraft.country || base.country || 'India',
+    };
+  });
 
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
@@ -217,10 +240,21 @@ export function StoreCheckout({
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [paymentProcessing]);
 
-  // Auto-fill from user profile when authenticated user loads
+  // Auto-fill empty fields from user profile when authenticated user loads (never clobber preserved draft edits)
   useEffect(() => {
     if (user?.address) {
-      setAddress({ ...user.address });
+      setAddress(prev => ({
+        ...user.address!,
+        name: prev.name || user.address!.name || user.name || '',
+        email: prev.email || user.address!.email || user.email || '',
+        phone: prev.phone || user.address!.phone || user.phone || '',
+        addressLine1: prev.addressLine1 || user.address!.addressLine1 || '',
+        addressLine2: prev.addressLine2 || user.address!.addressLine2 || '',
+        city: prev.city || user.address!.city || '',
+        state: prev.state || user.address!.state || '',
+        pincode: prev.pincode || user.address!.pincode || '',
+        country: prev.country || user.address!.country || 'India',
+      }));
     } else if (user) {
       setAddress(prev => ({
         ...prev,
@@ -230,6 +264,24 @@ export function StoreCheckout({
       }));
     }
   }, [user?.uid]);
+
+  // Preserve checkout draft across login redirects so zero data is missed
+  useEffect(() => {
+    if (!productId) return;
+    saveCheckoutDraft(productId, {
+      quantity,
+      name: address.name,
+      email: address.email,
+      phone: address.phone,
+      addressLine1: address.addressLine1,
+      addressLine2: address.addressLine2,
+      city: address.city,
+      state: address.state,
+      pincode: address.pincode,
+      country: address.country,
+      specialInstructions,
+    });
+  }, [productId, quantity, address, specialInstructions]);
 
   if (displayLoading) {
     return <CheckoutSkeleton />;
@@ -257,6 +309,25 @@ export function StoreCheckout({
   }
 
   const isVirtual = product.productType === 'virtual';
+  const isVirtualLoginLocked = isVirtual && !user;
+
+  const handleRedirectToLogin = () => {
+    saveCheckoutDraft(productId, {
+      quantity,
+      name: address.name,
+      email: address.email,
+      phone: address.phone,
+      addressLine1: address.addressLine1,
+      addressLine2: address.addressLine2,
+      city: address.city,
+      state: address.state,
+      pincode: address.pincode,
+      country: address.country,
+      specialInstructions,
+    });
+    const redirectTarget = `${location.pathname}?qty=${quantity}`;
+    navigate(`/login?redirect=${encodeURIComponent(redirectTarget)}`);
+  };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -499,6 +570,7 @@ export function StoreCheckout({
       window.localStorage.removeItem(PENDING_VERIFICATION_STORAGE_KEY);
       window.localStorage.removeItem(PENDING_ATTEMPT_STORAGE_KEY);
     } catch {}
+    clearCheckoutDraft(productId);
 
     // Store guest tracking info locally so guest can easily view status or link on login
     if (confirmedOrder.isGuest || !auth.currentUser) {
@@ -673,6 +745,12 @@ export function StoreCheckout({
     e.preventDefault();
 
     if (submittingRef.current || submitting || uploading || paymentProcessingRef.current || razorpayOpenRef.current) return;
+
+    if (isVirtualLoginLocked) {
+      showToast('Please login to your account to purchase virtual/digital products.', 'info');
+      handleRedirectToLogin();
+      return;
+    }
 
     if (!validateForm()) {
       showToast(
@@ -944,6 +1022,35 @@ export function StoreCheckout({
         <h1 className="text-3xl sm:text-4xl font-bold text-navy">Checkout</h1>
       </div>
 
+      {/* Virtual Product Login Required Banner (matches Services Apply flow) */}
+      {isVirtualLoginLocked && (
+        <div
+          data-testid="virtual-checkout-login-banner"
+          className="p-4 sm:p-5 bg-linear-to-r from-navy/5 via-primary/5 to-navy/5 border border-primary/25 rounded-xl sm:rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+        >
+          <div className="flex items-start gap-3 min-w-0">
+            <div className="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-primary/15 text-primary flex items-center justify-center shrink-0">
+              <IconRenderer name="lock" className="w-4 h-4 sm:w-5 sm:h-5" />
+            </div>
+            <div className="space-y-1 min-w-0">
+              <h2 className="text-sm sm:text-base font-bold text-navy">Login Required to Buy Digital Product</h2>
+              <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
+                You can review all product details and fill your contact info below. Login is required to complete payment so only your account can download the PDF — all your entered details will be preserved.
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={handleRedirectToLogin}
+            data-testid="virtual-checkout-banner-login-btn"
+            className="btn-primary px-5 py-2.5 text-xs sm:text-sm whitespace-nowrap shrink-0 flex items-center justify-center gap-2"
+          >
+            <IconRenderer name="user" className="w-4 h-4 shrink-0" />
+            <span>Login to Buy</span>
+          </button>
+        </div>
+      )}
+
       {/* Payment Verification Recovery Banner (prevents charging twice) */}
       {pendingVerification && (
         <div className="bg-amber-50 border-2 border-amber-400 rounded-2xl p-4 sm:p-6 space-y-3" role="alert">
@@ -1062,7 +1169,7 @@ export function StoreCheckout({
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 sm:p-3.5 text-xs sm:text-sm text-blue-900 flex items-start gap-2.5">
                 <IconRenderer name="download" className="w-4 h-4 text-navy shrink-0 mt-0.5" />
                 <p>
-                  <span className="font-semibold text-navy">Instant Digital Delivery:</span> No login, verification key, or shipping address needed. Your download button appears immediately after payment and the direct link is also sent to your email.
+                  <span className="font-semibold text-navy">Instant Digital Delivery:</span> No shipping address needed. Your secure PDF download unlocks immediately for your signed-in buyer account after payment and is also sent to your email.
                 </p>
               </div>
             )}
@@ -1363,19 +1470,44 @@ export function StoreCheckout({
               ) : null}
             </div>
 
-            <button
-              type="submit"
-              disabled={submitting || uploading || paymentProcessing}
-              className="w-full btn-primary py-2.5 sm:py-3 text-sm sm:text-base font-bold disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {uploading
-                ? 'Uploading Image...'
-                : submitting
-                  ? 'Processing Order...'
-                  : paymentMethod === 'cod'
-                    ? '🚚 Place COD Order'
-                    : '💳 Pay Now'}
-            </button>
+            <div className="space-y-2">
+              <button
+                type="submit"
+                disabled={isVirtualLoginLocked || submitting || uploading || paymentProcessing}
+                aria-disabled={isVirtualLoginLocked || submitting || uploading || paymentProcessing}
+                data-testid={isVirtualLoginLocked ? 'virtual-checkout-pay-locked-btn' : 'checkout-pay-btn'}
+                className={`w-full btn-primary py-2.5 sm:py-3 text-sm sm:text-base font-bold disabled:opacity-50 disabled:cursor-not-allowed ${
+                  isVirtualLoginLocked ? 'opacity-60' : ''
+                }`}
+              >
+                {isVirtualLoginLocked ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <IconRenderer name="lock" className="w-4 h-4 shrink-0" />
+                    <span>{authLoading ? 'Checking Login...' : 'Login Required to Pay'}</span>
+                  </span>
+                ) : uploading
+                  ? 'Uploading Image...'
+                  : submitting
+                    ? 'Processing Order...'
+                    : paymentMethod === 'cod'
+                      ? '🚚 Place COD Order'
+                      : '💳 Pay Now'}
+              </button>
+
+              {isVirtualLoginLocked && !authLoading && (
+                <p className="text-center text-[11px] sm:text-xs text-slate-500">
+                  Please{' '}
+                  <button
+                    type="button"
+                    onClick={handleRedirectToLogin}
+                    className="text-primary font-bold underline hover:text-primary-dark"
+                  >
+                    login to your account
+                  </button>{' '}
+                  to unlock payment &amp; instant PDF download. Your details remain saved.
+                </p>
+              )}
+            </div>
 
             <p className="text-[11px] text-slate-500 text-center leading-normal">
               By placing this order, you agree to our{' '}

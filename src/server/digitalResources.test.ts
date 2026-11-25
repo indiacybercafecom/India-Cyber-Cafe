@@ -13,14 +13,18 @@ const FIREBASE_STORAGE_APP_PDF_URL =
 
 async function withProductionValidation<T>(fn: () => Promise<T>): Promise<T> {
   const prevTestMode = process.env.STORE_TEST_MODE;
+  const prevOrderTestMode = process.env.STORE_ORDER_TEST_MODE;
   const prevNodeEnv = process.env.NODE_ENV;
   delete process.env.STORE_TEST_MODE;
+  delete process.env.STORE_ORDER_TEST_MODE;
   process.env.NODE_ENV = 'production';
   try {
     return await fn();
   } finally {
     if (prevTestMode === undefined) delete process.env.STORE_TEST_MODE;
     else process.env.STORE_TEST_MODE = prevTestMode;
+    if (prevOrderTestMode === undefined) delete process.env.STORE_ORDER_TEST_MODE;
+    else process.env.STORE_ORDER_TEST_MODE = prevOrderTestMode;
     if (prevNodeEnv === undefined) delete process.env.NODE_ENV;
     else process.env.NODE_ENV = prevNodeEnv;
   }
@@ -245,12 +249,14 @@ test('validateAndComputeOrder allows virtual product checkout without physical a
   }
 });
 
-test('logged-out guest can buy virtual product, get immediate download link, download without auth, track by email/mobile without key, and receive direct link in email', async () => {
+test('virtual products require login to buy, only the purchasing buyer (or admin) can download the PDF, and redirect helpers safely preserve URLs', async () => {
   const crypto = await import('node:crypto');
   const { PassThrough } = await import('node:stream');
   const prevTestMode = process.env.STORE_ORDER_TEST_MODE;
+  const prevOperatorTestMode = process.env.OPERATOR_TEST_MODE;
   const prevSecret = process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET;
   process.env.STORE_ORDER_TEST_MODE = '1';
+  process.env.OPERATOR_TEST_MODE = '1';
   delete process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET;
 
   const originalFetch = globalThis.fetch;
@@ -258,6 +264,7 @@ test('logged-out guest can buy virtual product, get immediate download link, dow
   const makeRes = () => {
     let statusCode = 200;
     let body: any = undefined;
+    let redirectTarget: string | undefined = undefined;
     const headers: Record<string, string> = {};
     const res: any = {
       status(code: number) {
@@ -272,11 +279,16 @@ test('logged-out guest can buy virtual product, get immediate download link, dow
         body = payload;
         return this;
       },
+      redirect(code: number, target: string) {
+        statusCode = code;
+        redirectTarget = target;
+        return this;
+      },
       setHeader(name: string, value: string) {
         headers[name.toLowerCase()] = value;
       },
       get result() {
-        return { statusCode, body, headers };
+        return { statusCode, body, headers, redirectTarget };
       },
     };
     return res;
@@ -303,7 +315,7 @@ test('logged-out guest can buy virtual product, get immediate download link, dow
         body: {
           resources: [
             {
-              id: 'res-guest-1',
+              id: 'res-buyer-1',
               fileName: 'BT-105_AutoCAD_Complete_Solved_Notes.pdf',
               label: 'Download AutoCAD Notes PDF',
               url: FIREBASE_PDF_URL,
@@ -315,8 +327,8 @@ test('logged-out guest can buy virtual product, get immediate download link, dow
     );
     assert.equal(seedRes.result.statusCode, 200);
 
-    // 2. Logged-out guest creates online payment order without address or auth header
-    const createRes = makeRes();
+    // 2. Logged-out guest CANNOT buy a virtual product (blocked with 401)
+    const guestBlockedRes = makeRes();
     await handleCreatePaymentOrder(
       {
         headers: {},
@@ -325,8 +337,38 @@ test('logged-out guest can buy virtual product, get immediate download link, dow
         body: {
           items: [{ productId: virtualProductId, quantity: 1 }],
           deliveryAddress: {
-            name: 'Guest Buyer',
-            email: 'guest.buyer@example.com',
+            name: 'Guest Visitor',
+            email: 'guest.visitor@example.com',
+            phone: '9876543211',
+            addressLine1: '',
+            addressLine2: '',
+            city: '',
+            state: '',
+            pincode: '',
+            country: 'India',
+          },
+        },
+      } as any,
+      guestBlockedRes
+    );
+    assert.equal(guestBlockedRes.result.statusCode, 401);
+    assert.match(String(guestBlockedRes.result.body?.error || ''), /sign in/i);
+
+    // 3. Logged-in buyer creates online payment order without physical shipping address
+    const buyerAuthHeader = 'Bearer test-token:buyer_uid_101:buyer101@example.com';
+    const otherUserAuthHeader = 'Bearer test-token:other_uid_202:stranger202@example.com';
+
+    const createRes = makeRes();
+    await handleCreatePaymentOrder(
+      {
+        headers: { authorization: buyerAuthHeader },
+        ip: '203.0.113.10',
+        socket: { remoteAddress: '203.0.113.10' },
+        body: {
+          items: [{ productId: virtualProductId, quantity: 1 }],
+          deliveryAddress: {
+            name: 'Verified Buyer',
+            email: 'buyer101@example.com',
             phone: '9876543211',
             addressLine1: '',
             addressLine2: '',
@@ -345,8 +387,8 @@ test('logged-out guest can buy virtual product, get immediate download link, dow
     assert.ok(createdOrderId);
     assert.ok(razorpayOrderId);
 
-    // 3. Logged-out guest verifies payment (no auth header)
-    const razorpayPaymentId = `pay_guest_${Date.now()}`;
+    // 4. Logged-in buyer verifies Razorpay payment
+    const razorpayPaymentId = `pay_buyer_${Date.now()}`;
     const signature = crypto
       .createHmac('sha256', 'test_rzp_secret')
       .update(`${razorpayOrderId}|${razorpayPaymentId}`)
@@ -355,7 +397,7 @@ test('logged-out guest can buy virtual product, get immediate download link, dow
     const verifyRes = makeRes();
     await handleVerifyPayment(
       {
-        headers: {},
+        headers: { authorization: buyerAuthHeader },
         ip: '203.0.113.10',
         socket: { remoteAddress: '203.0.113.10' },
         body: {
@@ -373,56 +415,60 @@ test('logged-out guest can buy virtual product, get immediate download link, dow
     assert.ok(Array.isArray(verifiedOrder.digitalDownloads) && verifiedOrder.digitalDownloads.length === 1);
     const downloadResource = verifiedOrder.digitalDownloads[0].resources[0];
     assert.match(downloadResource.downloadUrl, /\/api\/store\/downloads\/[A-Za-z0-9_-]{40,60}$/);
+    assert.match(downloadResource.downloadPageUrl, /\/store\/download\/[A-Za-z0-9_-]{40,60}$/);
     const downloadToken = downloadResource.downloadUrl.split('/').pop()!;
 
-    // 4. Logged-out guest tracks order using ONLY orderId + email (NO verification key/token)
-    const trackEmailRes = makeRes();
+    // 5. Unauthenticated guest track does NOT expose digitalDownloads
+    const guestTrackRes = makeRes();
     await handleGuestTrackOrder(
       {
         headers: {},
         ip: '203.0.113.11',
         socket: { remoteAddress: '203.0.113.11' },
-        body: { orderId: createdOrderId, email: 'guest.buyer@example.com' },
+        body: { orderId: createdOrderId, email: 'buyer101@example.com' },
       } as any,
-      trackEmailRes
+      guestTrackRes
     );
-    assert.equal(trackEmailRes.result.statusCode, 200);
-    assert.equal(trackEmailRes.result.body.success, true);
-    assert.equal(trackEmailRes.result.body.order.digitalDownloads.length, 1);
-    assert.equal(
-      trackEmailRes.result.body.order.digitalDownloads[0].resources[0].downloadUrl,
-      downloadResource.downloadUrl
-    );
+    assert.equal(guestTrackRes.result.statusCode, 200);
+    assert.deepEqual(guestTrackRes.result.body.order.digitalDownloads, []);
 
-    // 5. Logged-out guest tracks order using ONLY orderId + mobile (NO verification key/token)
-    const trackPhoneRes = makeRes();
-    await handleGuestTrackOrder(
+    // 6. Unauthenticated API download is rejected with 401
+    const unauthApiRes = makeRes();
+    await handleDigitalDownload(
       {
-        headers: {},
-        ip: '203.0.113.12',
-        socket: { remoteAddress: '203.0.113.12' },
-        body: { orderId: createdOrderId, phone: '9876543211' },
+        params: { token: downloadToken },
+        headers: { accept: 'application/pdf' },
       } as any,
-      trackPhoneRes
+      unauthApiRes
     );
-    assert.equal(trackPhoneRes.result.statusCode, 200);
-    assert.equal(trackPhoneRes.result.body.order.digitalDownloads.length, 1);
+    assert.equal(unauthApiRes.result.statusCode, 401);
 
-    // 6. Unauthorized email/phone is still rejected with 403
-    const wrongTrackRes = makeRes();
-    await handleGuestTrackOrder(
+    // 7. Unauthenticated browser click on API link redirects cleanly to SPA /store/download/:token
+    const unauthBrowserRes = makeRes();
+    await handleDigitalDownload(
       {
-        headers: {},
-        ip: '203.0.113.13',
-        socket: { remoteAddress: '203.0.113.13' },
-        body: { orderId: createdOrderId, email: 'stranger@example.com' },
+        params: { token: downloadToken },
+        headers: { accept: 'text/html,application/xhtml+xml' },
       } as any,
-      wrongTrackRes
+      unauthBrowserRes
     );
-    assert.equal(wrongTrackRes.result.statusCode, 403);
+    assert.equal(unauthBrowserRes.result.statusCode, 302);
+    assert.equal(unauthBrowserRes.result.redirectTarget, `/store/download/${downloadToken}`);
 
-    // 7. Direct download works without login/Authorization header
-    const pdfPayload = Buffer.from('%PDF-1.4\n% Guest Virtual Product PDF Content\n%%EOF', 'utf8');
+    // 8. Different signed-in user CANNOT download another buyer's PDF (403)
+    const otherUserRes = makeRes();
+    await handleDigitalDownload(
+      {
+        params: { token: downloadToken },
+        headers: { authorization: otherUserAuthHeader },
+      } as any,
+      otherUserRes
+    );
+    assert.equal(otherUserRes.result.statusCode, 403);
+    assert.match(String(otherUserRes.result.body?.error || ''), /Only the account that purchased/i);
+
+    // 9. Actual buyer downloads PDF cleanly (twice in a row to confirm counter works reliably)
+    const pdfPayload = Buffer.from('%PDF-1.4\n% Buyer-Only Virtual Product PDF Content\n%%EOF', 'utf8');
     globalThis.fetch = (async () =>
       new Response(pdfPayload, {
         status: 200,
@@ -432,67 +478,74 @@ test('logged-out guest can buy virtual product, get immediate download link, dow
         },
       })) as any;
 
-    const chunks: Buffer[] = [];
-    const streamRes: any = new PassThrough();
-    streamRes.headersSent = false;
-    streamRes.statusCode = 200;
-    streamRes.headers = {} as Record<string, string>;
-    streamRes.status = (code: number) => {
-      streamRes.statusCode = code;
-      return streamRes;
-    };
-    streamRes.send = (msg: any) => {
-      streamRes.body = msg;
-      return streamRes;
-    };
-    streamRes.setHeader = (k: string, v: string) => {
-      streamRes.headers[k.toLowerCase()] = v;
-    };
-    streamRes.on('data', (chunk: Buffer) => chunks.push(chunk));
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      const chunks: Buffer[] = [];
+      const streamRes: any = new PassThrough();
+      streamRes.headersSent = false;
+      streamRes.statusCode = 200;
+      streamRes.headers = {} as Record<string, string>;
+      streamRes.status = (code: number) => {
+        streamRes.statusCode = code;
+        return streamRes;
+      };
+      streamRes.json = (payload: any) => {
+        streamRes.body = payload;
+        return streamRes;
+      };
+      streamRes.send = (msg: any) => {
+        streamRes.body = msg;
+        return streamRes;
+      };
+      streamRes.setHeader = (k: string, v: string) => {
+        streamRes.headers[k.toLowerCase()] = v;
+      };
+      streamRes.on('data', (chunk: Buffer) => chunks.push(chunk));
 
-    await handleDigitalDownload(
-      {
-        params: { token: downloadToken },
-        headers: {},
-      } as any,
-      streamRes
-    );
-    assert.equal(streamRes.statusCode, 200);
-    assert.equal(streamRes.headers['content-type'], 'application/pdf');
-    assert.match(streamRes.headers['content-disposition'], /attachment; filename\*=UTF-8''/);
-    assert.equal(Buffer.concat(chunks).toString('utf8'), pdfPayload.toString('utf8'));
+      await handleDigitalDownload(
+        {
+          params: { token: downloadToken },
+          headers: { authorization: buyerAuthHeader },
+        } as any,
+        streamRes
+      );
+      assert.equal(streamRes.statusCode, 200);
+      assert.equal(streamRes.headers['content-type'], 'application/pdf');
+      assert.match(streamRes.headers['content-disposition'], /attachment; filename\*=UTF-8''/);
+      assert.equal(Buffer.concat(chunks).toString('utf8'), pdfPayload.toString('utf8'));
+    }
 
-    // 8. Email templates render prominent Download button + clickable direct link without verification key
+    // 10. Email templates link to authenticated downloadPageUrl (/store/download/:token)
     const confirmEmailHtml = serverEmailTemplates.customerOrderConfirmed({
-      customerName: 'Guest Buyer',
+      customerName: 'Verified Buyer',
       orderId: createdOrderId,
       items: verifiedOrder.items,
       totalAmount: verifiedOrder.total,
       paymentMethod: 'online',
       paymentStatus: 'completed',
       address: verifiedOrder.deliveryAddress,
-      isGuest: true,
+      isGuest: false,
       digitalDownloads: verifiedOrder.digitalDownloads,
     });
-    assert.ok(confirmEmailHtml.includes(downloadResource.downloadUrl));
+    assert.ok(confirmEmailHtml.includes(downloadResource.downloadPageUrl));
     assert.ok(confirmEmailHtml.includes('Download AutoCAD Notes PDF'));
-    assert.ok(confirmEmailHtml.includes('no login or verification key required'));
-    assert.ok(confirmEmailHtml.includes('Direct link:'));
+    assert.ok(confirmEmailHtml.includes('Sign in with your buyer account'));
 
     const deliveryEmailHtml = serverEmailTemplates.customerDigitalDelivery({
-      customerName: 'Guest Buyer',
+      customerName: 'Verified Buyer',
       orderId: createdOrderId,
       downloads: verifiedOrder.digitalDownloads,
       totalAmount: verifiedOrder.total,
     });
-    assert.ok(deliveryEmailHtml.includes(downloadResource.downloadUrl));
-    assert.ok(deliveryEmailHtml.includes('no login or verification key required'));
+    assert.ok(deliveryEmailHtml.includes(downloadResource.downloadPageUrl));
   } finally {
     globalThis.fetch = originalFetch;
     if (prevTestMode === undefined) delete process.env.STORE_ORDER_TEST_MODE;
     else process.env.STORE_ORDER_TEST_MODE = prevTestMode;
+    if (prevOperatorTestMode === undefined) delete process.env.OPERATOR_TEST_MODE;
+    else process.env.OPERATOR_TEST_MODE = prevOperatorTestMode;
     if (prevSecret === undefined) delete process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET;
     else process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET = prevSecret;
   }
 });
+
 
