@@ -1,11 +1,12 @@
 {
   "version": 1,
-  "generatedAt": "2026-11-17T09:19:24.183Z",
+  "generatedAt": "2026-11-25T04:14:54.729Z",
   "products": [
     {
       "id": "-OnAp1lEhlTb3WRi_rsw",
       "name": "Men’s T-Shirts",
       "permalink": "mens-t-shirts",
+      "productType": "physical",
       "category": "t-shirts",
       "price": 500,
       "discountedPrice": 299,
@@ -31,9 +32,39 @@
       ]
     },
     {
+      "id": "bt-105-autocad-complete-solved-notes-20222026",
+      "name": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
+      "permalink": "bt-105-autocad-complete-solved-notes-20222026",
+      "productType": "virtual",
+      "category": "engineering-notes",
+      "price": 50,
+      "discountedPrice": 9,
+      "shortDescription": "Complete RGPV BT-105 Engineering Graphics Unit V AutoCAD solved notes (2022–2026). Detailed answers in English and Hindi, with important commands and exam-oriented explanations.",
+      "longDescription": "Prepare for RGPV B.Tech Engineering Graphics (BT-105) with comprehensive AutoCAD & CAD Theory notes.\n\nWhat's Included:\n• June 2022 to June 2026 Question Coverage\n• Detailed Solved University Questions\n• English + Hindi Explanations\n• AutoCAD Commands and Practical Examples\n• 2D & 3D CAD Concepts\n• Wireframe and Solid Modeling\n• BIM Concepts and Applications\n• Exam-Oriented Answers (7 Marks)\n\nSubject: BT-105 Engineering Graphics\nUnit: V – AutoCAD & CAD Theory\nUniversity: RGPV\nFormat: PDF",
+      "images": [
+        "https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe-free/o/products%2F1795537239024_vg62tme0jvk.png?alt=media&token=7c399862-4bc0-4627-86ed-d7c10506f6f5"
+      ],
+      "requiresCustomImage": false,
+      "customImageInstructions": "",
+      "turnaroundTime": "",
+      "deliveryCharges": 0,
+      "inStock": true,
+      "ratings": {
+        "average": 5,
+        "count": 0
+      },
+      "seoTitle": "RGPV BT-105 AutoCAD Solved Notes PDF 2022-2026",
+      "seoDescription": "Download BT-105 AutoCAD solved notes for RGPV B.Tech. Complete 2022–2026 questions with detailed English and Hindi answers in PDF format.",
+      "seoKeywords": "BT-105 Notes, AutoCAD Notes, RGPV Engineering Graphics, CAD Theory, BTech Notes, AutoCAD PDF, RGPV Solved Papers",
+      "paymentMethods": [
+        "online"
+      ]
+    },
+    {
       "id": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
       "name": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
       "permalink": "diseases-treatment-complete-medical-reference-pdf-125-diseases",
+      "productType": "physical",
       "category": "medical-books-pdf-guides",
       "price": 499,
       "discountedPrice": 49,
@@ -73,6 +104,7 @@
       "id": "mfs110-with-aadhaar-rd-service-l1-biometric-fingerprint-scanner",
       "name": "MFS110 with Aadhaar RD Service L1 Biometric Fingerprint Scanner",
       "permalink": "mfs110-with-aadhaar-rd-service-l1-biometric-fingerprint-scanner",
+      "productType": "physical",
       "category": "devices",
       "price": 2999,
       "discountedPrice": 1599,

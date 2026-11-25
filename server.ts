@@ -4,6 +4,7 @@ import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
 import crypto from "crypto";
+import { fileURLToPath } from "url";
 import multer from "multer";
 import { syncAllPublicJson, syncDataType, initializePublicDataOnStartup } from "./src/server/dataSyncRuntime.js";
 import { getMetadataForUrl, injectOpenGraphMetadata, isSocialCrawler } from "./src/server/shareMetadata.js";
@@ -83,18 +84,62 @@ import {
   getQueueStats
 } from "./src/server/asyncQueueService.js";
 
-const resolvedRoot = fs.existsSync(path.join(process.cwd(), 'package.json'))
-  ? process.cwd()
-  : path.resolve(process.cwd(), '..');
+const __serverFilename = fileURLToPath(import.meta.url);
+const __serverDirname = path.dirname(__serverFilename);
+
+function resolveAppRoot(): string {
+  const candidates = [__serverDirname, process.cwd()];
+  for (const startDir of candidates) {
+    let dir = path.resolve(startDir);
+    for (let i = 0; i < 6; i++) {
+      if (fs.existsSync(path.join(dir, 'package.json'))) {
+        return dir;
+      }
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+  return fs.existsSync(path.join(process.cwd(), 'package.json'))
+    ? process.cwd()
+    : path.resolve(process.cwd(), '..');
+}
+
+function resolveDistPath(appRoot: string): string {
+  const candidates = [
+    path.join(appRoot, 'dist'),
+    path.join(appRoot, 'public_html'),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(path.join(candidate, 'index.html'))) {
+      return candidate;
+    }
+  }
+  return path.join(appRoot, 'dist');
+}
+
+function resolveListenPort(rawEnvPort?: string): number | string {
+  const trimmed = String(rawEnvPort || '').trim();
+  if (!trimmed) return 3000;
+  if (/^\d+$/.test(trimmed)) {
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 3000;
+  }
+  return trimmed;
+}
+
+const resolvedRoot = resolveAppRoot();
 dotenv.config({ path: path.join(resolvedRoot, '.env'), quiet: true } as any);
+
+process.on('unhandledRejection', (reason) => {
+  console.error('[SERVER] Unhandled promise rejection (kept alive):', reason);
+});
 
 async function startServer() {
   const app = express();
-  const PORT = Number(process.env.PORT) || 3000;
-  const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
-    ? process.cwd()
-    : path.resolve(process.cwd(), '..');
-  const DIST_PATH = path.join(APP_ROOT, 'dist');
+  const PORT = resolveListenPort(process.env.PORT);
+  const APP_ROOT = resolvedRoot;
+  const DIST_PATH = resolveDistPath(APP_ROOT);
 
   // Initialize public data on startup (non-blocking)
   initializePublicDataOnStartup().catch(err => {
@@ -1540,7 +1585,8 @@ async function startServer() {
   };
 
   // Run periodic sync on startup and repeat every 12 hours
-  setTimeout(run12HourDocumentSync, 2000);
+  const initialSyncTimer = setTimeout(run12HourDocumentSync, 2000);
+  if (initialSyncTimer.unref) initialSyncTimer.unref();
   const syncTimer = setInterval(run12HourDocumentSync, SYNC_INTERVAL_MS);
   if (syncTimer.unref) syncTimer.unref();
 
@@ -2157,9 +2203,13 @@ async function startServer() {
     next(error);
   });
 
-  // Vite middleware for development; use the built app whenever dist exists.
+  // Vite middleware for development; use the built app in production or whenever running compiled server.js.
   const distIndex = path.join(DIST_PATH, 'index.html');
-  const isProduction = process.env.NODE_ENV === "production" || fs.existsSync(distIndex);
+  const isCompiledJsRuntime = __serverFilename.endsWith('.js');
+  const isProduction =
+    process.env.NODE_ENV === "production" ||
+    fs.existsSync(distIndex) ||
+    (isCompiledJsRuntime && process.env.NODE_ENV !== "development");
 
   if (!isProduction) {
     const { createServer: createViteServer } = await import("vite");
@@ -2331,9 +2381,12 @@ async function startServer() {
     });
   }
 
-  const server = app.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
+  const onListening = () => {
+    console.log(`Server running on ${typeof PORT === 'number' ? `http://localhost:${PORT}` : PORT}`);
+  };
+  const server = typeof PORT === 'number'
+    ? app.listen(PORT, "0.0.0.0", onListening)
+    : app.listen(PORT, onListening);
 
   server.keepAliveTimeout = 65000;
   server.headersTimeout = 66000;

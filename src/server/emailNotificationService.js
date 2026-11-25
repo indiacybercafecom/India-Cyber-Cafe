@@ -770,10 +770,17 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Payment Status:</strong> ${escapeHtml((p.paymentStatus || 'pending').toUpperCase())}</p>
        <p style="margin:4px 0;"><strong>Total Amount:</strong> &#8377;${Number(p.totalAmount || 0).toFixed(2)}</p>
      </div>
-     ${renderItemsTable(p.items)}
+    ${renderItemsTable(p.items)}
+    ${(p.digitalDownloads || []).map((product) => `<div style="margin:20px 0;padding:14px;border:1px solid #e2e8f0;border-radius:6px;"><h3 style="margin:0 0 10px;color:#1e293b;font-size:16px;">${escapeHtml(product.productName)}</h3>${(product.resources || []).map((resource) => `<p style="margin:8px 0 4px;"><strong>${escapeHtml(resource.fileName)}</strong></p>${renderButton(resource.label || 'Download Now', resource.downloadUrl)}${resource.expiresAt ? `<p style="margin:0;color:#64748b;font-size:12px;">Available until ${escapeHtml(new Date(resource.expiresAt).toLocaleString('en-IN'))}</p>` : ''}`).join('')}</div>`).join('')}
      ${p.address ? `<p><strong>Delivery Address:</strong> ${escapeHtml(p.address.addressLine1 || '')}, ${escapeHtml(p.address.city || '')}, ${escapeHtml(p.address.state || '')} - ${escapeHtml(p.address.pincode || '')}</p>` : ''}
      ${renderButton('Track Your Order', p.isGuest ? `/track-order?orderId=${encodeURIComponent(p.orderId)}` : '/track')}
      <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`),
+    customerDigitalDelivery: (p) => wrapEmailHtml('Your Digital Downloads Are Ready', `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
+      <p>Your payment has been confirmed and your digital purchase is ready to download.</p>
+      <p><strong>Order ID:</strong> <code>${escapeHtml(p.orderId)}</code><br/><strong>Payment:</strong> COMPLETED<br/><strong>Total paid:</strong> &#8377;${Number(p.totalAmount || 0).toFixed(2)}</p>
+      ${(p.downloads || []).map((product) => `<div style="margin:20px 0;padding:14px;border:1px solid #e2e8f0;border-radius:6px;"><h3 style="margin:0 0 10px;color:#1e293b;font-size:16px;">${escapeHtml(product.productName)}</h3>${(product.resources || []).map((resource) => `<p style="margin:8px 0 4px;"><strong>${escapeHtml(resource.fileName)}</strong></p>${renderButton(resource.label || 'Download Now', resource.downloadUrl)}${resource.expiresAt ? `<p style="margin:0;color:#64748b;font-size:12px;">Available until ${escapeHtml(new Date(resource.expiresAt).toLocaleString('en-IN'))}</p>` : ''}`).join('')}</div>`).join('')}
+      <p>Questions? Contact <a href="mailto:support@indiacybercafe.com">support@indiacybercafe.com</a> or call +91 9203251821.</p>
+      <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`),
     adminOrderCreated: (p) => wrapEmailHtml('Admin Alert: New Store Order Received', `<p>Hello <strong>Admin Team</strong>,</p>
      <p>A new store order has been placed.</p>
      <div style="background-color:#eff6ff;padding:14px;border-left:4px solid #1d4ed8;border-radius:6px;margin:14px 0;">
@@ -1437,6 +1444,7 @@ export async function notifyOrderConfirmed(params) {
                 paymentStatus: order?.paymentStatus || (type === 'cod' ? 'pending' : 'completed'),
                 address: order?.deliveryAddress,
                 isGuest: Boolean(order?.isGuest),
+                digitalDownloads: Array.isArray(order?.digitalDownloads) ? order.digitalDownloads : [],
             }),
             idempotencyKey: baseKey,
             required: true,
@@ -1465,6 +1473,30 @@ export async function notifyOrderConfirmed(params) {
         })),
     ];
     return dispatchNotificationBatch(queue);
+}
+export async function notifyDigitalDelivery(params) {
+    const { order, downloads, idempotencyKey } = params;
+    const orderId = String(order?.id || '').trim();
+    const customerName = String(order?.deliveryAddress?.name || 'Customer').trim();
+    const customerEmail = normalizeEmailAddress(order?.deliveryAddress?.email || order?.email);
+    if (!orderId || order?.paymentStatus !== 'completed' || !customerEmail || !Array.isArray(downloads) || downloads.length === 0) {
+        throw new Error('Digital delivery email requires a paid order and download resources.');
+    }
+    return dispatchNotificationBatch([{
+            templateId: 'customerDigitalDelivery',
+            recipient: customerEmail,
+            recipientRole: 'customer',
+            subject: `Your digital downloads are ready: ${orderId} - India Cyber Cafe`,
+            html: serverEmailTemplates.customerDigitalDelivery({
+                customerName,
+                orderId,
+                downloads,
+                totalAmount: Number(order.total) || 0,
+            }),
+            idempotencyKey,
+            required: true,
+            context: { orderId, uid: order?.uid },
+        }]);
 }
 export async function notifyOrderStatusUpdated(params) {
     const { order, newStatus, reason, estimatedDelivery, performedBy } = params;
@@ -2071,6 +2103,12 @@ async function executeOutboxDispatch(job) {
                 timestamp: p.timestamp,
             });
         }
+        case 'digital_delivery':
+            return notifyDigitalDelivery({
+                order: p.order,
+                downloads: p.downloads,
+                idempotencyKey: job.idempotencyKey,
+            });
         case 'order_status':
             return notifyOrderStatusUpdated({
                 order: p.order,
@@ -2158,6 +2196,7 @@ async function processSingleOutboxJob(job) {
     writeDiskOutbox();
     try {
         const report = await executeOutboxDispatch(job);
+        await persistDigitalEmailStatus(job, report.hasFailures ? 'failed' : 'sent');
         job.report = report;
         if (!report.hasFailures) {
             const doneAt = new Date().toISOString();
@@ -2199,6 +2238,7 @@ async function processSingleOutboxJob(job) {
     }
     catch (err) {
         const errMsg = String(err?.message || err || 'Outbox worker error').slice(0, 300);
+        await persistDigitalEmailStatus(job, 'failed');
         job.leaseOwner = null;
         job.leaseExpiresAt = null;
         if (job.attempts < job.maxAttempts) {
@@ -2220,6 +2260,17 @@ async function processSingleOutboxJob(job) {
             console.error(`[EMAIL OUTBOX] Job threw permanent error (jobId=${job.jobId}, kind=${job.kind}, appId=${job.appId || job.orderId || job.ticketId || '-'}): ${errMsg}`);
             mirrorOutboxFailureAsync(job);
         }
+    }
+}
+async function persistDigitalEmailStatus(job, status) {
+    if (!job.orderId || !(job.payload?.order?.digitalDownloads?.length || job.payload?.downloads?.length) || isTestMode() || getApps().length === 0)
+        return;
+    try {
+        const orderKey = String(job.orderId).replace(/[/.#$[\]]/g, '-');
+        await getDatabase(getApps()[0]).ref(`orders/${orderKey}`).update({ digitalEmailStatus: status });
+    }
+    catch (error) {
+        console.warn('[EMAIL OUTBOX] Could not update digital delivery status:', error?.message || error);
     }
 }
 async function runOutboxWorkerLoop() {

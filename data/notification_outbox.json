@@ -300,14 +300,58 @@
         "updatedAt": "2026-11-17T09:13:07.155Z"
       }
     },
-    "state": "queued",
-    "attempts": 0,
+    "state": "failed",
+    "attempts": 5,
     "maxAttempts": 5,
-    "nextAttemptAt": 1794906787156,
+    "nextAttemptAt": 1795580096666,
     "leaseOwner": null,
     "leaseExpiresAt": null,
     "createdAt": "2026-11-17T09:13:07.156Z",
-    "updatedAt": "2026-11-17T09:13:07.156Z"
+    "updatedAt": "2026-11-25T04:14:59.170Z",
+    "report": {
+      "success": false,
+      "hasFailures": true,
+      "totalCount": 3,
+      "sentCount": 0,
+      "failedCount": 3,
+      "skippedDuplicateCount": 0,
+      "events": [
+        {
+          "eventId": "ntf_1795580096668_17a1a0064e",
+          "templateId": "customerOrderConfirmed",
+          "recipient": "priya.verma@example.com",
+          "recipientRole": "customer",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        },
+        {
+          "eventId": "ntf_1795580096668_106c275966",
+          "templateId": "adminOrderCreated",
+          "recipient": "icc@indiacybercafe.com",
+          "recipientRole": "admin",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        },
+        {
+          "eventId": "ntf_1795580096668_cad3a94fb2",
+          "templateId": "adminOrderCreated",
+          "recipient": "indiacybercafe.com@gmail.com",
+          "recipientRole": "admin",
+          "state": "failed",
+          "wasRetried": false,
+          "attempts": 0,
+          "smtpAccepted": false,
+          "error": "SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
+        }
+      ]
+    },
+    "lastError": "customer:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured; admin:SMTP credentials (SMTP_USER / SMTP_PASS) are not configured"
   },
   "obx_1794906786896_c298f3dd40": {
     "jobId": "obx_1794906786896_c298f3dd40",
