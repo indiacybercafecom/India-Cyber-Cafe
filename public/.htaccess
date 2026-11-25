@@ -80,11 +80,6 @@
   RewriteCond %{HTTP_HOST} ^www\.(.+)$ [NC]
   RewriteRule ^(.*)$ https://%1%{REQUEST_URI} [L,R=301]
 
-  # Homepage must always reach Node.js SSR (never intercepted by directory index or static index.html)
-  <IfModule mod_proxy.c>
-    RewriteRule ^$ http://127.0.0.1:3000/ [P,L]
-  </IfModule>
-
   # Serve only existing physical files directly (exclude sitemap.xml and sitemap.html so Node.js SSR handles them)
   RewriteCond %{REQUEST_URI} !^/sitemap\.xml$ [NC]
   RewriteCond %{REQUEST_URI} !^/sitemap\.html$ [NC]
@@ -94,10 +89,6 @@
   # Keep API, data, assets, and site metadata requests passing through to Node.js
   RewriteRule ^(?:api(?:/|$)|data(?:/|$)|assets(?:/|$)|favicon(?:[^/]*)?$|manifest\.json$|robots\.txt$|sitemap\.xml$|sitemap\.html$) - [L,NC]
 
-  # On Hostinger Node.js (Passenger or Reverse Proxy):
-  # All public routes MUST reach the Node.js SSR handler to deliver complete, crawlable HTML.
-  # Do not let Apache rewrite directly to static index.html.
-  <IfModule mod_proxy.c>
-    RewriteRule ^(.*)$ http://127.0.0.1:3000/$1 [P,L]
-  </IfModule>
+  # Let Hostinger's managed Node.js router dispatch requests using its assigned PORT.
+  # Do not proxy to a fixed local port; Hostinger assigns the application port at runtime.
 </IfModule>
