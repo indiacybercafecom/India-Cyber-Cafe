@@ -369,10 +369,10 @@ export function Track({
           />
         </div>
         <div>
-          <label className="block text-xs font-bold text-slate-600 mb-1.5">Email, Mobile, or Token</label>
+          <label className="block text-xs font-bold text-slate-600 mb-1.5">Email or 10-digit Mobile</label>
           <input
             type="text"
-            placeholder="Email, 10-digit Phone, or Token"
+            placeholder="Registered Email or 10-digit Mobile"
             value={guestVerifier}
             onChange={(e) => setGuestVerifier(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none text-sm"
@@ -426,6 +426,45 @@ export function Track({
               </span>
             </div>
           </div>
+
+          {guestTrackedOrder.paymentStatus === 'completed' &&
+            Array.isArray(guestTrackedOrder.digitalDownloads) &&
+            guestTrackedOrder.digitalDownloads.length > 0 && (
+              <div className="rounded-xl border border-green-200 bg-green-50 p-4 space-y-3">
+                <p className="text-sm font-bold text-green-900 flex items-center gap-2">
+                  <IconRenderer name="download" className="w-4 h-4 text-green-700" />
+                  Your Digital Downloads
+                </p>
+                {guestTrackedOrder.digitalDownloads.map((group, groupIndex) => (
+                  <div key={`${group.productName}-${groupIndex}`} className="space-y-2">
+                    <p className="text-xs font-bold text-navy">{group.productName}</p>
+                    {group.resources.map((resource, resourceIndex) => (
+                      <div
+                        key={`${resource.fileName}-${resourceIndex}`}
+                        className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-lg bg-white border border-green-200 p-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-xs sm:text-sm font-semibold text-slate-800 break-all">{resource.fileName}</p>
+                          {resource.expiresAt && (
+                            <p className="text-[11px] text-slate-500">
+                              Available until {new Date(resource.expiresAt).toLocaleString('en-IN')}
+                            </p>
+                          )}
+                        </div>
+                        <a
+                          href={resource.downloadUrl}
+                          rel="noreferrer"
+                          className="inline-flex items-center justify-center gap-2 rounded-lg bg-green-600 hover:bg-green-700 text-white font-bold px-4 py-2 text-xs sm:text-sm shrink-0"
+                        >
+                          <IconRenderer name="download" className="w-4 h-4" />
+                          {resource.label || 'Download Now'}
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
 
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="text-xs sm:text-sm text-slate-600 space-y-0.5">

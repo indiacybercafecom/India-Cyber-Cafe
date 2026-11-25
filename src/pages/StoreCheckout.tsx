@@ -282,7 +282,7 @@ export function StoreCheckout({
   };
 
   const handleEmailBlur = async () => {
-    if (user?.uid) return;
+    if (user?.uid || isVirtual) return;
     if (!address.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address.email)) {
       if (!requiresPassword || !passwordInput) {
         setExistingUserFound(false);
@@ -314,7 +314,7 @@ export function StoreCheckout({
   };
 
   const handlePhoneBlur = async () => {
-    if (user?.uid) return;
+    if (user?.uid || isVirtual) return;
     const digits = address.phone.replace(/\D/g, '');
     if (!digits || !/^[0-9]{10}$/.test(digits)) {
       if (!existingUserFound) setRequiresPassword(false);
@@ -1062,7 +1062,7 @@ export function StoreCheckout({
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 sm:p-3.5 text-xs sm:text-sm text-blue-900 flex items-start gap-2.5">
                 <IconRenderer name="download" className="w-4 h-4 text-navy shrink-0 mt-0.5" />
                 <p>
-                  <span className="font-semibold text-navy">Instant Digital Delivery:</span> No shipping address is needed. Your download link will be sent to your email and unlocked immediately after payment.
+                  <span className="font-semibold text-navy">Instant Digital Delivery:</span> No login, verification key, or shipping address needed. Your download button appears immediately after payment and the direct link is also sent to your email.
                 </p>
               </div>
             )}

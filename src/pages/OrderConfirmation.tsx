@@ -128,6 +128,47 @@ export function OrderConfirmation() {
         )}
       </div>
 
+      {/* Instant Digital Downloads (Top Priority — Immediately Visible Without Scrolling) */}
+      {isPaidOnline && Array.isArray(order.digitalDownloads) && order.digitalDownloads.length > 0 && (
+        <div className="max-w-2xl mx-auto rounded-2xl border-2 border-green-300 bg-green-50 p-5 sm:p-6 space-y-4 shadow-sm">
+          <div className="space-y-1">
+            <p className="text-base sm:text-lg font-bold text-green-900 flex items-center gap-2">
+              <IconRenderer name="download" className="w-5 h-5 text-green-700 shrink-0" />
+              Your Digital Downloads Are Ready
+            </p>
+            <p className="text-xs sm:text-sm text-green-800">
+              Click below to download directly — no login or verification key needed. A direct download link has also been sent to{' '}
+              <span className="font-semibold">{order.email || order.deliveryAddress?.email}</span>.
+            </p>
+          </div>
+          {order.digitalDownloads.map((group, groupIndex) => (
+            <div key={`${group.productName}-${groupIndex}`} className="space-y-2.5">
+              <p className="text-sm font-bold text-navy">{group.productName}</p>
+              {group.resources.map((resource, resourceIndex) => (
+                <div key={`${resource.fileName}-${resourceIndex}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-white border border-green-200 p-3.5 shadow-xs">
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-slate-800 break-all">{resource.fileName}</p>
+                    {resource.expiresAt && (
+                      <p className="text-xs text-slate-500 mt-0.5">
+                        Available until {new Date(resource.expiresAt).toLocaleString('en-IN')}
+                      </p>
+                    )}
+                  </div>
+                  <a
+                    href={resource.downloadUrl}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-bold px-5 py-2.5 text-sm shadow-sm transition-colors shrink-0"
+                    rel="noreferrer"
+                  >
+                    <IconRenderer name="download" className="h-4 w-4" />
+                    {resource.label || 'Download Now'}
+                  </a>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Order Details Card */}
       <div className="max-w-2xl mx-auto bg-white border border-slate-200 rounded-2xl p-6 sm:p-8 space-y-6 shadow-sm">
         {/* Order Header */}
@@ -245,54 +286,16 @@ export function OrderConfirmation() {
           </div>
         )}
 
-        {isPaidOnline && Array.isArray(order.digitalDownloads) && order.digitalDownloads.length > 0 && (
-          <div className="space-y-4 rounded-lg border border-green-200 bg-green-50 p-4">
-            <div>
-              <p className="text-sm font-bold text-green-900">Your digital downloads are ready</p>
-              <p className="mt-1 text-xs text-green-800">Links are protected for this order and may expire or reach their download limit.</p>
-            </div>
-            {order.digitalDownloads.map((group, groupIndex) => (
-              <div key={`${group.productName}-${groupIndex}`} className="space-y-2">
-                <p className="text-sm font-semibold text-navy">{group.productName}</p>
-                {group.resources.map((resource, resourceIndex) => (
-                  <div key={`${resource.fileName}-${resourceIndex}`} className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-white p-3">
-                    <span className="min-w-0 break-all text-sm text-slate-700">{resource.fileName}</span>
-                    <a href={resource.downloadUrl} className="btn-primary inline-flex items-center gap-2 px-4 py-2 text-sm" rel="noreferrer">
-                      <IconRenderer name="download" className="h-4 w-4" />{resource.label || 'Download Now'}
-                    </a>
-                    {resource.expiresAt && <span className="w-full text-xs text-slate-500">Expires {new Date(resource.expiresAt).toLocaleString('en-IN')}</span>}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </div>
-        )}
-
         {/* Guest Order Tracking Info */}
         {(order.isGuest || guestTrackingToken) && (
-          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-2">
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 space-y-1.5">
             <p className="text-sm font-bold text-navy flex items-center gap-2">
               <IconRenderer name="shield-check" className="w-4 h-4 text-primary" />
-              Guest Order Tracking Details
+              Easy Order Access
             </p>
             <p className="text-xs text-slate-600">
-              Save your Order ID ({order.id}) to track your delivery anytime using your email or 10-digit mobile number.
+              Save your Order ID (<span className="font-mono font-semibold text-navy">{order.id}</span>) to track your order or re-download anytime using your email or 10-digit mobile number — no login or verification key needed.
             </p>
-            {guestTrackingToken && (
-              <div className="flex flex-wrap items-center gap-2 pt-1">
-                <span className="text-[11px] font-semibold text-slate-500">Tracking Token:</span>
-                <code className="text-[11px] bg-white border border-slate-200 px-2 py-1 rounded font-mono text-navy break-all">
-                  {guestTrackingToken}
-                </code>
-                <button
-                  type="button"
-                  onClick={() => copyText(guestTrackingToken, 'Tracking Token')}
-                  className="text-[11px] font-bold text-primary hover:underline"
-                >
-                  Copy Token
-                </button>
-              </div>
-            )}
           </div>
         )}
 
@@ -327,8 +330,14 @@ export function OrderConfirmation() {
       <div className="max-w-2xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 text-center">
           <IconRenderer name="zap" className="w-6 h-6 text-primary mx-auto mb-2" />
-          <p className="text-xs sm:text-sm font-semibold text-slate-700">Fast Processing</p>
-          <p className="text-[10px] sm:text-xs text-slate-500 mt-1">Your order will be processed within 24 hours</p>
+          <p className="text-xs sm:text-sm font-semibold text-slate-700">
+            {Array.isArray(order.digitalDownloads) && order.digitalDownloads.length > 0 ? 'Instant Download' : 'Fast Processing'}
+          </p>
+          <p className="text-[10px] sm:text-xs text-slate-500 mt-1">
+            {Array.isArray(order.digitalDownloads) && order.digitalDownloads.length > 0
+              ? 'Download directly here or from your email link'
+              : 'Your order will be processed within 24 hours'}
+          </p>
         </div>
 
         <div className="bg-white p-4 rounded-xl border border-slate-200 text-center">

@@ -150,7 +150,11 @@ export function safePortalUrl(pathOrUrl: string, fallback = SITE_URL): string {
   }
   try {
     const parsed = new URL(pathOrUrl);
-    if (parsed.protocol === 'https:' && (parsed.hostname === 'b.indiacybercafe.com' || parsed.hostname === 'indiacybercafe.com')) {
+    const allowedHosts = new Set(['b.indiacybercafe.com', 'indiacybercafe.com']);
+    try {
+      allowedHosts.add(new URL(SITE_URL).hostname);
+    } catch {}
+    if (parsed.protocol === 'https:' && allowedHosts.has(parsed.hostname)) {
       return parsed.toString();
     }
   } catch {}
@@ -1111,7 +1115,7 @@ export const serverEmailTemplates = {
        <p style="margin:4px 0;"><strong>Total Amount:</strong> &#8377;${Number(p.totalAmount || 0).toFixed(2)}</p>
      </div>
     ${renderItemsTable(p.items)}
-    ${(p.digitalDownloads || []).map((product: any) => `<div style="margin:20px 0;padding:14px;border:1px solid #e2e8f0;border-radius:6px;"><h3 style="margin:0 0 10px;color:#1e293b;font-size:16px;">${escapeHtml(product.productName)}</h3>${(product.resources || []).map((resource: any) => `<p style="margin:8px 0 4px;"><strong>${escapeHtml(resource.fileName)}</strong></p>${renderButton(resource.label || 'Download Now', resource.downloadUrl)}${resource.expiresAt ? `<p style="margin:0;color:#64748b;font-size:12px;">Available until ${escapeHtml(new Date(resource.expiresAt).toLocaleString('en-IN'))}</p>` : ''}`).join('')}</div>`).join('')}
+    ${(p.digitalDownloads || []).map((product: any) => `<div style="margin:20px 0;padding:16px;background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;"><h3 style="margin:0 0 8px;color:#14532d;font-size:16px;">Your Digital Download: ${escapeHtml(product.productName)}</h3><p style="margin:0 0 10px;color:#166534;font-size:13px;">Click the button below to download directly &mdash; no login or verification key required.</p>${(product.resources || []).map((resource: any) => { const safeUrl = safePortalUrl(resource.downloadUrl); return `<p style="margin:8px 0 4px;"><strong>${escapeHtml(resource.fileName)}</strong></p>${renderButton(resource.label || 'Download Now', safeUrl, '#15803d')}<p style="margin:4px 0 8px;font-size:12px;word-break:break-all;color:#475569;">Direct link: <a href="${escapeHtml(safeUrl)}" style="color:#1d4ed8;">${escapeHtml(safeUrl)}</a></p>${resource.expiresAt ? `<p style="margin:0;color:#64748b;font-size:12px;">Available until ${escapeHtml(new Date(resource.expiresAt).toLocaleString('en-IN'))}</p>` : ''}`; }).join('')}</div>`).join('')}
      ${p.address && (p.address.addressLine1 || p.address.city || p.address.state || p.address.pincode)
        ? `<p><strong>Delivery Address:</strong> ${escapeHtml(p.address.addressLine1 || '')}, ${escapeHtml(p.address.city || '')}, ${escapeHtml(p.address.state || '')} - ${escapeHtml(p.address.pincode || '')}</p>`
        : `<p><strong>Delivery Mode:</strong> Instant Digital Delivery (No physical shipping required)</p>`}
@@ -1122,9 +1126,9 @@ export const serverEmailTemplates = {
     customerDigitalDelivery: (p: { customerName: string; orderId: string; downloads: any[]; totalAmount: number }) => wrapEmailHtml(
      'Your Digital Downloads Are Ready',
      `<p>Hello <strong>${escapeHtml(p.customerName || 'Customer')}</strong>,</p>
-      <p>Your payment has been confirmed and your digital purchase is ready to download.</p>
+      <p>Your payment has been confirmed and your digital purchase is ready to download directly &mdash; no login or verification key required.</p>
       <p><strong>Order ID:</strong> <code>${escapeHtml(p.orderId)}</code><br/><strong>Payment:</strong> COMPLETED<br/><strong>Total paid:</strong> &#8377;${Number(p.totalAmount || 0).toFixed(2)}</p>
-      ${(p.downloads || []).map((product: any) => `<div style="margin:20px 0;padding:14px;border:1px solid #e2e8f0;border-radius:6px;"><h3 style="margin:0 0 10px;color:#1e293b;font-size:16px;">${escapeHtml(product.productName)}</h3>${(product.resources || []).map((resource: any) => `<p style="margin:8px 0 4px;"><strong>${escapeHtml(resource.fileName)}</strong></p>${renderButton(resource.label || 'Download Now', resource.downloadUrl)}${resource.expiresAt ? `<p style="margin:0;color:#64748b;font-size:12px;">Available until ${escapeHtml(new Date(resource.expiresAt).toLocaleString('en-IN'))}</p>` : ''}`).join('')}</div>`).join('')}
+      ${(p.downloads || []).map((product: any) => `<div style="margin:20px 0;padding:16px;background-color:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;"><h3 style="margin:0 0 10px;color:#14532d;font-size:16px;">${escapeHtml(product.productName)}</h3>${(product.resources || []).map((resource: any) => { const safeUrl = safePortalUrl(resource.downloadUrl); return `<p style="margin:8px 0 4px;"><strong>${escapeHtml(resource.fileName)}</strong></p>${renderButton(resource.label || 'Download Now', safeUrl, '#15803d')}<p style="margin:4px 0 8px;font-size:12px;word-break:break-all;color:#475569;">Direct link: <a href="${escapeHtml(safeUrl)}" style="color:#1d4ed8;">${escapeHtml(safeUrl)}</a></p>${resource.expiresAt ? `<p style="margin:0;color:#64748b;font-size:12px;">Available until ${escapeHtml(new Date(resource.expiresAt).toLocaleString('en-IN'))}</p>` : ''}`; }).join('')}</div>`).join('')}
       <p>Questions? Contact <a href="mailto:support@indiacybercafe.com">support@indiacybercafe.com</a> or call +91 9203251821.</p>
       <p>Best Regards,<br/><strong>India Cyber Cafe Store Team</strong></p>`
     ),
