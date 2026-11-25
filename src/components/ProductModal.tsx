@@ -373,8 +373,16 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       aria-modal="true"
       aria-labelledby="product-modal-title"
     >
-      <div className="bg-white rounded-t-2xl sm:rounded-3xl shadow-2xl w-full max-w-2xl relative overflow-hidden h-[92dvh] sm:h-auto sm:max-h-[90dvh] flex flex-col">
-        <div className="px-4 py-3.5 sm:px-6 sm:py-5 bg-white border-b border-slate-200 flex justify-between items-center z-10 flex-shrink-0">
+      <div
+        onScroll={e => {
+          if (e.currentTarget.scrollTop !== 0 || e.currentTarget.scrollLeft !== 0) {
+            e.currentTarget.scrollTop = 0;
+            e.currentTarget.scrollLeft = 0;
+          }
+        }}
+        className="bg-white rounded-t-2xl sm:rounded-3xl shadow-2xl w-full max-w-2xl relative overflow-clip h-[92dvh] sm:h-auto sm:max-h-[90dvh] flex flex-col"
+      >
+        <div className="px-4 py-3.5 sm:px-6 sm:py-5 bg-white border-b border-slate-200 rounded-t-2xl sm:rounded-t-3xl flex justify-between items-center z-10 flex-shrink-0">
           <h2 id="product-modal-title" className="text-lg sm:text-2xl font-bold text-navy pr-2 truncate">
             {product ? 'Edit Product' : 'Add New Product'}
           </h2>
@@ -389,7 +397,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
           </button>
         </div>
 
-        <form id="product-modal-form" onSubmit={handleSubmit} className="flex-1 min-h-0 overflow-y-auto overscroll-contain bg-white">
+        <form id="product-modal-form" onSubmit={handleSubmit} className="relative flex-1 min-h-0 overflow-y-auto overflow-x-hidden overscroll-contain bg-white">
           <div className="p-4 sm:p-6 space-y-4">
             <div className="space-y-3">
             <div>
@@ -624,15 +632,20 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                         className="w-full min-w-0 px-3 py-2.5 text-sm rounded-xl border border-slate-200 focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none"
                       />
                       <div className="flex flex-wrap items-center gap-3 pt-1">
-                        <label className="inline-flex cursor-pointer items-center gap-2 px-3 py-2 rounded-lg bg-navy/5 hover:bg-navy/10 text-xs font-bold text-navy transition-colors">
+                        <label className="relative inline-flex cursor-pointer items-center gap-2 px-3 py-2 rounded-lg bg-navy/5 hover:bg-navy/10 text-xs font-bold text-navy transition-colors">
                           <IconRenderer name="upload" className="h-4 w-4" />
                           {uploadingResourceId === resource.id ? `Uploading (${uploadPercent}%)...` : 'Upload file'}
                           <input
                             type="file"
                             accept=".pdf,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
                             disabled={Boolean(uploadingResourceId)}
-                            onChange={e => { void handleDigitalFileUpload(resource.id, e.target.files?.[0]); e.target.value = ''; }}
-                            className="sr-only"
+                            onChange={e => {
+                              const selectedFile = e.target.files?.[0];
+                              e.currentTarget.value = '';
+                              e.currentTarget.blur();
+                              void handleDigitalFileUpload(resource.id, selectedFile);
+                            }}
+                            className="hidden"
                           />
                         </label>
                         {uploadingResourceId === resource.id && (
@@ -849,7 +862,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
         </form>
 
         {/* Sticky Footer Actions */}
-        <div className="flex-shrink-0 px-4 py-3 sm:px-6 sm:py-4 bg-white border-t border-slate-200 flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
+        <div className="flex-shrink-0 px-4 py-3 sm:px-6 sm:py-4 bg-white border-t border-slate-200 sm:rounded-b-3xl flex flex-col-reverse sm:flex-row gap-2 sm:gap-3">
           <button
             type="button"
             onClick={() => void handleClose()}
