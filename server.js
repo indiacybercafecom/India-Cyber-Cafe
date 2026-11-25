@@ -17,6 +17,9 @@ import { handleCodOrder, handleCreatePaymentOrder, handleVerifyPayment, handleRe
 import { verifyCallerWithRole, requireAuthenticatedCaller, requireAdminMiddleware, handleGetOperatorApplication, handleOperatorUpdateApplication, handleOperatorUploadAttachment, handleUserReplyAttachmentUpload, handleUserReplyApplication, handleGetOperatorAttachment, handleVerifyApplicationPayment, handleAssignApplicationOperator, handleAdminUpdateApplicationPaymentStatus, handleCreateApplication, handleCreateApplicationPayment, handleConfirmApplicationPayment, handleRecoverApplicationPayment, handleUploadApplicationAttachment, handleGetApplicationAttachment, reconcilePendingApplicationFromWebhook, handleProfileUpdate, handleNotifyApplicationSubmitted, handleNotifyRegistration, handleNotifyProfileUpdated, handleNotifyReviewSubmitted, handleNotifyCallback, handleListNotificationEvents, handleRetryNotificationEvent, handleGetQueueStats, handleListDlqJobs, handleReplayDlqJob, handleInternalWorkerProcess } from "./src/server/operatorService.js";
 import { enqueueOutboxNotification, buildQueuedEmailDeliverySummary, getNotificationOutboxStats, recoverNotificationOutbox } from "./src/server/emailNotificationService.js";
 import { startAsyncWorkerLoop, shutdownAsyncWorkerLoop, getQueueStats } from "./src/server/asyncQueueService.js";
+import { register } from "tsx/esm/api";
+register();
+await import("./server.ts");
 const resolvedRoot = fs.existsSync(path.join(process.cwd(), 'package.json'))
     ? process.cwd()
     : path.resolve(process.cwd(), '..');
@@ -2164,4 +2167,3 @@ async function startServer() {
         process.exit(1);
     });
 }
-startServer();
