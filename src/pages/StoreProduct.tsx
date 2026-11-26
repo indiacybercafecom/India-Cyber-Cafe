@@ -380,7 +380,7 @@ export function StoreProduct({ products, reviews: externalReviews, user, authLoa
                 <div className="flex items-start gap-2.5 min-w-0">
                   <IconRenderer name="lock" className="w-4 h-4 text-primary shrink-0 mt-0.5" />
                   <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                    Please <span className="font-semibold text-navy">login to your account</span> to unlock purchase and secure buyer-only PDF download. Your product &amp; quantity will be preserved.
+                    Please <span className="font-semibold text-navy">login to your account</span> to unlock purchase and secure buyer-only digital download. Your product &amp; quantity will be preserved.
                   </p>
                 </div>
                 <button

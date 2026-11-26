@@ -9,11 +9,22 @@ import { pipeline } from 'stream/promises';
 import { initializeApp, getApps, cert, ServiceAccount } from 'firebase-admin/app';
 import { getDatabase, Database } from 'firebase-admin/database';
 import { getAuth, Auth } from 'firebase-admin/auth';
+import { getStorage } from 'firebase-admin/storage';
 import {
   enqueueOutboxNotification,
   buildQueuedEmailDeliverySummary,
 } from './emailNotificationService.js';
 import { requireAdminCaller, verifyCallerWithRole } from './operatorService.js';
+import {
+  MAX_DIGITAL_FILE_SIZE,
+  MAX_DIGITAL_DOWNLOAD_BYTES,
+  getCanonicalDigitalMime,
+  getDigitalExtensionError,
+  getDigitalFileExtension,
+  getDigitalFileKind,
+  isAllowedDigitalExtension,
+  resolveSafeDownloadContentType,
+} from './digitalFilePolicy.js';
 import * as dns from 'node:dns/promises';
 import * as net from 'node:net';
 
@@ -770,6 +781,196 @@ async function prepareDigitalDelivery(order: any, rtdbPath?: string) {
   return { downloads, order: { ...order, ...updates, digitalDownloads: downloads } };
 }
 
+const DIGITAL_DOWNLOAD_TICKET_TTL_MS = 90_000;
+const consumedDownloadTickets = new Map<string, number>();
+
+function pruneConsumedDownloadTickets(now = Date.now()) {
+  if (consumedDownloadTickets.size < 250) return;
+  for (const [nonce, exp] of consumedDownloadTickets.entries()) {
+    if (exp <= now) consumedDownloadTickets.delete(nonce);
+  }
+}
+
+interface DownloadTicketPayload {
+  tokenHash: string;
+  uid: string;
+  email: string;
+  emailVerified: boolean;
+  isAdmin: boolean;
+  nonce: string;
+  exp: number;
+}
+
+function createSignedDownloadTicket(payload: Omit<DownloadTicketPayload, 'nonce' | 'exp'>): string {
+  const fullPayload: DownloadTicketPayload = {
+    ...payload,
+    nonce: crypto.randomBytes(16).toString('base64url'),
+    exp: Date.now() + DIGITAL_DOWNLOAD_TICKET_TTL_MS,
+  };
+  const encoded = Buffer.from(JSON.stringify(fullPayload), 'utf8').toString('base64url');
+  const sig = crypto
+    .createHmac('sha256', getDigitalTokenEncryptionKey())
+    .update(encoded)
+    .digest('base64url');
+  return `${encoded}.${sig}`;
+}
+
+function consumeSignedDownloadTicket(rawTicket: string, expectedTokenHash: string): DownloadTicketPayload | null {
+  const parts = String(rawTicket || '').trim().split('.');
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  const [encoded, providedSig] = parts;
+  const expectedSig = crypto
+    .createHmac('sha256', getDigitalTokenEncryptionKey())
+    .update(encoded)
+    .digest('base64url');
+  const providedBuf = Buffer.from(providedSig, 'utf8');
+  const expectedBuf = Buffer.from(expectedSig, 'utf8');
+  if (providedBuf.length !== expectedBuf.length || !crypto.timingSafeEqual(providedBuf, expectedBuf)) {
+    return null;
+  }
+  let parsed: DownloadTicketPayload;
+  try {
+    parsed = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+  } catch {
+    return null;
+  }
+  const now = Date.now();
+  if (
+    !parsed ||
+    parsed.tokenHash !== expectedTokenHash ||
+    !parsed.uid ||
+    !parsed.nonce ||
+    !Number.isFinite(parsed.exp) ||
+    parsed.exp <= now
+  ) {
+    return null;
+  }
+  pruneConsumedDownloadTickets(now);
+  if (consumedDownloadTickets.has(parsed.nonce)) {
+    return null;
+  }
+  consumedDownloadTickets.set(parsed.nonce, parsed.exp);
+  return parsed;
+}
+
+async function resolveDownloadRecordAndAccess(
+  token: string,
+  req: Request,
+  authUser: { uid: string; email: string; emailVerified: boolean; isAdmin?: boolean }
+): Promise<
+  | { ok: true; tokenHash: string; record: any; order: any; downloadLimit: number }
+  | { ok: false; status: number; error: string }
+> {
+  const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  let record: any;
+  if (isTestMode()) {
+    record = localDigitalDownloadTokens.get(tokenHash);
+  } else {
+    if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) {
+      return { ok: false, status: 503, error: 'Download service unavailable.' };
+    }
+    const snapshot = await rtdbAdmin.ref(`digitalDownloads/tokens/${tokenHash}`).once('value');
+    record = snapshot.val();
+  }
+  if (!record || record.revoked) {
+    return { ok: false, status: 404, error: 'This download link is no longer active.' };
+  }
+  if (typeof record.token === 'string' && record.token === token) {
+    record.tokenHash = crypto.createHash('sha256').update(token).digest('hex');
+  }
+  if (record.tokenHash !== tokenHash) {
+    return { ok: false, status: 404, error: 'Download not found.' };
+  }
+
+  const orderRecord = await findOrderRecord(record.orderId);
+  if (!orderRecord || orderRecord.order.paymentStatus !== 'completed') {
+    return { ok: false, status: 403, error: 'This order is not eligible for downloads.' };
+  }
+
+  const order = orderRecord.order;
+  const orderUid = String(order.userId || order.uid || '').trim();
+  const orderEmail = String(order.email || order.deliveryAddress?.email || '').toLowerCase().trim();
+  let isAuthorizedBuyer =
+    Boolean(authUser.isAdmin) ||
+    (Boolean(orderUid) && orderUid !== 'guest' && orderUid === authUser.uid) ||
+    (Boolean(authUser.email) && authUser.emailVerified && Boolean(orderEmail) && orderEmail === authUser.email);
+  if (!isAuthorizedBuyer) {
+    const callerWithRole = await withTimeout(
+      verifyCallerWithRole(req),
+      4000,
+      'Admin role verification'
+    ).catch(() => null);
+    if (callerWithRole?.role === 'admin') {
+      isAuthorizedBuyer = true;
+    }
+  }
+  if (!isAuthorizedBuyer) {
+    return { ok: false, status: 403, error: 'Only the account that purchased this order can download this file.' };
+  }
+
+  if (record.expiresAt && Date.now() > new Date(record.expiresAt).getTime()) {
+    return { ok: false, status: 410, error: 'This download link has expired.' };
+  }
+
+  const downloadLimit = Math.max(1, Number(record.downloadLimit) || 10);
+  if ((Number(record.downloadCount) || 0) >= downloadLimit) {
+    return { ok: false, status: 429, error: 'Download limit reached for this file.' };
+  }
+
+  return { ok: true, tokenHash, record, order, downloadLimit };
+}
+
+export async function handleCreateDigitalDownloadTicket(req: Request, res: Response) {
+  try {
+    const token = String(req.params.token || '');
+    if (!/^[A-Za-z0-9_-]{40,60}$/.test(token)) {
+      return res.status(404).json({ success: false, error: 'Download not found.' });
+    }
+
+    const authUser = await getVerifiedAuthUser(req);
+    if (!authUser) {
+      return res.status(401).json({ success: false, error: 'Please sign in to download this file.' });
+    }
+
+    const access = await resolveDownloadRecordAndAccess(token, req, authUser);
+    if (access.ok === false) {
+      return res.status(access.status).json({ success: false, error: access.error });
+    }
+
+    const callerWithRole = await withTimeout(
+      verifyCallerWithRole(req),
+      2500,
+      'Admin role verification'
+    ).catch(() => null);
+    const isAdmin = callerWithRole?.role === 'admin';
+
+    const ticket = createSignedDownloadTicket({
+      tokenHash: access.tokenHash,
+      uid: authUser.uid,
+      email: authUser.email || '',
+      emailVerified: Boolean(authUser.emailVerified),
+      isAdmin,
+    });
+
+    const fileName = String(access.record.fileName || 'download').replace(/[\r\n"\\]/g, '_');
+    const ext = getDigitalFileExtension(fileName);
+    const contentType = resolveSafeDownloadContentType(ext);
+
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.json({
+      success: true,
+      ticket,
+      fileName,
+      fileKind: getDigitalFileKind(fileName),
+      contentType,
+      downloadUrl: `/api/store/downloads/${encodeURIComponent(token)}?ticket=${encodeURIComponent(ticket)}`,
+    });
+  } catch (error: any) {
+    console.error('Download ticket creation error:', error?.message || error);
+    return res.status(500).json({ success: false, error: 'Could not prepare this download. Please try again.' });
+  }
+}
+
 export async function handleDigitalDownload(req: Request, res: Response) {
   try {
     const token = String(req.params.token || '');
@@ -777,71 +978,39 @@ export async function handleDigitalDownload(req: Request, res: Response) {
       return res.status(404).json({ error: 'Download not found.' });
     }
 
-    // Require authenticated buyer (redirect plain browser navigations to the SPA download page which handles login + preserved redirect)
-    const authUser = await getVerifiedAuthUser(req);
-    if (!authUser) {
-      const acceptHeader = String(req.headers.accept || '');
-      if (acceptHeader.includes('text/html') && !req.headers.authorization) {
-        return res.redirect(302, `/store/download/${encodeURIComponent(token)}`);
-      }
-      return res.status(401).json({ error: 'Please sign in to download this file.' });
-    }
-
     const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    let record: any;
-    if (isTestMode()) {
-      record = localDigitalDownloadTokens.get(tokenHash);
+
+    // Accept either Bearer ID token OR a verified single-use HMAC ticket issued by POST /api/store/downloads/:token/ticket
+    let verifiedCaller: { uid: string; email: string; emailVerified: boolean; isAdmin?: boolean } | null = null;
+    const rawTicket = typeof req.query?.ticket === 'string' ? req.query.ticket.trim() : '';
+    if (rawTicket) {
+      const ticketPayload = consumeSignedDownloadTicket(rawTicket, tokenHash);
+      if (!ticketPayload) {
+        return res.status(401).json({ error: 'Your download session expired. Please click Download again.' });
+      }
+      verifiedCaller = {
+        uid: ticketPayload.uid,
+        email: ticketPayload.email,
+        emailVerified: ticketPayload.emailVerified,
+        isAdmin: ticketPayload.isAdmin,
+      };
     } else {
-      if (!ensureFirebaseAdminInitialized() || !rtdbAdmin) {
-        return res.status(503).json({ error: 'Download service unavailable.' });
+      const authUser = await getVerifiedAuthUser(req);
+      if (!authUser) {
+        const acceptHeader = String(req.headers.accept || '');
+        if (acceptHeader.includes('text/html') && !req.headers.authorization) {
+          return res.redirect(302, `/store/download/${encodeURIComponent(token)}`);
+        }
+        return res.status(401).json({ error: 'Please sign in to download this file.' });
       }
-      const snapshot = await rtdbAdmin.ref(`digitalDownloads/tokens/${tokenHash}`).once('value');
-      record = snapshot.val();
-    }
-    if (!record || record.revoked) {
-      return res.status(404).json({ error: 'This download link is no longer active.' });
-    }
-    if (typeof record.token === 'string' && record.token === token) {
-      record.tokenHash = crypto.createHash('sha256').update(token).digest('hex');
-    }
-    if (record.tokenHash !== tokenHash) {
-      return res.status(404).json({ error: 'Download not found.' });
+      verifiedCaller = authUser;
     }
 
-    const orderRecord = await findOrderRecord(record.orderId);
-    if (!orderRecord || orderRecord.order.paymentStatus !== 'completed') {
-      return res.status(403).json({ error: 'This order is not eligible for downloads.' });
+    const access = await resolveDownloadRecordAndAccess(token, req, verifiedCaller);
+    if (access.ok === false) {
+      return res.status(access.status).json({ error: access.error });
     }
-
-    // Enforce strict buyer-only (or admin) ownership check
-    const order = orderRecord.order;
-    const orderUid = String(order.userId || order.uid || '').trim();
-    const orderEmail = String(order.email || order.deliveryAddress?.email || '').toLowerCase().trim();
-    let isAuthorizedBuyer =
-      (Boolean(orderUid) && orderUid !== 'guest' && orderUid === authUser.uid) ||
-      (Boolean(authUser.email) && authUser.emailVerified && Boolean(orderEmail) && orderEmail === authUser.email);
-    if (!isAuthorizedBuyer) {
-      const callerWithRole = await withTimeout(
-        verifyCallerWithRole(req),
-        4000,
-        'Admin role verification'
-      ).catch(() => null);
-      if (callerWithRole?.role === 'admin') {
-        isAuthorizedBuyer = true;
-      }
-    }
-    if (!isAuthorizedBuyer) {
-      return res.status(403).json({ error: 'Only the account that purchased this order can download this file.' });
-    }
-
-    if (record.expiresAt && Date.now() > new Date(record.expiresAt).getTime()) {
-      return res.status(410).json({ error: 'This download link has expired.' });
-    }
-
-    const downloadLimit = Math.max(1, Number(record.downloadLimit) || 10);
-    if ((Number(record.downloadCount) || 0) >= downloadLimit) {
-      return res.status(429).json({ error: 'Download limit reached for this file.' });
-    }
+    const { record, downloadLimit } = access;
 
     let safeFetch: { response: globalThis.Response; finalUrl: URL };
     try {
@@ -854,7 +1023,7 @@ export async function handleDigitalDownload(req: Request, res: Response) {
       return res.status(502).json({ error: 'Download source is unavailable. Please try again.' });
     }
     const response = safeFetch.response as unknown as globalThis.Response;
-    const maxBytes = 25 * 1024 * 1024;
+    const maxBytes = MAX_DIGITAL_DOWNLOAD_BYTES;
     const contentLength = Number(response.headers.get('content-length'));
     if (Number.isFinite(contentLength) && contentLength > maxBytes) {
       return res.status(413).json({ error: 'File exceeds the download size limit.' });
@@ -899,10 +1068,19 @@ export async function handleDigitalDownload(req: Request, res: Response) {
         .catch(() => {});
     }
 
-    const safeFileName = String(record.fileName || 'download.pdf').replace(/[\r\n"\\]/g, '_');
+    const safeFileName = String(record.fileName || 'download').replace(/[\r\n"\\]/g, '_');
+    const asciiFallbackName = safeFileName.replace(/[^\x20-\x7e]/g, '_').replace(/["\\]/g, '_') || 'download';
+    const fileExt = getDigitalFileExtension(safeFileName);
+    const safeContentType = resolveSafeDownloadContentType(fileExt, response.headers.get('content-type'));
+
     res.setHeader('Cache-Control', 'private, no-store');
-    res.setHeader('Content-Type', response.headers.get('content-type') || 'application/pdf');
-    res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(safeFileName)}`);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Security-Policy', "default-src 'none'; sandbox");
+    res.setHeader('Content-Type', safeContentType);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${asciiFallbackName}"; filename*=UTF-8''${encodeURIComponent(safeFileName)}`
+    );
     if (Number.isFinite(contentLength) && contentLength > 0) {
       res.setHeader('Content-Length', String(contentLength));
     }
@@ -980,8 +1158,6 @@ export async function handleAdminResendDigitalEmail(req: Request, res: Response)
   }
 }
 
-const ALLOWED_DIGITAL_EXTENSIONS = new Set(['pdf', 'zip', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
-
 function extractVerifiedFirebaseDigitalObject(url: URL): { bucket: string; objectName: string; objectExt: string } | null {
   if (url.hostname !== 'firebasestorage.googleapis.com') return null;
   if (url.searchParams.get('alt') !== 'media' || !url.searchParams.get('token')) return null;
@@ -996,10 +1172,163 @@ function extractVerifiedFirebaseDigitalObject(url: URL): { bucket: string; objec
   if (!objectName.startsWith('digital-products/')) return null;
   const objectFileName = objectName.slice('digital-products/'.length);
   if (!objectFileName || objectFileName.includes('/') || objectFileName.includes('\\')) return null;
-  const dotIdx = objectFileName.lastIndexOf('.');
-  const objectExt = dotIdx > 0 ? objectFileName.slice(dotIdx + 1).toLowerCase().trim() : '';
-  if (!ALLOWED_DIGITAL_EXTENSIONS.has(objectExt)) return null;
+  const objectExt = getDigitalFileExtension(objectFileName);
+  if (!isAllowedDigitalExtension(objectExt)) return null;
   return { bucket: storagePath[1], objectName, objectExt };
+}
+
+function inferAllowedExtensionFromUrl(url: URL): string {
+  try {
+    const decodedPath = decodeURIComponent(url.pathname);
+    const lastSegment = decodedPath.split('/').pop() || '';
+    const ext = getDigitalFileExtension(lastSegment);
+    return isAllowedDigitalExtension(ext) ? ext : '';
+  } catch {
+    return '';
+  }
+}
+
+export async function handleAdminUploadDigitalFile(req: Request, res: Response) {
+  const caller = await requireAdminCaller(req, res);
+  if (!caller) return;
+
+  try {
+    const rawFileName = String(req.query?.fileName || req.headers['x-file-name'] || '').trim();
+    const rawUploadId = String(req.query?.uploadId || req.headers['x-upload-id'] || '').trim();
+    const declaredContentType = String(req.headers['x-file-content-type'] || req.headers['content-type'] || '').trim();
+
+    if (!rawFileName || rawFileName.length > 180 || /[\u0000-\u001f\u007f/\\]/.test(rawFileName)) {
+      return res.status(400).json({ success: false, error: 'A valid file name is required.' });
+    }
+
+    const cleanExt = getDigitalFileExtension(rawFileName);
+    if (!isAllowedDigitalExtension(cleanExt)) {
+      return res.status(400).json({ success: false, error: getDigitalExtensionError(cleanExt) });
+    }
+
+    const contentLength = Number(req.headers['content-length']);
+    if (Number.isFinite(contentLength) && contentLength > MAX_DIGITAL_FILE_SIZE) {
+      return res.status(413).json({
+        success: false,
+        error: `File exceeds the ${Math.round(MAX_DIGITAL_FILE_SIZE / (1024 * 1024))} MB limit.`,
+      });
+    }
+
+    const safeUploadId = rawUploadId.replace(/[^A-Za-z0-9_-]/g, '').slice(0, 100) || `${Date.now()}_${crypto.randomBytes(6).toString('hex')}`;
+    const objectName = `digital-products/${safeUploadId}.${cleanExt}`;
+    const resolvedMime = getCanonicalDigitalMime(cleanExt, declaredContentType);
+    const downloadToken = crypto.randomUUID();
+    const bucketName = (process.env.FIREBASE_STORAGE_BUCKET || 'india-cyber-cafe-free').trim() || 'india-cyber-cafe-free';
+
+    let bytesReceived = 0;
+    let inspectedHeader = false;
+    let headSample = Buffer.alloc(0);
+
+    const guardTransform = new Transform({
+      transform(chunk, _encoding, callback) {
+        const buf = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+        bytesReceived += buf.length;
+        if (bytesReceived > MAX_DIGITAL_FILE_SIZE) {
+          return callback(new Error(`File exceeds the ${Math.round(MAX_DIGITAL_FILE_SIZE / (1024 * 1024))} MB limit.`));
+        }
+        if (!inspectedHeader) {
+          headSample = Buffer.concat([headSample, buf.subarray(0, Math.max(0, 64 - headSample.length))]);
+          if (headSample.length >= 16) {
+            inspectedHeader = true;
+            const headText = headSample.toString('utf8').trimStart().toLowerCase();
+            if (
+              headText.startsWith('<!doctype html') ||
+              headText.startsWith('<html') ||
+              headText.startsWith('<svg') ||
+              headText.startsWith('<script')
+            ) {
+              return callback(new Error('Active web markup files (HTML/SVG/Script) are not allowed in digital products.'));
+            }
+          }
+        }
+        callback(null, buf);
+      },
+      flush(callback) {
+        if (!inspectedHeader && headSample.length > 0) {
+          const headText = headSample.toString('utf8').trimStart().toLowerCase();
+          if (
+            headText.startsWith('<!doctype html') ||
+            headText.startsWith('<html') ||
+            headText.startsWith('<svg') ||
+            headText.startsWith('<script')
+          ) {
+            return callback(new Error('Active web markup files (HTML/SVG/Script) are not allowed in digital products.'));
+          }
+        }
+        if (bytesReceived <= 0) {
+          return callback(new Error('Uploaded file is empty.'));
+        }
+        callback();
+      },
+    });
+
+    if (isTestMode()) {
+      const { Writable } = await import('stream');
+      const sink = new Writable({
+        write(_chunk, _enc, cb) {
+          cb();
+        },
+      });
+      await pipeline(req, guardTransform, sink);
+      const url = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucketName)}/o/${encodeURIComponent(objectName)}?alt=media&token=${encodeURIComponent(downloadToken)}`;
+      return res.json({
+        success: true,
+        url,
+        fileName: rawFileName,
+        contentType: resolvedMime,
+        size: bytesReceived,
+      });
+    }
+
+    if (!ensureFirebaseAdminInitialized()) {
+      return res.status(503).json({ success: false, error: 'Firebase Admin storage is not configured on the server.' });
+    }
+
+    const bucket = getStorage().bucket(bucketName);
+    const fileRef = bucket.file(objectName);
+    const writeStream = fileRef.createWriteStream({
+      resumable: false,
+      metadata: {
+        contentType: resolvedMime,
+        metadata: {
+          firebaseStorageDownloadTokens: downloadToken,
+          uploadedBy: caller.uid,
+          originalFileName: rawFileName,
+        },
+      },
+    });
+
+    try {
+      await pipeline(req, guardTransform, writeStream);
+    } catch (streamErr: any) {
+      try { await fileRef.delete({ ignoreNotFound: true }); } catch {}
+      throw streamErr;
+    }
+
+    const url = `https://firebasestorage.googleapis.com/v0/b/${encodeURIComponent(bucketName)}/o/${encodeURIComponent(objectName)}?alt=media&token=${encodeURIComponent(downloadToken)}`;
+    return res.json({
+      success: true,
+      url,
+      fileName: rawFileName,
+      contentType: resolvedMime,
+      size: bytesReceived,
+    });
+  } catch (error: any) {
+    const message = String(error?.message || 'Unable to upload digital file.');
+    console.error('Admin digital upload error:', message);
+    if (/exceeds the/i.test(message)) {
+      return res.status(413).json({ success: false, error: message });
+    }
+    if (/not allowed|empty|valid file/i.test(message)) {
+      return res.status(400).json({ success: false, error: message });
+    }
+    return res.status(500).json({ success: false, error: message });
+  }
 }
 
 export async function normalizeDigitalResources(
@@ -1054,17 +1383,18 @@ export async function normalizeDigitalResources(
       }
     }
 
-    const dotIdx = fileName.lastIndexOf('.');
-    let cleanExt = dotIdx > 0 ? fileName.slice(dotIdx + 1).toLowerCase().trim() : '';
-    if (!ALLOWED_DIGITAL_EXTENSIONS.has(cleanExt) && verifiedFirebaseObject) {
-      // Automatically preserve the uploaded file's extension if the admin omitted it in the display filename
-      fileName = `${fileName.replace(/\.+$/, '')}.${verifiedFirebaseObject.objectExt}`.slice(0, 180);
-      cleanExt = verifiedFirebaseObject.objectExt;
+    let cleanExt = getDigitalFileExtension(fileName);
+    if (!cleanExt) {
+      const inferredExt = verifiedFirebaseObject?.objectExt || inferAllowedExtensionFromUrl(url);
+      if (inferredExt) {
+        fileName = `${fileName.replace(/\.+$/, '')}.${inferredExt}`.slice(0, 180);
+        cleanExt = inferredExt;
+      }
     }
-    if (!ALLOWED_DIGITAL_EXTENSIONS.has(cleanExt)) {
+    if (!isAllowedDigitalExtension(cleanExt)) {
       return {
         ok: false,
-        error: `${idxLabel}: File name must end with .pdf, .zip, .doc, .docx, .xls, .xlsx, .ppt, or .pptx.`,
+        error: `${idxLabel}: ${getDigitalExtensionError(cleanExt)}`,
       };
     }
     if (verifiedFirebaseObject && verifiedFirebaseObject.objectExt !== cleanExt) {
@@ -3275,7 +3605,7 @@ export async function fetchSafeDownloadResponse(sourceUrl: string): Promise<{ re
     const response = await fetch(current, {
       redirect: 'manual',
       headers: { 'User-Agent': 'ICC-Digital-Download/1.0', 'Accept': '*/*' },
-      signal: AbortSignal.timeout(120000),
+      signal: AbortSignal.timeout(300000),
     });
     if (response.status >= 300 && response.status < 400) {
       if (redirectCount === 3) throw new Error('Download source redirected too many times.');

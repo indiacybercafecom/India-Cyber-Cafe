@@ -1,8 +1,16 @@
 import { auth, storage } from '../firebase';
 import { ref, uploadBytesResumable, getDownloadURL, deleteObject } from 'firebase/storage';
 import { getFriendlyErrorMessage } from '../utils/errorHandler';
+import {
+  MAX_DIGITAL_FILE_SIZE,
+  getCanonicalDigitalMime,
+  getDigitalExtensionError,
+  getDigitalFileExtension,
+  isAllowedDigitalExtension,
+} from '../server/digitalFilePolicy';
 
 export const MAX_SERVICE_FILE_SIZE = 5 * 1024 * 1024;
+export { MAX_DIGITAL_FILE_SIZE };
 
 const ALLOWED_MIME_TYPES = new Set([
   'application/pdf',
@@ -12,20 +20,6 @@ const ALLOWED_MIME_TYPES = new Set([
 ]);
 
 const ALLOWED_EXTENSIONS = new Set(['pdf', 'jpg', 'jpeg', 'png', 'webp']);
-
-export const DIGITAL_MIME_TO_EXTENSIONS: Record<string, ReadonlySet<string>> = {
-  'application/pdf': new Set(['pdf']),
-  'application/zip': new Set(['zip']),
-  'application/x-zip-compressed': new Set(['zip']),
-  'application/msword': new Set(['doc']),
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document': new Set(['docx']),
-  'application/vnd.ms-excel': new Set(['xls']),
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': new Set(['xlsx']),
-  'application/vnd.ms-powerpoint': new Set(['ppt']),
-  'application/vnd.openxmlformats-officedocument.presentationml.presentation': new Set(['pptx']),
-};
-
-export const MAX_DIGITAL_FILE_SIZE = 5 * 1024 * 1024;
 
 export interface UploadFileOptions {
   category?: string;
@@ -39,8 +33,7 @@ export interface UploadFileOptions {
 }
 
 function getFileExtension(fileName: string): string {
-  const dotIndex = fileName.lastIndexOf('.');
-  return dotIndex > 0 ? fileName.slice(dotIndex + 1).toLowerCase().trim() : '';
+  return getDigitalFileExtension(fileName);
 }
 
 async function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauthenticated?: boolean, category?: string): Promise<DigitalUploadValidation> {
@@ -83,7 +76,7 @@ async function validateUploadFile(file: File, maxSizeBytes?: number, allowUnauth
 
 function uploadOnceResumable(
   file: File,
-  cleanExt: string,
+  _cleanExt: string,
   contentType: string,
   options: UploadFileOptions,
   filePath: string
@@ -91,7 +84,7 @@ function uploadOnceResumable(
   const {
     onProgress,
     signal,
-    timeoutMs = 45000,
+    timeoutMs = options.category === 'digital-products' ? 180000 : 45000,
   } = options;
 
   if (signal?.aborted) {
@@ -106,6 +99,16 @@ function uploadOnceResumable(
   return new Promise<string>((resolve, reject) => {
     const uploadTask = uploadBytesResumable(storageRef, file, metadata);
     let settled = false;
+    let lastBytesTransferred = -1;
+
+    let timer: ReturnType<typeof setTimeout>;
+    const resetStallTimer = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        try { uploadTask.cancel(); } catch {}
+        failWith(new Error(`Upload timed out for "${file.name}". Please check your connection and try again.`));
+      }, timeoutMs);
+    };
 
     const cleanup = () => {
       clearTimeout(timer);
@@ -130,15 +133,16 @@ function uploadOnceResumable(
       signal.addEventListener('abort', onAbort, { once: true });
     }
 
-    const timer = setTimeout(() => {
-      try { uploadTask.cancel(); } catch {}
-      failWith(new Error(`Upload timed out for "${file.name}". Please check your connection and try again.`));
-    }, timeoutMs);
+    resetStallTimer();
 
     uploadTask.on(
       'state_changed',
       (snapshot) => {
         if (settled) return;
+        if (snapshot.bytesTransferred > lastBytesTransferred) {
+          lastBytesTransferred = snapshot.bytesTransferred;
+          resetStallTimer();
+        }
         const pct = snapshot.totalBytes > 0
           ? Math.min(99, Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100))
           : 0;
@@ -160,6 +164,82 @@ function uploadOnceResumable(
         }
       }
     );
+  });
+}
+
+async function uploadDigitalViaServerFallback(
+  file: File,
+  uploadId: string,
+  contentType: string,
+  options: UploadFileOptions
+): Promise<string> {
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+    throw new Error('Admin authentication is required to upload digital files.');
+  }
+  const idToken = await currentUser.getIdToken();
+  const endpoint = `/api/admin/store/digital-upload?fileName=${encodeURIComponent(file.name)}&uploadId=${encodeURIComponent(uploadId)}`;
+
+  return new Promise<string>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    let settled = false;
+
+    const cleanup = () => {
+      if (options.signal) {
+        options.signal.removeEventListener('abort', onAbort);
+      }
+    };
+
+    const fail = (err: any) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(err);
+    };
+
+    const onAbort = () => {
+      try { xhr.abort(); } catch {}
+      fail(new DOMException('Upload cancelled', 'AbortError'));
+    };
+
+    if (options.signal?.aborted) {
+      fail(new DOMException('Upload cancelled', 'AbortError'));
+      return;
+    }
+    options.signal?.addEventListener('abort', onAbort, { once: true });
+
+    xhr.open('POST', endpoint, true);
+    xhr.setRequestHeader('Authorization', `Bearer ${idToken}`);
+    xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+    xhr.setRequestHeader('X-File-Content-Type', contentType || 'application/octet-stream');
+    xhr.timeout = Math.max(options.timeoutMs ?? 600000, 180000);
+
+    xhr.upload.onprogress = (event) => {
+      if (!event.lengthComputable || settled) return;
+      const pct = Math.min(99, Math.round((event.loaded / event.total) * 100));
+      options.onProgress?.(pct);
+    };
+
+    xhr.onload = () => {
+      if (settled) return;
+      let parsed: any = null;
+      try {
+        parsed = JSON.parse(xhr.responseText || '{}');
+      } catch {}
+      if (xhr.status >= 200 && xhr.status < 300 && parsed?.success && parsed?.url) {
+        options.onProgress?.(100);
+        settled = true;
+        cleanup();
+        resolve(String(parsed.url));
+      } else {
+        fail(new Error(parsed?.error || `Server upload failed (HTTP ${xhr.status}).`));
+      }
+    };
+
+    xhr.onerror = () => fail(new Error('Network error while uploading digital file. Please check your connection and try again.'));
+    xhr.ontimeout = () => fail(new Error(`Upload timed out for "${file.name}". Please try again.`));
+
+    xhr.send(file);
   });
 }
 
@@ -213,6 +293,16 @@ export async function uploadFileWithRetry(
       return await uploadOnceResumable(file, cleanExt, mime, options, filePath);
     } catch (error: any) {
       lastError = error;
+      // If direct Firebase Storage upload is blocked by older deployed storage.rules
+      // (e.g., for .mp3, .mp4, or files > 5MB), seamlessly fall back to the admin server streaming upload.
+      if (category === 'digital-products' && String(error?.code || '') === 'storage/unauthorized') {
+        try {
+          return await uploadDigitalViaServerFallback(file, uploadId, mime, options);
+        } catch (fallbackError: any) {
+          lastError = fallbackError;
+          break;
+        }
+      }
       if (attempt < maxRetries && isRetryableUploadError(error)) {
         const delayMs = 400 * Math.pow(2, attempt);
         await waitForRetry(delayMs, options.signal);
@@ -311,32 +401,31 @@ export interface DigitalUploadValidation {
 
 export async function validateDigitalUploadFile(file: File): Promise<DigitalUploadValidation> {
   if (file.size <= 0) throw new Error(`File "${file.name}" is empty.`);
-  if (file.size > MAX_DIGITAL_FILE_SIZE) throw new Error(`File "${file.name}" exceeds the 5 MB limit.`);
+  if (file.size > MAX_DIGITAL_FILE_SIZE) {
+    throw new Error(`File "${file.name}" exceeds the ${Math.round(MAX_DIGITAL_FILE_SIZE / (1024 * 1024))} MB limit.`);
+  }
 
   const cleanExt = getFileExtension(file.name);
-  const canonicalMime = Object.entries(DIGITAL_MIME_TO_EXTENSIONS)
-    .find(([, extensions]) => extensions.has(cleanExt))?.[0];
-  if (!canonicalMime) {
-    throw new Error(`Invalid digital file type "${file.name}". Supported formats are PDF, ZIP, DOC, DOCX, XLS, XLSX, PPT and PPTX.`);
+  if (!isAllowedDigitalExtension(cleanExt)) {
+    throw new Error(getDigitalExtensionError(cleanExt));
   }
 
-  const declaredMime = (file.type || '').toLowerCase().trim();
-  if (declaredMime && declaredMime !== 'application/octet-stream' && !DIGITAL_MIME_TO_EXTENSIONS[declaredMime]?.has(cleanExt)) {
-    throw new Error(`Invalid digital file type "${file.name}". The file extension does not match its MIME type.`);
+  // Light content sanity check: reject disguised HTML/SVG payloads masquerading as another type
+  try {
+    const headBytes = new Uint8Array(await file.slice(0, 64).arrayBuffer());
+    const headText = String.fromCharCode(...headBytes).trimStart().toLowerCase();
+    if (
+      headText.startsWith('<!doctype html') ||
+      headText.startsWith('<html') ||
+      headText.startsWith('<svg') ||
+      headText.startsWith('<script')
+    ) {
+      throw new Error(`File "${file.name}" contains active web markup and cannot be uploaded as a digital product.`);
+    }
+  } catch (err: any) {
+    if (err?.message?.includes('active web markup')) throw err;
   }
 
-  const signature = new Uint8Array(await file.slice(0, 8).arrayBuffer());
-  const signatureText = String.fromCharCode(...signature);
-  const isPdf = cleanExt === 'pdf' && signatureText.startsWith('%PDF-');
-  const isZip = ['zip', 'docx', 'xlsx', 'pptx'].includes(cleanExt)
-    && signature[0] === 0x50 && signature[1] === 0x4b
-    && [0x03, 0x05, 0x07].includes(signature[2])
-    && [0x04, 0x06, 0x08].includes(signature[3]);
-  const isLegacyOffice = ['doc', 'xls', 'ppt'].includes(cleanExt)
-    && signature.slice(0, 8).every((byte, index) => byte === [0xd0, 0xcf, 0x11, 0xe0, 0xa1, 0xb1, 0x1a, 0xe1][index]);
-  if (!isPdf && !isZip && !isLegacyOffice) {
-    throw new Error(`Invalid digital file content in "${file.name}".`);
-  }
-
+  const canonicalMime = getCanonicalDigitalMime(cleanExt, file.type);
   return { cleanExt, mime: canonicalMime };
 }

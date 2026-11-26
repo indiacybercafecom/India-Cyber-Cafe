@@ -22,7 +22,7 @@ service firebase.storage {
     function isUnderDigitalLimit() {
       return request.resource != null
         && request.resource.size > 0
-        && request.resource.size <= 5 * 1024 * 1024;
+        && request.resource.size <= 200 * 1024 * 1024;
     }
 
     function isAllowedAttachmentType() {
@@ -32,18 +32,16 @@ service firebase.storage {
       );
     }
 
-    function isAllowedDigitalType() {
-      return request.resource != null && (
-        request.resource.contentType == 'application/pdf' ||
-        request.resource.contentType == 'application/zip' ||
-        request.resource.contentType == 'application/x-zip-compressed' ||
-        request.resource.contentType == 'application/msword' ||
-        request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
-        request.resource.contentType == 'application/vnd.ms-excel' ||
-        request.resource.contentType == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
-        request.resource.contentType == 'application/vnd.ms-powerpoint' ||
-        request.resource.contentType == 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-      );
+    function isSafeDigitalContentType() {
+      return request.resource != null
+        && request.resource.contentType != null
+        && !(
+          request.resource.contentType.matches('(?i)^text/html.*') ||
+          request.resource.contentType.matches('(?i)^application/xhtml\\+xml.*') ||
+          request.resource.contentType.matches('(?i)^image/svg\\+xml.*') ||
+          request.resource.contentType.matches('(?i)^(text|application)/(x-)?(java|ecma)script.*') ||
+          request.resource.contentType.matches('(?i)^application/x-(msdownload|msdos-program|sh|csh|httpd-php).*')
+        );
     }
 
     function isImageType() {
@@ -52,21 +50,8 @@ service firebase.storage {
     }
 
     function hasAllowedDigitalExtension() {
-      return request.resource.name.matches('.*\\.(pdf|zip|doc|docx|xls|xlsx|ppt|pptx)$');
-    }
-
-    function hasMatchingDigitalMimeAndExtension() {
-      return (
-        (request.resource.contentType == 'application/pdf' && request.resource.name.matches('.*\\.pdf$')) ||
-        (request.resource.contentType == 'application/zip' && request.resource.name.matches('.*\\.zip$')) ||
-        (request.resource.contentType == 'application/x-zip-compressed' && request.resource.name.matches('.*\\.zip$')) ||
-        (request.resource.contentType == 'application/msword' && request.resource.name.matches('.*\\.doc$')) ||
-        (request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' && request.resource.name.matches('.*\\.docx$')) ||
-        (request.resource.contentType == 'application/vnd.ms-excel' && request.resource.name.matches('.*\\.xls$')) ||
-        (request.resource.contentType == 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' && request.resource.name.matches('.*\\.xlsx$')) ||
-        (request.resource.contentType == 'application/vnd.ms-powerpoint' && request.resource.name.matches('.*\\.ppt$')) ||
-        (request.resource.contentType == 'application/vnd.openxmlformats-officedocument.presentationml.presentation' && request.resource.name.matches('.*\\.pptx$'))
-      );
+      return request.resource.name.matches('.*\\.[a-zA-Z0-9]{1,15}$')
+        && !request.resource.name.matches('(?i).*\\.(html|htm|xhtml|shtml|mhtml|mht|svg|svgz|js|mjs|cjs|jse|vbs|vbe|hta|php|phtml|phar|asp|aspx|jsp|jspx|cgi|exe|msi|msp|bat|cmd|com|scr|pif|cpl|dll|sys|drv|ps1|psm1|wsf|wsh|reg|lnk|inf|sh|bash|zsh)$');
     }
 
     // Owner-scoped application reply attachments (up to 5MB PDF/JPG/PNG/WEBP)
@@ -109,14 +94,13 @@ service firebase.storage {
       allow write: if isAdmin() && isUnder5MB() && isImageType();
     }
 
-    // Digital product files are admin-readable for upload URL retrieval and customer-private otherwise.
+    // Digital product files (MP3, MP4, PDF, ZIP, docs, images, etc. up to 200MB) are admin-managed and customer-private.
     match /digital-products/{allPaths=**} {
       allow read: if isAdmin();
       allow create, update: if isAdmin()
         && isUnderDigitalLimit()
-        && isAllowedDigitalType()
-        && hasAllowedDigitalExtension()
-        && hasMatchingDigitalMimeAndExtension();
+        && isSafeDigitalContentType()
+        && hasAllowedDigitalExtension();
       allow delete: if isAdmin();
     }
 

@@ -5,6 +5,7 @@ import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
 import { Order, OrderItem } from '../types';
 import { downloadProtectedDigitalFile, extractDownloadToken } from '../utils/digitalDownload';
+import { getDigitalFileTypeHint } from '../server/digitalFilePolicy';
 
 const LAST_ORDER_STORAGE_KEY = 'icc_last_order_confirmation';
 
@@ -162,7 +163,7 @@ export function OrderConfirmation() {
               Your Digital Downloads Are Ready
             </p>
             <p className="text-xs sm:text-sm text-green-800">
-              Click below to download your PDF securely with your buyer account. Your download link has also been emailed to{' '}
+              Click below to download your digital files securely with your buyer account. Your download link has also been emailed to{' '}
               <span className="font-semibold">{order.email || order.deliveryAddress?.email}</span>.
             </p>
           </div>
@@ -172,12 +173,18 @@ export function OrderConfirmation() {
               {group.resources.map((resource, resourceIndex) => {
                 const key = `${groupIndex}-${resourceIndex}`;
                 const isDownloading = downloadingKey === key;
+                const fileHint = getDigitalFileTypeHint(resource.fileName);
                 return (
                   <div key={`${resource.fileName}-${resourceIndex}`} className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-xl bg-white border border-green-200 p-3.5 shadow-xs">
-                    <div className="min-w-0">
-                      <p className="font-semibold text-sm text-slate-800 break-all">{resource.fileName}</p>
+                    <div className="min-w-0 space-y-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-bold uppercase tracking-wider shrink-0 ${fileHint.badgeClass}`}>
+                          {fileHint.badge}
+                        </span>
+                        <p className="font-semibold text-sm text-slate-800 break-all">{resource.fileName}</p>
+                      </div>
                       {resource.expiresAt && (
-                        <p className="text-xs text-slate-500 mt-0.5">
+                        <p className="text-xs text-slate-500">
                           Available until {new Date(resource.expiresAt).toLocaleString('en-IN')}
                         </p>
                       )}
@@ -193,7 +200,7 @@ export function OrderConfirmation() {
                       ) : (
                         <IconRenderer name="download" className="h-4 w-4" />
                       )}
-                      {isDownloading ? 'Downloading...' : resource.label || 'Download Now'}
+                      {isDownloading ? 'Starting...' : resource.label || 'Download Now'}
                     </button>
                   </div>
                 );

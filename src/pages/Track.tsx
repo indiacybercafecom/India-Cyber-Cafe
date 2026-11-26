@@ -11,6 +11,7 @@ import { loadRazorpayScript } from '../services/razorpayService';
 import { getStoredGuestOrders, StoredGuestOrderRef } from '../services/guestCheckoutService';
 import { auth } from '../firebase';
 import { isAdminUser } from '../utils/permissions';
+import { getDigitalFileTypeHint } from '../server/digitalFilePolicy';
 
 interface TrackProps {
   applications: Application[];
@@ -438,13 +439,20 @@ export function Track({
                 {guestTrackedOrder.digitalDownloads.map((group, groupIndex) => (
                   <div key={`${group.productName}-${groupIndex}`} className="space-y-2">
                     <p className="text-xs font-bold text-navy">{group.productName}</p>
-                    {group.resources.map((resource, resourceIndex) => (
+                    {group.resources.map((resource, resourceIndex) => {
+                      const fileHint = getDigitalFileTypeHint(resource.fileName);
+                      return (
                       <div
                         key={`${resource.fileName}-${resourceIndex}`}
                         className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 rounded-lg bg-white border border-green-200 p-3"
                       >
-                        <div className="min-w-0">
-                          <p className="text-xs sm:text-sm font-semibold text-slate-800 break-all">{resource.fileName}</p>
+                        <div className="min-w-0 space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-bold uppercase tracking-wider shrink-0 ${fileHint.badgeClass}`}>
+                              {fileHint.badge}
+                            </span>
+                            <p className="text-xs sm:text-sm font-semibold text-slate-800 break-all">{resource.fileName}</p>
+                          </div>
                           {resource.expiresAt && (
                             <p className="text-[11px] text-slate-500">
                               Available until {new Date(resource.expiresAt).toLocaleString('en-IN')}
@@ -462,7 +470,8 @@ export function Track({
                           {resource.label || 'Download Now'}
                         </Link>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 ))}
               </div>

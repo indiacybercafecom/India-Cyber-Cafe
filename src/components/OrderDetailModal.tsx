@@ -8,6 +8,7 @@ import { isAdminUser, normalizeApplicationNotes } from '../utils/permissions';
 import { addOrderNoteApi, updateAdminOrderStatusApi } from '../services/emailService';
 import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
 import { downloadProtectedDigitalFile } from '../utils/digitalDownload';
+import { getDigitalFileTypeHint } from '../server/digitalFilePolicy';
 
 interface OrderDetailModalProps {
   order: Order | null;
@@ -226,21 +227,27 @@ export function OrderDetailModal({ order, onClose, currentUser }: OrderDetailMod
                     {group.resources.map((resource, resourceIndex) => {
                       const key = `${groupIndex}-${resourceIndex}`;
                       const isDownloading = downloadingKey === key;
+                      const fileHint = getDigitalFileTypeHint(resource.fileName);
                       return (
                         <div key={`${resource.fileName}-${resourceIndex}`} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white p-3">
-                          <span className="min-w-0 break-all text-sm text-slate-700">{resource.fileName}</span>
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-bold uppercase tracking-wider shrink-0 ${fileHint.badgeClass}`}>
+                              {fileHint.badge}
+                            </span>
+                            <span className="min-w-0 break-all text-sm text-slate-700">{resource.fileName}</span>
+                          </div>
                           <button
                             type="button"
                             disabled={Boolean(downloadingKey)}
                             onClick={() => handleDigitalDownload(resource.downloadUrl, resource.fileName, key)}
-                            className="inline-flex items-center gap-2 rounded-lg bg-green-700 px-3 py-2 text-sm font-bold text-white hover:bg-green-800 disabled:opacity-60"
+                            className="inline-flex items-center gap-2 rounded-lg bg-green-700 px-3 py-2 text-sm font-bold text-white hover:bg-green-800 disabled:opacity-60 shrink-0"
                           >
                             {isDownloading ? (
                               <div className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
                             ) : (
                               <IconRenderer name="download" className="h-4 w-4" />
                             )}
-                            {isDownloading ? 'Downloading...' : resource.label || 'Download Now'}
+                            {isDownloading ? 'Starting...' : resource.label || 'Download Now'}
                           </button>
                           {resource.expiresAt && <span className="w-full text-xs text-slate-500">Expires {new Date(resource.expiresAt).toLocaleString('en-IN')}</span>}
                         </div>

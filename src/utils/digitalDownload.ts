@@ -1,4 +1,5 @@
 import { auth } from '../firebase';
+import { DigitalFileKind, getDigitalFileKind } from '../server/digitalFilePolicy';
 
 const CHECKOUT_DRAFT_PREFIX = 'icc_store_checkout_draft_';
 
@@ -82,17 +83,29 @@ function parseContentDispositionFileName(header: string | null, fallback: string
   return fallback;
 }
 
+function triggerBrowserFileDownload(href: string, fileName: string) {
+  const link = document.createElement('a');
+  link.href = href;
+  link.download = fileName;
+  link.rel = 'noopener noreferrer';
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
 export interface ProtectedDownloadResult {
   ok: boolean;
   status: number;
   fileName?: string;
+  fileKind?: DigitalFileKind;
   error?: string;
   requiresAuth?: boolean;
 }
 
 export async function downloadProtectedDigitalFile(
   urlOrToken: string,
-  fallbackFileName = 'download.pdf'
+  fallbackFileName = 'download'
 ): Promise<ProtectedDownloadResult> {
   const token = extractDownloadToken(urlOrToken);
   if (!token) {
@@ -121,11 +134,44 @@ export async function downloadProtectedDigitalFile(
     };
   }
 
+  // Primary path: request a short-lived, buyer-bound single-use ticket so the browser streams
+  // any file size (including large .mp4/.mp3/.zip files) natively with zero JS memory buffering.
+  const ticketResponse = await fetch(`/api/store/downloads/${encodeURIComponent(token)}/ticket`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${idToken}`,
+      Accept: 'application/json',
+    },
+  });
+
+  if (ticketResponse.ok) {
+    const ticketData = await ticketResponse.json().catch(() => null);
+    if (ticketData?.success && ticketData?.downloadUrl) {
+      const resolvedName = String(ticketData.fileName || fallbackFileName || 'download');
+      const fileKind = (ticketData.fileKind as DigitalFileKind) || getDigitalFileKind(resolvedName);
+      triggerBrowserFileDownload(String(ticketData.downloadUrl), resolvedName);
+      return { ok: true, status: 200, fileName: resolvedName, fileKind };
+    }
+  } else if (ticketResponse.status !== 404 && ticketResponse.status !== 405) {
+    let errorMessage = 'Could not download this file. Please try again.';
+    try {
+      const data = await ticketResponse.json();
+      if (data?.error) errorMessage = String(data.error);
+    } catch {}
+    return {
+      ok: false,
+      status: ticketResponse.status,
+      requiresAuth: ticketResponse.status === 401,
+      error: errorMessage,
+    };
+  }
+
+  // Fallback path (compatibility if ticket route is unavailable)
   const response = await fetch(`/api/store/downloads/${encodeURIComponent(token)}`, {
     method: 'GET',
     headers: {
       Authorization: `Bearer ${idToken}`,
-      Accept: 'application/pdf, application/octet-stream, application/json',
+      Accept: '*/*',
     },
   });
 
@@ -153,18 +199,12 @@ export async function downloadProtectedDigitalFile(
   const blob = await response.blob();
   const resolvedName = parseContentDispositionFileName(
     response.headers.get('content-disposition'),
-    fallbackFileName || 'download.pdf'
+    fallbackFileName || 'download'
   );
 
   const objectUrl = URL.createObjectURL(blob);
-  const link = document.createElement('a');
-  link.href = objectUrl;
-  link.download = resolvedName;
-  link.rel = 'noopener noreferrer';
-  document.body.appendChild(link);
-  link.click();
-  document.body.removeChild(link);
+  triggerBrowserFileDownload(objectUrl, resolvedName);
   setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
 
-  return { ok: true, status: 200, fileName: resolvedName };
+  return { ok: true, status: 200, fileName: resolvedName, fileKind: getDigitalFileKind(resolvedName) };
 }

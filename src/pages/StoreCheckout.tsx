@@ -1035,7 +1035,7 @@ export function StoreCheckout({
             <div className="space-y-1 min-w-0">
               <h2 className="text-sm sm:text-base font-bold text-navy">Login Required to Buy Digital Product</h2>
               <p className="text-xs sm:text-sm text-slate-600 leading-relaxed">
-                You can review all product details and fill your contact info below. Login is required to complete payment so only your account can download the PDF — all your entered details will be preserved.
+                You can review all product details and fill your contact info below. Login is required to complete payment so only your account can download the digital files — all your entered details will be preserved.
               </p>
             </div>
           </div>
@@ -1169,7 +1169,7 @@ export function StoreCheckout({
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 sm:p-3.5 text-xs sm:text-sm text-blue-900 flex items-start gap-2.5">
                 <IconRenderer name="download" className="w-4 h-4 text-navy shrink-0 mt-0.5" />
                 <p>
-                  <span className="font-semibold text-navy">Instant Digital Delivery:</span> No shipping address needed. Your secure PDF download unlocks immediately for your signed-in buyer account after payment and is also sent to your email.
+                  <span className="font-semibold text-navy">Instant Digital Delivery:</span> No shipping address needed. Your secure digital download unlocks immediately for your signed-in buyer account after payment and is also sent to your email.
                 </p>
               </div>
             )}
@@ -1504,7 +1504,7 @@ export function StoreCheckout({
                   >
                     login to your account
                   </button>{' '}
-                  to unlock payment &amp; instant PDF download. Your details remain saved.
+                  to unlock payment &amp; instant digital download. Your details remain saved.
                 </p>
               )}
             </div>

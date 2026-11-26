@@ -6,6 +6,7 @@ import { IconRenderer } from '../components/Icons';
 import { SEO } from '../components/SEO';
 import { showToast } from '../components/Toast';
 import { downloadProtectedDigitalFile } from '../utils/digitalDownload';
+import { getDigitalFileTypeHint } from '../server/digitalFilePolicy';
 
 interface DigitalDownloadProps {
   authUser: FirebaseUser | null;
@@ -99,7 +100,7 @@ export function DigitalDownload({ authUser, authLoading }: DigitalDownloadProps)
               <div className="w-7 h-7 border-4 border-green-600 border-t-transparent rounded-full animate-spin" />
             </div>
             <div className="space-y-1.5">
-              <h1 className="text-2xl font-bold text-navy">Preparing Your PDF Download</h1>
+              <h1 className="text-2xl font-bold text-navy">Preparing Your Digital Download</h1>
               <p className="text-sm text-slate-600">
                 Verifying your purchase for <span className="font-semibold text-navy">{authUser.email}</span>...
               </p>
@@ -110,10 +111,23 @@ export function DigitalDownload({ authUser, authLoading }: DigitalDownloadProps)
             <div className="w-16 h-16 rounded-full bg-green-500 text-white flex items-center justify-center mx-auto shadow-md">
               <IconRenderer name="check" className="w-9 h-9" />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-2">
               <h1 className="text-2xl font-bold text-navy">Download Started!</h1>
-              <p className="text-sm text-slate-600 break-all">
-                Your file <span className="font-semibold text-navy">{fileName}</span> is downloading.
+              {(() => {
+                const hint = fileName ? getDigitalFileTypeHint(fileName) : null;
+                return (
+                  <div className="flex flex-wrap items-center justify-center gap-2 text-sm text-slate-600">
+                    {hint && (
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[11px] font-bold uppercase tracking-wider ${hint.badgeClass}`}>
+                        {hint.badge}
+                      </span>
+                    )}
+                    <span className="font-semibold text-navy break-all">{fileName}</span>
+                  </div>
+                );
+              })()}
+              <p className="text-xs text-slate-500">
+                Your file is downloading directly to your device.
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-3 pt-2">

@@ -162,7 +162,7 @@ test('rejects non-HTTPS URLs, private IP URLs, and disallowed file extensions', 
     ]);
     assert.equal(disallowedExt.ok, false);
     if (!disallowedExt.ok) {
-      assert.match(disallowedExt.error, /\.pdf/);
+      assert.match(disallowedExt.error, /not allowed/i);
     }
 
     await assert.rejects(
@@ -510,7 +510,7 @@ test('virtual products require login to buy, only the purchasing buyer (or admin
       );
       assert.equal(streamRes.statusCode, 200);
       assert.equal(streamRes.headers['content-type'], 'application/pdf');
-      assert.match(streamRes.headers['content-disposition'], /attachment; filename\*=UTF-8''/);
+      assert.match(streamRes.headers['content-disposition'], /^attachment; filename="[^"]+"; filename\*=UTF-8''/);
       assert.equal(Buffer.concat(chunks).toString('utf8'), pdfPayload.toString('utf8'));
     }
 
@@ -547,5 +547,317 @@ test('virtual products require login to buy, only the purchasing buyer (or admin
     else process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET = prevSecret;
   }
 });
+
+test('accepts MP3, MP4, audio, video, images, archives, ebooks, and custom non-executable types while blocking web scripts & executables', async () => {
+  const {
+    isAllowedDigitalExtension,
+    resolveSafeDownloadContentType,
+    getDigitalFileTypeHint,
+  } = await import('./digitalFilePolicy');
+
+  // Verify broad compatibility
+  for (const ext of ['mp3', 'mp4', 'wav', 'm4a', 'mov', 'mkv', 'webm', 'pdf', 'zip', 'rar', '7z', 'png', 'jpg', 'webp', 'docx', 'xlsx', 'pptx', 'epub', 'txt', 'csv', 'json', 'psd', 'dwg', 'ttf', 'srt']) {
+    assert.equal(isAllowedDigitalExtension(ext), true, `Expected .${ext} to be allowed`);
+  }
+
+  // Verify dangerous active web/executable types are blocked
+  for (const ext of ['html', 'htm', 'svg', 'svgz', 'js', 'mjs', 'php', 'asp', 'jsp', 'exe', 'msi', 'bat', 'cmd', 'ps1', 'vbs', 'dll', 'sh']) {
+    assert.equal(isAllowedDigitalExtension(ext), false, `Expected .${ext} to be blocked`);
+  }
+
+  // Verify safe MIME resolution & dangerous MIME coercion
+  assert.equal(resolveSafeDownloadContentType('mp3', 'application/octet-stream'), 'audio/mpeg');
+  assert.equal(resolveSafeDownloadContentType('mp4', 'application/octet-stream'), 'video/mp4');
+  assert.equal(resolveSafeDownloadContentType('dwg', 'text/html; charset=utf-8'), 'application/octet-stream');
+  assert.equal(resolveSafeDownloadContentType('custombin', 'image/svg+xml'), 'application/octet-stream');
+
+  // Verify UI badges/hints
+  assert.equal(getDigitalFileTypeHint('lecture-01.mp4').kind, 'video');
+  assert.equal(getDigitalFileTypeHint('lecture-01.mp4').badge, 'MP4');
+  assert.equal(getDigitalFileTypeHint('chapter-01.mp3').kind, 'audio');
+  assert.equal(getDigitalFileTypeHint('chapter-01.mp3').badge, 'MP3');
+
+  await withProductionValidation(async () => {
+    const firebaseMp3 =
+      'https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe-free/o/digital-products%2Faudio-lesson-1.mp3?alt=media&token=tok-mp3';
+    const firebaseMp4 =
+      'https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe-free/o/digital-products%2Fvideo-course-1.mp4?alt=media&token=tok-mp4';
+    const firebaseRar =
+      'https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe-free/o/digital-products%2Fbundle-1.rar?alt=media&token=tok-rar';
+
+    const okResult = await normalizeDigitalResources([
+      { id: 'r-mp3', fileName: 'Spoken English Audio Lesson', label: 'Download MP3 Audio', url: firebaseMp3 },
+      { id: 'r-mp4', fileName: 'AutoCAD_Video_Tutorial.mp4', label: 'Download HD Video', url: firebaseMp4 },
+      { id: 'r-rar', fileName: 'All_Templates.rar', label: 'Download Archive', url: firebaseRar },
+    ]);
+    assert.equal(okResult.ok, true);
+    if (okResult.ok) {
+      assert.equal(okResult.resources.length, 3);
+      assert.equal(okResult.resources[0].fileName, 'Spoken English Audio Lesson.mp3');
+      assert.equal(okResult.resources[1].fileName, 'AutoCAD_Video_Tutorial.mp4');
+      assert.equal(okResult.resources[2].fileName, 'All_Templates.rar');
+    }
+
+    const blockedHtml = await normalizeDigitalResources([
+      { id: 'r-html', fileName: 'page.html', label: 'Download', url: 'https://example.com/page.html' },
+    ]);
+    assert.equal(blockedHtml.ok, false);
+
+    const blockedSvg = await normalizeDigitalResources([
+      { id: 'r-svg', fileName: 'vector.svg', label: 'Download', url: 'https://example.com/vector.svg' },
+    ]);
+    assert.equal(blockedSvg.ok, false);
+  });
+});
+
+test('admin streaming upload endpoint validates admin role, file extensions, and disguised HTML while accepting MP3 and MP4', async () => {
+  const { Readable } = await import('node:stream');
+  const prevTestMode = process.env.STORE_ORDER_TEST_MODE;
+  const prevOperatorTestMode = process.env.OPERATOR_TEST_MODE;
+  process.env.STORE_ORDER_TEST_MODE = '1';
+  process.env.OPERATOR_TEST_MODE = '1';
+
+  const makeRes = () => {
+    let statusCode = 200;
+    let body: any = undefined;
+    const res: any = {
+      status(code: number) { statusCode = code; return this; },
+      json(payload: any) { body = payload; return this; },
+      get result() { return { statusCode, body }; },
+    };
+    return res;
+  };
+
+  try {
+    const { handleAdminUploadDigitalFile } = await import('./storeOrderService');
+
+    // 1. Non-admin rejected
+    const nonAdminReq: any = Readable.from([Buffer.from('ID3fake-mp3-data')]);
+    nonAdminReq.query = { fileName: 'track.mp3', uploadId: 'u1' };
+    nonAdminReq.headers = { authorization: 'Bearer test-token:buyer_uid:buyer@example.com' };
+    const nonAdminRes = makeRes();
+    await handleAdminUploadDigitalFile(nonAdminReq, nonAdminRes);
+    assert.equal(nonAdminRes.result.statusCode, 403);
+
+    // 2. Blocked extension rejected
+    const badExtReq: any = Readable.from([Buffer.from('<html>alert(1)</html>')]);
+    badExtReq.query = { fileName: 'evil.html', uploadId: 'u2' };
+    badExtReq.headers = { authorization: 'Bearer test-token:admin_uid_1:admin1@indiacybercafe.com' };
+    const badExtRes = makeRes();
+    await handleAdminUploadDigitalFile(badExtReq, badExtRes);
+    assert.equal(badExtRes.result.statusCode, 400);
+
+    // 3. HTML payload disguised as .mp3 rejected
+    const disguisedReq: any = Readable.from([Buffer.from('<!DOCTYPE html><html><script>alert(1)</script></html>')]);
+    disguisedReq.query = { fileName: 'fake.mp3', uploadId: 'u3' };
+    disguisedReq.headers = { authorization: 'Bearer test-token:admin_uid_1:admin1@indiacybercafe.com' };
+    const disguisedRes = makeRes();
+    await handleAdminUploadDigitalFile(disguisedReq, disguisedRes);
+    assert.equal(disguisedRes.result.statusCode, 400);
+    assert.match(String(disguisedRes.result.body?.error || ''), /active web markup/i);
+
+    // 4. Valid MP4 stream succeeds for admin
+    const mp4Payload = Buffer.from([0x00, 0x00, 0x00, 0x18, 0x66, 0x74, 0x79, 0x70, 0x6d, 0x70, 0x34, 0x32, 0x00, 0x00, 0x00, 0x00]);
+    const validMp4Req: any = Readable.from([mp4Payload]);
+    validMp4Req.query = { fileName: 'Course Video 01.mp4', uploadId: 'video_upload_01' };
+    validMp4Req.headers = {
+      authorization: 'Bearer test-token:admin_uid_1:admin1@indiacybercafe.com',
+      'content-type': 'application/octet-stream',
+      'x-file-content-type': 'video/mp4',
+      'content-length': String(mp4Payload.length),
+    };
+    const validMp4Res = makeRes();
+    await handleAdminUploadDigitalFile(validMp4Req, validMp4Res);
+    assert.equal(validMp4Res.result.statusCode, 200);
+    assert.equal(validMp4Res.result.body.success, true);
+    assert.equal(validMp4Res.result.body.contentType, 'video/mp4');
+    assert.match(validMp4Res.result.body.url, /digital-products%2Fvideo_upload_01\.mp4\?alt=media&token=/);
+  } finally {
+    if (prevTestMode === undefined) delete process.env.STORE_ORDER_TEST_MODE;
+    else process.env.STORE_ORDER_TEST_MODE = prevTestMode;
+    if (prevOperatorTestMode === undefined) delete process.env.OPERATOR_TEST_MODE;
+    else process.env.OPERATOR_TEST_MODE = prevOperatorTestMode;
+  }
+});
+
+test('single-use buyer download tickets stream MP3 and MP4 with safe headers and reject replay or non-buyers', async () => {
+  const crypto = await import('node:crypto');
+  const { PassThrough } = await import('node:stream');
+  const prevTestMode = process.env.STORE_ORDER_TEST_MODE;
+  const prevOperatorTestMode = process.env.OPERATOR_TEST_MODE;
+  const prevSecret = process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET;
+  process.env.STORE_ORDER_TEST_MODE = '1';
+  process.env.OPERATOR_TEST_MODE = '1';
+  delete process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET;
+
+  const originalFetch = globalThis.fetch;
+
+  const makeRes = () => {
+    let statusCode = 200;
+    let body: any = undefined;
+    const headers: Record<string, string> = {};
+    const res: any = {
+      status(code: number) { statusCode = code; return this; },
+      json(payload: any) { body = payload; return this; },
+      send(payload: any) { body = payload; return this; },
+      setHeader(k: string, v: string) { headers[k.toLowerCase()] = v; },
+      get result() { return { statusCode, body, headers }; },
+    };
+    return res;
+  };
+
+  try {
+    const {
+      handleAdminSaveDigitalProductResources,
+      handleCreatePaymentOrder,
+      handleVerifyPayment,
+      handleCreateDigitalDownloadTicket,
+      handleDigitalDownload,
+    } = await import('./storeOrderService');
+
+    const virtualProductId = 'bt-105-autocad-complete-solved-notes-20222026';
+    const mp3Url = 'https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe-free/o/digital-products%2Flesson1.mp3?alt=media&token=t1';
+    const mp4Url = 'https://firebasestorage.googleapis.com/v0/b/india-cyber-cafe-free/o/digital-products%2Flesson1.mp4?alt=media&token=t2';
+
+    const seedRes = makeRes();
+    await handleAdminSaveDigitalProductResources(
+      {
+        params: { productId: virtualProductId },
+        headers: { authorization: 'Bearer test-token:admin_uid_1:admin1@indiacybercafe.com' },
+        body: {
+          resources: [
+            { id: 'media-1', fileName: 'Audio_Lesson_1.mp3', label: 'Download Audio', url: mp3Url },
+            { id: 'media-2', fileName: 'Video_Lesson_1.mp4', label: 'Download Video', url: mp4Url },
+          ],
+        },
+      } as any,
+      seedRes
+    );
+    assert.equal(seedRes.result.statusCode, 200);
+
+    const buyerAuth = 'Bearer test-token:media_buyer_1:mediabuyer@example.com';
+    const otherAuth = 'Bearer test-token:media_other_2:other@example.com';
+
+    const createRes = makeRes();
+    await handleCreatePaymentOrder(
+      {
+        headers: { authorization: buyerAuth },
+        ip: '203.0.113.20',
+        socket: { remoteAddress: '203.0.113.20' },
+        body: {
+          items: [{ productId: virtualProductId, quantity: 1 }],
+          deliveryAddress: {
+            name: 'Media Buyer',
+            email: 'mediabuyer@example.com',
+            phone: '9876543219',
+            addressLine1: '',
+            addressLine2: '',
+            city: '',
+            state: '',
+            pincode: '',
+            country: 'India',
+          },
+        },
+      } as any,
+      createRes
+    );
+    assert.equal(createRes.result.statusCode, 201);
+
+    const { orderId, razorpayOrderId } = createRes.result.body;
+    const payId = `pay_media_${Date.now()}`;
+    const sig = crypto.createHmac('sha256', 'test_rzp_secret').update(`${razorpayOrderId}|${payId}`).digest('hex');
+
+    const verifyRes = makeRes();
+    await handleVerifyPayment(
+      {
+        headers: { authorization: buyerAuth },
+        ip: '203.0.113.20',
+        socket: { remoteAddress: '203.0.113.20' },
+        body: { orderId, razorpay_order_id: razorpayOrderId, razorpay_payment_id: payId, razorpay_signature: sig },
+      } as any,
+      verifyRes
+    );
+    assert.equal(verifyRes.result.statusCode, 200);
+    const resources = verifyRes.result.body.order.digitalDownloads[0].resources;
+    assert.equal(resources.length, 2);
+    const mp3Token = resources[0].downloadUrl.split('/').pop()!;
+    const mp4Token = resources[1].downloadUrl.split('/').pop()!;
+
+    // Non-buyer cannot mint ticket
+    const badTicketRes = makeRes();
+    await handleCreateDigitalDownloadTicket(
+      { params: { token: mp3Token }, headers: { authorization: otherAuth } } as any,
+      badTicketRes
+    );
+    assert.equal(badTicketRes.result.statusCode, 403);
+
+    // Buyer mints MP3 ticket
+    const mp3TicketRes = makeRes();
+    await handleCreateDigitalDownloadTicket(
+      { params: { token: mp3Token }, headers: { authorization: buyerAuth } } as any,
+      mp3TicketRes
+    );
+    assert.equal(mp3TicketRes.result.statusCode, 200);
+    assert.equal(mp3TicketRes.result.body.fileKind, 'audio');
+    assert.equal(mp3TicketRes.result.body.contentType, 'audio/mpeg');
+    const mp3Ticket = mp3TicketRes.result.body.ticket;
+
+    // Stream MP3 via ticket (simulate upstream returning generic octet-stream -> server sends audio/mpeg + nosniff + sandbox)
+    const mp3Bytes = Buffer.from('ID3\x03\x00\x00\x00\x00\x00\x00MP3-AUDIO-DATA');
+    globalThis.fetch = (async () =>
+      new Response(mp3Bytes, {
+        status: 200,
+        headers: { 'content-type': 'application/octet-stream', 'content-length': String(mp3Bytes.length) },
+      })) as any;
+
+    const chunks: Buffer[] = [];
+    const streamRes: any = new PassThrough();
+    streamRes.headersSent = false;
+    streamRes.statusCode = 200;
+    streamRes.headers = {} as Record<string, string>;
+    streamRes.status = (c: number) => { streamRes.statusCode = c; return streamRes; };
+    streamRes.json = (b: any) => { streamRes.body = b; return streamRes; };
+    streamRes.setHeader = (k: string, v: string) => { streamRes.headers[k.toLowerCase()] = v; };
+    streamRes.on('data', (c: Buffer) => chunks.push(c));
+
+    await handleDigitalDownload(
+      { params: { token: mp3Token }, query: { ticket: mp3Ticket }, headers: {} } as any,
+      streamRes
+    );
+    assert.equal(streamRes.statusCode, 200);
+    assert.equal(streamRes.headers['content-type'], 'audio/mpeg');
+    assert.equal(streamRes.headers['x-content-type-options'], 'nosniff');
+    assert.equal(streamRes.headers['content-security-policy'], "default-src 'none'; sandbox");
+    assert.match(streamRes.headers['content-disposition'], /attachment; filename="Audio_Lesson_1\.mp3"/);
+    assert.equal(Buffer.concat(chunks).toString('binary'), mp3Bytes.toString('binary'));
+
+    // Replaying the same single-use ticket fails with 401
+    const replayRes = makeRes();
+    await handleDigitalDownload(
+      { params: { token: mp3Token }, query: { ticket: mp3Ticket }, headers: {} } as any,
+      replayRes
+    );
+    assert.equal(replayRes.result.statusCode, 401);
+
+    // Buyer mints MP4 ticket & streams video/mp4
+    const mp4TicketRes = makeRes();
+    await handleCreateDigitalDownloadTicket(
+      { params: { token: mp4Token }, headers: { authorization: buyerAuth } } as any,
+      mp4TicketRes
+    );
+    assert.equal(mp4TicketRes.result.statusCode, 200);
+    assert.equal(mp4TicketRes.result.body.fileKind, 'video');
+    assert.equal(mp4TicketRes.result.body.contentType, 'video/mp4');
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (prevTestMode === undefined) delete process.env.STORE_ORDER_TEST_MODE;
+    else process.env.STORE_ORDER_TEST_MODE = prevTestMode;
+    if (prevOperatorTestMode === undefined) delete process.env.OPERATOR_TEST_MODE;
+    else process.env.OPERATOR_TEST_MODE = prevOperatorTestMode;
+    if (prevSecret === undefined) delete process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET;
+    else process.env.DIGITAL_DOWNLOAD_TOKEN_SECRET = prevSecret;
+  }
+});
+
 
 

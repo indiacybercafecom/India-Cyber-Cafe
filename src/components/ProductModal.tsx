@@ -7,7 +7,13 @@ import { SelectDropdown } from './SelectDropdown';
 import { showToast } from './Toast';
 import { generateSlug } from '../utils/slugGenerator';
 import { trimWhitespace } from '../utils/sanitizer';
-import { deleteUploadedDigitalFile, uploadFilesBounded, uploadFileWithRetry, MAX_SERVICE_FILE_SIZE } from '../services/uploadService';
+import { deleteUploadedDigitalFile, uploadFilesBounded, uploadFileWithRetry, MAX_DIGITAL_FILE_SIZE, MAX_SERVICE_FILE_SIZE } from '../services/uploadService';
+import {
+  getDigitalExtensionError,
+  getDigitalFileExtension,
+  getDigitalFileTypeHint,
+  isAllowedDigitalExtension,
+} from '../server/digitalFilePolicy';
 import { useSubmissionLifecycle } from '../hooks/useSubmissionLifecycle';
 import { withClientTimeout } from '../utils/fetchWithTimeout';
 
@@ -205,7 +211,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       const url = await uploadFileWithRetry(file, {
         category: 'digital-products',
         uploadId: stableUploadId,
-        maxSizeBytes: MAX_SERVICE_FILE_SIZE,
+        maxSizeBytes: MAX_DIGITAL_FILE_SIZE,
         onProgress: setUploadPercent,
       });
       setDigitalResources(items => items.map(item => item.id === resourceId
@@ -264,15 +270,13 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       return;
     }
 
-    const ALLOWED_EXTS = new Set(['pdf', 'zip', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx']);
     const inferExtFromUrl = (rawUrl: string): string => {
       try {
         const parsed = new URL(rawUrl);
         const decodedPath = decodeURIComponent(parsed.pathname);
         const lastSegment = decodedPath.split('/').pop() || '';
-        const dotIdx = lastSegment.lastIndexOf('.');
-        const ext = dotIdx > 0 ? lastSegment.slice(dotIdx + 1).toLowerCase().trim() : '';
-        return ALLOWED_EXTS.has(ext) ? ext : '';
+        const ext = getDigitalFileExtension(lastSegment);
+        return isAllowedDigitalExtension(ext) ? ext : '';
       } catch {
         return '';
       }
@@ -282,9 +286,8 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       ? digitalResources.map(resource => {
           const cleanUrl = trimWhitespace(resource.url);
           let cleanFileName = trimWhitespace(resource.fileName);
-          const dotIdx = cleanFileName.lastIndexOf('.');
-          const ext = dotIdx > 0 ? cleanFileName.slice(dotIdx + 1).toLowerCase().trim() : '';
-          if (cleanFileName && !ALLOWED_EXTS.has(ext)) {
+          const ext = getDigitalFileExtension(cleanFileName);
+          if (cleanFileName && !ext) {
             const urlExt = inferExtFromUrl(cleanUrl);
             if (urlExt) {
               cleanFileName = `${cleanFileName.replace(/\.+$/, '')}.${urlExt}`;
@@ -310,13 +313,14 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
       showToast('Download URLs must use HTTPS', 'error');
       return;
     }
-    if (isVirtual && normalizedDigitalResources.some(resource => {
-      const dotIdx = resource.fileName.lastIndexOf('.');
-      const ext = dotIdx > 0 ? resource.fileName.slice(dotIdx + 1).toLowerCase().trim() : '';
-      return !ALLOWED_EXTS.has(ext);
-    })) {
-      showToast('Each digital file name must end with .pdf, .zip, .doc, .docx, .xls, .xlsx, .ppt, or .pptx', 'error');
-      return;
+    if (isVirtual) {
+      for (const resource of normalizedDigitalResources) {
+        const ext = getDigitalFileExtension(resource.fileName);
+        if (!isAllowedDigitalExtension(ext)) {
+          showToast(getDigitalExtensionError(ext), 'error');
+          return;
+        }
+      }
     }
     if (isVirtual && normalizedDigitalResources.length === 0) {
       showToast('Add at least one digital download resource', 'error');
@@ -550,19 +554,28 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                   <input
                     type="number"
                     min="1"
-                    value={formData.downloadLimit || 5}
+                    value={formData.downloadLimit || 10}
                     onChange={e => setFormData({ ...formData, downloadLimit: Math.max(1, Number(e.target.value) || 1) })}
                     className="mt-1 w-full px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white font-normal focus:border-navy focus:ring-2 focus:ring-navy/20 outline-none"
                   />
                 </label>
               </div>
               <div className="space-y-3">
-                {digitalResources.map((resource, index) => (
+                {digitalResources.map((resource, index) => {
+                  const fileHint = resource.fileName ? getDigitalFileTypeHint(resource.fileName) : null;
+                  return (
                   <div key={resource.id} className="rounded-xl border border-slate-200 bg-white p-3 sm:p-4 space-y-3 shadow-xs">
                     <div className="flex items-center justify-between gap-2 border-b border-slate-100 pb-2">
-                      <span className="text-xs font-bold uppercase tracking-wide text-navy">
-                        Resource #{index + 1}
-                      </span>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="text-xs font-bold uppercase tracking-wide text-navy">
+                          Resource #{index + 1}
+                        </span>
+                        {fileHint && (
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-md border text-[10px] font-bold uppercase tracking-wider ${fileHint.badgeClass}`}>
+                            {fileHint.badge}
+                          </span>
+                        )}
+                      </div>
                       <div className="flex items-center gap-1">
                         <button
                           type="button"
@@ -601,7 +614,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                         <label className="block text-xs font-bold text-slate-600 mb-1">File Name (with extension) *</label>
                         <input
                           aria-label="Download file name"
-                          placeholder="e.g. guide.pdf"
+                          placeholder="e.g. lesson.mp4, audio.mp3, notes.pdf, bundle.zip"
                           maxLength={180}
                           value={resource.fileName}
                           onChange={e => setDigitalResources(items => items.map(item => item.id === resource.id ? { ...item, fileName: e.target.value } : item))}
@@ -612,7 +625,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                         <label className="block text-xs font-bold text-slate-600 mb-1">Button Label *</label>
                         <input
                           aria-label="Download button label"
-                          placeholder="e.g. Download Notes PDF"
+                          placeholder="e.g. Download Video / Audio / File"
                           maxLength={160}
                           value={resource.label}
                           onChange={e => setDigitalResources(items => items.map(item => item.id === resource.id ? { ...item, label: e.target.value } : item))}
@@ -637,7 +650,6 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                           {uploadingResourceId === resource.id ? `Uploading (${uploadPercent}%)...` : 'Upload file'}
                           <input
                             type="file"
-                            accept=".pdf,.zip,.doc,.docx,.xls,.xlsx,.ppt,.pptx"
                             disabled={Boolean(uploadingResourceId)}
                             onChange={e => {
                               const selectedFile = e.target.files?.[0];
@@ -652,6 +664,9 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                           <p role="status" className="text-xs font-medium text-slate-500">Uploading: {uploadPercent}%</p>
                         )}
                       </div>
+                      <p className="text-[11px] text-slate-500">
+                        Supports MP3, MP4, audio, video, PDF, ZIP/RAR, Office docs, images, e-books &amp; more (up to 200 MB).
+                      </p>
                       {failedResourceUpload?.resourceId === resource.id && (
                         <div className="space-y-1">
                           <p role="alert" className="text-xs text-red-600">{failedResourceUpload.message}</p>
@@ -667,7 +682,8 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
                       )}
                     </div>
                   </div>
-                ))}
+                  );
+                })}
               </div>
               <button
                 type="button"
@@ -676,7 +692,7 @@ export function ProductModal({ product, categories, onClose, onSave }: ProductMo
               >
                 + Add download resource
               </button>
-              <p className="text-xs text-slate-500 leading-relaxed">Only secure order-specific download links are shown to customers. Resource URLs are stored privately.</p>
+              <p className="text-xs text-slate-500 leading-relaxed">Only secure buyer-verified download links are shown to customers. Resource URLs are stored privately.</p>
             </div>
           ) : (
           <div className="space-y-2 sm:space-y-3">

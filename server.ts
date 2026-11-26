@@ -31,6 +31,8 @@ import {
   handleAdminGetDigitalProductResources,
   handleAdminSaveDigitalProductResources,
   handleAdminDeleteDigitalProductResources,
+  handleAdminUploadDigitalFile,
+  handleCreateDigitalDownloadTicket,
   handleDigitalDownload,
   handleAdminRegenerateDigitalDownloads,
   handleAdminRevokeDigitalDownloads,
@@ -310,7 +312,7 @@ async function startServer() {
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; " +
         "font-src 'self' https://fonts.gstatic.com data:; " +
         "img-src 'self' data: blob: https://indiacybercafe.com https://cdn-icons-png.flaticon.com https://firebasestorage.googleapis.com https://api.dicebear.com https://www.google-analytics.com https://region1.google-analytics.com https://*.razorpay.com https://*.googleusercontent.com https://*.ggpht.com https://*.gravatar.com; " +
-        "media-src 'self'; " +
+        "media-src 'self' blob:; " +
         "connect-src 'self' " +
           "https://firebase.googleapis.com " +
           "https://firebaseinstallations.googleapis.com " +
@@ -630,8 +632,10 @@ async function startServer() {
   app.get("/api/store/orders/my", handleGetMyOrders);
   app.post("/api/store/orders/guest-track", handleGuestTrackOrder);
   app.post("/api/store/orders/link-guest-orders", handleLinkGuestOrders);
+  app.post("/api/store/downloads/:token/ticket", handleCreateDigitalDownloadTicket);
   app.get("/api/store/downloads/:token", handleDigitalDownload);
   app.post("/api/store/reviews", handleSubmitStoreReview);
+  app.post("/api/admin/store/digital-upload", handleAdminUploadDigitalFile);
   app.get("/api/admin/store/products/:productId/digital-resources", handleAdminGetDigitalProductResources);
   app.put("/api/admin/store/products/:productId/digital-resources", handleAdminSaveDigitalProductResources);
   app.delete("/api/admin/store/products/:productId/digital-resources", handleAdminDeleteDigitalProductResources);
