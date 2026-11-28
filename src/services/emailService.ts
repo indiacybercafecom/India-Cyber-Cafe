@@ -77,14 +77,21 @@ const emailHeader = (title: string, badgeLabel = 'Customer Notification') => `
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
         <tr>
           <td align="center" style="padding:0 0 12px 0;text-align:center;">
-            <a href="https://b.indiacybercafe.com" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;border:0;">
-              <!--[if mso]>
-              <img src="${EMAIL_LOGO_STATIC_URL}" alt="India Cyber Cafe" width="340" height="133" border="0" style="display:block;margin:0 auto;width:340px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;" />
-              <![endif]-->
-              <!--[if !mso]><!-->
-              <img src="${EMAIL_LOGO_GIF_URL}" alt="India Cyber Cafe" width="340" height="133" border="0" style="display:block;margin:0 auto;width:340px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;" />
-              <!--<![endif]-->
-            </a>
+            <!--[if mso]>
+            <v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:340px;height:133px;">
+              <v:fill type="frame" src="${EMAIL_LOGO_STATIC_URL}" color="#FFFDF9" />
+              <v:textbox style="mso-fit-shape-to-text:false" inset="0,0,0,0"></v:textbox>
+            </v:rect>
+            <![endif]-->
+            <!--[if !mso]><!-->
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" align="center" style="width:100%;max-width:340px;margin:0 auto;border-collapse:collapse;">
+              <tr>
+                <td role="img" aria-label="India Cyber Cafe" align="center" valign="middle" width="340" height="133" bgcolor="#FFFDF9" background="${EMAIL_LOGO_GIF_URL}" style="width:340px;max-width:100%;height:133px;background-color:#FFFDF9;background-image:url(${EMAIL_LOGO_GIF_URL});background-repeat:no-repeat;background-position:center center;background-size:contain;font-size:0;line-height:0;user-select:none;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;-webkit-touch-callout:none;pointer-events:none;">
+                  <div style="width:100%;height:133px;min-height:133px;line-height:133px;font-size:0;overflow:hidden;user-select:none;-webkit-user-select:none;-moz-user-select:none;-ms-user-select:none;-webkit-touch-callout:none;pointer-events:none;"></div>
+                </td>
+              </tr>
+            </table>
+            <!--<![endif]-->
           </td>
         </tr>
         <tr>
