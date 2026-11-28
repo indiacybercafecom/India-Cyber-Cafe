@@ -12,11 +12,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit",
-    "sync:data": "tsx scripts/sync-data.ts",
-    "test:store": "tsx scripts/test-store-hotfix.ts",
-    "test:seo": "tsx scripts/test-seo.ts",
-    "test:seo:live": "tsx scripts/test-seo.ts --live",
-    "test:rules": "tsx scripts/test-rules.ts"
+    "sync:data": "tsx scripts/sync-data.ts"
   },
   "dependencies": {
     "@google/genai": "^1.29.0",

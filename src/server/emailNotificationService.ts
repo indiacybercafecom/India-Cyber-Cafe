@@ -18,8 +18,18 @@ const APP_ROOT = fs.existsSync(path.join(process.cwd(), 'package.json'))
 const NOTIFICATION_LEDGER_PATH = path.join(APP_ROOT, 'data/notification_events.json');
 const NOTIFICATION_OUTBOX_PATH = path.join(APP_ROOT, 'data/notification_outbox.json');
 const DEFAULT_ADMIN_EMAILS = ['icc@indiacybercafe.com', 'indiacybercafe.com@gmail.com'];
-const BRAND_LOGO_URL = 'https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png';
 const SITE_URL = 'https://b.indiacybercafe.com';
+const EMAIL_ASSET_BASE_URL = (process.env.EMAIL_ASSET_BASE_URL || SITE_URL).replace(/\/+$/, '');
+const BRAND_LOGO_GIF_URL = `${EMAIL_ASSET_BASE_URL}/assets/email/icc-logo-animation.gif`;
+const BRAND_LOGO_STATIC_URL = `${EMAIL_ASSET_BASE_URL}/assets/email/icc-logo-static.png`;
+
+export const EMAIL_BRAND_ASSETS = {
+  siteUrl: SITE_URL,
+  logoGifUrl: BRAND_LOGO_GIF_URL,
+  logoStaticUrl: BRAND_LOGO_STATIC_URL,
+  logoWidth: 340,
+  logoHeight: 133,
+} as const;
 
 export type EmailRecipientRole = 'customer' | 'admin' | 'operator' | 'previous_operator';
 export type NotificationDeliveryState = 'queued' | 'sent_to_smtp' | 'failed' | 'retried';
@@ -614,33 +624,68 @@ export async function retryNotificationEvent(eventId: string): Promise<{ found: 
 // GMAIL-MOBILE-SAFE RESPONSIVE HTML LAYOUT & ROLE-SEPARATED TEMPLATES
 // =============================================================================
 
-function wrapEmailHtml(title: string, contentHtml: string, badgeLabel = 'Digital Seva Simplified'): string {
+export function wrapEmailHtml(title: string, contentHtml: string, badgeLabel = 'Customer Notification'): string {
+  const safeTitle = escapeHtml(title);
+  const safeBadge = escapeHtml(badgeLabel);
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="en" xmlns="http://www.w3.org/1999/xhtml" xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office">
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>${escapeHtml(title)}</title>
+<meta http-equiv="X-UA-Compatible" content="IE=edge" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>${safeTitle}</title>
+<!--[if mso]>
+<xml>
+  <o:OfficeDocumentSettings>
+    <o:AllowPNG/>
+    <o:PixelsPerInch>96</o:PixelsPerInch>
+  </o:OfficeDocumentSettings>
+</xml>
+<![endif]-->
 </head>
-<body style="margin:0;padding:0;background-color:#f4f6f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#1e293b;">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background-color:#f4f6f9;padding:16px 8px;">
+<body style="margin:0;padding:0;background-color:#f4f6f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;color:#1e293b;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#f4f6f9;margin:0;padding:16px 8px;">
     <tr>
-      <td align="center">
-        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;width:100%;background-color:#ffffff;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+      <td align="center" style="padding:0;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;width:100%;margin:0 auto;background-color:#ffffff;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;border-collapse:separate;">
           <tr>
-            <td style="background-color:#FF9933;padding:24px 20px;text-align:center;">
-              <img src="${BRAND_LOGO_URL}" alt="India Cyber Cafe" width="160" style="max-width:160px;width:100%;height:auto;display:inline-block;margin-bottom:8px;" />
-              <div style="font-size:20px;font-weight:700;color:#ffffff;margin:4px 0 0 0;">India Cyber Cafe</div>
-              <div style="font-size:12px;color:#fff7ed;margin:4px 0 0 0;">${escapeHtml(badgeLabel)}</div>
+            <td align="center" bgcolor="#FFFDF9" style="background-color:#FFFDF9;padding:24px 20px 18px 20px;text-align:center;border-bottom:1px solid #E2E8F0;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
+                <tr>
+                  <td align="center" style="padding:0 0 12px 0;text-align:center;">
+                    <a href="${SITE_URL}" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;border:0;">
+                      <!--[if mso]>
+                      <img src="${BRAND_LOGO_STATIC_URL}" alt="India Cyber Cafe" width="${EMAIL_BRAND_ASSETS.logoWidth}" height="${EMAIL_BRAND_ASSETS.logoHeight}" border="0" style="display:block;margin:0 auto;width:${EMAIL_BRAND_ASSETS.logoWidth}px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;" />
+                      <![endif]-->
+                      <!--[if !mso]><!-->
+                      <img src="${BRAND_LOGO_GIF_URL}" alt="India Cyber Cafe" width="${EMAIL_BRAND_ASSETS.logoWidth}" height="${EMAIL_BRAND_ASSETS.logoHeight}" border="0" style="display:block;margin:0 auto;width:${EMAIL_BRAND_ASSETS.logoWidth}px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;" />
+                      <!--<![endif]-->
+                    </a>
+                  </td>
+                </tr>
+                <tr>
+                  <td align="center" style="padding:0;text-align:center;">
+                    <div style="font-size:15px;line-height:1.3;font-weight:700;color:#0f172a;letter-spacing:0.2px;margin:0 0 6px 0;">India Cyber Cafe</div>
+                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;border-collapse:separate;">
+                      <tr>
+                        <td align="center" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #E2E8F0;border-radius:999px;padding:4px 12px;font-size:11px;line-height:1.2;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#475569;">
+                          ${safeBadge}
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
             </td>
           </tr>
           <tr>
-            <td style="background-color:#fffaf5;padding:16px 20px;border-bottom:2px solid #FF9933;">
-              <h2 style="margin:0;font-size:18px;font-weight:700;color:#c2410c;">${escapeHtml(title)}</h2>
+            <td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:18px 24px 14px 24px;border-bottom:1px solid #E2E8F0;text-align:left;">
+              <h2 style="margin:0;font-size:18px;line-height:1.35;font-weight:700;color:#0f172a;">${safeTitle}</h2>
             </td>
           </tr>
           <tr>
-            <td style="padding:22px 20px;font-size:14px;line-height:1.65;color:#334155;word-break:break-word;">
+            <td style="padding:22px 24px;font-size:14px;line-height:1.65;color:#334155;word-break:break-word;">
               ${contentHtml}
             </td>
           </tr>
@@ -691,9 +736,9 @@ function renderItemsTable(items: Array<{ name?: string; productName?: string; qu
     const lineTotal = qty * unitPrice;
     return `<tr>
       <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:left;">${escapeHtml(name)}</td>
-      <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;">${qty}</td>
-      <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:right;">&#8377;${unitPrice.toFixed(2)}</td>
-      <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:right;">&#8377;${lineTotal.toFixed(2)}</td>
+      <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:center;white-space:nowrap;word-break:normal;">${qty}</td>
+      <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:right;white-space:nowrap;word-break:normal;">&#8377;${unitPrice.toFixed(2)}</td>
+      <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:right;white-space:nowrap;word-break:normal;">&#8377;${lineTotal.toFixed(2)}</td>
     </tr>`;
   }).join('');
 
@@ -701,9 +746,9 @@ function renderItemsTable(items: Array<{ name?: string; productName?: string; qu
     <thead>
       <tr style="background-color:#f1f5f9;border-bottom:2px solid #FF9933;">
         <th style="padding:8px;text-align:left;">Product</th>
-        <th style="padding:8px;text-align:center;">Qty</th>
-        <th style="padding:8px;text-align:right;">Price</th>
-        <th style="padding:8px;text-align:right;">Total</th>
+        <th style="padding:8px;text-align:center;white-space:nowrap;word-break:normal;">Qty</th>
+        <th style="padding:8px;text-align:right;white-space:nowrap;word-break:normal;">Price</th>
+        <th style="padding:8px;text-align:right;white-space:nowrap;word-break:normal;">Total</th>
       </tr>
     </thead>
     <tbody>${rows}</tbody>

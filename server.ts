@@ -286,6 +286,14 @@ async function startServer() {
     });
   };
   app.use('/uploads/custom-images', express.static(path.join(APP_ROOT, 'data/uploads/custom-images')));
+  app.use('/assets/email', express.static(path.join(APP_ROOT, 'public/assets/email'), {
+    maxAge: '30d',
+    setHeaders: (res) => {
+      res.setHeader('Cache-Control', 'public, max-age=2592000');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
+    },
+  }));
 
   app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");

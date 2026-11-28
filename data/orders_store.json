@@ -1,10 +1,10 @@
 {
-  "ICC/STORE-17112026-091306-53564": {
-    "id": "ICC/STORE-17112026-091306-53564",
+  "ICC/STORE-27112026-192333-98019": {
+    "id": "ICC/STORE-27112026-192333-98019",
     "uid": "guest",
     "userId": "guest",
     "isGuest": true,
-    "guestTokenHash": "9512d585f6da1e075c327d571cf66016eda7db17527d51505703df8ee57594ef",
+    "guestTokenHash": "9fda80cbbd44291386ae1c0d5facd5ab746e81492dd90375d10b9002c016da8b",
     "email": "priya.verma@example.com",
     "items": [
       {
@@ -12,7 +12,8 @@
         "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
         "price": 499,
         "discountedPrice": 49,
-        "quantity": 1
+        "quantity": 1,
+        "productType": "physical"
       }
     ],
     "deliveryAddress": {
@@ -38,29 +39,29 @@
         "by": "system",
         "email": "system@indiacybercafe.com",
         "text": "Order placed with Cash on Delivery (COD)",
-        "time": "2026-11-17T09:13:06.637Z"
+        "time": "2026-11-27T19:23:33.168Z"
       },
       {
         "type": "status",
-        "by": "Admin One",
-        "email": "admin1@indiacybercafe.com",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
         "text": "Order status changed to shipped",
-        "time": "2026-11-17T09:13:06.702Z"
+        "time": "2026-11-27T19:23:33.215Z"
       },
       {
         "type": "status",
-        "by": "Admin One",
-        "email": "admin1@indiacybercafe.com",
+        "by": "system",
+        "email": "system@indiacybercafe.com",
         "text": "Order status changed to cancelled: Customer requested cancellation",
-        "time": "2026-11-17T09:13:06.713Z"
+        "time": "2026-11-27T19:23:33.225Z"
       }
     ],
-    "createdAt": "2026-11-17T09:13:06.637Z",
-    "updatedAt": "2026-11-17T09:13:06.713Z",
+    "createdAt": "2026-11-27T19:23:33.168Z",
+    "updatedAt": "2026-11-27T19:23:33.225Z",
     "cancellationReason": "Customer requested cancellation"
   },
-  "ICC/STORE-17112026-091306-96947": {
-    "id": "ICC/STORE-17112026-091306-96947",
+  "ICC/STORE-27112026-192333-33840": {
+    "id": "ICC/STORE-27112026-192333-33840",
     "uid": "cust_uid_1",
     "userId": "cust_uid_1",
     "isGuest": false,
@@ -71,7 +72,8 @@
         "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
         "price": 499,
         "discountedPrice": 49,
-        "quantity": 1
+        "quantity": 1,
+        "productType": "physical"
       }
     ],
     "deliveryAddress": {
@@ -90,44 +92,47 @@
     "total": 49,
     "paymentMethod": "razorpay",
     "paymentStatus": "refunded",
-    "razorpayOrderId": "order_test_aa5e247d274a",
+    "razorpayOrderId": "order_test_a5d838e24d4e",
     "orderStatus": "processing",
     "notes": [
       {
         "type": "status",
         "by": "system",
         "email": "system@indiacybercafe.com",
-        "text": "Payment initiated via Razorpay (Ref: order_test_aa5e247d274a)",
-        "time": "2026-11-17T09:13:06.654Z"
+        "text": "Payment initiated via Razorpay (Ref: order_test_a5d838e24d4e)",
+        "time": "2026-11-27T19:23:33.191Z"
       },
       {
         "type": "status",
         "by": "system",
         "email": "system@indiacybercafe.com",
         "text": "Payment verified via Razorpay (pay_store_999)",
-        "time": "2026-11-17T09:13:06.685Z"
+        "time": "2026-11-27T19:23:33.197Z"
       },
       {
         "type": "status",
         "by": "Admin One",
         "email": "admin1@indiacybercafe.com",
         "text": "Refund of ₹49.00 initiated: Duplicate purchase",
-        "time": "2026-11-17T09:13:06.727Z"
+        "time": "2026-11-27T19:23:33.242Z"
       }
     ],
-    "createdAt": "2026-11-17T09:13:06.654Z",
-    "updatedAt": "2026-11-17T09:13:06.727Z",
+    "createdAt": "2026-11-27T19:23:33.191Z",
+    "updatedAt": "2026-11-27T19:23:33.242Z",
     "razorpayPaymentId": "pay_store_999",
+    "digitalDeliveryStatus": "not_required",
+    "digitalEmailStatus": "not_required",
+    "digitalResourceNames": [],
     "refundAmount": 49,
     "refundReason": "Duplicate purchase",
-    "refundedAt": "2026-11-17T09:13:06.727Z"
+    "refundedAt": "2026-11-27T19:23:33.242Z"
   },
-  "ICC/STORE-17112026-091307-17770": {
-    "id": "ICC/STORE-17112026-091307-17770",
+  "ICC/STORE-27112026-192333-10231": {
+    "id": "ICC/STORE-27112026-192333-10231",
     "uid": "guest",
     "userId": "guest",
     "isGuest": true,
-    "guestTokenHash": "6e5dc897b4cbfa920df2e83c6de3528204ac82e4d0352f184f6a452574ffedae",
+    "guestTokenHash": "2f09762b71ce9939c358b2389bf92fce4dbb1f6983741787a235948e86d4c05e",
     "email": "priya.verma@example.com",
     "items": [
       {
@@ -135,7 +140,8 @@
         "productName": "Diseases & Treatment – Complete Medical Reference PDF (125 Diseases)",
         "price": 499,
         "discountedPrice": 49,
-        "quantity": 1
+        "quantity": 1,
+        "productType": "physical"
       }
     ],
     "deliveryAddress": {
@@ -161,459 +167,10 @@
         "by": "system",
         "email": "system@indiacybercafe.com",
         "text": "Order placed with Cash on Delivery (COD)",
-        "time": "2026-11-17T09:13:07.155Z"
+        "time": "2026-11-27T19:23:33.625Z"
       }
     ],
-    "createdAt": "2026-11-17T09:13:07.155Z",
-    "updatedAt": "2026-11-17T09:13:07.155Z"
-  },
-  "ICC/STORE-25112026-080522-84590": {
-    "id": "ICC/STORE-25112026-080522-84590",
-    "uid": "buyer_uid_101",
-    "userId": "buyer_uid_101",
-    "isGuest": false,
-    "email": "buyer101@example.com",
-    "items": [
-      {
-        "productId": "bt-105-autocad-complete-solved-notes-20222026",
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "price": 50,
-        "discountedPrice": 1,
-        "quantity": 1,
-        "productType": "virtual",
-        "downloadLimit": 5
-      }
-    ],
-    "deliveryAddress": {
-      "name": "Verified Buyer",
-      "email": "buyer101@example.com",
-      "phone": "9876543211",
-      "addressLine1": "",
-      "addressLine2": "",
-      "city": "",
-      "state": "",
-      "pincode": "",
-      "country": "India"
-    },
-    "subtotal": 1,
-    "deliveryCharges": 0,
-    "total": 1,
-    "paymentMethod": "razorpay",
-    "paymentStatus": "completed",
-    "razorpayOrderId": "order_test_180a6a5b6366",
-    "orderStatus": "processing",
-    "notes": [
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment initiated via Razorpay (Ref: order_test_180a6a5b6366)",
-        "time": "2026-11-25T08:05:22.593Z"
-      },
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment verified via Razorpay (pay_buyer_1795593922599)",
-        "time": "2026-11-25T08:05:22.601Z"
-      }
-    ],
-    "createdAt": "2026-11-25T08:05:22.593Z",
-    "updatedAt": "2026-11-25T08:05:22.601Z",
-    "razorpayPaymentId": "pay_buyer_1795593922599",
-    "digitalDeliveryStatus": "available",
-    "digitalEmailStatus": "queued",
-    "digitalResourceNames": [
-      {
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf"
-      }
-    ]
-  },
-  "ICC/STORE-25112026-080706-21585": {
-    "id": "ICC/STORE-25112026-080706-21585",
-    "uid": "buyer_uid_101",
-    "userId": "buyer_uid_101",
-    "isGuest": false,
-    "email": "buyer101@example.com",
-    "items": [
-      {
-        "productId": "bt-105-autocad-complete-solved-notes-20222026",
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "price": 50,
-        "discountedPrice": 1,
-        "quantity": 1,
-        "productType": "virtual",
-        "downloadLimit": 5
-      }
-    ],
-    "deliveryAddress": {
-      "name": "Verified Buyer",
-      "email": "buyer101@example.com",
-      "phone": "9876543211",
-      "addressLine1": "",
-      "addressLine2": "",
-      "city": "",
-      "state": "",
-      "pincode": "",
-      "country": "India"
-    },
-    "subtotal": 1,
-    "deliveryCharges": 0,
-    "total": 1,
-    "paymentMethod": "razorpay",
-    "paymentStatus": "completed",
-    "razorpayOrderId": "order_test_c5275f47096e",
-    "orderStatus": "processing",
-    "notes": [
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment initiated via Razorpay (Ref: order_test_c5275f47096e)",
-        "time": "2026-11-25T08:07:06.003Z"
-      },
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment verified via Razorpay (pay_buyer_1795594026004)",
-        "time": "2026-11-25T08:07:06.008Z"
-      }
-    ],
-    "createdAt": "2026-11-25T08:07:06.003Z",
-    "updatedAt": "2026-11-25T08:07:06.008Z",
-    "razorpayPaymentId": "pay_buyer_1795594026004",
-    "digitalDeliveryStatus": "available",
-    "digitalEmailStatus": "queued",
-    "digitalResourceNames": [
-      {
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf"
-      }
-    ]
-  },
-  "ICC/STORE-25112026-081408-44366": {
-    "id": "ICC/STORE-25112026-081408-44366",
-    "uid": "buyer_uid_101",
-    "userId": "buyer_uid_101",
-    "isGuest": false,
-    "email": "buyer101@example.com",
-    "items": [
-      {
-        "productId": "bt-105-autocad-complete-solved-notes-20222026",
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "price": 50,
-        "discountedPrice": 1,
-        "quantity": 1,
-        "productType": "virtual",
-        "downloadLimit": 5
-      }
-    ],
-    "deliveryAddress": {
-      "name": "Verified Buyer",
-      "email": "buyer101@example.com",
-      "phone": "9876543211",
-      "addressLine1": "",
-      "addressLine2": "",
-      "city": "",
-      "state": "",
-      "pincode": "",
-      "country": "India"
-    },
-    "subtotal": 1,
-    "deliveryCharges": 0,
-    "total": 1,
-    "paymentMethod": "razorpay",
-    "paymentStatus": "completed",
-    "razorpayOrderId": "order_test_6714f6437153",
-    "orderStatus": "processing",
-    "notes": [
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment initiated via Razorpay (Ref: order_test_6714f6437153)",
-        "time": "2026-11-25T08:14:08.926Z"
-      },
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment verified via Razorpay (pay_buyer_1795594448927)",
-        "time": "2026-11-25T08:14:08.929Z"
-      }
-    ],
-    "createdAt": "2026-11-25T08:14:08.926Z",
-    "updatedAt": "2026-11-25T08:14:08.929Z",
-    "razorpayPaymentId": "pay_buyer_1795594448927",
-    "digitalDeliveryStatus": "available",
-    "digitalEmailStatus": "queued",
-    "digitalResourceNames": [
-      {
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf"
-      }
-    ]
-  },
-  "ICC/STORE-26112026-045827-13930": {
-    "id": "ICC/STORE-26112026-045827-13930",
-    "uid": "buyer_uid_101",
-    "userId": "buyer_uid_101",
-    "isGuest": false,
-    "email": "buyer101@example.com",
-    "items": [
-      {
-        "productId": "bt-105-autocad-complete-solved-notes-20222026",
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "price": 50,
-        "discountedPrice": 2,
-        "quantity": 1,
-        "productType": "virtual",
-        "downloadLimit": 5
-      }
-    ],
-    "deliveryAddress": {
-      "name": "Verified Buyer",
-      "email": "buyer101@example.com",
-      "phone": "9876543211",
-      "addressLine1": "",
-      "addressLine2": "",
-      "city": "",
-      "state": "",
-      "pincode": "",
-      "country": "India"
-    },
-    "subtotal": 2,
-    "deliveryCharges": 0,
-    "total": 2,
-    "paymentMethod": "razorpay",
-    "paymentStatus": "completed",
-    "razorpayOrderId": "order_test_4ca70e35f265",
-    "orderStatus": "processing",
-    "notes": [
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment initiated via Razorpay (Ref: order_test_4ca70e35f265)",
-        "time": "2026-11-26T04:58:27.947Z"
-      },
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment verified via Razorpay (pay_buyer_1795669107949)",
-        "time": "2026-11-26T04:58:27.950Z"
-      }
-    ],
-    "createdAt": "2026-11-26T04:58:27.947Z",
-    "updatedAt": "2026-11-26T04:58:27.950Z",
-    "razorpayPaymentId": "pay_buyer_1795669107949",
-    "digitalDeliveryStatus": "available",
-    "digitalEmailStatus": "queued",
-    "digitalResourceNames": [
-      {
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf"
-      }
-    ]
-  },
-  "ICC/STORE-26112026-045828-63671": {
-    "id": "ICC/STORE-26112026-045828-63671",
-    "uid": "media_buyer_1",
-    "userId": "media_buyer_1",
-    "isGuest": false,
-    "email": "mediabuyer@example.com",
-    "items": [
-      {
-        "productId": "bt-105-autocad-complete-solved-notes-20222026",
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "price": 50,
-        "discountedPrice": 2,
-        "quantity": 1,
-        "productType": "virtual",
-        "downloadLimit": 5
-      }
-    ],
-    "deliveryAddress": {
-      "name": "Media Buyer",
-      "email": "mediabuyer@example.com",
-      "phone": "9876543219",
-      "addressLine1": "",
-      "addressLine2": "",
-      "city": "",
-      "state": "",
-      "pincode": "",
-      "country": "India"
-    },
-    "subtotal": 2,
-    "deliveryCharges": 0,
-    "total": 2,
-    "paymentMethod": "razorpay",
-    "paymentStatus": "completed",
-    "razorpayOrderId": "order_test_41bc849cb3b2",
-    "orderStatus": "processing",
-    "notes": [
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment initiated via Razorpay (Ref: order_test_41bc849cb3b2)",
-        "time": "2026-11-26T04:58:28.171Z"
-      },
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment verified via Razorpay (pay_media_1795669108172)",
-        "time": "2026-11-26T04:58:28.173Z"
-      }
-    ],
-    "createdAt": "2026-11-26T04:58:28.171Z",
-    "updatedAt": "2026-11-26T04:58:28.173Z",
-    "razorpayPaymentId": "pay_media_1795669108172",
-    "digitalDeliveryStatus": "available",
-    "digitalEmailStatus": "queued",
-    "digitalResourceNames": [
-      {
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "fileName": "Audio_Lesson_1.mp3"
-      },
-      {
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "fileName": "Video_Lesson_1.mp4"
-      }
-    ]
-  },
-  "ICC/STORE-26112026-045936-54755": {
-    "id": "ICC/STORE-26112026-045936-54755",
-    "uid": "buyer_uid_101",
-    "userId": "buyer_uid_101",
-    "isGuest": false,
-    "email": "buyer101@example.com",
-    "items": [
-      {
-        "productId": "bt-105-autocad-complete-solved-notes-20222026",
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "price": 50,
-        "discountedPrice": 2,
-        "quantity": 1,
-        "productType": "virtual",
-        "downloadLimit": 5
-      }
-    ],
-    "deliveryAddress": {
-      "name": "Verified Buyer",
-      "email": "buyer101@example.com",
-      "phone": "9876543211",
-      "addressLine1": "",
-      "addressLine2": "",
-      "city": "",
-      "state": "",
-      "pincode": "",
-      "country": "India"
-    },
-    "subtotal": 2,
-    "deliveryCharges": 0,
-    "total": 2,
-    "paymentMethod": "razorpay",
-    "paymentStatus": "completed",
-    "razorpayOrderId": "order_test_b3602bfae887",
-    "orderStatus": "processing",
-    "notes": [
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment initiated via Razorpay (Ref: order_test_b3602bfae887)",
-        "time": "2026-11-26T04:59:36.941Z"
-      },
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment verified via Razorpay (pay_buyer_1795669176942)",
-        "time": "2026-11-26T04:59:36.943Z"
-      }
-    ],
-    "createdAt": "2026-11-26T04:59:36.941Z",
-    "updatedAt": "2026-11-26T04:59:36.943Z",
-    "razorpayPaymentId": "pay_buyer_1795669176942",
-    "digitalDeliveryStatus": "available",
-    "digitalEmailStatus": "queued",
-    "digitalResourceNames": [
-      {
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "fileName": "BT-105_AutoCAD_Complete_Solved_Notes.pdf"
-      }
-    ]
-  },
-  "ICC/STORE-26112026-045937-29330": {
-    "id": "ICC/STORE-26112026-045937-29330",
-    "uid": "media_buyer_1",
-    "userId": "media_buyer_1",
-    "isGuest": false,
-    "email": "mediabuyer@example.com",
-    "items": [
-      {
-        "productId": "bt-105-autocad-complete-solved-notes-20222026",
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "price": 50,
-        "discountedPrice": 2,
-        "quantity": 1,
-        "productType": "virtual",
-        "downloadLimit": 5
-      }
-    ],
-    "deliveryAddress": {
-      "name": "Media Buyer",
-      "email": "mediabuyer@example.com",
-      "phone": "9876543219",
-      "addressLine1": "",
-      "addressLine2": "",
-      "city": "",
-      "state": "",
-      "pincode": "",
-      "country": "India"
-    },
-    "subtotal": 2,
-    "deliveryCharges": 0,
-    "total": 2,
-    "paymentMethod": "razorpay",
-    "paymentStatus": "completed",
-    "razorpayOrderId": "order_test_bdbca9604edc",
-    "orderStatus": "processing",
-    "notes": [
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment initiated via Razorpay (Ref: order_test_bdbca9604edc)",
-        "time": "2026-11-26T04:59:37.172Z"
-      },
-      {
-        "type": "status",
-        "by": "system",
-        "email": "system@indiacybercafe.com",
-        "text": "Payment verified via Razorpay (pay_media_1795669177173)",
-        "time": "2026-11-26T04:59:37.174Z"
-      }
-    ],
-    "createdAt": "2026-11-26T04:59:37.172Z",
-    "updatedAt": "2026-11-26T04:59:37.174Z",
-    "razorpayPaymentId": "pay_media_1795669177173",
-    "digitalDeliveryStatus": "available",
-    "digitalEmailStatus": "queued",
-    "digitalResourceNames": [
-      {
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "fileName": "Audio_Lesson_1.mp3"
-      },
-      {
-        "productName": "BT-105 AutoCAD Complete Solved Notes (2022–2026)",
-        "fileName": "Video_Lesson_1.mp4"
-      }
-    ]
+    "createdAt": "2026-11-27T19:23:33.625Z",
+    "updatedAt": "2026-11-27T19:23:33.625Z"
   }
 }

@@ -67,29 +67,69 @@ const emailFooter = `
   </div>
 `;
 
-// Professional Email Header with Logo
-const emailHeader = (title: string) => `
-  <div style="background: linear-gradient(135deg, #FF9933 0%, #FF7F00 100%); padding: 30px 20px; text-align: center; border-radius: 10px 10px 0 0;">
-    <div style="margin-bottom: 15px;">
-      <img src="https://indiacybercafe.com/wp-content/uploads/2025/12/india-cyber-cafe-main-logo-headeer.png" alt="India Cyber Cafe" style="max-width: 200px; height: auto; max-height: 60px; display: inline-block;">
-    </div>
-    <h1 style="color: #fff; margin: 10px 0 0 0; font-size: 22px; font-weight: 600; letter-spacing: -0.3px;">India Cyber Cafe</h1>
-    <p style="color: rgba(255,255,255,0.9); margin: 5px 0 0 0; font-size: 12px;">Digital Seva Simplified</p>
-  </div>
-  <div style="padding: 20px; border-bottom: 2px solid #FF9933; background: #fafafa;">
-    <h2 style="color: #FF9933; margin: 0; font-size: 20px; font-weight: 600;">${escapeHtml(title)}</h2>
-  </div>
+const EMAIL_LOGO_GIF_URL = 'https://b.indiacybercafe.com/assets/email/icc-logo-animation.gif';
+const EMAIL_LOGO_STATIC_URL = 'https://b.indiacybercafe.com/assets/email/icc-logo-static.png';
+
+// Professional Email Header with Animated ICC Logo + Outlook Static PNG Fallback
+const emailHeader = (title: string, badgeLabel = 'Customer Notification') => `
+  <tr>
+    <td align="center" bgcolor="#FFFDF9" style="background-color:#FFFDF9;padding:24px 20px 18px 20px;text-align:center;border-bottom:1px solid #E2E8F0;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;">
+        <tr>
+          <td align="center" style="padding:0 0 12px 0;text-align:center;">
+            <a href="https://b.indiacybercafe.com" target="_blank" rel="noopener noreferrer" style="display:inline-block;text-decoration:none;border:0;">
+              <!--[if mso]>
+              <img src="${EMAIL_LOGO_STATIC_URL}" alt="India Cyber Cafe" width="340" height="133" border="0" style="display:block;margin:0 auto;width:340px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;" />
+              <![endif]-->
+              <!--[if !mso]><!-->
+              <img src="${EMAIL_LOGO_GIF_URL}" alt="India Cyber Cafe" width="340" height="133" border="0" style="display:block;margin:0 auto;width:340px;max-width:100%;height:auto;border:0;outline:none;text-decoration:none;" />
+              <!--<![endif]-->
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding:0;text-align:center;">
+            <div style="font-size:15px;line-height:1.3;font-weight:700;color:#0f172a;letter-spacing:0.2px;margin:0 0 6px 0;">India Cyber Cafe</div>
+            <table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center" style="margin:0 auto;border-collapse:separate;">
+              <tr>
+                <td align="center" bgcolor="#FFFFFF" style="background-color:#FFFFFF;border:1px solid #E2E8F0;border-radius:999px;padding:4px 12px;font-size:11px;line-height:1.2;font-weight:700;letter-spacing:0.5px;text-transform:uppercase;color:#475569;">
+                  ${escapeHtml(badgeLabel)}
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+  <tr>
+    <td bgcolor="#FFFFFF" style="background-color:#FFFFFF;padding:18px 24px 14px 24px;border-bottom:1px solid #E2E8F0;text-align:left;">
+      <h2 style="color:#0f172a;margin:0;font-size:18px;line-height:1.35;font-weight:700;">${escapeHtml(title)}</h2>
+    </td>
+  </tr>
 `;
 
-// Reusable Email Template Base
-const baseTemplate = (title: string, content: string) => `
-  <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif; max-width: 600px; margin: 0 auto; background: #fff; border: 1px solid #e0e0e0; border-radius: 10px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.1);">
-    ${emailHeader(title)}
-    <div style="padding: 25px 20px; color: #333; line-height: 1.7; font-size: 14px;">
-      ${content}
-    </div>
-    ${emailFooter}
-  </div>
+// Reusable Email Template Base (Table-based for Gmail, Outlook, and mobile clients)
+const baseTemplate = (title: string, content: string, badgeLabel = 'Customer Notification') => `
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background-color:#f4f6f9;margin:0;padding:16px 8px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Arial,sans-serif;">
+    <tr>
+      <td align="center" style="padding:0;">
+        <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;width:100%;margin:0 auto;background-color:#ffffff;border:1px solid #E2E8F0;border-radius:12px;overflow:hidden;border-collapse:separate;">
+          ${emailHeader(title, badgeLabel)}
+          <tr>
+            <td style="padding:22px 24px;color:#334155;line-height:1.65;font-size:14px;word-break:break-word;">
+              ${content}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:0;">
+              ${emailFooter}
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 `;
 
 import { fetchWithTimeout } from '../utils/fetchWithTimeout';
